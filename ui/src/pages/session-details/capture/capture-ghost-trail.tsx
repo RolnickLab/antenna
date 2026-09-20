@@ -8,14 +8,17 @@ import styles from './capture.module.scss'
 // regardless, since one thin line stays legible.
 export const MAX_GHOST_BOXES = 16
 
-const EARLIER_COLOR = '#5193F0'
+// Neither hue is the selection blue: that belongs to the box of the occurrence being
+// viewed, and a path frame wearing it read as the live box rather than a past one.
+const EARLIER_COLOR = '#6B7280'
 const LATER_COLOR = '#F2A31F'
 const MIN_GHOST_OPACITY = 0.15
 const OPACITY_FALLOFF = 0.11
-// Direction is carried by the dash as well as the colour, so it survives for a reader
-// who cannot separate the two hues. Live detection boxes are always solid.
+// Every path frame is broken, so none of them reads as the solid box of the frame on
+// screen, and the two patterns still carry direction for a reader who cannot separate
+// the hues.
 const LATER_DASH = '3 3'
-const EARLIER_DASH = undefined
+const EARLIER_DASH = '1 3'
 // A crop needs a floor the stroke falloff does not: a thumbnail at 0.15 cannot be read.
 const MIN_CROP_OPACITY = 0.5
 

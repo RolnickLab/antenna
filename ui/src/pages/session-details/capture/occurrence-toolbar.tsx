@@ -30,6 +30,7 @@ const describeFrames = (count: number) =>
  * available throughout: a stray single frame joins a chain that way.
  */
 export const OccurrenceToolbar = ({
+  detectionId,
   isExtended,
   isLoadingPath,
   occurrence,
@@ -47,6 +48,8 @@ export const OccurrenceToolbar = ({
   showPathCrops,
   shownFrames,
 }: {
+  /** The detection this panel is anchored to, which is this track's frame on the capture. */
+  detectionId?: string
   /** This occurrence is the one extend mode is already adding frames to. */
   isExtended?: boolean
   isLoadingPath?: boolean
@@ -72,6 +75,20 @@ export const OccurrenceToolbar = ({
 }) => {
   const singleFrame = occurrence.frameCount <= 1
   const pathShown = !!path?.length
+
+  // Matched on the detection rather than the capture: one capture can hold two frames
+  // of the same track, and they are different positions along it.
+  const frameIndex =
+    path && detectionId
+      ? path.findIndex((frame) => frame.detectionId === detectionId)
+      : -1
+  const framePosition =
+    path && frameIndex !== -1
+      ? translate(STRING.TRACK_POSITION_FRAME, {
+          index: frameIndex + 1,
+          total: path.length,
+        })
+      : undefined
 
   const subtitle = () => {
     if (!pathShown) {
@@ -125,6 +142,20 @@ export const OccurrenceToolbar = ({
           verified={occurrence.score === 1}
         />
         <span className="body-small text-muted-foreground">{subtitle()}</span>
+      </div>
+
+      <div className="flex flex-col gap-0.5 body-small text-muted-foreground">
+        {framePosition ? <span>{framePosition}</span> : null}
+        <span>
+          {translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}{' '}
+          <span className="tabular-nums text-foreground">{occurrence.id}</span>
+        </span>
+        {detectionId ? (
+          <span>
+            {translate(STRING.FIELD_LABEL_DETECTION_ID)}{' '}
+            <span className="tabular-nums text-foreground">{detectionId}</span>
+          </span>
+        ) : null}
       </div>
 
       {occurrence.groupingVerified ? (
