@@ -1,10 +1,13 @@
+import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { DeterminationScore } from 'components/determination-score'
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
+import { ReactNode } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
+import { buildDetectionLink } from '../hooks/useActiveDetection'
 
 export interface ToolbarOccurrence {
   frameCount: number
@@ -22,12 +25,31 @@ const describeFrames = (count: number) =>
     ? translate(STRING.TRACK_FRAMES_ONE)
     : translate(STRING.TRACK_FRAMES_COUNT, { count })
 
+/** One labelled identifier, with the value set apart so it can be read off quickly. */
+const IdRow = ({
+  children,
+  label,
+  value,
+}: {
+  children?: ReactNode
+  label: string
+  value: string
+}) => (
+  <div className="flex items-center gap-1.5 min-h-6">
+    <span>{label}</span>
+    <span className="tabular-nums text-foreground">{value}</span>
+    {children}
+  </div>
+)
+
 /**
  * The control anchored under a selected occurrence's box.
  *
- * Editing actions appear only once the path is on screen, so nobody restructures an
- * occurrence on evidence they have not seen. Merge is the exception and stays
- * available throughout: a stray single frame joins a chain that way.
+ * It is laid out in three bands, because it carries more than a single row of buttons
+ * can hold legibly: what this is, which frame of it you are on, and what you can do to
+ * it. Editing actions appear only once the path is on screen, so nobody restructures an
+ * occurrence on evidence they have not seen. Merge is the exception and stays available
+ * throughout: a stray single frame joins a chain that way.
  */
 export const OccurrenceToolbar = ({
   detectionId,
@@ -112,137 +134,160 @@ export const OccurrenceToolbar = ({
     })
   }
 
+  const pathActions = [
+    pathShown ? (
+      <Button key="hide" onClick={onHidePath} size="small" variant="ghost">
+        <span>{translate(STRING.TRACK_HIDE_PATH)}</span>
+      </Button>
+    ) : null,
+    pathShown && onTogglePathCrops ? (
+      <Button
+        key="crops"
+        onClick={onTogglePathCrops}
+        size="small"
+        variant="ghost"
+      >
+        <span>
+          {showPathCrops
+            ? translate(STRING.TRACK_SHOW_BOXES_ONLY)
+            : translate(STRING.SHOW_PATH_CROPS)}
+        </span>
+      </Button>
+    ) : null,
+    // A single frame has no path to draw, and the subtitle says so.
+    !pathShown && !singleFrame ? (
+      <Button
+        disabled={isLoadingPath}
+        key="show"
+        onClick={onShowPath}
+        size="small"
+        variant="ghost"
+      >
+        {isLoadingPath ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : (
+          <RouteIcon className="w-4 h-4" />
+        )}
+        <span>
+          {isLoadingPath
+            ? translate(STRING.TRACK_LOADING_PATH)
+            : translate(STRING.TRACK_SHOW_PATH)}
+        </span>
+      </Button>
+    ) : null,
+  ].filter(Boolean)
+
+  const editActions = [
+    pathShown ? (
+      <Button key="split" onClick={onSplit} size="small" variant="ghost">
+        <span>{translate(STRING.TRACK_SPLIT_HERE)}</span>
+      </Button>
+    ) : null,
+    <Button key="merge" onClick={onMerge} size="small" variant="ghost">
+      <span>{translate(STRING.TRACK_MERGE)}</span>
+    </Button>,
+    !isExtended ? (
+      <Button key="extend" onClick={onExtend} size="small" variant="ghost">
+        <span>{translate(STRING.TRACK_EXTEND_HERE)}</span>
+      </Button>
+    ) : null,
+  ].filter(Boolean)
+
   return (
-    <div className="flex flex-col items-start gap-2 min-w-48 max-w-80">
-      <div className="flex items-start justify-between gap-2 w-full">
-        <button
-          className="body-base text-primary font-medium text-left"
-          onClick={onOpenOccurrence}
-        >
-          <span>{occurrence.label}</span>
-        </button>
-
-        {onDismiss ? (
-          <Button
-            aria-label={translate(STRING.TRACK_HIDE_PANEL)}
-            className="shrink-0 -mt-1 -mr-2"
-            onClick={onDismiss}
-            size="icon"
-            variant="ghost"
+    <div className="flex flex-col items-stretch gap-3 min-w-56 max-w-80">
+      <div className="flex flex-col items-start gap-2">
+        <div className="flex items-start justify-between gap-2 w-full">
+          <button
+            className="body-base text-primary font-medium text-left"
+            onClick={onOpenOccurrence}
           >
-            <XIcon className="w-4 h-4" />
-          </Button>
-        ) : null}
-      </div>
+            <span>{occurrence.label}</span>
+          </button>
 
-      <div className="flex items-center gap-2">
-        <DeterminationScore
-          score={occurrence.score}
-          scoreLabel={occurrence.scoreLabel}
-          verified={occurrence.score === 1}
-        />
-        <span className="body-small text-muted-foreground">{subtitle()}</span>
+          {onDismiss ? (
+            <Button
+              aria-label={translate(STRING.TRACK_HIDE_PANEL)}
+              className="shrink-0 -mt-1 -mr-2"
+              onClick={onDismiss}
+              size="icon"
+              variant="ghost"
+            >
+              <XIcon className="w-4 h-4" />
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <DeterminationScore
+            score={occurrence.score}
+            scoreLabel={occurrence.scoreLabel}
+            verified={occurrence.score === 1}
+          />
+          <span className="body-small text-muted-foreground">{subtitle()}</span>
+        </div>
       </div>
 
       <div className="flex flex-col gap-0.5 body-small text-muted-foreground">
         {framePosition ? <span>{framePosition}</span> : null}
-        <span>
-          {translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}{' '}
-          <span className="tabular-nums text-foreground">{occurrence.id}</span>
-        </span>
-        {detectionId ? (
+
+        {shownFrames !== undefined && path && shownFrames < path.length ? (
           <span>
-            {translate(STRING.FIELD_LABEL_DETECTION_ID)}{' '}
-            <span className="tabular-nums text-foreground">{detectionId}</span>
+            {translate(STRING.TRACK_SHOWING_PART_OF_PATH, {
+              shown: shownFrames,
+              total: path.length,
+            })}
           </span>
+        ) : null}
+
+        {occurrence.groupingVerified ? (
+          <span>
+            {translate(STRING.TRACK_GROUPING_CONFIRMED_BY, {
+              date: occurrence.groupingVerifiedAt
+                ? getFormatedDateTimeString({
+                    date: occurrence.groupingVerifiedAt,
+                  })
+                : translate(STRING.VALUE_NOT_AVAILABLE),
+              name:
+                occurrence.groupingVerifiedBy ??
+                translate(STRING.ANONYMOUS_USER),
+            })}
+          </span>
+        ) : null}
+
+        {pathError && !pathShown && !isLoadingPath ? (
+          <span className="text-destructive" role="alert">
+            {translate(STRING.TRACK_PATH_ERROR)}
+          </span>
+        ) : null}
+
+        <IdRow
+          label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}
+          value={occurrence.id}
+        />
+
+        {detectionId ? (
+          <IdRow
+            label={translate(STRING.FIELD_LABEL_DETECTION_ID)}
+            value={detectionId}
+          >
+            {/* A detection keeps its id through every merge and split, so this link
+                still finds the box after the track it belongs to has changed. */}
+            <CopyLinkButton
+              value={buildDetectionLink(window.location.href, detectionId)}
+            />
+          </IdRow>
         ) : null}
       </div>
 
-      {occurrence.groupingVerified ? (
-        <span className="body-small text-muted-foreground">
-          {translate(STRING.TRACK_GROUPING_CONFIRMED_BY, {
-            date: occurrence.groupingVerifiedAt
-              ? getFormatedDateTimeString({
-                  date: occurrence.groupingVerifiedAt,
-                })
-              : translate(STRING.VALUE_NOT_AVAILABLE),
-            name:
-              occurrence.groupingVerifiedBy ?? translate(STRING.ANONYMOUS_USER),
-          })}
-        </span>
-      ) : null}
-
-      {shownFrames !== undefined && path && shownFrames < path.length ? (
-        <span className="body-small text-muted-foreground">
-          {translate(STRING.TRACK_SHOWING_PART_OF_PATH, {
-            shown: shownFrames,
-            total: path.length,
-          })}
-        </span>
-      ) : null}
-
-      {pathError && !pathShown && !isLoadingPath ? (
-        <span className="body-small text-destructive" role="alert">
-          {translate(STRING.TRACK_PATH_ERROR)}
-        </span>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-1">
-        {pathShown ? (
-          <Button onClick={onHidePath} size="small" variant="ghost">
-            <span>{translate(STRING.TRACK_HIDE_PATH)}</span>
-          </Button>
+      <div className="flex flex-col gap-2 pt-2 border-t border-border">
+        {pathActions.length ? (
+          <div className="flex flex-wrap items-center gap-1">{pathActions}</div>
         ) : null}
 
-        {pathShown && onTogglePathCrops ? (
-          <Button onClick={onTogglePathCrops} size="small" variant="ghost">
-            <span>
-              {showPathCrops
-                ? translate(STRING.TRACK_SHOW_BOXES_ONLY)
-                : translate(STRING.SHOW_PATH_CROPS)}
-            </span>
-          </Button>
-        ) : null}
-
-        {/* A single frame has no path to draw, and the subtitle says so. */}
-        {!pathShown && !singleFrame ? (
-          <Button
-            disabled={isLoadingPath}
-            onClick={onShowPath}
-            size="small"
-            variant="ghost"
-          >
-            {isLoadingPath ? (
-              <Loader2Icon className="w-4 h-4 animate-spin" />
-            ) : (
-              <RouteIcon className="w-4 h-4" />
-            )}
-            <span>
-              {isLoadingPath
-                ? translate(STRING.TRACK_LOADING_PATH)
-                : translate(STRING.TRACK_SHOW_PATH)}
-            </span>
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-1">{editActions}</div>
 
         {pathShown ? (
-          <Button onClick={onSplit} size="small" variant="ghost">
-            <span>{translate(STRING.TRACK_SPLIT_HERE)}</span>
-          </Button>
-        ) : null}
-
-        <Button onClick={onMerge} size="small" variant="ghost">
-          <span>{translate(STRING.TRACK_MERGE)}</span>
-        </Button>
-
-        {!isExtended ? (
-          <Button onClick={onExtend} size="small" variant="ghost">
-            <span>{translate(STRING.TRACK_EXTEND_HERE)}</span>
-          </Button>
-        ) : null}
-
-        {pathShown ? (
-          <Button onClick={onVerify} size="small" variant="ghost">
+          <Button onClick={onVerify} size="small" variant="outline">
             <span>
               {occurrence.groupingVerified
                 ? translate(STRING.TRACK_UNDO_CONFIRMATION)

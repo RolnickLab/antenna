@@ -94,6 +94,30 @@ describe('buildTrail', () => {
     expect(ghosts.find((ghost) => ghost.id === 'd4')?.isEarlier).toBe(false)
   })
 
+  it('measures the gap from the capture being viewed, signed by direction', () => {
+    const viewed = new Date(2026, 8, 1, 22, 2)
+    const { ghosts } = buildTrail(path(5), 'c2', viewed)
+
+    // The helper spaces frames a minute apart, so index 1 is a minute before the
+    // capture on screen and index 4 is two minutes after it.
+    expect(ghosts.find((ghost) => ghost.id === 'd1')?.offsetSeconds).toBe(-60)
+    expect(ghosts.find((ghost) => ghost.id === 'd4')?.offsetSeconds).toBe(120)
+  })
+
+  it('reports no gap for a frame with no timestamp', () => {
+    const frames = path(3)
+    frames[0] = { ...frames[0], timestamp: null }
+    const { ghosts } = buildTrail(frames, 'c1', new Date(2026, 8, 1, 22, 1))
+
+    expect(ghosts.find((ghost) => ghost.id === 'd0')?.offsetSeconds).toBeNull()
+  })
+
+  it('reports no gap when the capture being viewed has no timestamp of its own', () => {
+    const { ghosts } = byId(path(4), 'c1')
+
+    ghosts.forEach((ghost) => expect(ghost.offsetSeconds).toBeNull())
+  })
+
   it('keeps the fade under its ceiling when no frame sits on the capture viewed', () => {
     const { ghosts } = byId(path(6), 'elsewhere')
 

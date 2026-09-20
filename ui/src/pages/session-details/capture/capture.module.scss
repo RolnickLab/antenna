@@ -32,6 +32,22 @@
   z-index: 1;
 }
 
+// The gap to a neighbouring frame, drawn as its own layer rather than inside the frame
+// button, which clips its contents to hold the crop and is often narrower than this text.
+.ghostGap {
+  position: absolute;
+  transform: translate(-50%, 3px);
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.62);
+  color: var(--color-generic-white);
+  font-size: 10px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .ghostFrame {
   position: absolute;
   box-sizing: border-box;

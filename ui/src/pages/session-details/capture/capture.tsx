@@ -24,6 +24,7 @@ import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
 import { getNearestPathFrame } from './track-navigation'
 import { useActiveCaptureId } from '../hooks/useActiveCapture'
+import { useActiveDetection } from '../hooks/useActiveDetection'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { CaptureGhostTrail } from './capture-ghost-trail'
 import { getMatchBoxStyle, getMatchLevel, isIdentified } from './capture-match'
@@ -83,6 +84,24 @@ export const Capture = ({
 }: CaptureProps) => {
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
   const { setActiveCaptureId } = useActiveCaptureId()
+  const { activeDetectionId } = useActiveDetection()
+  // A link can point at a detection rather than an occurrence, because regrouping moves
+  // a detection between occurrences while the detection's own id never changes. Follow
+  // one and it selects whichever track holds that detection now, which is the thing the
+  // reader needs to see: where it ended up.
+  const linkedOccurrenceId = activeDetectionId
+    ? detections.find((detection) => detection.id === activeDetectionId)
+        ?.occurrenceId
+    : undefined
+
+  useEffect(() => {
+    if (!linkedOccurrenceId || activeOccurrences.includes(linkedOccurrenceId)) {
+      return
+    }
+
+    setActiveOccurrences([...activeOccurrences, linkedOccurrenceId])
+  }, [linkedOccurrenceId, activeOccurrences, setActiveOccurrences])
+
   // Which occurrence the operator asked to see the path of. Kept while that
   // occurrence stays selected, so stepping between captures redraws the same path.
   const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
