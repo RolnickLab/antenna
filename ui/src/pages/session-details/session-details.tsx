@@ -92,7 +92,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
   const [settings, setSettings] = useState<ViewSettingsValues>({
     defaultFilters: true,
     showDetections: true,
-    showPathCrops: false,
+    showPathCrops: true,
   })
 
   // Data
@@ -196,6 +196,12 @@ const Content = ({ session }: { session: SessionDetails }) => {
               detections={activeCapture?.detections ?? []}
               extend={extend}
               height={activeCapture?.height ?? session.firstCapture.height}
+              onTogglePathCrops={() =>
+                setSettings((current) => ({
+                  ...current,
+                  showPathCrops: !current.showPathCrops,
+                }))
+              }
               showDetections={settings.showDetections}
               showPathCrops={settings.showPathCrops}
               sources={

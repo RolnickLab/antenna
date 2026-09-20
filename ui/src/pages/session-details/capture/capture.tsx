@@ -54,6 +54,7 @@ interface CaptureProps {
   detections: CaptureDetection[]
   extend: ExtendTrackState
   height: number | null
+  onTogglePathCrops?: () => void
   showDetections?: boolean
   showPathCrops?: boolean
   sources?: TierSources
@@ -68,6 +69,7 @@ export const Capture = ({
   detections,
   extend,
   height,
+  onTogglePathCrops,
   showDetections,
   showPathCrops,
   sources,
@@ -294,6 +296,8 @@ export const Capture = ({
             ) : null}
             <CaptureDetections
               boxStyles={boxStyles}
+              onTogglePathCrops={onTogglePathCrops}
+              showPathCrops={showPathCrops}
               defaultFilters={defaultFilters}
               detections={detections}
               extend={extend}
@@ -397,10 +401,12 @@ const CaptureDetections = ({
   matches,
   onHidePath,
   onShowPath,
+  onTogglePathCrops,
   path,
   pathError,
   pathOccurrenceId,
   showDetections,
+  showPathCrops,
   shownFrames,
 }: {
   boxStyles: { [key: number]: BoxStyle }
@@ -411,10 +417,14 @@ const CaptureDetections = ({
   matches?: Record<string, CaptureMatch>
   onHidePath: () => void
   onShowPath: (occurrenceId: string) => void
+  /** Switch the path's boxes between the moth's own pixels and an outline. */
+  onTogglePathCrops?: () => void
   path?: PathFrame[]
   pathError?: boolean
   pathOccurrenceId?: string
   showDetections?: boolean
+  /** The path's boxes are filled with each frame's crop rather than left empty. */
+  showPathCrops?: boolean
   shownFrames?: number
 }) => {
   // Held in state, not a ref: Radix needs the element itself to keep a toolbar inside
@@ -611,7 +621,12 @@ const CaptureDetections = ({
                       onExtend={() =>
                         extend.start(detection.occurrenceId as string)
                       }
+                      onDismiss={() =>
+                        setDismissed(detection.occurrenceId as string, true)
+                      }
                       onHidePath={onHidePath}
+                      onTogglePathCrops={onTogglePathCrops}
+                      showPathCrops={showPathCrops}
                       onMerge={() =>
                         setTrackEdit({
                           action: 'merge',

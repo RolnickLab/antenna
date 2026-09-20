@@ -1,6 +1,6 @@
 import { DeterminationScore } from 'components/determination-score'
 import { PathFrame } from 'data-services/models/occurrence-path'
-import { Loader2Icon, RouteIcon } from 'lucide-react'
+import { Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
@@ -33,31 +33,40 @@ export const OccurrenceToolbar = ({
   isExtended,
   isLoadingPath,
   occurrence,
+  onDismiss,
   onExtend,
   onHidePath,
   onMerge,
   onOpenOccurrence,
   onShowPath,
   onSplit,
+  onTogglePathCrops,
   onVerify,
   path,
   pathError,
+  showPathCrops,
   shownFrames,
 }: {
   /** This occurrence is the one extend mode is already adding frames to. */
   isExtended?: boolean
   isLoadingPath?: boolean
   occurrence: ToolbarOccurrence
+  /** Put the panel away while keeping the occurrence selected; Escape does the same. */
+  onDismiss?: () => void
   onExtend: () => void
   onHidePath: () => void
   onMerge: () => void
   onOpenOccurrence: () => void
   onShowPath: () => void
   onSplit: () => void
+  /** Switch the path's boxes between the moth's own pixels and an outline. */
+  onTogglePathCrops?: () => void
   onVerify: () => void
   path?: PathFrame[]
   /** The last request for this occurrence's path failed; the show button retries. */
   pathError?: boolean
+  /** The path's boxes are filled with each frame's crop rather than left empty. */
+  showPathCrops?: boolean
   /** Ghost boxes actually drawn, which the trail caps below the path's length. */
   shownFrames?: number
 }) => {
@@ -88,12 +97,26 @@ export const OccurrenceToolbar = ({
 
   return (
     <div className="flex flex-col items-start gap-2 min-w-48 max-w-80">
-      <button
-        className="body-base text-primary font-medium text-left"
-        onClick={onOpenOccurrence}
-      >
-        <span>{occurrence.label}</span>
-      </button>
+      <div className="flex items-start justify-between gap-2 w-full">
+        <button
+          className="body-base text-primary font-medium text-left"
+          onClick={onOpenOccurrence}
+        >
+          <span>{occurrence.label}</span>
+        </button>
+
+        {onDismiss ? (
+          <Button
+            aria-label={translate(STRING.TRACK_HIDE_PANEL)}
+            className="shrink-0 -mt-1 -mr-2"
+            onClick={onDismiss}
+            size="icon"
+            variant="ghost"
+          >
+            <XIcon className="w-4 h-4" />
+          </Button>
+        ) : null}
+      </div>
 
       <div className="flex items-center gap-2">
         <DeterminationScore
@@ -137,6 +160,16 @@ export const OccurrenceToolbar = ({
         {pathShown ? (
           <Button onClick={onHidePath} size="small" variant="ghost">
             <span>{translate(STRING.TRACK_HIDE_PATH)}</span>
+          </Button>
+        ) : null}
+
+        {pathShown && onTogglePathCrops ? (
+          <Button onClick={onTogglePathCrops} size="small" variant="ghost">
+            <span>
+              {showPathCrops
+                ? translate(STRING.TRACK_SHOW_BOXES_ONLY)
+                : translate(STRING.SHOW_PATH_CROPS)}
+            </span>
           </Button>
         ) : null}
 
