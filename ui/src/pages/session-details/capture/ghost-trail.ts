@@ -30,6 +30,11 @@ export interface Ghost {
   id: string
   /** This frame was captured before the one on screen. */
   isEarlier: boolean
+  /**
+   * Seconds from the capture being viewed to this frame, negative for an earlier one.
+   * Null when either timestamp is missing, which is the only honest answer then.
+   */
+  offsetSeconds: number | null
   opacity: number
   /** Where the frame sits along the whole track, counted from 1. */
   position: number
@@ -112,6 +117,12 @@ export const buildTrail = (
           : !!activeTimestamp &&
             !!frame.timestamp &&
             frame.timestamp < activeTimestamp,
+      offsetSeconds:
+        activeTimestamp && frame.timestamp
+          ? Math.round(
+              (frame.timestamp.getTime() - activeTimestamp.getTime()) / 1000
+            )
+          : null,
       opacity: Math.max(
         MIN_GHOST_OPACITY,
         MAX_GHOST_OPACITY - (distance - 1) * OPACITY_FALLOFF

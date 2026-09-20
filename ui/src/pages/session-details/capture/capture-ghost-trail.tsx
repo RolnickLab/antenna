@@ -1,3 +1,4 @@
+import { getOffsetLabel } from 'data-services/models/merge-candidate'
 import { Tooltip } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -9,6 +10,21 @@ import { Ghost, GHOST_COLOR, MAX_GHOST_BOXES, Trail } from './ghost-trail'
 // is how one is picked out of a stack. It stays under the live boxes all the same.
 const HOVERED_GHOST_Z = MAX_GHOST_BOXES + 1
 const HOVERED_GHOST_OPACITY = 1
+// Only the frame either side of the capture on screen is labelled with its gap. Up to
+// MAX_GHOST_BOXES frames are drawn and a box is often narrower than the label, so
+// labelling them all would rebuild the clutter the distance fade exists to remove.
+const LABELLED_DISTANCE = 1
+
+/** How far from the capture on screen a frame was taken, as "+20 s" or "−20 s". */
+const gapLabel = (ghost: Ghost) =>
+  ghost.offsetSeconds === null
+    ? undefined
+    : translate(
+        ghost.offsetSeconds < 0
+          ? STRING.TRACK_GAP_BEFORE
+          : STRING.TRACK_GAP_AFTER,
+        { time: getOffsetLabel(ghost.offsetSeconds) }
+      )
 
 /** Which frame this is, when it was captured, and what clicking it does. */
 const GhostReading = ({
@@ -75,6 +91,10 @@ export const CaptureGhostTrail = ({
           const frame = getGhostFrame(ghost.frame, !!showCrops)
           const isHovered = hovered === ghost.id
           const cropMissing = missingCrops.includes(ghost.id)
+          const opacity = isHovered ? HOVERED_GHOST_OPACITY : ghost.opacity
+          const zIndex = isHovered ? HOVERED_GHOST_Z : ghost.zIndex
+          const gap =
+            ghost.distance <= LABELLED_DISTANCE ? gapLabel(ghost) : undefined
 
           return (
             <Tooltip.Provider
@@ -96,12 +116,10 @@ export const CaptureGhostTrail = ({
                       borderColor: GHOST_COLOR,
                       height: `${ghost.height}%`,
                       left: `${ghost.x}%`,
-                      opacity: isHovered
-                        ? HOVERED_GHOST_OPACITY
-                        : ghost.opacity,
+                      opacity,
                       top: `${ghost.y}%`,
                       width: `${ghost.width}%`,
-                      zIndex: isHovered ? HOVERED_GHOST_Z : ghost.zIndex,
+                      zIndex,
                     }}
                     type="button"
                   >
@@ -127,6 +145,20 @@ export const CaptureGhostTrail = ({
                   />
                 </Tooltip.Content>
               </Tooltip.Root>
+              {gap ? (
+                <span
+                  aria-hidden
+                  className={styles.ghostGap}
+                  style={{
+                    left: `${ghost.x + ghost.width / 2}%`,
+                    opacity,
+                    top: `${ghost.y + ghost.height}%`,
+                    zIndex,
+                  }}
+                >
+                  {gap}
+                </span>
+              ) : null}
             </Tooltip.Provider>
           )
         })}

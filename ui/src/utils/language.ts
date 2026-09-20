@@ -1029,7 +1029,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_CANDIDATE_IN_GAP]:
     "Falls inside this track's time span, in a gap between its frames. The time is measured from the nearest track frame.",
   [STRING.TRACK_CLEARS_CONFIRMATION]:
-    'This clears the confirmation that the grouping is correct.',
+    'This clears the mark that the track is complete and accurate.',
   [STRING.TRACK_COLUMN_COST]: 'Cost',
   [STRING.TRACK_COLUMN_COST_HELP]:
     "The tracking algorithm's own score for the nearest pair of frames, and the order it ranks by. Lower fits better, and a pair links when it falls under the threshold.",
@@ -1047,13 +1047,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_COST_OF_THRESHOLD]: '{{cost}} of {{threshold}}',
   [STRING.TRACK_VIEW_CANDIDATE_IN_SESSION]: 'View {{name}} in session',
   [STRING.TRACK_CONFIRM_GROUPING_DESCRIPTION]:
-    'Records that you checked this occurrence holds the right detections, and no others. This is a separate judgement from the species it was identified as, and any later change to its frames clears it.',
-  [STRING.TRACK_CONFIRM_GROUPING_RESULT]: 'Grouping confirmed.',
-  [STRING.TRACK_CONFIRM_GROUPING]: 'Mark grouping correct',
-  [STRING.TRACK_GROUPING_FILTER_NO]: 'Not confirmed',
+    'Records that you checked this track holds every frame of this animal, and no frames of any other. This is a separate judgement from the species it was identified as, and any later change to its frames clears it.',
+  [STRING.TRACK_CONFIRM_GROUPING_RESULT]: 'Track marked complete and accurate.',
+  [STRING.TRACK_CONFIRM_GROUPING]: 'Mark track as complete and accurate',
+  [STRING.TRACK_GROUPING_FILTER_NO]: 'Not marked',
   [STRING.TRACK_GROUPING_FILTER_TOOLTIP]:
-    'Whether a person has confirmed that this occurrence holds the right detections. A separate judgement from the species it was identified as.',
-  [STRING.TRACK_GROUPING_FILTER_YES]: 'Confirmed',
+    'Whether a person has marked this track complete and accurate: it holds every frame of the animal and no frames of any other. A separate judgement from the species it was identified as.',
+  [STRING.TRACK_GROUPING_FILTER_YES]: 'Complete and accurate',
   [STRING.TRACK_EXTEND_CAPTURE_COVERED]:
     'This capture already has a frame of this track',
   [STRING.TRACK_EXTEND_CHOICE_DESCRIPTION]:
@@ -1105,10 +1105,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_GHOST_HINT]: 'Click to go to this frame',
   [STRING.TRACK_GHOST_LATER]: 'Later frame · {{time}}',
   [STRING.TRACK_GROUPING_CONFIRMED_BY]: 'by {{name}} on {{date}}',
-  [STRING.TRACK_GROUPING_CONFIRMED]: 'Grouping confirmed',
+  [STRING.TRACK_GROUPING_CONFIRMED]: 'Complete and accurate',
   [STRING.TRACK_GROUPING_NOT_CONFIRMED]:
-    'Grouping not yet confirmed by a person',
-  [STRING.TRACK_GROUPING_UNCONFIRMED]: 'Grouping not confirmed',
+    'Not yet marked complete and accurate by a person',
+  [STRING.TRACK_GROUPING_UNCONFIRMED]: 'Not marked complete and accurate',
   [STRING.TRACK_MATCH_CLICK_ADD]: 'Click to add to the track',
   [STRING.TRACK_MATCH_CLICK_CHOOSE]:
     'Click to choose: merge its whole track, or move just this frame',
@@ -1219,9 +1219,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Tracking and the merge picker compare frames by these feature vectors.',
   [STRING.TRACK_TIME_SPAN]: '{{start}}–{{end}}',
   [STRING.TRACK_UNDO_CONFIRMATION_DESCRIPTION]:
-    'Withdraws the confirmation that this occurrence holds the right detections. The detections themselves are left untouched.',
-  [STRING.TRACK_UNDO_CONFIRMATION_RESULT]: 'Confirmation withdrawn.',
-  [STRING.TRACK_UNDO_CONFIRMATION]: 'Undo confirmation',
+    'Withdraws the mark that this track is complete and accurate. The frames themselves are left untouched.',
+  [STRING.TRACK_UNDO_CONFIRMATION_RESULT]: 'Mark withdrawn.',
+  [STRING.TRACK_UNDO_CONFIRMATION]: 'Undo this mark',
   [STRING.UNIDENTIFIED]: 'Unidentified',
   [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UNKNOWN]: 'Unknown',
