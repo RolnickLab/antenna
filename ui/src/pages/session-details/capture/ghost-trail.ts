@@ -69,7 +69,10 @@ const frameBox = (frame: PathFrame) => {
 /** Turn a path into the boxes and line to draw over the capture being viewed. */
 export const buildTrail = (
   path: PathFrame[],
-  activeCaptureId?: string
+  activeCaptureId?: string,
+  /** When the capture on screen holds no frame of the track, the only thing that can say
+   * whether a frame comes before or after it is its timestamp. */
+  activeTimestamp?: Date | null
 ): Trail => {
   const anchor = path.findIndex((frame) => frame.captureId === activeCaptureId)
 
@@ -89,7 +92,10 @@ export const buildTrail = (
 
   const ghosts = path.reduce((collected: Ghost[], frame, index) => {
     const box = frameBox(frame)
-    const distance = anchor === -1 ? index : Math.abs(index - anchor)
+    // With no frame of the track on the capture being viewed there is nothing to measure
+    // from, so the track's own order stands in. It starts at one either way: a distance of
+    // zero would draw a frame more solidly than the ceiling allows.
+    const distance = anchor === -1 ? index + 1 : Math.abs(index - anchor)
 
     if (!box || index === anchor || distance > MAX_GHOST_BOXES / 2) {
       return collected
@@ -100,7 +106,12 @@ export const buildTrail = (
       distance,
       frame,
       id: frame.detectionId,
-      isEarlier: anchor !== -1 && index < anchor,
+      isEarlier:
+        anchor !== -1
+          ? index < anchor
+          : !!activeTimestamp &&
+            !!frame.timestamp &&
+            frame.timestamp < activeTimestamp,
       opacity: Math.max(
         MIN_GHOST_OPACITY,
         MAX_GHOST_OPACITY - (distance - 1) * OPACITY_FALLOFF

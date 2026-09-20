@@ -141,8 +141,8 @@ export const Capture = ({
   )
 
   const trail = useMemo(
-    () => (path?.length ? buildTrail(path, captureId) : undefined),
-    [path, captureId]
+    () => (path?.length ? buildTrail(path, captureId, captureDate) : undefined),
+    [path, captureId, captureDate]
   )
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [naturalSize, setNaturalSize] = useState<{
