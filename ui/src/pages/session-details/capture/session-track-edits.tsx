@@ -1,6 +1,7 @@
 import { getCandidateSessionRoute } from 'components/track/candidate-session-route'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
+import { useMergeSelection } from 'components/track/use-merge-selection'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
 import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTrack'
@@ -126,7 +127,6 @@ export const SessionTrackEdits = ({
   onClose: () => void
 }) => {
   const { id: sessionId, projectId } = useParams()
-  const [sourceIds, setSourceIds] = useState<string[]>([])
   const [scope, setScope] = useState<MergeScopeKey>('next')
 
   const occurrenceId = edit?.occurrenceId ?? ''
@@ -154,6 +154,12 @@ export const SessionTrackEdits = ({
     projectId: projectId as string,
   })
 
+  const {
+    clear: clearSelection,
+    selectedIds: sourceIds,
+    toggle: toggleSource,
+  } = useMergeSelection({ candidates, isLoading: candidatesLoading })
+
   // Opened in a new tab, so the current selection is left alone.
   const candidateSessionLink = (candidate: MergeCandidate) =>
     sessionId && candidate.captureId
@@ -167,19 +173,8 @@ export const SessionTrackEdits = ({
         })
       : undefined
 
-  const toggleSource = (id: string) =>
-    setSourceIds((ids) =>
-      ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]
-    )
-
-  // A new scope lists different rows, so ticks from the old list are dropped.
-  const changeScope = (key: MergeScopeKey) => {
-    setScope(key)
-    setSourceIds([])
-  }
-
   const close = () => {
-    setSourceIds([])
+    clearSelection()
     setVerifyDone(false)
     split.reset()
     merge.reset()
@@ -258,7 +253,7 @@ export const SessionTrackEdits = ({
             })}
             emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
             isLoading={candidatesLoading}
-            onScopeChange={changeScope}
+            onScopeChange={setScope}
             onToggle={toggleSource}
             requiresFeatures={requiresFeatures}
             scope={scope}
