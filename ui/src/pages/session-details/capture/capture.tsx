@@ -569,7 +569,10 @@ const CaptureDetections = ({
                   className={
                     detailsHidden
                       ? 'px-3 py-2 z-[1] pointer-events-none'
-                      : 'p-3 z-[1]'
+                      : // The layer holding the boxes is transparent to the pointer so a
+                        // path frame below it stays reachable, so this panel, which has
+                        // links in it, has to take clicks back.
+                        'p-3 z-[1] pointer-events-auto'
                   }
                   collisionBoundary={container}
                   collisionPadding={8}

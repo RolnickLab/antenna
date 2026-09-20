@@ -312,13 +312,6 @@ export const OccurrenceDetails = ({
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
                   <div className="grid gap-6">
-                    <InfoBlockField
-                      label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER, {
-                        id: occurrence.id,
-                      })}
-                    >
-                      <CopyLinkButton value={window.location.href} />
-                    </InfoBlockField>
                     {fields.map((field, index) => (
                       <InfoBlockField key={index} label={field.label}>
                         <InfoBlockFieldValue
@@ -327,6 +320,14 @@ export const OccurrenceDetails = ({
                         />
                       </InfoBlockField>
                     ))}
+                    <InfoBlockField
+                      label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}
+                    >
+                      <div className="flex items-center gap-1">
+                        <InfoBlockFieldValue value={occurrence.id} />
+                        <CopyLinkButton value={window.location.href} />
+                      </div>
+                    </InfoBlockField>
                   </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
