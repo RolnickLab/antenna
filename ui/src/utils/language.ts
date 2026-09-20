@@ -210,6 +210,7 @@ export enum STRING {
   MESSAGE_NO_RESULTS_FOR_PAGE,
   MESSAGE_NO_RESULTS_TO_SHOW,
   MESSAGE_NO_RESULTS,
+  MESSAGE_NOT_FOUND,
   MESSAGE_PASSWORD_FORMAT,
   MESSAGE_PASSWORD_UPDATED,
   MESSAGE_PERMISSIONS_MISSING,
@@ -614,6 +615,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'There are no results to show for the current page.',
   [STRING.MESSAGE_NO_RESULTS_TO_SHOW]: 'There are no results to show here yet.',
   [STRING.MESSAGE_NO_RESULTS]: 'No results',
+  [STRING.MESSAGE_NOT_FOUND]: 'Not found',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
   [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
