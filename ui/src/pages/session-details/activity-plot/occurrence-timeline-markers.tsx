@@ -2,7 +2,7 @@ import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrence
 import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 import { BasicTooltip, CONSTANTS } from 'nova-ui-kit'
-import { MouseEvent, useMemo } from 'react'
+import { MouseEvent, useMemo, useState } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { dateToValue } from '../utils'
@@ -33,28 +33,44 @@ interface OccurrenceTimelineMarkersProps {
 export const OccurrenceTimelineMarkers = ({
   occurrenceIds,
   ...props
-}: OccurrenceTimelineMarkersProps) => (
-  <div className="absolute inset-x-0 bottom-3 flex flex-col-reverse gap-0.5 pointer-events-none">
-    {occurrenceIds.map((occurrenceId, index) => (
-      <OccurrenceLane
-        key={occurrenceId}
-        color={LANE_COLORS[index % LANE_COLORS.length]}
-        occurrenceId={occurrenceId}
-        {...props}
-      />
-    ))}
-  </div>
-)
+}: OccurrenceTimelineMarkersProps) => {
+  // Activating a marker moves the capture view while focus stays on the marker, so
+  // nothing else would tell a screen reader where it landed.
+  const [announcement, setAnnouncement] = useState('')
+
+  return (
+    <div className="absolute inset-x-0 bottom-3 flex flex-col-reverse gap-0.5 pointer-events-none">
+      <span className="sr-only" role="status">
+        {announcement}
+      </span>
+      {occurrenceIds.map((occurrenceId, index) => (
+        <OccurrenceLane
+          key={occurrenceId}
+          color={LANE_COLORS[index % LANE_COLORS.length]}
+          occurrenceId={occurrenceId}
+          onAnnounce={setAnnouncement}
+          {...props}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface BlockFrame {
+  captureId: string
+  left: number
+  time: string
+}
 
 // A click goes to the frame nearest the pointer; a key press goes to the first frame.
-const getClickedCaptureId = (
-  frames: { captureId: string; left: number }[],
+const getClickedFrame = (
+  frames: BlockFrame[],
   event: MouseEvent<HTMLButtonElement>
 ) => {
   const lane = event.currentTarget.parentElement?.getBoundingClientRect()
 
   if (!lane || event.detail === 0) {
-    return frames[0].captureId
+    return frames[0]
   }
 
   const pointer = ((event.clientX - lane.left) / lane.width) * 100
@@ -63,18 +79,20 @@ const getClickedCaptureId = (
     Math.abs(frame.left - pointer) < Math.abs(nearest.left - pointer)
       ? frame
       : nearest
-  ).captureId
+  )
 }
 
 const OccurrenceLane = ({
   color,
   occurrenceId,
+  onAnnounce,
   session,
   setActiveCaptureId,
   timeline,
 }: Omit<OccurrenceTimelineMarkersProps, 'occurrenceIds'> & {
   color: string
   occurrenceId: string
+  onAnnounce: (announcement: string) => void
 }) => {
   const { path } = useOccurrencePath(occurrenceId, true)
 
@@ -100,6 +118,7 @@ const OccurrenceLane = ({
         frames: span.frames.map((frame) => ({
           captureId: frame.captureId,
           left: toPercent(frame.date),
+          time: formatTime(frame.timestamp),
         })),
         key: first.captureId,
         label:
@@ -130,11 +149,21 @@ const OccurrenceLane = ({
       {blocks.map((block) => (
         <BasicTooltip key={block.key} asChild content={block.label}>
           <button
-            aria-label={block.label}
+            aria-label={`${block.label}. ${translate(
+              STRING.TIMELINE_OCCURRENCE_ACTIVATE
+            )}`}
             className="absolute inset-y-0 rounded-sm pointer-events-auto transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground"
-            onClick={(event) =>
-              setActiveCaptureId(getClickedCaptureId(block.frames, event))
-            }
+            onClick={(event) => {
+              const frame = getClickedFrame(block.frames, event)
+
+              onAnnounce(
+                translate(STRING.TIMELINE_OCCURRENCE_SHOWING, {
+                  id: occurrenceId,
+                  time: frame.time,
+                })
+              )
+              setActiveCaptureId(frame.captureId)
+            }}
             style={{
               backgroundColor: color,
               left: `calc(${block.left}% - ${BLOCK_PADDING_PX}px)`,

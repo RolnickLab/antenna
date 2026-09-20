@@ -1,9 +1,10 @@
 import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 import { CONSTANTS } from 'nova-ui-kit'
-import { ReactNode, useRef } from 'react'
+import { ReactNode, useId, useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
+import { STRING, translate } from 'utils/language'
 import { findClosestCaptureId } from '../utils'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
@@ -31,6 +32,7 @@ export const ActivityPlot = ({
   setActiveCaptureId,
 }: ActivityPlotProps) => {
   const containerRef = useRef(null)
+  const descriptionId = useId()
   const width = useDynamicPlotWidth(containerRef)
 
   // Calculate the average number of captures
@@ -47,7 +49,15 @@ export const ActivityPlot = ({
   const yAxisMax = avgCaptures + maxDeviation
 
   return (
-    <div style={{ margin: '0 14px -10px' }}>
+    <div
+      aria-describedby={descriptionId}
+      aria-label={translate(STRING.TIMELINE_ACTIVITY_LABEL)}
+      role="group"
+      style={{ margin: '0 14px -10px' }}
+    >
+      <span className="sr-only" id={descriptionId}>
+        {translate(STRING.TIMELINE_ACTIVITY_DESCRIPTION)}
+      </span>
       <div className="relative" ref={containerRef}>
         <Plot
           style={{ display: 'block' }}
