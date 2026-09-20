@@ -5,6 +5,7 @@ import {
 } from 'data-services/hooks/occurrences/useMergeCandidates'
 import {
   getComparisonSides,
+  getCostLabel,
   getDistanceLabel,
   getRatioLabel,
   getSimilarityLabel,
@@ -50,6 +51,7 @@ export type OccurrencePickerCandidate = Pick<
       | 'iou'
       | 'sizeRatio'
       | 'likelihood'
+      | 'cost'
       | 'wouldLink'
       | 'captureId'
       | 'imageTimestamp'
@@ -72,13 +74,21 @@ const COLUMN_LABELS: Record<MergeCandidateSortColumn, STRING> = {
   when: STRING.TRACK_COLUMN_WHEN,
   distance: STRING.TRACK_COLUMN_DISTANCE,
   similarity: STRING.TRACK_COLUMN_SIMILARITY,
+  cost: STRING.TRACK_COLUMN_COST,
   match: STRING.TRACK_COLUMN_MATCH,
+}
+
+// Cost and the percentage derived from it rank rows differently, so each says what it is.
+const COLUMN_HELP: Partial<Record<MergeCandidateSortColumn, STRING>> = {
+  cost: STRING.TRACK_COLUMN_COST_HELP,
+  match: STRING.TRACK_COLUMN_MATCH_HELP,
 }
 
 const SORT_COLUMNS: MergeCandidateSortColumn[] = [
   'when',
   'distance',
   'similarity',
+  'cost',
   'match',
 ]
 
@@ -338,6 +348,7 @@ export const OccurrencePicker = ({
                 {ranked &&
                   SORT_COLUMNS.map((column) => {
                     const label = COLUMN_LABELS[column]
+                    const help = COLUMN_HELP[column]
                     const active = columnSort?.column === column
                     const DirectionIcon = !active
                       ? ArrowUpDownIcon
@@ -368,7 +379,15 @@ export const OccurrencePicker = ({
                           onClick={() => toggleSort(column)}
                           type="button"
                         >
-                          <span>{translate(label)}</span>
+                          {help ? (
+                            <BasicTooltip asChild content={translate(help)}>
+                              <span className="underline decoration-dotted underline-offset-2">
+                                {translate(label)}
+                              </span>
+                            </BasicTooltip>
+                          ) : (
+                            <span>{translate(label)}</span>
+                          )}
                           <DirectionIcon aria-hidden className="w-3 h-3" />
                         </button>
                       </th>
@@ -502,6 +521,11 @@ export const OccurrencePicker = ({
                           className={classNames(cellClassName, numberClassName)}
                         >
                           {getSimilarityLabel(candidate.similarity ?? null)}
+                        </td>
+                        <td
+                          className={classNames(cellClassName, numberClassName)}
+                        >
+                          {getCostLabel(candidate.cost ?? null)}
                         </td>
                         <td
                           className={classNames(cellClassName, numberClassName)}
