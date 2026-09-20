@@ -756,6 +756,7 @@ const CaptureDetections = ({
                 side="bottom"
               >
                 <OccurrenceToolbar
+                  detectionId={detection.id}
                   isExtended={isExtended}
                   isLoadingPath={
                     isLoadingPath && pathOccurrenceId === detection.occurrenceId
