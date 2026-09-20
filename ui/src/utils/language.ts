@@ -389,10 +389,12 @@ export enum STRING {
   TRACK_CANDIDATE_IN_GAP,
   TRACK_CLEARS_CONFIRMATION,
   TRACK_COLUMN_COST,
+  TRACK_COLUMN_COST_HELP,
   TRACK_COLUMN_DISTANCE,
   TRACK_COLUMN_FRAMES,
   TRACK_COLUMN_IMAGE,
   TRACK_COLUMN_MATCH,
+  TRACK_COLUMN_MATCH_HELP,
   TRACK_COLUMN_OVERLAP,
   TRACK_COLUMN_SIMILARITY,
   TRACK_COLUMN_SIZE,
@@ -998,10 +1000,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_CLEARS_CONFIRMATION]:
     'This clears the confirmation that the grouping is correct.',
   [STRING.TRACK_COLUMN_COST]: 'Cost',
+  [STRING.TRACK_COLUMN_COST_HELP]:
+    "The tracking algorithm's own score for the nearest pair of frames, and the order it ranks by. Lower fits better, and a pair links when it falls under the threshold.",
   [STRING.TRACK_COLUMN_DISTANCE]: 'Distance',
   [STRING.TRACK_COLUMN_FRAMES]: 'Frames',
   [STRING.TRACK_COLUMN_IMAGE]: 'Image',
   [STRING.TRACK_COLUMN_MATCH]: 'Match',
+  [STRING.TRACK_COLUMN_MATCH_HELP]:
+    'The same cost read on a 0 to 100 scale. A pair with no feature vector is scored on one term fewer, so its percentage is not comparable with a pair that has one. Sort by Cost for the order tracking itself uses.',
   [STRING.TRACK_COLUMN_OVERLAP]: 'Overlap',
   [STRING.TRACK_COLUMN_SIMILARITY]: 'Similarity',
   [STRING.TRACK_COLUMN_SIZE]: 'Size match',

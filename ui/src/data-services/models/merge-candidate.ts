@@ -212,6 +212,7 @@ export type MergeCandidateSortColumn =
   | 'when'
   | 'distance'
   | 'similarity'
+  | 'cost'
   | 'match'
 
 /** One column the reviewer clicked, or all three applied in turn. */
@@ -229,6 +230,8 @@ const sortValue = (
     ? candidate.distance
     : column === 'similarity'
     ? candidate.similarity
+    : column === 'cost'
+    ? candidate.cost
     : candidate.likelihood
 
 const compare = (
