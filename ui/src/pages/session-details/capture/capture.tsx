@@ -7,7 +7,7 @@ import { CaptureDetection } from 'data-services/models/capture'
 import { CaptureMatch } from 'data-services/models/capture-match'
 import { PathFrame } from 'data-services/models/occurrence-path'
 import _ from 'lodash'
-import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
+import { Dialog, LoadingSpinner, Popover, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,
@@ -26,9 +26,10 @@ import { getNearestPathFrame } from './track-navigation'
 import { useActiveCaptureId } from '../hooks/useActiveCapture'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
-import { getMatchBoxStyle } from './capture-match'
+import { getMatchBoxStyle, getMatchLevel, isIdentified } from './capture-match'
 import { CaptureMatchTooltip } from './capture-match-tooltip'
 import { TierSources } from './capture-tiers'
+import { ExtendClick, getExtendClickHint } from './extend-click'
 import { ExtendTrackDialog, ExtendTrackState } from './extend-track'
 import { OccurrenceToolbar } from './occurrence-toolbar'
 import {
@@ -46,6 +47,9 @@ const FALLBACK_RATIO = 16 / 9
 // originals can always be inspected past 100% of their native pixels.
 const DEFAULT_MAX_SCALE = 8
 const MAX_OVERZOOM = 2
+
+// Long enough for the pointer to cross the gap from a box to the panel under it.
+const HOVER_CLOSE_DELAY_MS = 120
 
 interface CaptureProps {
   captureDate?: Date
@@ -99,12 +103,25 @@ export const Capture = ({
     occurrenceId: extend.occurrenceId,
   })
 
+  // Set while extending, holding the path shown before it started, so ending extend
+  // mode does not leave behind a path nobody asked for.
+  const pathBeforeExtend = useRef<{ occurrenceId?: string }>()
+
   useEffect(() => {
     // The occurrence being extended is the only one selected, with its path drawn,
     // so every capture stepped through shows where the track has reached and no
     // other selection competes with the match colours.
     if (!extend.occurrenceId) {
+      if (pathBeforeExtend.current) {
+        setPathOccurrenceId(pathBeforeExtend.current.occurrenceId)
+        pathBeforeExtend.current = undefined
+      }
+
       return
+    }
+
+    if (!pathBeforeExtend.current) {
+      pathBeforeExtend.current = { occurrenceId: pathOccurrenceId }
     }
 
     setPathOccurrenceId(extend.occurrenceId)
@@ -392,6 +409,56 @@ const CaptureOverlay = ({
   </svg>
 )
 
+/**
+ * What a screen reader hears on a detection box. In extend mode it also carries the
+ * match reading and what activating the box does, which the pointer gets from the
+ * preview card and a keyboard never sees.
+ */
+const getBoxLabel = ({
+  click,
+  detection,
+  isExtending,
+  match,
+}: {
+  click?: ExtendClick
+  detection: CaptureDetection
+  isExtending: boolean
+  match?: CaptureMatch
+}) => {
+  const name = isIdentified(detection)
+    ? translate(
+        detection.score === 1
+          ? STRING.TRACK_BOX_LABEL_VERIFIED
+          : STRING.TRACK_BOX_LABEL,
+        { name: detection.label, score: detection.scoreLabel as string }
+      )
+    : translate(STRING.TRACK_FRAME_DETECTION, { id: detection.id })
+
+  if (!isExtending) {
+    return name
+  }
+
+  const likelihood = match?.likelihood ?? null
+  const label = translate(STRING.TRACK_BOX_EXTEND_LABEL, {
+    match:
+      likelihood !== null
+        ? translate(STRING.TRACK_MATCH_SCORE, {
+            level: translate(getMatchLevel(likelihood)),
+            percent: Math.round(likelihood * 100),
+          })
+        : translate(STRING.VALUE_NOT_AVAILABLE),
+    name,
+  })
+  const hint = click ? getExtendClickHint(click) : undefined
+
+  return hint
+    ? translate(STRING.TRACK_BOX_EXTEND_ACTION, {
+        action: translate(hint.string),
+        label,
+      })
+    : label
+}
+
 const CaptureDetections = ({
   boxStyles,
   defaultFilters,
@@ -427,14 +494,15 @@ const CaptureDetections = ({
   showPathCrops?: boolean
   shownFrames?: number
 }) => {
-  // Held in state, not a ref: Radix needs the element itself to keep a toolbar inside
+  // Held in state, not a ref: Radix needs the element itself to keep a panel inside
   // the image, and a ref assignment does not re-render to hand it over.
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
   const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
-  // Selected occurrences whose popover was closed with Escape; they stay selected.
+  // Selected occurrences whose panel was closed with Escape; they stay selected.
   const [dismissedToolbars, setDismissedToolbars] = useState<string[]>([])
   const [hoveredBox, setHoveredBox] = useState<string>()
+  const hoverTimeout = useRef<number>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
   const isExtending = !!extend.occurrenceId
   const detailsHidden = isExtending && !extend.showDetails
@@ -446,6 +514,70 @@ const CaptureDetections = ({
   useEffect(() => {
     setHoveredBox(undefined)
   }, [detailsHidden])
+
+  useEffect(() => () => window.clearTimeout(hoverTimeout.current), [])
+
+  const hoverBox = (detectionId: string) => {
+    window.clearTimeout(hoverTimeout.current)
+    setHoveredBox(detectionId)
+  }
+
+  const unhoverBox = (detectionId: string) => {
+    window.clearTimeout(hoverTimeout.current)
+    hoverTimeout.current = window.setTimeout(
+      () => setHoveredBox((box) => (box === detectionId ? undefined : box)),
+      HOVER_CLOSE_DELAY_MS
+    )
+  }
+
+  /** How a box is drawn, and whether the panel anchored to it is on screen. */
+  const describeBox = (detection: CaptureDetection) => {
+    const isExtended =
+      !!detection.occurrenceId && detection.occurrenceId === extend.occurrenceId
+    const isActive =
+      isExtended ||
+      (detection.occurrenceId
+        ? activeOccurrences.includes(detection.occurrenceId)
+        : false)
+    const isDismissed =
+      !!detection.occurrenceId &&
+      dismissedToolbars.includes(detection.occurrenceId)
+    // A selected box keeps its panel; any other box borrows it while hovered.
+    const hasPanel =
+      !detailsHidden && !!detection.occurrenceId && (showDetections || isActive)
+
+    return {
+      isActive,
+      isDismissed,
+      isExtended,
+      panelOpen:
+        hasPanel && (isActive ? !isDismissed : hoveredBox === detection.id),
+    }
+  }
+
+  // Escape closes the innermost thing on screen: a dialog, then an open panel, then
+  // extend mode. It never changes which occurrences are selected.
+  const escapeHandledElsewhere =
+    !!trackEdit ||
+    !!activeOccurrence ||
+    !!extend.choice ||
+    detections.some((detection) => describeBox(detection).panelOpen)
+
+  useEffect(() => {
+    if (!isExtending || escapeHandledElsewhere) {
+      return
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        extend.stop()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [escapeHandledElsewhere, extend, isExtending])
 
   // Worded while the path is still the one on screen: the split moves the boundary
   // frame off this occurrence, so the refreshed path can no longer describe it.
@@ -497,194 +629,199 @@ const CaptureDetections = ({
         {Object.entries(boxStyles).map(([id, style]) => {
           const detection = detections.find((d) => d.id === id)
 
-          const isExtended =
-            !!detection?.occurrenceId &&
-            detection.occurrenceId === extend.occurrenceId
-          const isActive =
-            isExtended ||
-            (detection?.occurrenceId
-              ? activeOccurrences.includes(detection.occurrenceId)
-              : false)
-
-          if (!detection || (!showDetections && !isActive)) {
+          if (!detection) {
             return null
           }
 
-          const isDismissed =
-            !!detection.occurrenceId &&
-            dismissedToolbars.includes(detection.occurrenceId)
-          // Hover is recorded only while it decides: Radix reports no close for a
-          // popover already held shut, so a hover recorded then would go stale.
-          const opensOnHover = detailsHidden || !isActive
-          const popoverOpen = opensOnHover
-            ? hoveredBox === detection.id
-            : !detailsHidden && !isDismissed
+          const { isActive, isDismissed, isExtended, panelOpen } =
+            describeBox(detection)
+
+          if (!showDetections && !isActive) {
+            return null
+          }
+
+          const isClickable = !!detection.occurrenceId || isExtending
+          const match = matches?.[detection.id]
+          const click = isExtending ? extend.previewClick(detection) : undefined
+          const box = (
+            <button
+              aria-label={getBoxLabel({ click, detection, isExtending, match })}
+              aria-pressed={
+                !isExtending && detection.occurrenceId ? isActive : undefined
+              }
+              className={classNames(styles.detection, {
+                [styles.active]: isExtending ? isExtended : isActive,
+                [styles.extended]: isExtended,
+                [styles.filtered]:
+                  !isExtending &&
+                  defaultFilters &&
+                  !detection.occurrenceMeetsCriteria,
+                [styles.alert]:
+                  !isExtending && detection.score < SCORE_THRESHOLDS.ALERT,
+                [styles.warning]:
+                  !isExtending && detection.score < SCORE_THRESHOLDS.WARNING,
+                [styles.clickable]: isClickable,
+              })}
+              onClick={() => {
+                if (extend.occurrenceId) {
+                  extend.clickBox(detection)
+                } else if (isActive && isDismissed) {
+                  setDismissed(detection.occurrenceId as string, false)
+                } else if (detection.occurrenceId) {
+                  toggleActiveState(detection.occurrenceId)
+                }
+              }}
+              onMouseEnter={() => hoverBox(detection.id)}
+              onMouseLeave={() => unhoverBox(detection.id)}
+              style={
+                isExtending && !isExtended
+                  ? { ...style, ...getMatchBoxStyle(match) }
+                  : style
+              }
+              // A box a click does nothing to is read where it sits, not tabbed to.
+              tabIndex={isClickable ? 0 : -1}
+              type="button"
+            />
+          )
+
+          // A reading of the box, which a tooltip is the right primitive for: Radix
+          // repeats it for assistive technology, and text survives being read twice.
+          if (detailsHidden || !detection.occurrenceId) {
+            return (
+              <Tooltip.Provider
+                delayDuration={0}
+                disableHoverableContent
+                key={detection.id}
+              >
+                <Tooltip.Root open={hoveredBox === detection.id}>
+                  <Tooltip.Trigger asChild>{box}</Tooltip.Trigger>
+                  <Tooltip.Content
+                    className={classNames(
+                      'z-[1] pointer-events-none',
+                      detailsHidden ? 'px-3 py-2' : 'p-3'
+                    )}
+                    collisionBoundary={container}
+                    collisionPadding={8}
+                    side="bottom"
+                  >
+                    {detailsHidden ? (
+                      <CaptureMatchTooltip
+                        click={click}
+                        detection={detection}
+                        detections={detections}
+                        isTrackFrame={isExtended}
+                        match={match}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="body-base font-medium">
+                          {detection.label}
+                        </span>
+                        <DeterminationScore
+                          score={detection.score}
+                          scoreLabel={detection.scoreLabel}
+                          verified={detection.score === 1}
+                        />
+                      </div>
+                    )}
+                  </Tooltip.Content>
+                </Tooltip.Root>
+              </Tooltip.Provider>
+            )
+          }
 
           return (
-            <Tooltip.Provider
-              key={detection.id}
-              delayDuration={0}
-              disableHoverableContent={detailsHidden}
-            >
-              <Tooltip.Root
-                open={popoverOpen}
-                onOpenChange={(open) => {
-                  if (!open) {
-                    setHoveredBox((box) =>
-                      box === detection.id ? undefined : box
-                    )
-                  } else if (opensOnHover) {
-                    setHoveredBox(detection.id)
+            <Popover.Root key={detection.id} open={panelOpen}>
+              <Popover.Trigger asChild>{box}</Popover.Trigger>
+              <Popover.Content
+                align="center"
+                // The layer holding the boxes is transparent to the pointer so a path
+                // frame below it stays reachable, so this panel, which has links in
+                // it, has to take clicks back.
+                className="w-auto p-3 z-[1] body-small pointer-events-auto"
+                collisionBoundary={container}
+                collisionPadding={8}
+                onEscapeKeyDown={() => {
+                  if (isActive) {
+                    setDismissed(detection.occurrenceId as string, true)
+                  } else {
+                    setHoveredBox(undefined)
                   }
                 }}
+                onMouseEnter={() => hoverBox(detection.id)}
+                onMouseLeave={() => unhoverBox(detection.id)}
+                // The panel follows a selection or a hover rather than a deliberate
+                // open, so it must not pull focus off the capture.
+                onOpenAutoFocus={(event) => event.preventDefault()}
+                side="bottom"
               >
-                <Tooltip.Trigger asChild>
-                  <div
-                    style={
-                      isExtending && !isExtended
-                        ? {
-                            ...style,
-                            ...getMatchBoxStyle(matches?.[detection.id]),
-                          }
-                        : style
-                    }
-                    className={classNames(styles.detection, {
-                      [styles.active]: isExtending ? isExtended : isActive,
-                      [styles.extended]: isExtended,
-                      [styles.filtered]:
-                        !isExtending &&
-                        defaultFilters &&
-                        !detection.occurrenceMeetsCriteria,
-                      [styles.alert]:
-                        !isExtending &&
-                        detection.score < SCORE_THRESHOLDS.ALERT,
-                      [styles.warning]:
-                        !isExtending &&
-                        detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.clickable]:
-                        !!detection.occurrenceId || !!extend.occurrenceId,
-                    })}
-                    onClick={() => {
-                      if (extend.occurrenceId) {
-                        extend.clickBox(detection)
-                      } else if (isActive && isDismissed) {
-                        setDismissed(detection.occurrenceId as string, false)
-                      } else if (detection.occurrenceId) {
-                        toggleActiveState(detection.occurrenceId)
-                      }
-                    }}
-                  />
-                </Tooltip.Trigger>
-                <Tooltip.Content
-                  className={
-                    detailsHidden
-                      ? 'px-3 py-2 z-[1] pointer-events-none'
-                      : // The layer holding the boxes is transparent to the pointer so a
-                        // path frame below it stays reachable, so this panel, which has
-                        // links in it, has to take clicks back.
-                        'p-3 z-[1] pointer-events-auto'
+                <OccurrenceToolbar
+                  isExtended={isExtended}
+                  isLoadingPath={
+                    isLoadingPath && pathOccurrenceId === detection.occurrenceId
                   }
-                  collisionBoundary={container}
-                  collisionPadding={8}
-                  onEscapeKeyDown={() => {
-                    if (isActive && detection.occurrenceId) {
-                      setDismissed(detection.occurrenceId, true)
-                    }
+                  occurrence={{
+                    frameCount: detection.frameCount,
+                    groupingVerified: detection.groupingVerified,
+                    groupingVerifiedAt: detection.groupingVerifiedAt,
+                    groupingVerifiedBy: detection.groupingVerifiedBy,
+                    id: detection.occurrenceId,
+                    label: detection.label,
+                    score: detection.score,
+                    scoreLabel: detection.scoreLabel,
                   }}
-                  side="bottom"
-                >
-                  {detailsHidden ? (
-                    <CaptureMatchTooltip
-                      click={extend.previewClick(detection)}
-                      detection={detection}
-                      detections={detections}
-                      isTrackFrame={isExtended}
-                      match={matches?.[detection.id]}
-                    />
-                  ) : detection.occurrenceId ? (
-                    <OccurrenceToolbar
-                      isExtended={isExtended}
-                      isLoadingPath={
-                        isLoadingPath &&
-                        pathOccurrenceId === detection.occurrenceId
-                      }
-                      occurrence={{
-                        frameCount: detection.frameCount,
-                        groupingVerified: detection.groupingVerified,
-                        groupingVerifiedAt: detection.groupingVerifiedAt,
-                        groupingVerifiedBy: detection.groupingVerifiedBy,
-                        id: detection.occurrenceId,
-                        label: detection.label,
-                        score: detection.score,
-                        scoreLabel: detection.scoreLabel,
-                      }}
-                      onExtend={() =>
-                        extend.start(detection.occurrenceId as string)
-                      }
-                      onDismiss={() =>
-                        setDismissed(detection.occurrenceId as string, true)
-                      }
-                      onHidePath={onHidePath}
-                      onTogglePathCrops={onTogglePathCrops}
-                      showPathCrops={showPathCrops}
-                      onMerge={() =>
-                        setTrackEdit({
-                          action: 'merge',
-                          detectionId: detection.id,
-                          occurrenceId: detection.occurrenceId as string,
-                        })
-                      }
-                      onOpenOccurrence={() =>
-                        setActiveOccurrence(detection.occurrenceId)
-                      }
-                      onShowPath={() =>
-                        showPath(detection.occurrenceId as string)
-                      }
-                      onSplit={() =>
-                        setTrackEdit({
-                          action: 'split',
-                          detectionId: detection.id,
-                          occurrenceId: detection.occurrenceId as string,
-                          ...describeSplit(detection.id),
-                        })
-                      }
-                      onVerify={() =>
-                        setTrackEdit({
-                          action: 'verify',
-                          detectionId: detection.id,
-                          occurrenceId: detection.occurrenceId as string,
-                          verified: detection.groupingVerified,
-                        })
-                      }
-                      path={
-                        pathOccurrenceId === detection.occurrenceId
-                          ? path
-                          : undefined
-                      }
-                      pathError={
-                        pathError && pathOccurrenceId === detection.occurrenceId
-                      }
-                      shownFrames={
-                        pathOccurrenceId === detection.occurrenceId
-                          ? shownFrames
-                          : undefined
-                      }
-                    />
-                  ) : (
-                    <div className="flex flex-col items-start gap-1">
-                      <span className="body-base font-medium">
-                        {detection.label}
-                      </span>
-                      <DeterminationScore
-                        score={detection.score}
-                        scoreLabel={detection.scoreLabel}
-                        verified={detection.score === 1}
-                      />
-                    </div>
-                  )}
-                </Tooltip.Content>
-              </Tooltip.Root>
-            </Tooltip.Provider>
+                  onExtend={() =>
+                    extend.start(detection.occurrenceId as string)
+                  }
+                  onDismiss={() =>
+                    setDismissed(detection.occurrenceId as string, true)
+                  }
+                  onHidePath={onHidePath}
+                  onTogglePathCrops={onTogglePathCrops}
+                  showPathCrops={showPathCrops}
+                  onMerge={() =>
+                    setTrackEdit({
+                      action: 'merge',
+                      detectionId: detection.id,
+                      occurrenceId: detection.occurrenceId as string,
+                    })
+                  }
+                  onOpenOccurrence={() =>
+                    setActiveOccurrence(detection.occurrenceId)
+                  }
+                  onShowPath={() => showPath(detection.occurrenceId as string)}
+                  onSplit={() =>
+                    setTrackEdit({
+                      action: 'split',
+                      detectionId: detection.id,
+                      occurrenceId: detection.occurrenceId as string,
+                      ...describeSplit(detection.id),
+                    })
+                  }
+                  onVerify={() =>
+                    setTrackEdit({
+                      action: 'verify',
+                      detectionId: detection.id,
+                      occurrenceId: detection.occurrenceId as string,
+                      verified: detection.groupingVerified,
+                    })
+                  }
+                  path={
+                    pathOccurrenceId === detection.occurrenceId
+                      ? path
+                      : undefined
+                  }
+                  pathError={
+                    pathError && pathOccurrenceId === detection.occurrenceId
+                  }
+                  shownFrames={
+                    pathOccurrenceId === detection.occurrenceId
+                      ? shownFrames
+                      : undefined
+                  }
+                />
+              </Popover.Content>
+            </Popover.Root>
           )
         })}
         {activeOccurrence ? (
