@@ -21,16 +21,28 @@
   pointer-events: auto;
 }
 
+// The live boxes sit above every path frame, so a detection on the capture being
+// viewed is what a click lands on even where a neighbouring frame's crop covers it.
+// The path frames layer stakes no claim of its own, leaving each box to place itself.
+.detections {
+  z-index: 30;
+}
+
+.ghostTrail {
+  z-index: 1;
+}
+
 .ghostFrame {
   position: absolute;
   box-sizing: border-box;
   padding: 0;
-  border: 0;
+  border: 1.5px dashed transparent;
   border-radius: 2px;
   background: none;
   overflow: hidden;
   cursor: pointer;
   pointer-events: auto;
+  transition: opacity 150ms ease-out;
 
   &:focus-visible {
     outline: 2px solid var(--color-secondary-400);

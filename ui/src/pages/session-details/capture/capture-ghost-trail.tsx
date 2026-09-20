@@ -1,119 +1,43 @@
-import { PathFrame } from 'data-services/models/occurrence-path'
-import { bboxToPercentCentre, bboxToPercentStyle } from './bbox'
-import { getGhostFrame } from './ghost-frame'
+import { Tooltip } from 'nova-ui-kit'
+import { useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import styles from './capture.module.scss'
+import { getGhostFrame } from './ghost-frame'
+import { Ghost, GHOST_COLOR, MAX_GHOST_BOXES, Trail } from './ghost-trail'
 
-// Enough neighbouring frames to read the animal's movement, few enough that a long
-// occurrence does not smear the capture. The path line runs through every frame
-// regardless, since one thin line stays legible.
-export const MAX_GHOST_BOXES = 16
+// A hovered frame comes forward of the other path frames and is drawn in full, which
+// is how one is picked out of a stack. It stays under the live boxes all the same.
+const HOVERED_GHOST_Z = MAX_GHOST_BOXES + 1
+const HOVERED_GHOST_OPACITY = 1
 
-// Neither hue is the selection blue: that belongs to the box of the occurrence being
-// viewed, and a path frame wearing it read as the live box rather than a past one.
-const EARLIER_COLOR = '#6B7280'
-const LATER_COLOR = '#F2A31F'
-const MIN_GHOST_OPACITY = 0.15
-const OPACITY_FALLOFF = 0.11
-// Every path frame is broken, so none of them reads as the solid box of the frame on
-// screen, and the two patterns still carry direction for a reader who cannot separate
-// the hues.
-const LATER_DASH = '3 3'
-const EARLIER_DASH = '1 3'
-// A crop needs a floor the stroke falloff does not: a thumbnail at 0.15 cannot be read.
-const MIN_CROP_OPACITY = 0.5
-
-interface Ghost {
-  color: string
-  dash?: string
-  frame: PathFrame
-  height: number
-  id: string
-  opacity: number
-  width: number
-  x: number
-  y: number
-}
-
-export interface Trail {
-  ghosts: Ghost[]
-  points: string
-  /** Ghost boxes drawn, which the cap can hold below the path's length. */
-  shownCount: number
-}
-
-const frameBox = (frame: PathFrame) => {
-  const style = bboxToPercentStyle(
-    frame.bbox,
-    frame.captureWidth,
-    frame.captureHeight
-  )
-
-  return style
-    ? {
-        height: parseFloat(style.height),
-        width: parseFloat(style.width),
-        x: parseFloat(style.left),
-        y: parseFloat(style.top),
-      }
-    : undefined
-}
-
-/** Turn a path into the boxes and line to draw over the capture being viewed. */
-export const buildTrail = (
-  path: PathFrame[],
-  activeCaptureId?: string
-): Trail => {
-  const anchor = path.findIndex((frame) => frame.captureId === activeCaptureId)
-
-  const points = path.reduce((collected: string[], frame) => {
-    const centre = bboxToPercentCentre(
-      frame.bbox,
-      frame.captureWidth,
-      frame.captureHeight
-    )
-
-    if (centre) {
-      collected.push(`${centre.x},${centre.y}`)
-    }
-
-    return collected
-  }, [])
-
-  const ghosts = path.reduce((collected: Ghost[], frame, index) => {
-    const box = frameBox(frame)
-    const distance = anchor === -1 ? index : Math.abs(index - anchor)
-
-    if (!box || index === anchor || distance > MAX_GHOST_BOXES / 2) {
-      return collected
-    }
-
-    const earlier = anchor !== -1 && index < anchor
-
-    collected.push({
-      color: earlier ? EARLIER_COLOR : LATER_COLOR,
-      dash: earlier ? EARLIER_DASH : LATER_DASH,
-      ...box,
-      frame,
-      id: frame.detectionId,
-      opacity: Math.max(MIN_GHOST_OPACITY, 1 - distance * OPACITY_FALLOFF),
-    })
-
-    return collected
-  }, [])
-
-  return {
-    ghosts,
-    points: points.join(' '),
-    // The frame being viewed is drawn by its own live box, so it counts as shown.
-    shownCount: ghosts.length + (anchor === -1 ? 0 : 1),
-  }
-}
-
-/** How strongly a ghost is drawn; a box holding a crop is lifted to a readable floor. */
-const ghostOpacity = (ghost: Ghost, showCrops?: boolean) =>
-  showCrops && ghost.frame.cropUrl
-    ? Math.max(MIN_CROP_OPACITY, ghost.opacity)
-    : ghost.opacity
+/** Which frame this is, when it was captured, and what clicking it does. */
+const GhostReading = ({
+  ghost,
+  time,
+  total,
+}: {
+  ghost: Ghost
+  time: string
+  total: number
+}) => (
+  <div className="flex flex-col items-start gap-1">
+    <span className="body-base font-medium">
+      {translate(STRING.TRACK_POSITION_FRAME, {
+        index: ghost.position,
+        total,
+      })}
+    </span>
+    <span className="body-small text-muted-foreground">
+      {translate(
+        ghost.isEarlier ? STRING.TRACK_GHOST_EARLIER : STRING.TRACK_GHOST_LATER,
+        { time }
+      )}
+    </span>
+    <span className="body-small text-muted-foreground">
+      {translate(STRING.TRACK_GHOST_HINT)}
+    </span>
+  </div>
+)
 
 export const CaptureGhostTrail = ({
   onSelectFrame,
@@ -124,77 +48,92 @@ export const CaptureGhostTrail = ({
   onSelectFrame: (captureId: string) => void
   showCrops?: boolean
   trail: Trail
-}) => (
-  <>
-    <div className={styles.ghostFrames}>
-      {trail.ghosts.map((ghost) => {
-        const frame = getGhostFrame(ghost.frame, !!showCrops)
+}) => {
+  const [hovered, setHovered] = useState<string>()
 
-        return (
-          <button
-            aria-label={frame.label}
-            className={styles.ghostFrame}
-            key={ghost.id}
-            onClick={() => onSelectFrame(frame.captureId)}
-            style={{
-              height: `${ghost.height}%`,
-              left: `${ghost.x}%`,
-              top: `${ghost.y}%`,
-              width: `${ghost.width}%`,
-            }}
-            type="button"
-          >
-            {frame.cropUrl ? (
-              <img
-                alt=""
-                src={frame.cropUrl}
-                style={{ opacity: ghostOpacity(ghost, showCrops) }}
-              />
-            ) : null}
-          </button>
-        )
-      })}
-    </div>
-    <svg
-      className={styles.ghostTrail}
-      preserveAspectRatio="none"
-      viewBox="0 0 100 100"
-    >
-      <polyline
-        fill="none"
-        points={trail.points}
-        stroke="#000000"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeOpacity={0.4}
-        strokeWidth={4}
-        vectorEffect="non-scaling-stroke"
-      />
-      <polyline
-        fill="none"
-        points={trail.points}
-        stroke="#FFFFFF"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        vectorEffect="non-scaling-stroke"
-      />
-      {trail.ghosts.map((ghost) => (
-        <rect
+  const leave = (id: string) =>
+    setHovered((current) => (current === id ? undefined : current))
+
+  return (
+    <>
+      <div className={styles.ghostFrames}>
+        {trail.ghosts.map((ghost) => {
+          const frame = getGhostFrame(ghost.frame, !!showCrops)
+          const isHovered = hovered === ghost.id
+
+          return (
+            <Tooltip.Provider
+              delayDuration={0}
+              disableHoverableContent
+              key={ghost.id}
+            >
+              <Tooltip.Root open={isHovered}>
+                <Tooltip.Trigger asChild>
+                  <button
+                    aria-label={frame.label}
+                    className={styles.ghostFrame}
+                    onBlur={() => leave(ghost.id)}
+                    onClick={() => onSelectFrame(frame.captureId)}
+                    onFocus={() => setHovered(ghost.id)}
+                    onMouseEnter={() => setHovered(ghost.id)}
+                    onMouseLeave={() => leave(ghost.id)}
+                    style={{
+                      borderColor: GHOST_COLOR,
+                      height: `${ghost.height}%`,
+                      left: `${ghost.x}%`,
+                      opacity: isHovered
+                        ? HOVERED_GHOST_OPACITY
+                        : ghost.opacity,
+                      top: `${ghost.y}%`,
+                      width: `${ghost.width}%`,
+                      zIndex: isHovered ? HOVERED_GHOST_Z : ghost.zIndex,
+                    }}
+                    type="button"
+                  >
+                    {frame.cropUrl ? <img alt="" src={frame.cropUrl} /> : null}
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Content
+                  className="z-[1] p-3 pointer-events-none"
+                  collisionPadding={8}
+                  side="bottom"
+                >
+                  <GhostReading
+                    ghost={ghost}
+                    time={frame.time}
+                    total={trail.total}
+                  />
+                </Tooltip.Content>
+              </Tooltip.Root>
+            </Tooltip.Provider>
+          )
+        })}
+      </div>
+      <svg
+        className={styles.ghostTrail}
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100"
+      >
+        <polyline
           fill="none"
-          height={ghost.height}
-          key={ghost.id}
-          rx={0.4}
-          stroke={ghost.color}
-          strokeDasharray={ghost.dash}
-          strokeOpacity={ghostOpacity(ghost, showCrops)}
+          points={trail.points}
+          stroke="#000000"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeOpacity={0.4}
+          strokeWidth={4}
+          vectorEffect="non-scaling-stroke"
+        />
+        <polyline
+          fill="none"
+          points={trail.points}
+          stroke="#FFFFFF"
+          strokeLinecap="round"
+          strokeLinejoin="round"
           strokeWidth={1.5}
           vectorEffect="non-scaling-stroke"
-          width={ghost.width}
-          x={ghost.x}
-          y={ghost.y}
         />
-      ))}
-    </svg>
-  </>
-)
+      </svg>
+    </>
+  )
+}
