@@ -61,6 +61,9 @@
 .detection {
   position: absolute;
   box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  background: none;
   outline: 2px solid var(--color-success);
   border-radius: 2px;
 
@@ -89,5 +92,11 @@
     &:hover {
       cursor: pointer;
     }
+  }
+
+  // The same ring as a path ghost frame, so focus reads the same over the capture.
+  &:focus-visible {
+    outline: 2px solid var(--color-secondary-400);
+    outline-offset: 1px;
   }
 }
