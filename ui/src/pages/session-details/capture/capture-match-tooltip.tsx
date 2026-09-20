@@ -49,7 +49,12 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   </>
 )
 
-/** A box's identity, how well it matches the track, and what a click on it will do. */
+/**
+ * A box's identity, how well it matches the track, and what a click on it will do.
+ *
+ * It also says that the box is on the capture being viewed, which the path's own
+ * frames deny in the same words: with their crops drawn, the two look alike.
+ */
 export const CaptureMatchTooltip = ({
   click,
   detection,
@@ -84,6 +89,13 @@ export const CaptureMatchTooltip = ({
           {translate(STRING.TRACK_FRAME_NO_CLASSIFICATION)}
         </span>
       )}
+      <span className="text-muted-foreground">
+        {translate(
+          isTrackFrame
+            ? STRING.TRACK_FRAME_IN_TRACK
+            : STRING.TRACK_FRAME_THIS_CAPTURE
+        )}
+      </span>
       {!isTrackFrame ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <Row
