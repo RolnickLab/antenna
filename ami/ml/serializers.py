@@ -60,10 +60,17 @@ class AlgorithmSerializer(DefaultSerializer):
         ]
 
     def get_evaluations(self, obj) -> list[dict]:
-        """How this algorithm has scored on each evaluation set. Empty until one is scored."""
+        """
+        How this algorithm has scored on each evaluation set. Empty until one is scored.
+
+        Scoped to the project being viewed: an algorithm is shared across the platform but
+        an evaluation set is not.
+        """
+        from ami.base.views import get_active_project
         from ami.ml import reporting
 
-        return reporting.latest_evaluations(obj)
+        project = get_active_project(request=self.context["request"], required=False)
+        return reporting.latest_evaluations(obj, project=project)
 
 
 class AlgorithmNestedSerializer(DefaultSerializer):

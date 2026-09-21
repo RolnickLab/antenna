@@ -1112,10 +1112,16 @@ class TaxonSerializer(DefaultSerializer):
         return getattr(obj, "training_crops_count", None)
 
     def get_algorithm_performance(self, obj) -> list[dict]:
-        """How each scored algorithm has done on this species. Empty until one is evaluated."""
+        """
+        How each scored algorithm has done on this species. Empty until one is evaluated.
+
+        Scoped to the project being viewed: a taxon is shared across the platform but an
+        evaluation set is not, so without this the page reports another project's numbers.
+        """
         from ami.ml import reporting
 
-        return reporting.performance_for_taxon(obj)
+        project = get_active_project(request=self.context["request"], required=False)
+        return reporting.performance_for_taxon(obj, project=project)
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):
