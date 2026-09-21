@@ -3833,6 +3833,85 @@ class TestAlgorithmEvaluation(TestCase):
         self.assertIn(shared, OccurrenceSet.objects.for_project(self.project))
 
 
+class TestTaxaListQueryCount(APITestCase):
+    """
+    Guard against an N+1 on the taxa-lists page.
+
+    best_model is a per-row lookup, which is the shape that silently turns a page of lists
+    into one query each. A multi-row fixture is the only way to see it: with a single list
+    an N+1 and a flat query look identical.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Query Count Project")
+        self.user = User.objects.create_user(email="qcount-lists@example.com", password="testpass123")
+        self.project.members.add(self.user)
+        self.client.force_authenticate(user=self.user)
+
+        self.taxon = Taxon.objects.create(name="Countus communis", rank=TaxonRank.SPECIES.name)
+        algorithm = Algorithm.objects.create(name="Scored model", key="scored-model")
+        occurrence_set = OccurrenceSet.objects.create(name="Query count set")
+        evaluation = AlgorithmEvaluation.objects.create(
+            algorithm=algorithm,
+            occurrence_set=occurrence_set,
+            micro_accuracy=0.9,
+            macro_accuracy=0.9,
+            occurrences_scored=10,
+            species_scored=1,
+        )
+        TaxonEvaluation.objects.create(
+            evaluation=evaluation, taxon=self.taxon, accuracy=0.9, occurrences_scored=10, correct=9
+        )
+        self._add_list("First list")
+
+    def _add_list(self, name: str) -> None:
+        taxa_list = TaxaList.objects.create(name=name)
+        taxa_list.taxa.set([self.taxon])
+        taxa_list.projects.add(self.project)
+
+    def _evaluation_queries(self) -> int:
+        """How many times a page of lists asks the evaluation tables anything."""
+        from django.core.cache import caches
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/lists/?project_id={self.project.pk}&limit=100"
+        # A warm cachalot cache hides query-scaling regressions, so start cold.
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return len([q for q in ctx.captured_queries if "algorithmevaluation" in q["sql"].lower()])
+
+    def test_the_endpoint_reports_the_best_model(self):
+        """
+        Guards the other half of the annotation: read from a field the viewset forgot to
+        attach, best_model would quietly go null with the query count still flat.
+        """
+        response = self.client.get(f"/api/v2/taxa/lists/?project_id={self.project.pk}")
+        best = response.json()["results"][0]["best_model"]
+
+        self.assertIsNotNone(best, "best_model is null; the viewset is not annotating it")
+        self.assertEqual(best["name"], "Scored model")
+        self.assertAlmostEqual(best["accuracy_by_species"], 0.9)
+        self.assertEqual(best["occurrence_set"], "Query count set")
+
+    def test_best_model_does_not_query_once_per_taxa_list(self):
+        one_list = self._evaluation_queries()
+
+        for n in range(5):
+            self._add_list(f"List {n}")
+
+        six_lists = self._evaluation_queries()
+
+        self.assertEqual(
+            six_lists,
+            one_list,
+            f"Evaluation queries grew with the number of taxa lists: {one_list} -> {six_lists} "
+            "(best_model is being looked up per row)",
+        )
+
+
 class TestPerformanceReporting(TestCase):
     """
     The numbers the model-performance screens read: the best model for a taxa list, and how
