@@ -184,14 +184,16 @@ class JobListSerializer(DefaultSerializer):
         missing_fields = [name for name in job_type.required_fields if not attrs.get(name)]
         if missing_fields:
             raise serializers.ValidationError(
-                {f"{name}_id": f"A {job_type.name} job needs a {name}." for name in missing_fields}
+                # Plural, so the message does not have to choose between "a" and "an":
+                # two of the four job type names start with a vowel sound.
+                {f"{name}_id": f"{job_type.name} jobs need a {name}." for name in missing_fields}
             )
 
         params = attrs.get("params") or {}
         missing_params = [name for name in job_type.required_params if not params.get(name)]
         if missing_params:
             raise serializers.ValidationError(
-                {"params": f"A {job_type.name} job needs {', '.join(missing_params)} in its params."}
+                {"params": f"{job_type.name} jobs need {', '.join(missing_params)} in their params."}
             )
         return attrs
 
