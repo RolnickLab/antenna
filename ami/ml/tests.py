@@ -13,6 +13,7 @@ from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
+from ami.ml import reporting
 from ami.main.models import (
     Classification,
     Deployment,
@@ -3949,6 +3950,65 @@ class TestPerformanceReporting(TestCase):
                 correct=correct,
             )
         return evaluation
+
+    def _other_project_evaluation(self):
+        """An evaluation belonging to a different, private project, scoring the same taxa."""
+        other = Project.objects.create(name="Someone Else's Project", draft=True)
+        their_set = OccurrenceSet.objects.create(name="Their private blind set")
+        their_set.projects.add(other)
+        algorithm = self._algorithm("their-model")
+        evaluation = AlgorithmEvaluation.objects.create(
+            algorithm=algorithm,
+            occurrence_set=their_set,
+            micro_accuracy=0.99,
+            macro_accuracy=0.99,
+            occurrences_scored=50,
+            species_scored=2,
+        )
+        for taxon in (self.common, self.rare):
+            TaxonEvaluation.objects.create(
+                evaluation=evaluation, taxon=taxon, accuracy=0.99, occurrences_scored=25, correct=24
+            )
+        return evaluation
+
+    def test_a_species_does_not_show_another_project_s_evaluations(self):
+        """
+        Taxa are shared across projects, evaluation sets are not.
+
+        Without scoping, a species page lists every evaluation that happened to score that
+        taxon anywhere on the platform, exposing another project's set name and numbers.
+        """
+        self._other_project_evaluation()
+        mine = self._evaluation(self._algorithm("my-model"), micro=0.5, macro=0.5, per_taxon={self.common: (5, 10)})
+
+        rows = reporting.performance_for_taxon(self.common, project=self.project)
+
+        self.assertEqual([r["algorithm"]["id"] for r in rows], [mine.algorithm_id])
+
+    def test_a_taxa_list_s_best_model_ignores_another_project_s_evaluation(self):
+        """Their model scores higher, but it was never scored on anything this project can see."""
+        self._other_project_evaluation()
+        mine = self._evaluation(self._algorithm("my-model"), micro=0.5, macro=0.5, per_taxon={self.common: (5, 10)})
+
+        best = reporting.best_evaluation_for_taxa_list(self.taxa_list, project=self.project)
+
+        self.assertEqual(best, mine)
+
+    def test_an_algorithm_panel_shows_only_sets_this_project_can_see(self):
+        theirs = self._other_project_evaluation()
+
+        rows = reporting.latest_evaluations(theirs.algorithm, project=self.project)
+
+        self.assertEqual(rows, [])
+
+    def test_a_global_set_is_visible_to_every_project(self):
+        """A set with no project is the platform-wide benchmark, so it must not be filtered out."""
+        mine = self._evaluation(self._algorithm("my-model"), micro=0.5, macro=0.5, per_taxon={self.common: (5, 10)})
+
+        rows = reporting.performance_for_taxon(self.common, project=self.project)
+
+        # self.occurrence_set belongs to no project, so it is global.
+        self.assertEqual([r["algorithm"]["id"] for r in rows], [mine.algorithm_id])
 
     def test_the_best_model_is_the_one_that_handles_the_rare_species(self):
         """Ranked on the per-species average, or a model that only knows the common one wins."""

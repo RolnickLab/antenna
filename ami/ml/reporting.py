@@ -10,11 +10,24 @@ import typing
 
 from django.db import models
 
-from ami.main.models import TaxaList, Taxon
+from ami.main.models import OccurrenceSet, Project, TaxaList, Taxon
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.evaluation import AlgorithmEvaluation, TaxonEvaluation
 
 DEFAULT_EVALUATION_LIMIT = 5
+
+
+def visible_sets(project: Project | None):
+    """
+    The evaluation sets a project may be shown: its own, plus the global ones.
+
+    Taxa and algorithms are shared across the platform but evaluation sets are not, so
+    every read below has to be scoped or it reports another project's numbers. Passing
+    None means no scoping, which is only for a caller that has already scoped itself.
+    """
+    if project is None:
+        return None
+    return OccurrenceSet.objects.for_project(project)
 
 
 # How "best" is decided, in one place so the single-list lookup and the list page cannot
@@ -23,26 +36,29 @@ DEFAULT_EVALUATION_LIMIT = 5
 BEST_MODEL_ORDERING = ("-macro_accuracy", "-micro_accuracy")
 
 
-def best_evaluation_for_taxa_list(taxa_list: TaxaList) -> AlgorithmEvaluation | None:
+def best_evaluation_for_taxa_list(taxa_list: TaxaList, project: Project | None = None) -> AlgorithmEvaluation | None:
     """The algorithm that scores highest on the species in this list."""
     # No .distinct(): the join repeats an evaluation once per species it scored in the list,
     # which cannot change which row sorts first.
-    return (
-        AlgorithmEvaluation.objects.filter(taxa__taxon__lists=taxa_list)
-        .select_related("algorithm", "occurrence_set")
-        .order_by(*BEST_MODEL_ORDERING)
-        .first()
-    )
+    sets = visible_sets(project)
+    rows = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=taxa_list)
+    if sets is not None:
+        rows = rows.filter(occurrence_set__in=sets)
+    return rows.select_related("algorithm", "occurrence_set").order_by(*BEST_MODEL_ORDERING).first()
 
 
-def annotate_best_model(taxa_lists: models.QuerySet) -> models.QuerySet:
+def annotate_best_model(taxa_lists: models.QuerySet, project: Project | None = None) -> models.QuerySet:
     """
     Attach each list's best-scoring evaluation, for a page of lists.
 
     Correlated subqueries rather than a lookup per row: every list on the page renders its
     best model, so a per-row lookup costs one query each.
     """
-    best = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=models.OuterRef("pk")).order_by(*BEST_MODEL_ORDERING)
+    best = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=models.OuterRef("pk"))
+    sets = visible_sets(project)
+    if sets is not None:
+        best = best.filter(occurrence_set__in=sets)
+    best = best.order_by(*BEST_MODEL_ORDERING)
     return taxa_lists.annotate(
         best_algorithm_id=models.Subquery(best.values("algorithm_id")[:1]),
         best_algorithm_name=models.Subquery(best.values("algorithm__name")[:1]),
@@ -52,18 +68,18 @@ def annotate_best_model(taxa_lists: models.QuerySet) -> models.QuerySet:
     )
 
 
-def performance_for_taxon(taxon: Taxon) -> list[dict[str, typing.Any]]:
+def performance_for_taxon(taxon: Taxon, project: Project | None = None) -> list[dict[str, typing.Any]]:
     """
     How each algorithm has done on one species.
 
     The breakdown the taxon page shows: one row per algorithm that has been scored on a set
     containing this species.
     """
-    rows = (
-        TaxonEvaluation.objects.filter(taxon=taxon)
-        .select_related("evaluation__algorithm", "evaluation__occurrence_set")
-        .order_by("-accuracy")
-    )
+    rows = TaxonEvaluation.objects.filter(taxon=taxon)
+    sets = visible_sets(project)
+    if sets is not None:
+        rows = rows.filter(evaluation__occurrence_set__in=sets)
+    rows = rows.select_related("evaluation__algorithm", "evaluation__occurrence_set").order_by("-accuracy")
     return [
         {
             "algorithm": {
@@ -86,14 +102,21 @@ def performance_for_taxon(taxon: Taxon) -> list[dict[str, typing.Any]]:
     ]
 
 
-def latest_evaluations(algorithm: Algorithm, limit: int = DEFAULT_EVALUATION_LIMIT) -> list[dict[str, typing.Any]]:
+def latest_evaluations(
+    algorithm: Algorithm, limit: int = DEFAULT_EVALUATION_LIMIT, project: Project | None = None
+) -> list[dict[str, typing.Any]]:
     """
     What this algorithm has scored, most recent first. Shown on its details panel.
 
     Read through the related manager without filtering or reordering, so a list view that
     prefetched the evaluations is served from that cache instead of one query per row.
     """
-    rows = sorted(algorithm.evaluations.all(), key=lambda row: row.created_at, reverse=True)[:limit]
+    rows = sorted(algorithm.evaluations.all(), key=lambda row: row.created_at, reverse=True)
+    if project is not None:
+        # Filtered in Python, not SQL, to keep using the prefetched cache above.
+        allowed = set(visible_sets(project).values_list("pk", flat=True))
+        rows = [row for row in rows if row.occurrence_set_id in allowed]
+    rows = rows[:limit]
     return [
         {
             "id": row.pk,
