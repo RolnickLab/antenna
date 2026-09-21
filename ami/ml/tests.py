@@ -3626,6 +3626,82 @@ class TestTrainingResultIsRecordedOnce(TestCase):
         self.assertEqual(self.job.result["result"]["candidate_metrics"]["top1"], 0.9)
 
 
+class TestOccurrenceSetAPI(APITestCase):
+    """
+    The endpoint the evaluation-set picker reads.
+
+    A set is either one project's or global, so what this returns decides which sets a
+    person can score a model against.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Set Project")
+        self.other_project = Project.objects.create(name="Someone Else's Project")
+        self.user = User.objects.create_user(email="sets@example.com", password="testpass123")
+        self.project.members.add(self.user)
+
+        self.own = OccurrenceSet.objects.create(name="This project's blind set")
+        self.own.projects.add(self.project)
+        self.global_set = OccurrenceSet.objects.create(name="Platform-wide blind set")
+        self.theirs = OccurrenceSet.objects.create(name="Another project's blind set")
+        self.theirs.projects.add(self.other_project)
+
+        self.url = reverse_with_params("api:occurrenceset-list")
+
+    def _names(self, response):
+        return sorted(item["name"] for item in response.json()["results"])
+
+    def test_a_project_sees_its_own_sets_and_the_global_ones(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {"project_id": self.project.pk})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._names(response), sorted([self.own.name, self.global_set.name]))
+
+    def test_another_project_s_set_is_not_offered(self):
+        """Scoring against a set from another project would compare models on data
+        this project cannot see."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {"project_id": self.project.pk})
+
+        self.assertNotIn(self.theirs.name, self._names(response))
+
+    def test_listing_without_a_project_is_refused(self):
+        """Without a project the queryset has nothing to scope to, so it would return
+        every set on the platform."""
+        self.client.force_authenticate(user=self.user)
+
+        self.assertEqual(self.client.get(self.url).status_code, 400)
+
+    def test_the_sets_are_read_only(self):
+        """Membership is built deliberately: two models can only be compared if they were
+        scored on exactly the same occurrences."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self.url, {"name": "Made up in passing"}, format="json")
+
+        # 405 if the method is refused first, 403 if the permission check gets there
+        # first. Either way the endpoint will not create one.
+        self.assertIn(response.status_code, (403, 405))
+
+    def test_a_draft_project_s_sets_are_hidden_from_outsiders(self):
+        """A draft project is not published, so neither is what it scores models on."""
+        draft = Project.objects.create(name="Unpublished Project", draft=True)
+        secret = OccurrenceSet.objects.create(name="Draft project's set")
+        secret.projects.add(draft)
+
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.url, {"project_id": draft.pk})
+
+        self.assertNotIn(secret.name, self._names(response))
+
+    def test_a_global_set_is_offered_to_anonymous_readers_too(self):
+        """Global means every project, and Antenna publishes non-draft projects."""
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.url, {"project_id": self.project.pk})
+
+        self.assertIn(self.global_set.name, self._names(response))
+
+
 class TestAlgorithmEvaluation(TestCase):
     """
     Scoring an algorithm against a fixed set of verified occurrences, so two models can be

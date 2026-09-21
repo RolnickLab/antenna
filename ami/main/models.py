@@ -4928,6 +4928,18 @@ class OccurrenceSetQuerySet(BaseQuerySet):
         """Sets this project can use: its own, plus any that belong to no project."""
         return self.filter(models.Q(projects=project) | models.Q(projects__isnull=True)).distinct()
 
+    def visible_for_user(self, user) -> models.QuerySet:
+        """
+        Global sets stay visible; project sets follow their project.
+
+        The inherited filter keeps a row only if it reaches a non-draft project, which a
+        set belonging to no project never does. Without this a global set is hidden from
+        everyone but a superuser, which is the opposite of what global means. Only a set's
+        name and size are exposed, never the occurrences inside it.
+        """
+        visible = super().visible_for_user(user)
+        return self.filter(models.Q(pk__in=visible.values("pk")) | models.Q(projects__isnull=True)).distinct()
+
 
 class OccurrenceSet(BaseModel):
     """
