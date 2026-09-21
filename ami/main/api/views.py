@@ -968,14 +968,14 @@ class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
     http_method_names = ["get", "head", "options"]
     ordering_fields = ["name", "created_at", "updated_at"]
     search_fields = ["name"]
+    # Scoping is the whole point of the queryset below, so without a project there is
+    # nothing sensible to return: it would list every set on the platform.
+    require_project = True
 
     def get_queryset(self) -> QuerySet["OccurrenceSet"]:
         qs = super().get_queryset().annotate(annotated_occurrences_count=models.Count("occurrences"))
-        project = self.get_active_project()
-        if project:
-            # A set with no project is global, so it is offered everywhere.
-            return qs.for_project(project)
-        return qs
+        # A set with no project is global, so it is offered everywhere.
+        return qs.for_project(self.get_active_project())
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
