@@ -737,18 +737,21 @@ class TaxaListSerializer(DefaultSerializer):
         ]
 
     def get_best_model(self, obj) -> dict | None:
-        """The algorithm scoring highest on this list's species, or null if none has been scored."""
-        from ami.ml import reporting
+        """
+        The algorithm scoring highest on this list's species, or null if none has been scored.
 
-        evaluation = reporting.best_evaluation_for_taxa_list(obj)
-        if not evaluation:
+        Read from the annotations the viewset attaches, so a page of lists costs one query
+        rather than one per list.
+        """
+        algorithm_id = getattr(obj, "best_algorithm_id", None)
+        if algorithm_id is None:
             return None
         return {
-            "id": evaluation.algorithm_id,
-            "name": evaluation.algorithm.name,
-            "accuracy": evaluation.micro_accuracy,
-            "accuracy_by_species": evaluation.macro_accuracy,
-            "occurrence_set": evaluation.occurrence_set.name,
+            "id": algorithm_id,
+            "name": obj.best_algorithm_name,
+            "accuracy": obj.best_micro_accuracy,
+            "accuracy_by_species": obj.best_macro_accuracy,
+            "occurrence_set": obj.best_occurrence_set_name,
         }
 
     def get_taxa(self, obj):

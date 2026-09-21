@@ -8,6 +8,8 @@ so the same number means the same thing everywhere it is shown.
 
 import typing
 
+from django.db import models
+
 from ami.main.models import TaxaList, Taxon
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.evaluation import AlgorithmEvaluation, TaxonEvaluation
@@ -15,20 +17,38 @@ from ami.ml.models.evaluation import AlgorithmEvaluation, TaxonEvaluation
 DEFAULT_EVALUATION_LIMIT = 5
 
 
-def best_evaluation_for_taxa_list(taxa_list: TaxaList) -> AlgorithmEvaluation | None:
-    """
-    The algorithm that scores highest on the species in this list.
+# How "best" is decided, in one place so the single-list lookup and the list page cannot
+# drift. Ranked on the per-species average rather than the plain share: trap data is
+# long-tailed, so a model that only handles the common species would otherwise win.
+BEST_MODEL_ORDERING = ("-macro_accuracy", "-micro_accuracy")
 
-    Ranked on the per-species average rather than the plain share: trap data is long-tailed,
-    so a model that only handles the common species would otherwise look like the best one.
-    """
+
+def best_evaluation_for_taxa_list(taxa_list: TaxaList) -> AlgorithmEvaluation | None:
+    """The algorithm that scores highest on the species in this list."""
     # No .distinct(): the join repeats an evaluation once per species it scored in the list,
     # which cannot change which row sorts first.
     return (
         AlgorithmEvaluation.objects.filter(taxa__taxon__lists=taxa_list)
         .select_related("algorithm", "occurrence_set")
-        .order_by("-macro_accuracy", "-micro_accuracy")
+        .order_by(*BEST_MODEL_ORDERING)
         .first()
+    )
+
+
+def annotate_best_model(taxa_lists: models.QuerySet) -> models.QuerySet:
+    """
+    Attach each list's best-scoring evaluation, for a page of lists.
+
+    Correlated subqueries rather than a lookup per row: every list on the page renders its
+    best model, so a per-row lookup costs one query each.
+    """
+    best = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=models.OuterRef("pk")).order_by(*BEST_MODEL_ORDERING)
+    return taxa_lists.annotate(
+        best_algorithm_id=models.Subquery(best.values("algorithm_id")[:1]),
+        best_algorithm_name=models.Subquery(best.values("algorithm__name")[:1]),
+        best_micro_accuracy=models.Subquery(best.values("micro_accuracy")[:1]),
+        best_macro_accuracy=models.Subquery(best.values("macro_accuracy")[:1]),
+        best_occurrence_set_name=models.Subquery(best.values("occurrence_set__name")[:1]),
     )
 
 
