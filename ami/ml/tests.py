@@ -13,7 +13,6 @@ from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.ml import reporting
 from ami.main.models import (
     Classification,
     Deployment,
@@ -30,7 +29,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml import training_data
+from ami.ml import reporting, training_data
 from ami.ml.models import (
     Algorithm,
     AlgorithmCategoryMap,
