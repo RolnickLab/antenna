@@ -712,24 +712,35 @@ const CaptureDetections = ({
             />
           )
 
+          // Without tracking, a selected box keeps the plain label and score it has
+          // always had, whose name opens the occurrence, instead of the track panel.
+          const plainLabel = !trackingEnabled && !detailsHidden
+
           // A reading of the box, which a tooltip is the right primitive for: Radix
           // repeats it for assistive technology, and text survives being read twice.
-          if (detailsHidden || !detection.occurrenceId) {
+          if (detailsHidden || !detection.occurrenceId || plainLabel) {
             return (
               <Tooltip.Provider
                 delayDuration={0}
-                disableHoverableContent
+                disableHoverableContent={!plainLabel}
                 key={detection.id}
               >
-                <Tooltip.Root open={hoveredBox === detection.id}>
+                <Tooltip.Root
+                  open={hoveredBox === detection.id || (plainLabel && isActive)}
+                >
                   <Tooltip.Trigger asChild>{box}</Tooltip.Trigger>
                   <Tooltip.Content
                     className={classNames(
-                      'z-[1] pointer-events-none',
+                      'z-[1]',
+                      plainLabel
+                        ? 'pointer-events-auto'
+                        : 'pointer-events-none',
                       detailsHidden ? 'px-3 py-2' : 'p-3'
                     )}
                     collisionBoundary={container}
                     collisionPadding={8}
+                    onMouseEnter={() => hoverBox(detection.id)}
+                    onMouseLeave={() => unhoverBox(detection.id)}
                     side="bottom"
                   >
                     {detailsHidden ? (
@@ -742,9 +753,22 @@ const CaptureDetections = ({
                       />
                     ) : (
                       <div className="flex flex-col items-start gap-1">
-                        <span className="body-base font-medium">
-                          {detection.label}
-                        </span>
+                        {plainLabel ? (
+                          <button
+                            className="body-base text-primary font-medium"
+                            disabled={!detection.occurrenceId}
+                            onClick={() =>
+                              setActiveOccurrence(detection.occurrenceId)
+                            }
+                            type="button"
+                          >
+                            {detection.label}
+                          </button>
+                        ) : (
+                          <span className="body-base font-medium">
+                            {detection.label}
+                          </span>
+                        )}
                         <DeterminationScore
                           score={detection.score}
                           scoreLabel={detection.scoreLabel}
@@ -785,7 +809,6 @@ const CaptureDetections = ({
               >
                 <OccurrenceToolbar
                   detectionId={detection.id}
-                  trackingEnabled={trackingEnabled}
                   isExtended={isExtended}
                   isLoadingPath={
                     isLoadingPath && pathOccurrenceId === detection.occurrenceId
