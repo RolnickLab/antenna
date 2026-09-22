@@ -41,6 +41,18 @@ class TaxaListMinimalSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
 
 
+class AlgorithmMinimalSerializer(serializers.Serializer):
+    """
+    id + name + key only, for listing the algorithms that predict a taxon on the taxon
+    detail response. A plain Serializer rather than DefaultSerializer, for the same
+    reason as TaxaListMinimalSerializer: no per-row object-permission check.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    key = serializers.CharField(read_only=True)
+
+
 class AlgorithmSerializer(DefaultSerializer):
     category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
     taxa_list = TaxaListMinimalSerializer(read_only=True)

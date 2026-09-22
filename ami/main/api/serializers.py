@@ -14,7 +14,12 @@ from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
-from ami.ml.serializers import AlgorithmNestedSerializer, AlgorithmSerializer, PipelineNestedSerializer
+from ami.ml.serializers import (
+    AlgorithmMinimalSerializer,
+    AlgorithmNestedSerializer,
+    AlgorithmSerializer,
+    PipelineNestedSerializer,
+)
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 
@@ -1046,6 +1051,7 @@ class TaxonSerializer(DefaultSerializer):
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     tags = serializers.SerializerMethodField()
     summary_data = serializers.SerializerMethodField()
+    predicted_by_algorithms = serializers.SerializerMethodField()
 
     def get_tags(self, obj):
         # Use prefetched tags
@@ -1055,6 +1061,14 @@ class TaxonSerializer(DefaultSerializer):
     def get_summary_data(self, obj: Taxon):
         project = get_active_project(request=self.context["request"], required=False)
         return obj.summary_data(project)
+
+    def get_predicted_by_algorithms(self, obj: Taxon):
+        # Detail-only: the algorithms whose managed taxa list contains this taxon, scoped
+        # to the same visibility rule as the algorithm/taxa-list filters (public services
+        # plus the active project's enabled pipelines). See Algorithm.objects.visible_to_project().
+        project = get_active_project(request=self.context["request"], required=False)
+        algorithms = Algorithm.objects.visible_to_project(project).filter(taxa_list__taxa=obj)
+        return AlgorithmMinimalSerializer(algorithms, many=True).data
 
     class Meta:
         model = Taxon
@@ -1080,6 +1094,7 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_credit",
             "summary_data",
             "common_name_en",
+            "predicted_by_algorithms",
         ]
 
 
