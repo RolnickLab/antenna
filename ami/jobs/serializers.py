@@ -1,7 +1,9 @@
+import pydantic
 from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from ami.base.permissions import TRACKING_NOT_ENABLED_MESSAGE
 from ami.exports.models import DataExport
 from ami.main.api.serializers import (
     DefaultSerializer,
@@ -9,12 +11,22 @@ from ami.main.api.serializers import (
     SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
+from ami.main.models import Deployment, Event, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.ml.post_processing.tracking_task import TrackingConfig, TrackingTask
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import JOB_LOGS_DEFAULT_LIMIT, Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
+from .models import (
+    JOB_LOGS_DEFAULT_LIMIT,
+    Job,
+    JobProgress,
+    MLJob,
+    PostProcessingJob,
+    _legacy_logs_shape,
+    serialize_job_logs,
+)
 from .schemas import QueuedTaskAcknowledgment
 
 
@@ -41,6 +53,73 @@ class JobTypeSerializer(serializers.Serializer):
     key = serializers.SlugField(read_only=True)
 
 
+# Post-processing tasks a project member may start through the jobs API. The others
+# are staff tools started from the Django admin, and their scopes are not checked
+# against the job's project here.
+API_POST_PROCESSING_TASKS = {TrackingTask.key}
+
+
+def _pydantic_messages(exc: pydantic.ValidationError) -> list[str]:
+    messages = []
+    for err in exc.errors():
+        field = ".".join(str(part) for part in err.get("loc", ()) if part != "__root__")
+        messages.append(f"{field}: {err['msg']}" if field else err["msg"])
+    return messages
+
+
+def validate_post_processing_params(project: Project | None, params) -> dict:
+    """Check a post-processing job's ``{"task": ..., "config": {...}}`` before it is saved.
+
+    Returns the params with the config normalized by the task's schema, so the stored
+    job carries every default the worker will run with. Raises a 400 otherwise.
+    """
+    if not isinstance(params, dict) or set(params) - {"task", "config"}:
+        raise serializers.ValidationError(
+            {"params": 'Post-processing jobs take params of the form {"task": <key>, "config": {...}}.'}
+        )
+    task_key = params.get("task")
+    task_cls = get_postprocessing_task(task_key) if isinstance(task_key, str) else None
+    if task_cls is None:
+        raise serializers.ValidationError({"params": {"task": f"Unknown post-processing task {task_key!r}."}})
+    if task_key not in API_POST_PROCESSING_TASKS:
+        raise serializers.ValidationError(
+            {"params": {"task": f"The {task_cls.name} task cannot be started through the API."}}
+        )
+    if task_cls is TrackingTask and not (project and project.feature_flags.tracking):
+        raise serializers.ValidationError({"project_id": TRACKING_NOT_ENABLED_MESSAGE})
+
+    config = params.get("config") or {}
+    if not isinstance(config, dict):
+        raise serializers.ValidationError({"params": {"config": "Must be an object."}})
+    try:
+        model = task_cls.config_schema(**config)
+    except pydantic.ValidationError as exc:
+        raise serializers.ValidationError({"params": {"config": _pydantic_messages(exc)}})
+
+    if isinstance(model, TrackingConfig):
+        if model.event_ids:
+            found = set(Event.objects.filter(pk__in=model.event_ids, project=project).values_list("pk", flat=True))
+            missing = sorted(set(model.event_ids) - found)
+            if missing:
+                raise serializers.ValidationError(
+                    {"params": {"config": [f"event_ids: Session(s) {missing} were not found in this project."]}}
+                )
+        if model.source_image_collection_id is not None and not (
+            SourceImageCollection.objects.filter(pk=model.source_image_collection_id, project=project).exists()
+        ):
+            raise serializers.ValidationError(
+                {
+                    "params": {
+                        "config": [
+                            f"source_image_collection_id: Capture set {model.source_image_collection_id} "
+                            "was not found in this project."
+                        ]
+                    }
+                }
+            )
+    return {"task": task_key, "config": model.dict()}
+
+
 class JobListSerializer(DefaultSerializer):
     delay = serializers.IntegerField()
     project = JobProjectNestedSerializer(read_only=True)
@@ -55,6 +134,8 @@ class JobListSerializer(DefaultSerializer):
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
     job_type_key = serializers.SlugField(write_only=True, default=MLJob.key)
+    # Read by post-processing jobs only: {"task": <registered task key>, "config": {...}}.
+    params = serializers.JSONField(required=False, allow_null=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -129,6 +210,7 @@ class JobListSerializer(DefaultSerializer):
             "logs",
             "job_type",
             "job_type_key",
+            "params",
             "data_export",
             "dispatch_mode",
             # "duration",
@@ -147,6 +229,16 @@ class JobListSerializer(DefaultSerializer):
             "duration",
             "dispatch_mode",
         ]
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+        if attrs.get("job_type_key") == PostProcessingJob.key:
+            project = attrs.get("project") or getattr(self.instance, "project", None)
+            attrs["params"] = validate_post_processing_params(project, attrs.get("params"))
+        else:
+            # Other job types do not read params, so none are stored for them.
+            attrs.pop("params", None)
+        return attrs
 
     @extend_schema_field(
         {

@@ -1,6 +1,7 @@
 # from rich import print
 import logging
 from typing import Any
+from unittest.mock import patch
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
@@ -23,8 +24,9 @@ from ami.main.models import Deployment, Event, Project, SourceImage, SourceImage
 from ami.ml.models import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
-from ami.tests.fixtures.main import create_captures
+from ami.tests.fixtures.main import create_captures, setup_test_project
 from ami.users.models import User
+from ami.users.roles import BasicMember, MLDataManager
 
 logger = logging.getLogger(__name__)
 
@@ -1744,3 +1746,149 @@ class TestJobSourceImageSingleFilter(APITestCase):
         html = response.content.decode()
         self.assertNotIn('<select name="source_image_single"', html)
         self.assertIn('<input type="number" name="source_image_single"', html)
+
+
+class TestTrackingJobCreation(APITestCase):
+    """Starting an occurrence tracking run through the jobs API.
+
+    Pins that a member who may create jobs can queue tracking on their own project's
+    sessions or capture set once the project has opted in, and that the request is
+    refused before a job exists when the project has not opted in, the config does not
+    fit the tracking schema, or it names sessions from another project.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=2, interval_minutes=1)
+        self.project.feature_flags.tracking = True
+        self.project.save(update_fields=["feature_flags"])
+        self.events = list(Event.objects.filter(project=self.project).order_by("pk"))
+        self.collection = SourceImageCollection.objects.create(name="Tracking scope", project=self.project)
+
+        self.manager = User.objects.create_user(email="tracking-manager@insectai.org")  # type: ignore
+        self.member = User.objects.create_user(email="tracking-member@insectai.org")  # type: ignore
+        self.outsider = User.objects.create_user(email="tracking-outsider@insectai.org")  # type: ignore
+        self.superuser = User.objects.create_superuser(email="tracking-super@insectai.org")  # type: ignore
+        MLDataManager.assign_user(self.manager, self.project)
+        BasicMember.assign_user(self.member, self.project)
+
+    def _body(self, **config) -> dict:
+        return {
+            "name": "Track sessions",
+            "delay": 0,
+            "project_id": self.project.pk,
+            "job_type_key": "post_processing",
+            "params": {"task": "tracking", "config": config or {"event_ids": [self.events[0].pk]}},
+        }
+
+    def _post(self, body: dict, user: User | None):
+        self.client.force_authenticate(user=user)
+        url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        return self.client.post(url, body, format="json")
+
+    def test_member_who_can_create_jobs_queues_tracking_on_sessions(self):
+        event_ids = [e.pk for e in self.events]
+        response = self._post(self._body(event_ids=event_ids, cost_threshold=0.5), self.manager)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        job = Job.objects.get(pk=response.data["id"])
+        self.assertEqual(job.job_type_key, "post_processing")
+        self.assertEqual(job.project_id, self.project.pk)
+        self.assertEqual(job.params["task"], "tracking")
+        # The stored config carries the schema's defaults, so the worker runs what was validated.
+        self.assertEqual(job.params["config"]["event_ids"], event_ids)
+        self.assertEqual(job.params["config"]["cost_threshold"], 0.5)
+        self.assertTrue(job.params["config"]["require_features"])
+        self.assertEqual(response.data["params"], job.params)
+
+    def test_capture_set_scope_is_accepted(self):
+        response = self._post(self._body(source_image_collection_id=self.collection.pk), self.manager)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(Job.objects.get(pk=response.data["id"]).params["config"]["event_ids"], [])
+
+    def test_refused_when_the_project_has_not_enabled_tracking(self):
+        self.project.feature_flags.tracking = False
+        self.project.save(update_fields=["feature_flags"])
+
+        response = self._post(self._body(), self.manager)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["project_id"], ["Tracking is not enabled for this project."])
+        self.assertFalse(Job.objects.filter(job_type_key="post_processing").exists())
+
+    def test_config_that_does_not_fit_the_tracking_schema_is_refused(self):
+        cases = {
+            "no scope": {"cost_threshold": 0.3},
+            "two scopes": {"event_ids": [self.events[0].pk], "source_image_collection_id": self.collection.pk},
+            "unknown knob": {"event_ids": [self.events[0].pk], "min_speed": 3},
+            "wrong type": {"event_ids": [self.events[0].pk], "cost_threshold": "high"},
+        }
+        for label, config in cases.items():
+            with self.subTest(label):
+                response = self._post(self._body(**config), self.manager)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+                self.assertIn("config", response.data["params"])
+        self.assertFalse(Job.objects.filter(job_type_key="post_processing").exists())
+
+    def test_unknown_or_admin_only_tasks_are_refused(self):
+        for task in ("no-such-task", "small_size_filter"):
+            with self.subTest(task):
+                body = self._body()
+                body["params"]["task"] = task
+                response = self._post(body, self.manager)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+                self.assertIn("task", response.data["params"])
+
+    def test_scope_from_another_project_is_refused(self):
+        other_project, other_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+        foreign_event = Event.objects.filter(project=other_project).first()
+        assert foreign_event is not None
+        foreign_collection = SourceImageCollection.objects.create(name="Elsewhere", project=other_project)
+
+        for config in (
+            {"event_ids": [self.events[0].pk, foreign_event.pk]},
+            {"source_image_collection_id": foreign_collection.pk},
+        ):
+            with self.subTest(config=config):
+                response = self._post(self._body(**config), self.manager)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+                self.assertIn("config", response.data["params"])
+        self.assertFalse(Job.objects.filter(job_type_key="post_processing").exists())
+
+    def test_permission_matrix(self):
+        cases = [
+            ("superuser", self.superuser, status.HTTP_201_CREATED),
+            ("member who can create jobs", self.manager, status.HTTP_201_CREATED),
+            # Every role may create a job; starting one is the separate run permission.
+            ("basic member", self.member, status.HTTP_201_CREATED),
+            ("non-member", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for label, user, expected in cases:
+            with self.subTest(label):
+                response = self._post(self._body(), user)
+                self.assertEqual(response.status_code, expected, response.data)
+        anonymous = self._post(self._body(), None)
+        self.assertIn(anonymous.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 3)
+
+    def test_start_now_enqueues_for_a_user_who_may_run_it(self):
+        self.client.force_authenticate(user=self.superuser)
+        url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "start_now": "true"})
+        with patch.object(Job, "enqueue") as enqueue:
+            response = self.client.post(url, self._body(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        enqueue.assert_called_once()
+
+    def test_params_are_not_stored_for_other_job_types(self):
+        body = {
+            "name": "Populate",
+            "delay": 0,
+            "project_id": self.project.pk,
+            "job_type_key": SourceImageCollectionPopulateJob.key,
+            "source_image_collection_id": self.collection.pk,
+            "params": {"task": "tracking"},
+        }
+        response = self._post(body, self.superuser)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertIsNone(Job.objects.get(pk=response.data["id"]).params)
