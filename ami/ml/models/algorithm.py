@@ -5,7 +5,7 @@ import enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.main.models import Classification, TaxaList, Taxon
+    from ami.main.models import Classification, Project, TaxaList, Taxon
     from ami.ml.models import Pipeline
 
 import typing
@@ -205,6 +205,24 @@ class AlgorithmQuerySet(BaseQuerySet):
         Annotate the queryset with the number of categories in the category map
         """
         return self.annotate(category_count=ArrayLength("category_map__labels"))
+
+    def visible_to_project(self, project: Project | None) -> AlgorithmQuerySet:
+        """
+        Algorithms visible for "which models predict this taxon" queries: every algorithm
+        reached through a public processing service, plus the algorithms on ``project``'s
+        enabled pipelines. An algorithm has no visibility of its own — it inherits it from
+        the processing service that offers it (see ProcessingService.is_public) or from a
+        project's own pipeline configuration, mirroring AlgorithmViewSet.get_queryset()'s
+        project scope. Single shared definition so the taxa-for-algorithm filter, the
+        algorithms-for-taxon filter, and the taxon detail field can't drift apart.
+        """
+        visible = models.Q(pipelines__processing_services__is_public=True)
+        if project is not None:
+            visible |= models.Q(
+                pipelines__project_pipeline_configs__project=project,
+                pipelines__project_pipeline_configs__enabled=True,
+            )
+        return self.filter(visible).distinct()
 
     def used_in_project(self, project) -> AlgorithmQuerySet:
         """Algorithms that produced results in the project, whether or not their
