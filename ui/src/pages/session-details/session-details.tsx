@@ -19,7 +19,10 @@ import { useParams } from 'react-router-dom'
 import { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
-import { useProjectFeature } from 'utils/project-features/useProjectFeature'
+import {
+  useCanStartTracking,
+  useProjectFeature,
+} from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { OccurrenceTimelineMarkers } from './activity-plot/occurrence-timeline-markers'
@@ -111,6 +114,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
   })
   const { timeline = [] } = useSessionTimeline(session.id)
   const trackingEnabled = useProjectFeature('tracking')
+  const canStartTracking = useCanStartTracking()
   const extend = useExtendTrack({
     captureId: activeCaptureId,
     enabled: trackingEnabled,
@@ -146,7 +150,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
         })}
         tooltip={translate(STRING.TOOLTIP_SESSION)}
       >
-        {user.loggedIn && trackingEnabled ? (
+        {user.loggedIn && canStartTracking ? (
           <RunTrackingDialog session={session} />
         ) : null}
         {user.loggedIn ? <Process capture={activeCapture} /> : null}

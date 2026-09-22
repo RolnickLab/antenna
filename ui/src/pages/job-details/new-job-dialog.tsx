@@ -6,7 +6,7 @@ import { Button, Dialog, InputContent, Select } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
-import { useProjectFeature } from 'utils/project-features/useProjectFeature'
+import { useCanStartTracking } from 'utils/project-features/useProjectFeature'
 import { JobDetailsForm } from './job-details-form/job-details-form'
 import styles from './job-details.module.scss'
 import { TrackingJobForm } from './tracking-job-form/tracking-job-form'
@@ -19,7 +19,7 @@ export const NewJobDialog = () => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
   const [jobType, setJobType] = useState<NewJobType>('processing')
-  const trackingEnabled = useProjectFeature('tracking')
+  const canStartTracking = useCanStartTracking()
   const closeLater = () =>
     setTimeout(() => {
       setIsOpen(false)
@@ -42,7 +42,7 @@ export const NewJobDialog = () => {
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <Dialog.Header title={label} />
         <div className={styles.content}>
-          {trackingEnabled ? (
+          {canStartTracking ? (
             <FormSection>
               <FormRow>
                 <InputContent label={translate(STRING.TRACKING_JOB_TYPE)}>
@@ -66,7 +66,7 @@ export const NewJobDialog = () => {
               </FormRow>
             </FormSection>
           ) : null}
-          {trackingEnabled && jobType === 'tracking' ? (
+          {canStartTracking && jobType === 'tracking' ? (
             <TrackingJobForm
               error={tracking.error}
               isLoading={tracking.isLoading}

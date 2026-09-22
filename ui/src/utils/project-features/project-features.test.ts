@@ -1,4 +1,8 @@
-import { hasProjectFeature, withoutTrackingColumns } from './project-features'
+import {
+  canStartTracking,
+  hasProjectFeature,
+  withoutTrackingColumns,
+} from './project-features'
 
 describe('hasProjectFeature', () => {
   test('is on only when the flag is true', () => {
@@ -32,5 +36,19 @@ describe('withoutTrackingColumns', () => {
 
   test('keeps every column when tracking is on', () => {
     expect(withoutTrackingColumns(columns, true)).toEqual(columns)
+  })
+})
+
+describe('canStartTracking', () => {
+  test('needs both the flag and the right to change the project', () => {
+    const flags = { tracking: true }
+    expect(canStartTracking({ canUpdate: true, featureFlags: flags })).toBe(
+      true
+    )
+    expect(canStartTracking({ canUpdate: false, featureFlags: flags })).toBe(
+      false
+    )
+    expect(canStartTracking({ canUpdate: true, featureFlags: {} })).toBe(false)
+    expect(canStartTracking(undefined)).toBe(false)
   })
 })
