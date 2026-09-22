@@ -696,6 +696,7 @@ REGROUP_STAGE_PARAM_NAMES = (
     "Events created",
     "Events touched",
     "Empty events deleted",
+    "Tracks split at a session boundary",
     "Duplicate timestamps",
     "Ungrouped captures",
     "Captures missing timestamp",

@@ -1650,6 +1650,8 @@ def _group_images_into_events_locked(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
+    tracks_split_count = _split_tracks_at_session_boundaries(deployment, job)
+
     # Realign Occurrence.event_id with each occurrence's detections' current
     # source_image.event_id. Occurrences are bound to an event once at creation
     # time (Detection.associate_new_occurrence and Pipeline.save_results both
@@ -1730,6 +1732,7 @@ def _group_images_into_events_locked(
             "Events created": events_created_count,
             "Events touched": len(touched_event_pks),
             "Empty events deleted": events_deleted_empty,
+            "Tracks split at a session boundary": tracks_split_count,
             "Duplicate timestamps": duplicate_timestamp_count,
             "Ungrouped captures": ungrouped_captures_count,
             "Captures missing timestamp": no_timestamp_captures_count,
@@ -1740,6 +1743,35 @@ def _group_images_into_events_locked(
         job.save()
 
     return events
+
+
+def _split_tracks_at_session_boundaries(deployment: Deployment, job: "Job | None") -> int:
+    """Split every occurrence in the deployment whose detections now span several sessions.
+
+    Users expect one occurrence per session, so a regroup that draws a session boundary
+    through a track leaves one piece per session. Returns how many occurrences were split.
+    """
+    from ami.main.models_future.tracks import split_at_session_boundaries
+
+    spanning_ids = list(
+        Detection.objects.valid()
+        .filter(occurrence__deployment=deployment)
+        .values("occurrence_id")
+        .annotate(sessions=models.Count("source_image__event", distinct=True))
+        .filter(sessions__gt=1)
+        .values_list("occurrence_id", flat=True)
+    )
+    split_count = 0
+    for occurrence in Occurrence.objects.filter(pk__in=spanning_ids).order_by("pk"):
+        pieces = split_at_session_boundaries(occurrence)
+        if not pieces:
+            continue
+        split_count += 1
+        (job.logger if job else logger).info(
+            f"Split occurrence {occurrence.pk} at a session boundary; "
+            f"new occurrence(s) {[piece.pk for piece in pieces]} hold the later sessions."
+        )
+    return split_count
 
 
 def deployment_events_need_update(deployment: Deployment) -> bool:
