@@ -147,6 +147,13 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     },
   },
   {
+    label: translate(STRING.TRACK_GROUPING_CONFIRMED),
+    field: 'grouping_verified',
+    tooltip: {
+      text: translate(STRING.TRACK_GROUPING_FILTER_TOOLTIP),
+    },
+  },
+  {
     label: 'Processing status',
     field: 'processed',
     tooltip: {

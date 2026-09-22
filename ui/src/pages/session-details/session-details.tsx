@@ -21,9 +21,11 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
+import { OccurrenceTimelineMarkers } from './activity-plot/occurrence-timeline-markers'
 import { CaptureInfo } from './capture-info'
 import { CaptureNavigation } from './capture-navigation'
 import { Capture } from './capture/capture'
+import { ExtendTrackBanner, useExtendTrack } from './capture/extend-track'
 import { useActiveCaptureId } from './hooks/useActiveCapture'
 import { useActiveOccurrences } from './hooks/useActiveOccurrences'
 import { Process } from './process/process'
@@ -31,7 +33,8 @@ import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
-import { ViewSettings } from './view-settings'
+import { getNextCaptureWithDetectionsId, showSessionTimeline } from './utils'
+import { ViewSettings, ViewSettingsValues } from './view-settings'
 import { ZoomSettings } from './zoom-settings'
 
 const TABS = {
@@ -86,14 +89,16 @@ const Content = ({ session }: { session: SessionDetails }) => {
   // Settings
   const [poll, setPoll] = useState(false)
   const transformRef = useRef<ReactZoomPanPinchRef>(null)
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<ViewSettingsValues>({
     defaultFilters: true,
     showDetections: true,
+    showPathCrops: true,
   })
 
   // Data
   const { projectId } = useParams()
   const { user } = useUser()
+  const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
@@ -103,6 +108,17 @@ const Content = ({ session }: { session: SessionDetails }) => {
     projectId: projectId as string,
   })
   const { timeline = [] } = useSessionTimeline(session.id)
+  const extend = useExtendTrack({
+    captureId: activeCaptureId,
+    nextCaptureId: activeCapture
+      ? getNextCaptureWithDetectionsId({ capture: activeCapture, timeline })
+      : undefined,
+    onSelectCapture: setActiveCaptureId,
+  })
+  // While extending, the track being built is the only selection.
+  const timelineOccurrenceIds = extend.occurrenceId
+    ? [extend.occurrenceId]
+    : activeOccurrences
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
@@ -163,12 +179,31 @@ const Content = ({ session }: { session: SessionDetails }) => {
           </Tabs.Root>
         </Box>
         <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
+          {extend.occurrenceId ? (
+            <ExtendTrackBanner
+              captureDate={activeCapture?.date}
+              captureId={activeCapture?.id}
+              extend={extend}
+              occurrenceId={extend.occurrenceId}
+              onSelectCapture={setActiveCaptureId}
+            />
+          ) : null}
           <div className="grow flex items-center justify-center bg-foreground">
             <Capture
+              captureDate={activeCapture?.date}
+              captureId={activeCaptureId}
               defaultFilters={settings.defaultFilters}
               detections={activeCapture?.detections ?? []}
+              extend={extend}
               height={activeCapture?.height ?? session.firstCapture.height}
+              onTogglePathCrops={() =>
+                setSettings((current) => ({
+                  ...current,
+                  showPathCrops: !current.showPathCrops,
+                }))
+              }
               showDetections={settings.showDetections}
+              showPathCrops={settings.showPathCrops}
               sources={
                 activeCapture
                   ? {
@@ -230,19 +265,30 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </div>
           </div>
         </div>
-        <div className="p-2 bg-background rounded-lg border border-border overflow-hidden xl:col-span-2 md:p-4">
-          <ActivityPlot
-            session={session}
-            setActiveCaptureId={setActiveCaptureId}
-            timeline={timeline}
-          />
-          <TimelineSlider
-            activeCapture={activeCapture}
-            session={session}
-            setActiveCaptureId={setActiveCaptureId}
-            timeline={timeline}
-          />
-        </div>
+        {showSessionTimeline(session) ? (
+          <div className="p-2 bg-background rounded-lg border border-border overflow-hidden xl:col-span-2 md:p-4">
+            <ActivityPlot
+              session={session}
+              setActiveCaptureId={setActiveCaptureId}
+              timeline={timeline}
+            >
+              {timelineOccurrenceIds.length ? (
+                <OccurrenceTimelineMarkers
+                  occurrenceIds={timelineOccurrenceIds}
+                  session={session}
+                  setActiveCaptureId={setActiveCaptureId}
+                  timeline={timeline}
+                />
+              ) : null}
+            </ActivityPlot>
+            <TimelineSlider
+              activeCapture={activeCapture}
+              session={session}
+              setActiveCaptureId={setActiveCaptureId}
+              timeline={timeline}
+            />
+          </div>
+        ) : null}
       </div>
     </>
   )

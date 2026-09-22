@@ -12,6 +12,8 @@ interface IdentificationCard {
   open?: boolean
   subTitle?: string
   title: string
+  /** Rendered inline after the title, e.g. a badge qualifying it. */
+  titleAddon?: ReactNode
   onTitleClick?: () => void
 }
 
@@ -24,6 +26,7 @@ export const IdentificationCard = ({
   open,
   subTitle,
   title,
+  titleAddon,
   onTitleClick,
 }: IdentificationCard) => (
   <div className="border border-border rounded-xl overflow-hidden">
@@ -33,16 +36,19 @@ export const IdentificationCard = ({
           {avatar}
         </div>
         <div className="grid">
-          <span
-            tabIndex={onTitleClick ? 0 : -1}
-            className={cn('pt-0.5 body-base text-foreground', {
-              'font-medium text-primary-600 hover:opacity-70 hover:cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2':
-                onTitleClick,
-            })}
-            onClick={onTitleClick}
-          >
-            {title}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              tabIndex={onTitleClick ? 0 : -1}
+              className={cn('pt-0.5 body-base text-foreground', {
+                'font-medium text-primary-600 hover:opacity-70 hover:cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2':
+                  onTitleClick,
+              })}
+              onClick={onTitleClick}
+            >
+              {title}
+            </span>
+            {titleAddon}
+          </div>
           {subTitle?.length ? (
             <span className="pt-0.5 body-small text-muted-foreground">
               {subTitle}
