@@ -29,7 +29,12 @@ from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, Threshold
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
+from ami.base.permissions import (
+    IsActiveStaffOrReadOnly,
+    IsProjectMemberOrReadOnly,
+    ObjectPermission,
+    TrackingEnabled,
+)
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
@@ -1730,18 +1735,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def get_permissions(self):
         # The viewset as a whole is staff-only for writes. Track edits are the
         # exception: they are a curation tool, gated per object by
-        # Occurrence.check_custom_permission on the project's occurrence rights.
-        if self.action in (
-            "split_track",
-            "remove_detection",
-            "merge",
-            "merge_candidates",
-            "capture_matches",
-            "add_detections",
-            "verify_grouping",
-            "unverify_grouping",
-        ):
-            return [ObjectPermission()]
+        # Occurrence.check_custom_permission on the project's occurrence rights,
+        # and only on projects that have opted into tracking.
+        if self.action in self.TRACK_EDIT_ACTIONS:
+            return [ObjectPermission(), TrackingEnabled()]
         return super().get_permissions()
 
     def _detection_in_track(self, request: Request, occurrence: Occurrence) -> Detection:

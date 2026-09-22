@@ -65,6 +65,26 @@ class TestEventAdminTrackingAction(_TrackingAdminCase):
         self.assertIn(b'name="cost_threshold"', response.content)
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
 
+    def test_confirmation_page_says_when_the_project_has_not_enabled_tracking(self):
+        """Staff may run tracking regardless of the flag, but are told members cannot yet edit the result."""
+        self.project.feature_flags.tracking = False
+        self.project.save(update_fields=["feature_flags"])
+        response = self._post({})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Tracking is not enabled for")
+
+        self.project.feature_flags.tracking = True
+        self.project.save(update_fields=["feature_flags"])
+        response = self._post({})
+        self.assertNotContains(response, "Tracking is not enabled for")
+
+    def test_runs_even_when_the_project_has_not_enabled_tracking(self):
+        self.project.feature_flags.tracking = False
+        self.project.save(update_fields=["feature_flags"])
+        response = self._post(self._knobs())
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Job.objects.filter(job_type_key="post_processing", project=self.project).count(), 1)
+
     def test_creates_one_job_per_project_carrying_its_own_events(self):
         other_project, other_deployment = setup_test_project(reuse=False)
         create_captures(deployment=other_deployment, num_nights=1, images_per_night=2, interval_minutes=1)
