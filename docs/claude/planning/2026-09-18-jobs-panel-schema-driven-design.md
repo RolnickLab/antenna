@@ -1,7 +1,7 @@
 # Jobs panel: pick a job type, configure it from its schema — Design
 
-**Status:** proposal, not yet approved
-**Date:** 2026-09-18
+**Status:** direction agreed 2026-09-22 &mdash; build approach A first, scoped to the v1 slice in §4
+**Date:** 2026-09-18, decision added 2026-09-22
 **Supersedes the "future work" section of:** `docs/claude/planning/2026-05-01-post-processing-admin-scaffolding-design.md`
 **Related:** #954 (closed, post-processing framework), #1289 (closed, admin scaffolding), #999 (closed, class masking), #1368 (closed, re-runnable masking), #1377 + #1404 (open, class masking fixes), #1272 (open, tracking), #1361 (open, rank rollup), #1369 (open, capture-set sampling args 500)
 
@@ -14,6 +14,32 @@ post-processing task, or a new knob on an existing one, should require no fronte
 
 Non-goals for this design: replacing the Django admin trigger (it keeps working, on the same
 schemas), scheduling/recurring jobs, and editing a job's config after creation.
+
+---
+
+## 0. Decision &mdash; 2026-09-22
+
+**The immediate need: class masking and the other post-processing methods have to be runnable from
+the UI at all.** Today they are Django admin actions, so in practice only superusers can run them.
+Everything in §4's v1 slice exists to make that one sentence true; everything else waits.
+
+**Build approach A first: one Create Job dialog that any job type can appear in.**
+
+- **Every job type gets a home by construction.** Registering a task in `POSTPROCESSING_TASKS` (or
+  adding a `JobType`) makes it creatable from the Jobs page the same day, with no frontend work.
+  That property is what stops the next task from shipping admin-only, the way the last four did.
+- **A has the least context, so it must ask for the most.** It cannot infer scope from the page it
+  sits on, so the descriptor has to describe scope fully and the form has to render all of it.
+  Build that first and every contextual surface is a *subset* of it, never an extension of it.
+- **D (run from the data page) comes later and reuses the same form**, with scope prefilled and
+  locked. `SchemaForm` therefore takes `prefilled` / `locked` props from the start, even though A
+  never passes them.
+- **B (the catalog) is what A's job-type field grows into**, not a separate panel: when the list
+  stops fitting in a select, that one field becomes a grouped, searchable rail with descriptions.
+  No API change is involved in the move.
+
+A stays the fallback home afterwards: the surface with the most configuration exposed and the least
+inferred from context. A job type is never *unavailable* &mdash; at worst it is inelegant there.
 
 ---
 
@@ -356,6 +382,15 @@ New files, following `ui/AGENTS.md` (kebab-case, `Server<Entity>` types, one hoo
   collapsed under "Advanced" when every field has a default. `useCreateJob` stops hand-mapping five
   names and posts the assembled payload.
 
+`SchemaForm` and the scope block are one unit with two hosts. It takes `prefilled` and `locked`
+props from the first commit: approach A passes neither, and the contextual entry points of phase 6
+pass the scope the page already knows, rendered as a locked chip with a "Change" affordance. Adding
+a host must never mean re-deriving how a job type's fields are laid out.
+
+In v1 the selector offers post-processing only, and choosing "ML pipeline" falls through to the
+existing hardcoded fields. That keeps the daily-use path off the new code until the generated form
+has run in production against the simpler types.
+
 **One convention exception to agree on:** field labels and help text come from the server schema, not
 from `translate(STRING.*)`. The alternative — a `STRING` key per task field — puts the copy in a
 different repo location from the validation it describes and guarantees drift for any task added
@@ -374,19 +409,45 @@ most-requested thing after "run it at all", and nearly free once §3.5 exists.
 
 ## 4. Phasing
 
-Each phase is a PR-sized deliverable that leaves main working.
+Phases 1&ndash;4 are the **v1 slice**: a project member with the right role can run class masking,
+small size filter, rank rollup or tracking from the Jobs page. Nothing else is in v1.
 
-| Phase | Deliverable | Notes |
+| Phase | Deliverable | Why it is in v1 |
 |---|---|---|
-| **0** | Move each task's field comments into `Field(title=..., description=...)`; add `gt`/`lt` where a `@validator` encodes a bound that JSON Schema can express | No behaviour change; makes every later phase's output legible. Keep the root validators — they stay the authority |
-| **1** | `JobType` descriptor attributes + `GET /jobs/types/` + `run_post_processing_job` granted to `MLDataManager`/`ProjectManager` | Backend only; admin actions untouched. Permission matrix test per the API checklist |
-| **2** | Writable, schema-validated `params` on create; shared pydantic→DRF error mapper lifted from `actions.py` | The API can now create a class-masking job. Verify admin and API produce identical `params` |
-| **3** | `SchemaForm` + new Create Job panel, post-processing first | ML keeps its current scope fields; gains the config section |
-| **4** | Per-job pipeline config merge (§3.6) + read-back + re-run | Touches both dispatch paths — needs the async chaos runbook (`docs/claude/debugging/chaos-scenarios.md`) |
-| **5** | Migrate capture-set sampling to the same mechanism | Retires the hardcoded kwargs union and the bug class behind #1369 |
+| **1** | Field copy onto the schemas: comments &rarr; `Field(title=..., description=...)`, plus `gt`/`lt` wherever a `@validator` encodes a bound JSON Schema can carry | Otherwise the generated form is labelled "Source Image Collection Id" with no help text (§2, item 1) |
+| **2** | `JobType` descriptors + `GET /jobs/types/` + grant `run_post_processing_job` to `MLDataManager` and `ProjectManager` | The panel cannot list what it may run; without the grant the feature stays superuser-only and the release is pointless (§1.7) |
+| **3** | Writable, schema-validated `params` on create; pydantic&rarr;DRF error mapper lifted from `actions.py:69` | `Job.params` is not writable today, so no task config can reach the API |
+| **4** | `SchemaForm` + a job-type selector in the existing dialog (approach A), **post-processing types only** | The UI itself. The ML branch keeps its current bespoke fields untouched in v1 |
 
-Phases 1–2 unblock #1272 and #1361 from writing another Django form: both can ship their task with an
-annotated schema and no form file at all.
+Then, in rough order of value:
+
+| Phase | Deliverable |
+|---|---|
+| **5** | `params` readable on the job detail page, and "run again with these settings" |
+| **6** | Contextual entry points (approach D): a Run menu on capture sets, sessions and occurrences opening the same form with scope prefilled and locked |
+| **7** | ML pipeline config in the panel + the per-job override merge (§3.6) |
+| **8** | The job-type catalog (approach B) as the grown-up selector, once the list outgrows a select |
+| **9** | Capture-set sampling migrated onto the same mechanism, retiring the hardcoded kwargs union behind #1369 |
+
+Phases 2&ndash;3 also unblock #1272 and #1361 from writing another Django admin form: both can ship
+their task with an annotated schema and no form file at all.
+
+### Explicitly cut from v1
+
+- **ML pipeline config editing** (phase 7). ML jobs keep behaving exactly as they do now; the ML
+  branch of the dialog is not touched, so v1 cannot regress the one path that is in daily use.
+- **Impact counts / dry run** (approach C's review step). A warning strip carrying the in-scope
+  classification count is enough, and that count is one cheap query rather than a new endpoint.
+- **Bulk runs.** The admin creates one Job per selected row; the panel creates one Job.
+- **Exports as a variant.** `DataExportJob` keeps its own page and its own `DataExport` row.
+
+### The one decision phase 2 needs from a human
+
+`run_post_processing_job` exists but is granted to no role (§1.7). The v1 plan assumes it goes to
+`MLDataManager` and `ProjectManager` &mdash; the roles that can already run ML jobs, which reprocess
+the same data. Class masking rewrites classifications (originals demoted, not deleted), so if that
+is judged a wider blast radius than ML reprocessing, the alternative is a new role, and that choice
+has to be made before phase 2 ships rather than after.
 
 ---
 
