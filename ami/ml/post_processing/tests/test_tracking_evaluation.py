@@ -2,12 +2,21 @@ import contextlib
 import csv
 import io
 import json
+import logging
 import pathlib
 import tempfile
 
-from django.test import SimpleTestCase
+from django.core.management import CommandError, call_command
+from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 
+from ami.main.models import Classification, Detection, Event, Occurrence
 from ami.ml.post_processing.tracking_evaluation import evaluate_csv_files, evaluate_tracks, main, tracks_from_links
+from ami.ml.post_processing.tracking_task import TrackingConfig, TrackingTask, propose_event_links
+from ami.tests.fixtures.main import create_taxa, setup_test_project
+from ami.tests.fixtures.tracking import create_tracking_session
+
+logger = logging.getLogger(__name__)
 
 # Three confirmed tracks: A has four detections, B two, C one. B runs alongside A in time.
 GROUND_TRUTH = {1: "A", 2: "A", 3: "A", 4: "A", 5: "B", 6: "B", 7: "C"}
@@ -141,3 +150,88 @@ class TestCsvAdapter(SimpleTestCase):
         with contextlib.redirect_stdout(output):
             main(["--ground-truth", self.ground_truth, "--predictions", self.predictions, "--format", "json"])
         self.assertEqual(json.loads(output.getvalue())["pairwise_recall"], 1 / 3)
+
+
+class TestEvaluateTrackingCommand(TestCase):
+    """The command scores a fresh re-link of confirmed sessions and never changes stored data."""
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.ground_truth = create_tracking_session(
+            self.deployment,
+            taxa_list=create_taxa(self.project),
+            num_frames=8,
+            num_moths=3,
+            num_transient_moths=2,
+            min_frames_per_moth=4,
+            create_crops=False,
+        )
+        self.event = Event.objects.get(pk=self.ground_truth.event_id)
+
+    def _track_and_confirm(self) -> None:
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.4).run()
+        Occurrence.objects.filter(event=self.event).update(grouping_verified_at=timezone.now())
+
+    def _snapshot(self) -> dict:
+        return {
+            "detections": list(
+                Detection.objects.filter(source_image__event=self.event)
+                .order_by("pk")
+                .values_list("pk", "occurrence_id", "next_detection_id")
+            ),
+            "occurrences": list(
+                Occurrence.objects.filter(event=self.event)
+                .order_by("pk")
+                .values_list("pk", "determination_id", "grouping_verified_at", "updated_at")
+            ),
+            "occurrence_count": Occurrence.objects.count(),
+            "classification_count": Classification.objects.count(),
+        }
+
+    def _run(self, *args: str) -> dict:
+        output = io.StringIO()
+        call_command("evaluate_tracking", "--project", str(self.project.pk), "--format", "json", *args, stdout=output)
+        return json.loads(output.getvalue())
+
+    def test_proposed_links_are_the_links_a_tracking_run_saves(self):
+        config = TrackingConfig(event_ids=[self.event.pk], require_features=False, cost_threshold=0.4)
+        proposed = {(a, b) for a, b, _ in propose_event_links(self.event, None, config, logger)}
+        self.assertFalse(
+            Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).exists()
+        )
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.4).run()
+        saved = set(
+            Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).values_list(
+                "pk", "next_detection_id"
+            )
+        )
+        self.assertTrue(proposed)
+        self.assertEqual(proposed, saved)
+
+    def test_confirmed_tracks_rebuilt_exactly_score_perfectly_and_nothing_is_written(self):
+        self._track_and_confirm()
+        before = self._snapshot()
+
+        report = self._run("--no-require-features", "--cost-threshold", "0.4")
+
+        self.assertEqual(self._snapshot(), before)
+        overall = report["overall"]
+        self.assertEqual(overall["ground_truth_tracks"], len(self.ground_truth.insects))
+        self.assertEqual(overall["exactly_recovered"], len(self.ground_truth.insects))
+        self.assertEqual((overall["pairwise_f1"], overall["link_f1"]), (1.0, 1.0))
+        self.assertEqual([entry["event_id"] for entry in report["events"]], [self.event.pk])
+
+    def test_predictions_come_from_relinking_not_from_the_stored_tracks(self):
+        self._track_and_confirm()
+        before = self._snapshot()
+
+        # A threshold nothing passes links nothing, although the stored tracks are perfect.
+        report = self._run("--no-require-features", "--cost-threshold", "0")
+
+        self.assertEqual(self._snapshot(), before)
+        self.assertEqual(report["overall"]["pairwise_recall"], 0.0)
+        self.assertEqual(report["events"][0]["links_proposed"], 0)
+
+    def test_sessions_without_confirmed_tracks_are_refused(self):
+        with self.assertRaises(CommandError):
+            self._run()

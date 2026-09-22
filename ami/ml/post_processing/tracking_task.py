@@ -1,7 +1,7 @@
 import logging
 import math
 import typing
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
 import numpy as np
 import pydantic
@@ -437,6 +437,46 @@ def select_links(
     return links
 
 
+def select_transition_links(
+    current_detections: Sequence[Detection],
+    next_detections: Sequence[Detection],
+    image_width: int,
+    image_height: int,
+    cost_threshold: float,
+    algorithm: Algorithm | None,
+    require_features: bool = True,
+) -> list[tuple[Detection, Detection, float]]:
+    """The links tracking makes between two adjacent captures, reading embeddings but saving nothing."""
+    vectors: dict[int, typing.Any] = {}
+    if algorithm is not None:
+        vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
+    return select_links(
+        current_detections,
+        next_detections,
+        vectors,
+        image_diagonal(image_width, image_height),
+        cost_threshold,
+        require_features,
+    )
+
+
+def save_links(links: Iterable[tuple[Detection, Detection, float]], logger: logging.Logger) -> None:
+    """Store each link as ``next_detection``, first detaching any other detection pointing at the target."""
+    for det, nxt, cost in links:
+        # Detach any existing inbound link to `nxt` before reassigning.
+        try:
+            prior: Detection | None = nxt.previous_detection
+        except Detection.DoesNotExist:
+            prior = None
+        if prior is not None:
+            prior.next_detection = None
+            prior.save()
+
+        det.next_detection = nxt
+        det.save()
+        logger.debug(f"Linked detection {det.id} -> {nxt.id} (cost {cost:.4f})")
+
+
 def pair_detections(
     current_detections: list[Detection],
     next_detections: list[Detection],
@@ -456,33 +496,70 @@ def pair_detections(
     With ``require_features=False``, detections that carry no embedding are still
     matched, on geometry alone. Returns the number of links created.
     """
-    vectors: dict[int, typing.Any] = {}
-    if algorithm is not None:
-        vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
-    links = select_links(
+    links = select_transition_links(
         current_detections,
         next_detections,
-        vectors,
-        image_diagonal(image_width, image_height),
+        image_width,
+        image_height,
         cost_threshold,
+        algorithm,
         require_features,
     )
-
-    for det, nxt, cost in links:
-        # Detach any existing inbound link to `nxt` before reassigning.
-        try:
-            prior: Detection | None = nxt.previous_detection
-        except Detection.DoesNotExist:
-            prior = None
-        if prior is not None:
-            prior.next_detection = None
-            prior.save()
-
-        det.next_detection = nxt
-        det.save()
-        logger.debug(f"Linked detection {det.id} -> {nxt.id} (cost {cost:.4f})")
-
+    save_links(links, logger)
     return len(links)
+
+
+def iter_transition_links(
+    source_images: Sequence[SourceImage],
+    algorithm: Algorithm | None,
+    config: TrackingConfig,
+    logger: logging.Logger,
+) -> Iterator[list[tuple[Detection, Detection, float]] | None]:
+    """Yield the proposed links for each pair of consecutive captures, in order, saving nothing.
+
+    Yields None for a transition skipped because the earlier capture has no dimensions. The
+    generator is lazy, so a caller that saves each transition's links before asking for the
+    next one sees detections as they stand after its own writes.
+    """
+    transitions = len(source_images) - 1
+    for i in range(transitions):
+        cur = source_images[i]
+        nxt = source_images[i + 1]
+        if not cur.width or not cur.height:
+            logger.warning(
+                f"Image {cur.pk} has no dimensions; skipping transition {i + 1}/{transitions} "
+                f"for event {cur.event_id}."
+            )
+            yield None
+            continue
+        yield select_transition_links(
+            list(cur.detections.valid()),
+            list(nxt.detections.valid()),
+            image_width=cur.width,
+            image_height=cur.height,
+            cost_threshold=config.cost_threshold,
+            algorithm=algorithm,
+            require_features=config.require_features,
+        )
+
+
+def propose_event_links(
+    event: Event,
+    algorithm: Algorithm | None,
+    config: TrackingConfig,
+    logger: logging.Logger,
+) -> list[tuple[int, int, float]]:
+    """The ``(detection_id, next_detection_id, cost)`` links a tracking run would make in one
+    event, treating every detection as unlinked and writing nothing.
+
+    Tracking runs choose links the same way (``iter_transition_links``), so an evaluation
+    built on this scores what the task would do on the same detections.
+    """
+    source_images = list(event.captures.order_by("timestamp"))
+    links: list[tuple[int, int, float]] = []
+    for transition in iter_transition_links(source_images, algorithm, config, logger):
+        links.extend((det.pk, nxt.pk, cost) for det, nxt, cost in transition or [])
+    return links
 
 
 def assign_occurrences_by_tracking_images(
@@ -504,30 +581,13 @@ def assign_occurrences_by_tracking_images(
     # Per-event atomic boundary: a crash mid-event rolls back chain links + occurrence
     # consolidation for THIS event only, leaving other events in the job intact.
     with transaction.atomic():
-        for i in range(transitions):
-            cur = source_images[i]
-            nxt = source_images[i + 1]
-
-            if not cur.width or not cur.height:
-                logger.warning(
-                    f"Image {cur.pk} has no dimensions; skipping transition {i + 1}/{transitions} "
-                    f"for event {event.pk}."
-                )
+        transition_links = iter_transition_links(source_images, algorithm, config, logger)
+        for i, proposed in enumerate(transition_links):
+            if proposed is None:
                 skipped_transitions += 1
-                if progress_cb:
-                    progress_cb((i + 1) / transitions)
-                continue
-
-            links += pair_detections(
-                list(cur.detections.valid()),
-                list(nxt.detections.valid()),
-                image_width=cur.width,
-                image_height=cur.height,
-                cost_threshold=config.cost_threshold,
-                algorithm=algorithm,
-                logger=logger,
-                require_features=config.require_features,
-            )
+            else:
+                save_links(proposed, logger)
+                links += len(proposed)
             if progress_cb:
                 progress_cb((i + 1) / transitions)
 
