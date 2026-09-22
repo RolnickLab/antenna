@@ -233,7 +233,7 @@ change is spot-checking.
 
 ### Two invariants every operation upholds
 
-- **A chain link never crosses an occurrence boundary.** If a `next_detection` link
+- **A chain link never crosses an occurrence boundary within one session.** If a `next_detection` link
   survives across a human's split, the next tracking pass walks that chain and re-merges
   what they separated. `_cut_links_leaving()` cuts the links leaving any moved set.
 - **Any edit that changes the detection set clears verification.** A person confirmed the
@@ -254,6 +254,39 @@ confirming is an expert judgement rather than a restructuring, but the roles tha
 restructure do not inherit identifying rights and must be able to confirm their own
 corrections. `MLDataManager` holds `DELETE_OCCURRENCES` but not `CREATE_IDENTIFICATION`,
 which is what forced the `or`.
+
+## Regrouping sessions and tracks
+
+A regroup (`_group_images_into_events_locked`, `ami/main/models.py`) can draw a session
+boundary through a tracked occurrence. Just before it realigns `Occurrence.event_id`, it
+finds occurrences whose valid detections span more than one `source_image.event_id` (one
+aggregate query, `_split_tracks_at_session_boundaries`) and splits each with
+`split_at_session_boundaries()` (`ami/main/models_future/tracks.py`). Product decisions:
+
+- One piece per session; each piece's `event` is its own detections' session. The earliest
+  piece keeps the original row and its identifications.
+- Grouping confirmation is **kept** on every piece (a manual split clears it): each piece is
+  still the whole track within its session.
+- Identifications are **copied** to each later piece via `bulk_create` (skipping
+  `Identification.save()`, which would withdraw the user's other IDs), with the original
+  `created_at` written afterwards (`auto_now_add`) and a "Copied from occurrence N…" note in
+  the comment. Determinations are recomputed with `update_occurrence_determination`.
+- The `next_detection` link between pieces is **kept** to record that they are one animal.
+  So the chain walk in `assign_occurrences_from_detection_chains` stops at a detection in
+  another session, and a detection linked from another session starts its own chain.
+  Pairing only ever links consecutive captures of one event, so it never creates such a link.
+- `event_is_fresh` finds occurrences through detections' captures, not `Occurrence.event`.
+- The regroup stage reports `Tracks split at a session boundary` (key
+  `tracks_split_at_a_session_boundary`; stage param keys use underscores). A second regroup
+  with no changes splits nothing.
+
+`_move_to_new_occurrence` gives every new occurrence (manual split, detach, regroup split)
+the session of its first detection's capture, not the original occurrence's.
+
+Known gap: `merge_occurrences` / `add_detections` call `_cut_links_leaving`, which also cuts
+a kept cross-session link if a person edits one of the pieces.
+
+Tests: `TestRegroupSplitsTracks` in `ami/main/tests.py`.
 
 ## Gotchas
 
