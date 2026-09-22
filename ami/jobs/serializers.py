@@ -13,7 +13,11 @@ from ami.main.api.serializers import (
 )
 from ami.main.models import Deployment, Event, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.ml.post_processing.registry import (
+    MEMBER_POST_PROCESSING_TASKS,
+    get_postprocessing_task,
+    staff_only_config_fields,
+)
 from ami.ml.post_processing.tracking_task import TrackingConfig, TrackingTask
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
@@ -53,12 +57,6 @@ class JobTypeSerializer(serializers.Serializer):
     key = serializers.SlugField(read_only=True)
 
 
-# Post-processing tasks a project member may start through the jobs API. The others
-# are staff tools started from the Django admin, and their scopes are not checked
-# against the job's project here.
-API_POST_PROCESSING_TASKS = {TrackingTask.key}
-
-
 def _pydantic_messages(exc: pydantic.ValidationError) -> list[str]:
     messages = []
     for err in exc.errors():
@@ -81,7 +79,7 @@ def validate_post_processing_params(project: Project | None, params) -> dict:
     task_cls = get_postprocessing_task(task_key) if isinstance(task_key, str) else None
     if task_cls is None:
         raise serializers.ValidationError({"params": {"task": f"Unknown post-processing task {task_key!r}."}})
-    if task_key not in API_POST_PROCESSING_TASKS:
+    if task_key not in MEMBER_POST_PROCESSING_TASKS:
         raise serializers.ValidationError(
             {"params": {"task": f"The {task_cls.name} task cannot be started through the API."}}
         )
@@ -91,6 +89,11 @@ def validate_post_processing_params(project: Project | None, params) -> dict:
     config = params.get("config") or {}
     if not isinstance(config, dict):
         raise serializers.ValidationError({"params": {"config": "Must be an object."}})
+    staff_only = staff_only_config_fields(task_key, config)
+    if staff_only:
+        raise serializers.ValidationError(
+            {"params": {"config": [f"{name}: Only staff can change this setting." for name in staff_only]}}
+        )
     try:
         model = task_cls.config_schema(**config)
     except pydantic.ValidationError as exc:
