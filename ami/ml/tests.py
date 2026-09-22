@@ -3157,3 +3157,59 @@ class TestTaxonDetailPredictedByAlgorithmsQueryCount(AlgorithmTaxonVisibilityTes
         # per algorithm. A regression that queries per algorithm row would grow this
         # count with the fixture's algorithm count (currently 3).
         self.assertEqual(len(ctx.captured_queries), 15, "\n".join(q["sql"] for q in ctx.captured_queries))
+
+
+class TestManagedTaxaListSkipsDescendantExpansion(APITestCase):
+    """A managed taxa list (TaxaList.is_managed) always matches exact membership for
+    ?taxa_list_id=, ignoring include_descendants — see the note in
+    TaxonTaxaListFilter._get_filter(). A curated (unmanaged) list keeps the original
+    descendant-expansion behavior; that's a real feature there, unaffected by this rule.
+
+    Both lists have the same shape — containing only the parent taxon, with a child
+    (parents_json pointing at the parent) left out — so the only variable is
+    is_managed.
+    """
+
+    def setUp(self):
+        from ami.main.models import TaxaList
+
+        self.user = User.objects.create_user(email="managed-descendants@example.com", is_staff=True)  # type: ignore
+        self.project = Project.objects.create(name="Managed Descendants Project", create_defaults=False)
+
+        self.parent = Taxon.objects.create(name="Managed Descendants Genus", rank=TaxonRank.GENUS.name)
+        self.child = Taxon.objects.create(
+            name="Managed Descendants Species", rank=TaxonRank.SPECIES.name, parent=self.parent
+        )
+        self.child.update_parents()
+        self.parent.projects.add(self.project)
+        self.child.projects.add(self.project)
+
+        self.managed_list = TaxaList.objects.create(name="Managed Descendants Managed List")
+        self.managed_list.taxa.add(self.parent)
+        Algorithm.objects.create(name="Managed Descendants Algo", version=1, taxa_list=self.managed_list)
+
+        self.unmanaged_list = TaxaList.objects.create(name="Managed Descendants Curated List")
+        self.unmanaged_list.taxa.add(self.parent)
+
+        self.client.force_authenticate(self.user)
+
+    def _taxon_names(self, taxa_list_id):
+        url = reverse_with_params(
+            "api:taxon-list",
+            params={"project_id": self.project.pk, "taxa_list_id": taxa_list_id, "include_unobserved": "true"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_managed_list_returns_only_its_own_taxa(self):
+        """The child is a real descendant (its parents_json contains the parent), but
+        the managed list must not claim the algorithm predicts it."""
+        names = self._taxon_names(self.managed_list.pk)
+        self.assertEqual(names, {self.parent.name})
+
+    def test_unmanaged_curated_list_still_expands_to_descendants(self):
+        """Same shape, but a hand-curated list's descendant expansion is a real,
+        unaffected feature — the fix must not widen past managed lists."""
+        names = self._taxon_names(self.unmanaged_list.pk)
+        self.assertEqual(names, {self.parent.name, self.child.name})
