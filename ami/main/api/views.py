@@ -1122,6 +1122,17 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+class SourceImageUploadPagination(LimitOffsetPaginationWithPermissions):
+    """A larger default page size for the list of a user's own manually uploaded captures.
+
+    Subclassed rather than set directly on the shared `LimitOffsetPaginationWithPermissions`:
+    assigning to that class's `default_limit` would mutate every other endpoint's page size,
+    since it is also the API-wide `DEFAULT_PAGINATION_CLASS`.
+    """
+
+    default_limit = 20
+
+
 class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for uploading images.
@@ -1132,6 +1143,7 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = SourceImageUploadSerializer
     permission_classes = [ObjectPermission]
     require_project = True
+    pagination_class = SourceImageUploadPagination
 
     def get_queryset(self) -> QuerySet:
         # Only allow users to see their own uploads
@@ -1139,10 +1151,6 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
         if self.request.user.pk:
             qs = qs.filter(user=self.request.user)
         return qs
-
-    pagination_class = LimitOffsetPaginationWithPermissions
-    # This is the maximum limit for manually uploaded captures
-    pagination_class.default_limit = 20
 
     def perform_create(self, serializer):
         """
