@@ -2959,3 +2959,201 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class AlgorithmTaxonVisibilityTestBase(APITestCase):
+    """Shared fixture for "which models predict this taxon": TaxonViewSet's
+    algorithm_id filter, AlgorithmViewSet's taxon_id filter, and the taxon detail
+    response's predicted_by_algorithms field.
+
+    One taxon, in one managed taxa list, reached by three algorithms: one offered by a
+    public processing service (visible everywhere), one offered by project A's own
+    service (visible only to A), and one offered by project B's own service (visible
+    only to B — the negative case). A fourth algorithm has no managed list at all.
+    """
+
+    def setUp(self):
+        from ami.main.models import TaxaList
+        from ami.ml.models import ProjectPipelineConfig
+
+        self.user = User.objects.create_user(email="algo-taxon-vis@example.com", is_staff=True)  # type: ignore
+        self.project_a = Project.objects.create(name="Algo Taxon Vis Project A", create_defaults=False)
+        self.project_b = Project.objects.create(name="Algo Taxon Vis Project B", create_defaults=False)
+
+        self.taxon = Taxon.objects.create(name="Algo Taxon Vis Species", rank=TaxonRank.SPECIES.name)
+        # Taxon.visible_for_user() treats a taxon with no project link as superuser-only
+        # (see BaseModel.get_project_accessor()); link it to both projects so the
+        # non-superuser test user can see it, independent of algorithm visibility.
+        self.taxon.projects.add(self.project_a, self.project_b)
+        self.taxa_list = TaxaList.objects.create(name="Algo Taxon Vis Managed List")
+        self.taxa_list.taxa.add(self.taxon)
+
+        self.algo_public = Algorithm.objects.create(name="Algo Public", version=1, taxa_list=self.taxa_list)
+        self.algo_project_a = Algorithm.objects.create(name="Algo Project A", version=1, taxa_list=self.taxa_list)
+        self.algo_project_b = Algorithm.objects.create(name="Algo Project B", version=1, taxa_list=self.taxa_list)
+        self.algo_no_list = Algorithm.objects.create(name="Algo No List", version=1)
+
+        pipeline_public = Pipeline.objects.create(name="Taxon Vis Pipeline Public")
+        pipeline_public.algorithms.add(self.algo_public)
+        ProcessingService.objects.create(name="Taxon Vis PS Public", endpoint_url=None, is_public=True).pipelines.add(
+            pipeline_public
+        )
+
+        pipeline_a = Pipeline.objects.create(name="Taxon Vis Pipeline A")
+        pipeline_a.algorithms.add(self.algo_project_a, self.algo_no_list)
+        ProcessingService.objects.create(name="Taxon Vis PS A", endpoint_url=None).pipelines.add(pipeline_a)
+        ProjectPipelineConfig.objects.create(project=self.project_a, pipeline=pipeline_a, enabled=True)
+
+        pipeline_b = Pipeline.objects.create(name="Taxon Vis Pipeline B")
+        pipeline_b.algorithms.add(self.algo_project_b)
+        ProcessingService.objects.create(name="Taxon Vis PS B", endpoint_url=None).pipelines.add(pipeline_b)
+        ProjectPipelineConfig.objects.create(project=self.project_b, pipeline=pipeline_b, enabled=True)
+
+        self.client.force_authenticate(user=self.user)
+
+
+class TestAlgorithmVisibleToProjectQuerySet(AlgorithmTaxonVisibilityTestBase):
+    """Unit-level pin for Algorithm.objects.visible_to_project(), the one place the
+    three API surfaces below all resolve visibility through."""
+
+    def test_public_algorithm_is_visible_with_no_project(self):
+        names = set(Algorithm.objects.visible_to_project(None).values_list("name", flat=True))
+        self.assertIn("Algo Public", names)
+
+    def test_public_algorithm_is_visible_to_every_project(self):
+        names = set(Algorithm.objects.visible_to_project(self.project_b).values_list("name", flat=True))
+        self.assertIn("Algo Public", names)
+
+    def test_project_scoped_algorithm_is_visible_only_to_its_own_project(self):
+        names_a = set(Algorithm.objects.visible_to_project(self.project_a).values_list("name", flat=True))
+        names_b = set(Algorithm.objects.visible_to_project(self.project_b).values_list("name", flat=True))
+        self.assertIn("Algo Project A", names_a)
+        self.assertNotIn("Algo Project A", names_b)
+
+    def test_no_project_hides_every_project_scoped_algorithm(self):
+        names = set(Algorithm.objects.visible_to_project(None).values_list("name", flat=True))
+        self.assertNotIn("Algo Project A", names)
+        self.assertNotIn("Algo Project B", names)
+
+
+class TestAlgorithmViewSetTaxonIdFilter(AlgorithmTaxonVisibilityTestBase):
+    """AlgorithmViewSet's ?taxon_id= filter: algorithms whose managed list contains
+    the taxon, restricted to what's visible to the active project."""
+
+    def _names(self, **params):
+        url = reverse_with_params("api:algorithm-list", params=params)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_returns_public_and_own_project_algorithms(self):
+        names = self._names(project_id=self.project_a.pk, taxon_id=self.taxon.pk)
+        self.assertEqual(names, {"Algo Public", "Algo Project A"})
+
+    def test_never_includes_another_projects_algorithm(self):
+        """The one negative test that matters: project A never sees project B's
+        algorithm for this taxon, even though it predicts the same species."""
+        names = self._names(project_id=self.project_a.pk, taxon_id=self.taxon.pk)
+        self.assertNotIn("Algo Project B", names)
+
+    def test_with_no_project_id_only_public_algorithms_are_visible(self):
+        names = self._names(taxon_id=self.taxon.pk)
+        self.assertEqual(names, {"Algo Public"})
+
+    def test_invalid_taxon_id_returns_400(self):
+        url = reverse_with_params("api:algorithm-list", params={"taxon_id": "not-a-number"})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TestTaxonAlgorithmIdFilter(AlgorithmTaxonVisibilityTestBase):
+    """TaxonViewSet's ?algorithm_id= filter: taxa in the algorithm's managed list,
+    with the algorithm itself resolved through the shared visibility rule first."""
+
+    def _taxon_ids(self, **params):
+        params.setdefault("include_unobserved", "true")
+        url = reverse_with_params("api:taxon-list", params=params)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["id"] for row in response.json()["results"]}
+
+    def test_returns_the_algorithms_managed_taxa(self):
+        ids = self._taxon_ids(project_id=self.project_a.pk, algorithm_id=self.algo_public.pk)
+        self.assertIn(self.taxon.pk, ids)
+
+    def test_algorithm_private_to_another_project_yields_no_taxa(self):
+        """The negative case from the algorithm's side: asking project A for the taxa
+        of project B's private algorithm resolves the algorithm as invisible, so the
+        result is empty rather than an error or a leak of B's taxa."""
+        ids = self._taxon_ids(project_id=self.project_a.pk, algorithm_id=self.algo_project_b.pk)
+        self.assertEqual(ids, set())
+
+    def test_algorithm_with_no_managed_list_yields_no_taxa_not_an_error(self):
+        response = self.client.get(
+            reverse_with_params(
+                "api:taxon-list", params={"algorithm_id": self.algo_no_list.pk, "include_unobserved": "true"}
+            )
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_invalid_algorithm_id_returns_400(self):
+        url = reverse_with_params("api:taxon-list", params={"algorithm_id": "not-a-number"})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TestTaxonDetailPredictedByAlgorithms(AlgorithmTaxonVisibilityTestBase):
+    """The taxon detail response's predicted_by_algorithms field: only on detail (not
+    list rows), scoped by the same visibility rule as the two filters above."""
+
+    def _detail(self, project):
+        url = reverse_with_params("api:taxon-detail", kwargs={"pk": self.taxon.pk}, params={"project_id": project.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()
+
+    def test_lists_public_and_own_project_algorithms(self):
+        names = {row["name"] for row in self._detail(self.project_a)["predicted_by_algorithms"]}
+        self.assertEqual(names, {"Algo Public", "Algo Project A"})
+
+    def test_never_names_another_projects_algorithm(self):
+        names = {row["name"] for row in self._detail(self.project_a)["predicted_by_algorithms"]}
+        self.assertNotIn("Algo Project B", names)
+
+    def test_row_shape_is_id_name_key_only(self):
+        row = next(r for r in self._detail(self.project_a)["predicted_by_algorithms"] if r["name"] == "Algo Public")
+        self.assertEqual(set(row.keys()), {"id", "name", "key"})
+
+    def test_list_rows_do_not_carry_the_field(self):
+        """The field is deliberately detail-only; TaxonListSerializer has no such cost
+        per row on a page of results."""
+        url = reverse_with_params("api:taxon-list", params={"include_unobserved": "true"})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("predicted_by_algorithms", response.json()["results"][0])
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxonDetailPredictedByAlgorithmsQueryCount(AlgorithmTaxonVisibilityTestBase):
+    """Pins the query count for the taxon detail field against a multi-algorithm
+    fixture, so a future change that makes it per-row (e.g. N+1 through taxa_list) is
+    noticed. Run alone if cachalot state from another test class leaks in — see
+    docs/claude/reference (cachalot_disabled leaks on exception)."""
+
+    def test_query_count_does_not_grow_with_the_number_of_algorithms(self):
+        from cachalot.api import cachalot_disabled
+
+        url = reverse_with_params(
+            "api:taxon-detail", kwargs={"pk": self.taxon.pk}, params={"project_id": self.project_a.pk}
+        )
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["predicted_by_algorithms"]), 2)
+        # Baseline is the existing (pre-predicted_by_algorithms) taxon detail cost, plus
+        # exactly one query for predicted_by_algorithms — a single join across
+        # pipelines/processing_services/project_pipeline_configs/taxa_list/taxa, not one
+        # per algorithm. A regression that queries per algorithm row would grow this
+        # count with the fixture's algorithm count (currently 3).
+        self.assertEqual(len(ctx.captured_queries), 15, "\n".join(q["sql"] for q in ctx.captured_queries))
