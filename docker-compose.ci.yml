@@ -12,8 +12,6 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    volumes:
-      - .:/app:z
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -21,8 +19,10 @@ services:
       - redis
       - minio-init
       - ml_backend
-      - rabbitmq
       - nats
+      - rabbitmq
+    volumes:
+      - .:/app:z
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -39,6 +39,7 @@ services:
 
   redis:
     image: redis:6
+    container_name: ami_ci_redis
 
   nats:
     image: nats:2.10-alpine
@@ -53,9 +54,9 @@ services:
 
   celeryworker:
     <<: *django
+    command: /start-celeryworker
     depends_on:
       - rabbitmq
-    command: /start-celeryworker
 
   rabbitmq:
     image: rabbitmq:3-management

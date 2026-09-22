@@ -21,9 +21,9 @@ services:
     depends_on:
       - postgres
       - redis
-      - nats
       - minio-init
       - ml_backend
+      - nats
       - rabbitmq
     volumes:
       - .:/app:z
