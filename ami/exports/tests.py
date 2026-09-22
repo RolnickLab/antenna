@@ -635,7 +635,7 @@ class TracksExportTest(TestCase):
         self.assertEqual((first["detection_label"], first["detection_score"]), (self.taxon.name, "0.8"))
         self.assertEqual(by_capture[self.captures[1].pk]["image_width"], "")
 
-    def test_grouping_verified_flag_and_verified_only_scope(self):
+    def test_grouping_verified_flag(self):
         from django.utils import timezone
 
         verified = self.occurrences[1]
@@ -646,9 +646,6 @@ class TracksExportTest(TestCase):
         flags = {row["occurrence_id"]: (row["grouping_verified"], row["grouping_verified_at"]) for row in rows}
         self.assertEqual(flags[str(verified.pk)], ("true", verified.grouping_verified_at.isoformat()))
         self.assertEqual(flags[str(self.occurrences[0].pk)], ("false", ""))
-
-        verified_only = self._rows(Occurrence.objects.filter(project=self.project, grouping_verified_at__isnull=False))
-        self.assertEqual({row["occurrence_id"] for row in verified_only}, {str(verified.pk)})
 
     def test_feature_vector_and_next_detection(self):
         from ami.tests.fixtures.tracking import pgvector_is_available
@@ -689,28 +686,61 @@ class TracksExportTest(TestCase):
         self.assertEqual(len(rows), 18)
         self.assertEqual(len(ctx.captured_queries), 4)
 
-    def test_management_command_writes_the_same_csv(self):
+    def _run_command(self, **options) -> tuple[list[dict[str, str]], str]:
         import io
 
         from django.core.management import call_command
 
-        session_id = self.captures[0].event_id
         stdout, stderr = io.StringIO(), io.StringIO()
-        call_command(
-            "export_tracks",
-            project=self.project.pk,
-            events=[session_id],
-            stdout=stdout,
-            stderr=stderr,
-        )
+        call_command("export_tracks", project=self.project.pk, stdout=stdout, stderr=stderr, **options)
         lines = stdout.getvalue().splitlines()
         self.assertEqual(lines[0], self.EXPECTED_HEADER)
-        self.assertEqual(len(lines) - 1, 9)
-        self.assertIn("Wrote 9 detection rows", stderr.getvalue())
+        return list(csv.DictReader(lines)), stderr.getvalue()
 
-        stdout = io.StringIO()
-        call_command("export_tracks", project=self.project.pk, verified_only=True, stdout=stdout, stderr=io.StringIO())
-        self.assertEqual(stdout.getvalue().splitlines(), [self.EXPECTED_HEADER])
+    def test_management_command_writes_the_same_csv(self):
+        rows, summary = self._run_command()
+        self.assertEqual(len(rows), 9)
+        self.assertIn("Wrote 9 detection rows", summary)
+
+    def test_management_command_event_filter(self):
+        import datetime
+
+        from ami.main.models import Event
+
+        first_event = self.captures[0].event
+        other_event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2030-01-01",
+            start=datetime.datetime(2030, 1, 1, 22, 0),
+        )
+        moved = self.occurrences[2]
+        moved.event = other_event
+        moved.save(update_fields=["event"])
+
+        rows, _ = self._run_command(events=[first_event.pk])
+        self.assertEqual(
+            {row["occurrence_id"] for row in rows}, {str(self.occurrences[0].pk), str(self.occurrences[1].pk)}
+        )
+        self.assertEqual(len(rows), 6)
+
+        rows, _ = self._run_command(events=[first_event.pk, other_event.pk])
+        self.assertEqual({row["occurrence_id"] for row in rows}, {str(o.pk) for o in self.occurrences})
+        self.assertEqual(len(rows), 9)
+
+    def test_management_command_verified_only(self):
+        from django.utils import timezone
+
+        rows, _ = self._run_command(verified_only=True)
+        self.assertEqual(rows, [], "No confirmed tracks yet, so only the header comes out")
+
+        verified = self.occurrences[1]
+        verified.grouping_verified_at = timezone.now()
+        verified.save(update_fields=["grouping_verified_at"])
+        rows, _ = self._run_command(verified_only=True)
+        self.assertEqual({row["occurrence_id"] for row in rows}, {str(verified.pk)})
+        self.assertEqual(len(rows), 3)
+        self.assertEqual({row["grouping_verified"] for row in rows}, {"true"})
 
     def test_occurrence_csv_carries_grouping_confirmation(self):
         from django.utils import timezone
