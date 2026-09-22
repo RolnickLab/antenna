@@ -8590,18 +8590,18 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
         self._assert_number_input(html, "taxon")
 
 
-class TrackEditTestCase(APITestCase):
-    """Correcting a track that tracking got wrong.
+def enable_tracking(project: Project) -> None:
+    """Opt a fixture project into tracking, which the track-editing endpoints require."""
+    project.feature_flags.tracking = True
+    project.save(update_fields=["feature_flags"])
 
-    Tracking prefers to leave one animal as two occurrences over merging two
-    animals into one, because a wrong merge destroys a record nothing downstream
-    recovers. These endpoints are the repair for the merges it still makes, so
-    what they must protect is that a repair never loses a detection and never
-    leaves the surviving track broken in the middle.
-    """
+
+class TrackFixtureTestCase(APITestCase):
+    """One four-frame track in a tracking-enabled project, with a curator and a reader."""
 
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project(reuse=False)
+        enable_tracking(self.project)
         create_taxa(project=self.project)
         create_captures(deployment=self.deployment, num_nights=1, images_per_night=4, interval_minutes=1)
 
@@ -8670,6 +8670,17 @@ class TrackEditTestCase(APITestCase):
             {"detection_id": detection.pk},
             format="json",
         )
+
+
+class TrackEditTestCase(TrackFixtureTestCase):
+    """Correcting a track that tracking got wrong.
+
+    Tracking prefers to leave one animal as two occurrences over merging two
+    animals into one, because a wrong merge destroys a record nothing downstream
+    recovers. These endpoints are the repair for the merges it still makes, so
+    what they must protect is that a repair never loses a detection and never
+    leaves the surviving track broken in the middle.
+    """
 
     def test_split_moves_the_tail_into_a_new_occurrence(self):
         response = self.post("split-track", self.detections[2], user=self.curator)
@@ -8996,6 +9007,79 @@ class TrackEditTestCase(APITestCase):
         )
         self.assertEqual(response.data["occurrence_detections_count"], 2)
         self.assertEqual(response.data["new_occurrence_detections_count"], len(self.detections) - 2)
+
+
+class TrackingFlagGateTestCase(TrackFixtureTestCase):
+    """Track editing is refused on a project that has not opted into tracking.
+
+    Every track-editing endpoint answers 403 with a message naming the flag, whoever
+    asks, and leaves the occurrence untouched; reading occurrences is unaffected.
+    That the endpoints work once the flag is on is what TrackEditTestCase pins.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.project.feature_flags.tracking = False
+        self.project.save(update_fields=["feature_flags"])
+        self.superuser = User.objects.create_superuser(email="tracking-gate-super@insectai.org")  # type: ignore
+        self.outsider = User.objects.create_user(email="tracking-gate-outsider@insectai.org")  # type: ignore
+        self.other, _ = self._make_track(1, captures=self._make_captures_after(1))
+
+    def _requests(self) -> dict[str, tuple[str, dict | None]]:
+        base = f"/api/v2/occurrences/{self.occurrence.pk}"
+        detection = {"detection_id": self.detections[2].pk}
+        return {
+            "split-track": (f"{base}/split-track/", detection),
+            "remove-detection": (f"{base}/remove-detection/", detection),
+            "merge": (f"{base}/merge/", {"occurrence_ids": [self.other.pk]}),
+            "add-detections": (f"{base}/add-detections/", {"detection_ids": [self.other.detections.get().pk]}),
+            "verify-grouping": (f"{base}/verify-grouping/", {}),
+            "unverify-grouping": (f"{base}/unverify-grouping/", {}),
+            "merge-candidates": (f"{base}/merge-candidates/?project_id={self.project.pk}", None),
+            "capture-matches": (f"{base}/capture-matches/?capture_id={self.captures[0].pk}", None),
+        }
+
+    def _call(self, url: str, body: dict | None):
+        if body is None:
+            return self.client.get(url)
+        return self.client.post(url, body, format="json")
+
+    def test_every_track_edit_is_refused_while_the_flag_is_off(self):
+        for user in (self.curator, self.superuser):
+            self.client.force_authenticate(user=user)
+            for name, (url, body) in self._requests().items():
+                with self.subTest(user=user.email, endpoint=name):
+                    response = self._call(url, body)
+                    self.assertEqual(response.status_code, 403, response.data)
+                    self.assertEqual(str(response.data["detail"]), "Tracking is not enabled for this project.")
+        self.assertEqual(self.occurrence.detections.count(), len(self.detections))
+        self.assertTrue(Occurrence.objects.filter(pk=self.other.pk).exists())
+        self.occurrence.refresh_from_db()
+        self.assertIsNone(self.occurrence.grouping_verified_at)
+
+    def test_users_without_rights_get_the_usual_refusal(self):
+        url, body = self._requests()["split-track"]
+        for label, user in (("member without curation rights", self.reader), ("non-member", self.outsider)):
+            with self.subTest(label):
+                self.client.force_authenticate(user=user)
+                response = self._call(url, body)
+                self.assertEqual(response.status_code, 403)
+                self.assertNotEqual(str(response.data["detail"]), "Tracking is not enabled for this project.")
+        self.client.force_authenticate(user=None)
+        self.assertIn(self._call(url, body).status_code, (401, 403))
+
+    def test_occurrences_stay_readable(self):
+        self.client.force_authenticate(user=self.reader)
+        detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn("grouping_verified", detail.data)
+        path = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/?project_id={self.project.pk}")
+        self.assertEqual(path.status_code, 200)
+
+    def test_turning_the_flag_on_allows_the_edit(self):
+        enable_tracking(self.project)
+        response = self.post("split-track", self.detections[2], user=self.curator)
+        self.assertEqual(response.status_code, 200, response.data)
 
 
 class OccurrenceGroupingTestCase(TrackEditTestCase):
@@ -9706,6 +9790,7 @@ class CaptureMatchesTestCase(APITestCase):
 
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project(reuse=False)
+        enable_tracking(self.project)
         create_captures(deployment=self.deployment, num_nights=1, images_per_night=6, interval_minutes=1)
         SourceImage.objects.filter(deployment=self.deployment).update(width=self.FRAME_SIZE, height=self.FRAME_SIZE)
         self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
