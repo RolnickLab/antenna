@@ -10,7 +10,7 @@ const convertServerRecord = (record: ServerDeploymentDetails) =>
   new DeploymentDetails(record)
 
 export const useDeploymentDetails = (
-  id: string
+  id: string | undefined
 ): {
   deployment?: DeploymentDetails
   isLoading: boolean
@@ -19,6 +19,7 @@ export const useDeploymentDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<DeploymentDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.DEPLOYMENTS, id],
       url: `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/`,
     })

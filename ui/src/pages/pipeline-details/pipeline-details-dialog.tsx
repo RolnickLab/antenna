@@ -6,6 +6,7 @@ import { Dialog, InputValue } from 'nova-ui-kit'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import { PipelineAlgorithms } from './pipeline-algorithms'
 import styles from './styles.module.scss'
@@ -13,7 +14,13 @@ import styles from './styles.module.scss'
 export const PipelineDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
-  const { pipeline, isLoading, error } = usePipelineDetails(id)
+  // A route id that isn't a positive integer can't be a pipeline pk (see
+  // isDetailRouteId), so skip the fetch and show not-found instead.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { pipeline, isLoading, error } = usePipelineDetails(validId)
+  const notFoundError = validId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   return (
     <Dialog.Root
@@ -32,7 +39,7 @@ export const PipelineDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
-        error={error}
+        error={error ?? notFoundError}
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_DETAILS, {
