@@ -21,6 +21,8 @@ export interface ServerTrackingConfig {
 }
 
 export interface ServerTrackingJobPayload {
+  /** Required by the jobs API for every job type; tracking runs never wait. */
+  delay: 0
   job_type_key: 'post_processing'
   name: string
   params: { task: 'tracking'; config: ServerTrackingConfig }
@@ -80,6 +82,7 @@ export const buildTrackingJobPayload = ({
   }
 
   return {
+    delay: 0,
     job_type_key: 'post_processing',
     name: name?.trim() || getDefaultTrackingJobName(scope),
     params: { task: 'tracking', config },

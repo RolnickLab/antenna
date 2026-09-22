@@ -10,6 +10,7 @@ describe('buildTrackingJobPayload', () => {
         scope: { type: 'session', sessionId: '42' },
       })
     ).toEqual({
+      delay: 0,
       job_type_key: 'post_processing',
       name: 'Night one',
       params: {
