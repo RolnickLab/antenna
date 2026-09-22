@@ -540,3 +540,70 @@ The serializer copies `source_image_collection_id` into `params["config"]` (§3.
 today — `params.get("task")`, `params.get("config")`, `task_cls(job=job, **config)`.
 
 
+
+---
+
+## 8. Notes from 2026-09-22 — presets, and pipelines that run partly in Antenna
+
+Three product intentions arrived after the decision above. None of them change the v1 slice; two
+change what phases 5–7 should aim at, and the third is a modelling question worth settling before
+phase 7 starts.
+
+### 8.1 Capture sets created from the Captures view
+
+Planned: filter the captures list, then save the filter as a capture set. This does not touch the
+panel — scope stays "a capture set", and the panel keeps pointing at one. It does mean most sets
+will arrive from filters rather than from a sampling method, which strengthens the case for phase 9:
+`interval`, `nth` and the other sampling methods cannot be expressed as filters, so they stay
+method-with-kwargs and want the same generated form as everything else.
+
+### 8.2 A pipeline's config belongs in the job view
+
+Phase 5's read-back should show the config a run actually used, **per stage, with its provenance** —
+pipeline default, project override, or set on this job — not one flat blob. That is the same
+three-layer merge as §3.6, surfaced instead of hidden. The Job detail page already renders per-stage
+key/value rows (`JobProgress` stage params), so the shape exists.
+
+### 8.3 Post-processing as part of a pipeline
+
+The intent: an "Oregon" pipeline is the global classifier plus the Oregon species list, chosen as one
+thing — a preset. Today a pipeline is entirely external (the processing service runs it and returns
+results) while post-processing is entirely internal (Antenna runs it against saved rows). A preset
+spans both.
+
+**Copying post-processing into the services is not a general answer.** Two of the four tasks are pure
+per-row functions and would port cleanly (class masking is `logits × keep-set → renormalised scores`;
+the small size filter is a bbox-area comparison). The other two cannot: rank rollup walks the
+taxonomy (`parents_json`, `Taxon.parent`), and tracking matches detections across a whole session and
+writes occurrence groupings — state a service that processes an image batch does not have. Porting
+also duplicates logic that has already needed three fixes (#1368, #1377, #1404) into every service.
+
+**Recommended shape (design sketch, not prototyped):** give a pipeline an ordered list of stages,
+each with a *locus* — `remote` (the processing service, as today) or `local` (a task from
+`POSTPROCESSING_TASKS`). An ML job then dispatches the remote stages, saves results, and runs the
+local stages over the same scope, reporting each as its own stage in the job's progress. Most of the
+machinery already exists: `JobProgress.add_stage` renders an arbitrary stage list with per-stage
+params, and every post-processing task already registers itself as an `Algorithm` row with
+`task_type=post_processing`, so a hybrid pipeline's algorithm list is already expressible.
+
+**A preset should not be a second `Pipeline` row.** `Pipeline.slug` is globally unique, and it is the
+wire identity: a service returns `PipelineResultsResponse.pipeline` and Antenna matches it with
+`Pipeline.objects.get_or_create(slug=results.pipeline)` (`ami/ml/models/pipeline.py:1029`). A preset
+sharing the remote slug collides; one with its own slug breaks results matching. `ProjectPipelineConfig`
+cannot hold presets either — `unique_together = ("pipeline", "project")` allows exactly one config
+per pair, so a project could not have both "Oregon" and plain global. That leaves a small new model
+referencing a pipeline plus its local steps and their default config.
+
+**Keep the locus out of the UI.** The form is generated from the task's `config_schema` either way;
+only dispatch differs. So a stage can move from Antenna to a service later without any frontend
+change — provided the config that crosses the wire is id-free: send resolved taxon keys, not
+`taxa_list_id`. That is also what the ML-backend schema boundary requires (`ami/ml/schemas.py` must
+not reference Antenna-side concepts).
+
+**Two things to settle before building it:** whether a local stage can be re-run without re-running
+the remote stage (it should be able to — that is the cheap half), and what happens when a preset's
+steps change between runs. The second is answered for free if the job snapshots its resolved chain
+into `params` at creation, which is what §3.5 already does for a single task.
+
+None of this blocks v1: there, post-processing is its own job type with its own scope, exactly as the
+admin runs it today.
