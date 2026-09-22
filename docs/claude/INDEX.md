@@ -38,6 +38,7 @@ archived.
 |---|---|
 | `planning/stats-list-pattern.md` | Deferred list/paginator pattern for stats endpoints — companion to api-stats-pattern.md |
 | `planning/celery-queue-split-rollout.md` | Rollout plan for the Celery queue split (`feat/celery-queue-split`) |
+| `planning/2026-09-22-jobs-panel-dialog-build-spec.md` | The two Create Job dialogs as drawn on the design canvas: field order, the exact class masking field labels and help text phase 1 writes into the pydantic schemas, and three requirements the panels add (task docstrings, scope-filtered classifier choices, in-scope count strip). Keywords: jobs panel, create job dialog, class masking, copy, SchemaForm, contextual run menu |
 | `planning/2026-09-22-jobs-panel-v1-backend-plan.md` | Implementation plan for phases 1-3 of the jobs panel (schema annotations, GET /jobs/types/, writable validated Job.params), with the ten unresolved blockers from the adversarial review and the four decisions needing a human. Keywords: jobs, post-processing, params, job types, pydantic, permissions, run_post_processing_job |
 | `planning/2026-09-18-jobs-panel-schema-driven-design.md` | Design: Create Job panel that selects a job type (ML pipeline / post-processing task) and generates its config form from the task's pydantic schema. Keywords: jobs, post-processing, pydantic, JSON Schema, forms, job types |
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
