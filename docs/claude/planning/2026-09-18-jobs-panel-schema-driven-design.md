@@ -41,6 +41,23 @@ Everything in §4's v1 slice exists to make that one sentence true; everything e
 A stays the fallback home afterwards: the surface with the most configuration exposed and the least
 inferred from context. A job type is never *unavailable* &mdash; at worst it is inelegant there.
 
+### The end state this is heading towards
+
+Starting at A is a sequencing choice, not a change of target. The shape to keep building towards,
+once A exists:
+
+1. **D is where these methods are actually used.** You are looking at a capture set that came out
+   wrong and you want to fix *that set*. It mirrors the admin flow the tasks already run through, so
+   parity is easy to prove, and it is the surface most likely to get daily use.
+2. **B gives the project one place that lists everything** &mdash; the answer to "what can Antenna do
+   to my data?", which nothing in the product answers today. It arrives as A's job-type field growing
+   into a grouped, searchable rail, so it costs no API change.
+3. **C's impact panel becomes the confirm step** for the methods that rewrite identifications &mdash;
+   counts of what will change, and the assurance that originals are demoted rather than deleted. A
+   confirm step, never a four-step wizard.
+
+All three reuse the generated form and the same endpoints. Phases 6, 7 and 9 below are those three.
+
 ---
 
 ## 1. Where we are today
@@ -425,19 +442,21 @@ Then, in rough order of value:
 |---|---|
 | **5** | `params` readable on the job detail page, and "run again with these settings" |
 | **6** | Contextual entry points (approach D): a Run menu on capture sets, sessions and occurrences opening the same form with scope prefilled and locked |
-| **7** | ML pipeline config in the panel + the per-job override merge (§3.6) |
-| **8** | The job-type catalog (approach B) as the grown-up selector, once the list outgrows a select |
-| **9** | Capture-set sampling migrated onto the same mechanism, retiring the hardcoded kwargs union behind #1369 |
+| **7** | Impact panel as a confirm step for methods that rewrite identifications (approach C's review step, not its wizard) |
+| **8** | ML pipeline config in the panel + the per-job override merge (§3.6), with per-stage provenance in the job view (§8.2) |
+| **9** | The job-type catalog (approach B) as the grown-up selector, once the list outgrows a select |
+| **10** | Capture-set sampling migrated onto the same mechanism, retiring the hardcoded kwargs union behind #1369 |
 
 Phases 2&ndash;3 also unblock #1272 and #1361 from writing another Django admin form: both can ship
 their task with an annotated schema and no form file at all.
 
 ### Explicitly cut from v1
 
-- **ML pipeline config editing** (phase 7). ML jobs keep behaving exactly as they do now; the ML
+- **ML pipeline config editing** (phase 8). ML jobs keep behaving exactly as they do now; the ML
   branch of the dialog is not touched, so v1 cannot regress the one path that is in daily use.
-- **Impact counts / dry run** (approach C's review step). A warning strip carrying the in-scope
-  classification count is enough, and that count is one cheap query rather than a new endpoint.
+- **Impact counts / dry run** (approach C's review step — phase 7). For v1 a warning strip carrying
+  the in-scope classification count is enough, and that count is one cheap query rather than a new
+  endpoint.
 - **Bulk runs.** The admin creates one Job per selected row; the panel creates one Job.
 - **Exports as a variant.** `DataExportJob` keeps its own page and its own `DataExport` row.
 
@@ -553,7 +572,7 @@ phase 7 starts.
 
 Planned: filter the captures list, then save the filter as a capture set. This does not touch the
 panel — scope stays "a capture set", and the panel keeps pointing at one. It does mean most sets
-will arrive from filters rather than from a sampling method, which strengthens the case for phase 9:
+will arrive from filters rather than from a sampling method, which strengthens the case for phase 10:
 `interval`, `nth` and the other sampling methods cannot be expressed as filters, so they stay
 method-with-kwargs and want the same generated form as everything else.
 
