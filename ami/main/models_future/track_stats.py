@@ -348,6 +348,7 @@ def grouping_summary_from_prefetch(occurrence: Occurrence, algorithm: dict | Non
             "Apply OccurrenceQuerySet.with_detail_prefetches() in the viewset's get_queryset()."
         )
     detections = list(occurrence.detections.all())
+    member_ids = {d.pk for d in detections}
     stats = track_stats_from_detections(detections, occurrence.determination_id)
 
     timestamps = [d.timestamp for d in detections if d.timestamp is not None]
@@ -360,7 +361,8 @@ def grouping_summary_from_prefetch(occurrence: Occurrence, algorithm: dict | Non
         "algorithm": algorithm,
         "frames": stats["frames"],
         "frames_with_vectors": frames_with_vectors,
-        "linked_detections": sum(1 for d in detections if d.next_detection_id is not None),
+        # A link into another occurrence joins the pieces of a track split at a session boundary.
+        "linked_detections": sum(1 for d in detections if d.next_detection_id in member_ids),
         "duration_seconds": duration,
         "motion": stats["motion"],
         "size_ratio": stats["size_ratio"],
