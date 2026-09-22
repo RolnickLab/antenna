@@ -261,11 +261,27 @@ and holds no rows anywhere. These changes cost nothing today and a data migratio
    This is also the only index shape consistent with the domain rule that vectors from
    different algorithms are never comparable. Note the caps: an indexed `vector` is limited
    to 2,000 dimensions and an indexed `halfvec` to 4,000, so a 2048-dimension backbone
-   **cannot be indexed as `vector` at all** and needs `halfvec`. The local stack runs
-   pgvector **0.5.1**, and `halfvec` was introduced in 0.7.0, so indexing the existing
-   2048-dimension vectors requires an extension upgrade first. Until then, similarity over
-   those vectors is a sequential scan, which is acceptable at the scope tracking uses (one
-   session) and not at project scope.
+   cannot be indexed as `vector` and needs `halfvec`, which arrived in pgvector 0.7.0.
+
+   **Decided 2026-09-22: upgrade the extension, and treat 0.7.0 or later as the baseline.**
+   This is cheaper than it first looked. Measured on the local stack: the database has
+   pgvector **0.5.1** installed while the image already provides **0.8.6**, so the upgrade is
+   `ALTER EXTENSION vector UPDATE;` — no image change, no dump, no data migration. Postgres
+   itself is 16.15. Two `vector(2048)` columns exist today,
+   `main_classification.features_2048` and `main_detectionembedding.features_2048`, and an
+   extension update leaves both as they are; `halfvec` simply becomes available for new
+   columns.
+
+   With the upgrade assumed, the width question stops being about whether an index is
+   possible at all and becomes an ordinary size and quality trade-off: 1024 dimensions costs
+   about 4 KB a row against 8 KB at 2048, indexes as a plain `vector` with no `halfvec`
+   needed, and scans faster. Choose the width on retrieval quality, not on the extension.
+
+   Confirm the deployed databases before relying on this. Production and staging declare no
+   postgres service of their own (`docker-compose.production.yml`,
+   `docker-compose.staging.yml`), so their database is managed externally and the upgrade
+   there is an operations task rather than an image bump. The local result does not carry
+   over to them on its own.
 
 ## Sizes and scale
 
@@ -366,8 +382,11 @@ read off storage formats and off the current table. Before each stage lands:
 4. **Confirm pgvector rejects nothing we send.** If `scores` or `logits` move to a `vector`
    column, check what real models emit — a `-inf` logit from a masked class would be
    rejected where a `float8[]` accepted it.
-5. **Check the pgvector upgrade path** to 0.7.0 or later on the deployed databases before
-   promising an index on a 2048-dimension vector.
+5. **Run the pgvector upgrade and confirm it on each deployment.** The decision is to be on
+   0.7.0 or later, and locally that is `ALTER EXTENSION vector UPDATE;` because the image
+   already carries 0.8.6 against 0.5.1 installed. What still needs checking per deployment is
+   that its image offers the same, and that the update completes with the existing
+   `vector(2048)` columns in place.
 
 ## Open questions
 
