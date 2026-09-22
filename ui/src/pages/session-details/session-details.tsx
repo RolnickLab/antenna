@@ -30,6 +30,7 @@ import { ExtendTrackBanner, useExtendTrack } from './capture/extend-track'
 import { useActiveCaptureId } from './hooks/useActiveCapture'
 import { useActiveOccurrences } from './hooks/useActiveOccurrences'
 import { Process } from './process/process'
+import { RunTrackingDialog } from './run-tracking/run-tracking-dialog'
 import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
@@ -145,6 +146,9 @@ const Content = ({ session }: { session: SessionDetails }) => {
         })}
         tooltip={translate(STRING.TOOLTIP_SESSION)}
       >
+        {user.loggedIn && trackingEnabled ? (
+          <RunTrackingDialog session={session} />
+        ) : null}
         {user.loggedIn ? <Process capture={activeCapture} /> : null}
       </PageHeader>
       <div className="grid grid-cols-1 gap-4 mt-6 xl:grid-cols-[auto_1fr] md:gap-6">
