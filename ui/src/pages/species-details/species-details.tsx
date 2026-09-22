@@ -8,6 +8,7 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
 import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import {
+  Badge,
   Box,
   buttonVariants,
   InfoBlockField,
@@ -194,6 +195,25 @@ export const SpeciesDetails = ({
                       }
                     />
                   </div>
+                </InfoBlockField>
+                <InfoBlockField label="Predicted by">
+                  {species.predictedByAlgorithms.length ? (
+                    <div className="flex flex-wrap gap-1 py-1">
+                      {species.predictedByAlgorithms.map((algorithm) => (
+                        <Link
+                          key={algorithm.id}
+                          to={APP_ROUTES.ALGORITHM_DETAILS({
+                            projectId: projectId as string,
+                            algorithmId: algorithm.id,
+                          })}
+                        >
+                          <Badge label={algorithm.name} />
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <InfoBlockFieldValue value={undefined} />
+                  )}
                 </InfoBlockField>
                 <InfoBlockField
                   className="no-print"

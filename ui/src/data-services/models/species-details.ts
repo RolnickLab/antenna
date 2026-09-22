@@ -26,6 +26,17 @@ export class SpeciesDetails extends Species {
     }
   }
 
+  // The classifiers that can return this species, so a user can tell a taxon a
+  // model could predict from one that can only be identified by hand.
+  get predictedByAlgorithms(): { id: string; name: string }[] {
+    return (this._species.predicted_by_algorithms ?? []).map(
+      (algorithm: { id: number | string; name: string }) => ({
+        id: `${algorithm.id}`,
+        name: algorithm.name,
+      })
+    )
+  }
+
   get summaryData(): Plot[] {
     return this._species.summary_data
   }
