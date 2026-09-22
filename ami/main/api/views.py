@@ -2661,6 +2661,10 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset()
         # Annotate with taxa count for better performance
         qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
+        # Prefetched once here so the serializer's get_projects() and the
+        # membership check in add_m2m_object_permissions() don't hit the
+        # database once per row.
+        qs = qs.prefetch_related("projects")
         project = self.get_active_project()
         if project:
             return qs.filter(projects=project)
