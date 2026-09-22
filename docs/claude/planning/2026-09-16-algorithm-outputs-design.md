@@ -109,6 +109,15 @@ An abstract Django model (no table of its own) that every output table inherits,
 provenance fields are named and typed identically everywhere and a reader can be written
 once against the shape.
 
+**Refined 2026-09-22 — build from the worked examples at the end of this document, not from
+the table immediately below.** Writing the models out moved the three target fields off the
+spine: `get_project_accessor()` (`ami/base/models.py:99`) returns a single path, so a table
+that genuinely mixes targets cannot resolve one, and permission filtering needs it. The
+spine therefore carries provenance only (`algorithm`, `timestamp`, `job`), and each concrete
+table declares the one thing it is about together with its own `project_accessor`, exactly
+as `Classification` and `DetectionEmbedding` already do. Only the generic table carries all
+three targets, with the check constraint below.
+
 | Field | Type | Notes |
 | --- | --- | --- |
 | `detection` | FK `Detection`, `null=True`, `CASCADE` | One of the three targets |
