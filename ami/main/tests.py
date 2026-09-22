@@ -1430,6 +1430,31 @@ class TestRegroupSplitsTracks(TestCase):
         boundary = Detection.objects.get(pk=detections[2].pk)
         self.assertEqual(boundary.next_detection_id, detections[3].pk, "The pieces still record one animal")
 
+    def test_editing_a_piece_keeps_the_link_into_the_other_session(self):
+        from ami.main.models_future.tracks import merge_occurrences
+
+        occurrence, _, detections, (first, _) = self._split_one_track()
+        extra_capture = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=first,
+            timestamp=self.captures[2].timestamp + datetime.timedelta(seconds=30),
+            path="test/regroup-split-extra.jpg",
+            width=640,
+            height=480,
+        )
+        loose = Occurrence.objects.create(event=first, deployment=self.deployment, project=self.project)
+        Detection.objects.create(
+            source_image=extra_capture, timestamp=extra_capture.timestamp, bbox=[10, 10, 40, 40], occurrence=loose
+        )
+
+        merge_occurrences(occurrence, [loose])
+
+        self.assertEqual(
+            Detection.objects.get(pk=detections[2].pk).next_detection_id,
+            detections[3].pk,
+            "A merge into one piece keeps its link into the next session",
+        )
+
     def test_merging_sessions_leaves_tracks_untouched(self):
         self._group(gap_hours=2)
         early, early_detections = self._make_track(self.captures[:3])

@@ -34,6 +34,7 @@ from collections import Counter
 from collections.abc import Iterable
 
 from django.db import transaction
+from django.db.models import F, Q
 from django.utils import timezone
 
 from ami.main.models import Detection, Identification, Occurrence, SourceImage, User, update_occurrence_determination
@@ -228,17 +229,27 @@ def _cut_links_leaving(occurrence: Occurrence) -> None:
     A link between detections in different occurrences would let a later tracking
     pass walk the chain and fold the two back together, silently undoing a human
     edit. Called after any operation that moves detections.
+
+    A link into another session is kept: it records one animal across a session
+    boundary, and tracking never walks a chain past one.
     """
     members = set(occurrence.detections.values_list("pk", flat=True))
     if not members:
         return
 
-    outbound = Detection.objects.filter(pk__in=members, next_detection__isnull=False).exclude(
-        next_detection_id__in=members
+    cross_session = Q(
+        source_image__event_id__isnull=False,
+        next_detection__source_image__event_id__isnull=False,
+    ) & ~Q(source_image__event_id=F("next_detection__source_image__event_id"))
+
+    outbound = (
+        Detection.objects.filter(pk__in=members, next_detection__isnull=False)
+        .exclude(next_detection_id__in=members)
+        .exclude(cross_session)
     )
     outbound.update(next_detection=None)
 
-    inbound = Detection.objects.filter(next_detection_id__in=members).exclude(pk__in=members)
+    inbound = Detection.objects.filter(next_detection_id__in=members).exclude(pk__in=members).exclude(cross_session)
     inbound.update(next_detection=None)
 
 

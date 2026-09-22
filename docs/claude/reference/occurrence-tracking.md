@@ -283,8 +283,8 @@ aggregate query, `_split_tracks_at_session_boundaries`) and splits each with
 `_move_to_new_occurrence` gives every new occurrence (manual split, detach, regroup split)
 the session of its first detection's capture, not the original occurrence's.
 
-Known gap: `merge_occurrences` / `add_detections` call `_cut_links_leaving`, which also cuts
-a kept cross-session link if a person edits one of the pieces.
+`_cut_links_leaving` (called by `merge_occurrences` / `add_detections`) skips links whose two ends
+are in different sessions, so editing one piece keeps the record that the animal continues.
 
 Tests: `TestRegroupSplitsTracks` in `ami/main/tests.py`.
 
