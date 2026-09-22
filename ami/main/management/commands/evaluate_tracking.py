@@ -108,6 +108,13 @@ class Command(BaseCommand):
             event_truth = {pk: occurrence_id for pk, occurrence_id, _, _ in event_rows}
             event_times = {pk: timestamp for pk, _, timestamp, _ in event_rows}
 
+            missing_times = sorted(pk for pk, timestamp in event_times.items() if timestamp is None)
+            if missing_times:
+                raise CommandError(
+                    f"Session {event.pk} has {len(missing_times)} confirmed detection(s) on captures without "
+                    f"a timestamp, e.g. detection {missing_times[:3]}; they cannot be put in capture order."
+                )
+
             ground_truth.update(event_truth)
             timestamps.update(event_times)
             predictions.update(event_predictions)

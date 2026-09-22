@@ -75,6 +75,10 @@ row per detection; columns include `occurrence_id`, `detection_id`, `timestamp`,
 grouped by `occurrence_id`; predictions are all rows of the second file, grouped the same way. This
 is the path for comparing a tracker that runs elsewhere: write its output in the same format.
 
+Every confirmed row needs an ISO 8601 `timestamp`, and all of them must be either timezone-aware
+or naive. A blank, unreadable or mixed file is refused with the offending `detection_id`s and exit
+code 2. The management command likewise refuses a confirmed detection whose capture has no timestamp.
+
 ### 3. From Python
 
 ```python

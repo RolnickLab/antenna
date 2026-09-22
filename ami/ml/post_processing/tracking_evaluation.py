@@ -297,11 +297,39 @@ def tracks_from_links(
 # CSV adapter: the tracks export writes one row per detection, grouped by occurrence.
 
 
-def _parse_timestamp(value: str) -> datetime.datetime | str:
-    try:
-        return datetime.datetime.fromisoformat(value)
-    except ValueError:
-        return value
+def _parse_timestamps(raw: Mapping[str, str]) -> dict[str, datetime.datetime]:
+    """Parse ISO capture times, raising ValueError for blank, unreadable or mixed-zone values.
+
+    Every value must parse, and all must be timezone-aware or all naive, because Python
+    cannot order a mix of datetimes and strings, or of naive and aware datetimes.
+    """
+    parsed: dict[str, datetime.datetime] = {}
+    blank: list[str] = []
+    unreadable: list[str] = []
+    for detection_id, value in raw.items():
+        value = (value or "").strip()
+        if not value:
+            blank.append(detection_id)
+            continue
+        try:
+            parsed[detection_id] = datetime.datetime.fromisoformat(value)
+        except ValueError:
+            unreadable.append(detection_id)
+    if blank:
+        raise ValueError(f"{len(blank)} confirmed detection(s) have no timestamp, e.g. detection_id {blank[:3]}")
+    if unreadable:
+        raise ValueError(
+            f"{len(unreadable)} confirmed detection(s) have a timestamp that is not ISO 8601, "
+            f"e.g. detection_id {unreadable[:3]}"
+        )
+    aware = {detection_id for detection_id, value in parsed.items() if value.utcoffset() is not None}
+    if aware and len(aware) < len(parsed):
+        naive = sorted(set(parsed) - aware)
+        raise ValueError(
+            "Timestamps mix timezone-aware and naive values; "
+            f"e.g. aware detection_id {sorted(aware)[:3]}, naive detection_id {naive[:3]}"
+        )
+    return parsed
 
 
 def read_tracks_csv(path: str) -> list[dict[str, str]]:
@@ -322,17 +350,20 @@ def evaluate_csv_files(ground_truth_path: str, predictions_path: str) -> Trackin
     ``frame_index`` when present.
     """
     ground_truth: dict[str, str] = {}
-    timestamps: dict[str, tuple] = {}
+    raw_times: dict[str, str] = {}
+    frame_indexes: dict[str, int] = {}
     for row in read_tracks_csv(ground_truth_path):
-        if row.get("grouping_verified", "").strip().lower() not in TRUE_VALUES:
+        if (row.get("grouping_verified") or "").strip().lower() not in TRUE_VALUES:
             continue
         detection_id = row["detection_id"]
         ground_truth[detection_id] = row["occurrence_id"]
-        frame_index = row.get("frame_index") or ""
-        timestamps[detection_id] = (
-            _parse_timestamp(row["timestamp"]),
-            int(frame_index) if frame_index.lstrip("-").isdigit() else -1,
-        )
+        raw_times[detection_id] = row["timestamp"]
+        frame_index = (row.get("frame_index") or "").strip()
+        frame_indexes[detection_id] = int(frame_index) if frame_index.lstrip("-").isdigit() else -1
+    timestamps = {
+        detection_id: (parsed, frame_indexes[detection_id])
+        for detection_id, parsed in _parse_timestamps(raw_times).items()
+    }
     predictions = {row["detection_id"]: row["occurrence_id"] for row in read_tracks_csv(predictions_path)}
     return evaluate_tracks(ground_truth, predictions, timestamps)
 
@@ -345,7 +376,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--per-track", action="store_true", help="Include per-track scores in JSON output.")
     args = parser.parse_args(argv)
 
-    result = evaluate_csv_files(args.ground_truth, args.predictions)
+    try:
+        result = evaluate_csv_files(args.ground_truth, args.predictions)
+    except (OSError, ValueError) as error:
+        parser.exit(2, f"error: {error}\n")
     if args.format == "json":
         json.dump(result.to_dict(include_tracks=args.per_track), sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")

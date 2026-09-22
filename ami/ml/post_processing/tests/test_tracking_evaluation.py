@@ -145,6 +145,27 @@ class TestCsvAdapter(SimpleTestCase):
         self.assertEqual((result.links_correct, result.links_ground_truth), (1, 2))
         self.assertEqual(result.merges, 0)
 
+    def _ground_truth_with_times(self, *times: str) -> str:
+        rows = [(10, i + 1, t, i, "true") for i, t in enumerate(times)]
+        return _write_csv(pathlib.Path(self.directory.name) / "gt-times.csv", rows)
+
+    def test_blank_or_unreadable_timestamps_on_confirmed_rows_are_refused_by_id(self):
+        for times, message in [
+            (("2026-06-01T22:00:00", "", "2026-06-01T22:02:00"), "no timestamp, e.g. detection_id ['2']"),
+            (("2026-06-01T22:00:00", "last night", "2026-06-01T22:02:00"), "not ISO 8601, e.g. detection_id ['2']"),
+            (("2026-06-01T22:00:00+02:00", "2026-06-01T22:01:00", "2026-06-01T22:02:00"), "timezone-aware and naive"),
+        ]:
+            with self.subTest(times=times), self.assertRaisesMessage(ValueError, message):
+                evaluate_csv_files(self._ground_truth_with_times(*times), self.predictions)
+
+    def test_entry_point_reports_a_bad_file_without_a_traceback(self):
+        ground_truth = self._ground_truth_with_times("2026-06-01T22:00:00", "", "2026-06-01T22:02:00")
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors), self.assertRaises(SystemExit) as exit_:
+            main(["--ground-truth", ground_truth, "--predictions", self.predictions])
+        self.assertEqual(exit_.exception.code, 2)
+        self.assertIn("no timestamp", errors.getvalue())
+
     def test_entry_point_prints_json(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -235,3 +256,66 @@ class TestEvaluateTrackingCommand(TestCase):
     def test_sessions_without_confirmed_tracks_are_refused(self):
         with self.assertRaises(CommandError):
             self._run()
+
+    def test_default_run_compares_the_session_embeddings(self):
+        if self.ground_truth.feature_algorithm_key is None:
+            self.skipTest("This database cannot store embeddings.")
+        self._track_and_confirm()
+
+        report = self._run()
+
+        self.assertEqual(report["skipped_events"], [])
+        self.assertEqual([entry["event_id"] for entry in report["events"]], [self.event.pk])
+        self.assertIsNotNone(report["events"][0]["feature_extraction_algorithm_id"])
+        self.assertEqual(report["overall"]["exactly_recovered"], len(self.ground_truth.insects))
+
+    def test_default_run_skips_sessions_without_embeddings(self):
+        # Features are required by default, so a session with no embeddings is reported, not scored.
+        self._track_and_confirm()
+        Classification.objects.filter(detection__source_image__event=self.event).update(features_2048=None)
+        confirmed = Detection.objects.filter(
+            source_image__event=self.event, occurrence__grouping_verified_at__isnull=False
+        ).count()
+
+        report = self._run()
+
+        self.assertEqual(report["events"], [])
+        self.assertIsNone(report["overall"])
+        self.assertEqual(len(report["skipped_events"]), 1)
+        skipped = report["skipped_events"][0]
+        self.assertEqual((skipped["event_id"], skipped["confirmed_detections"]), (self.event.pk, confirmed))
+        self.assertIn("no detections carry feature embeddings", skipped["reason"])
+
+        text = io.StringIO()
+        call_command("evaluate_tracking", "--project", str(self.project.pk), stdout=text)
+        self.assertIn("No session could be scored.", text.getvalue())
+
+    def test_event_option_scores_only_the_named_sessions(self):
+        self._track_and_confirm()
+        other = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2026-01-01",
+            start=self.event.start,
+            end=self.event.start,
+        )
+
+        report = self._run("--no-require-features", "--cost-threshold", "0.4", "--event", str(self.event.pk))
+        self.assertEqual([entry["event_id"] for entry in report["events"]], [self.event.pk])
+
+        with self.assertRaises(CommandError):
+            self._run("--no-require-features", "--event", str(other.pk))
+
+    def test_confirmed_detection_without_a_capture_time_is_refused(self):
+        self._track_and_confirm()
+        before = self._snapshot()
+        image = (
+            Detection.objects.filter(source_image__event=self.event, occurrence__grouping_verified_at__isnull=False)
+            .first()
+            .source_image
+        )
+        type(image).objects.filter(pk=image.pk).update(timestamp=None)
+
+        with self.assertRaisesMessage(CommandError, "without a timestamp"):
+            self._run("--no-require-features")
+        self.assertEqual(self._snapshot(), before)
