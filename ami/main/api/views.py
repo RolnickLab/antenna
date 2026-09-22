@@ -29,12 +29,7 @@ from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, Threshold
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import (
-    IsActiveStaffOrReadOnly,
-    IsProjectMemberOrReadOnly,
-    ObjectPermission,
-    TrackingEnabled,
-)
+from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission, TrackingEnabled
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
