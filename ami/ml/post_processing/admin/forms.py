@@ -28,6 +28,8 @@ class BasePostProcessingActionForm(forms.Form):
         their fields to that selection; forms that don't need it ignore it.
         """
         self.scope_queryset = scope_queryset
+        # Shown above the form on the confirmation page when set.
+        self.notice: str | None = None
         super().__init__(*args, **kwargs)
 
     def to_config(self) -> dict:
