@@ -1,2 +1,2 @@
-from . import class_masking  # noqa: F401
-from . import small_size_filter  # noqa: F401
+# Tasks are registered in registry.py. Nothing is imported here, so modules without Django
+# dependencies (tracking_evaluation) can run as `python -m` outside Antenna.
