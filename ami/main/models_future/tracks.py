@@ -16,8 +16,10 @@ links at all.
 
 Three invariants hold after every operation here:
 
-- A chain link never crosses an occurrence boundary. Otherwise a later tracking
-  pass would walk the chain, decide both occurrences are one, and undo the edit.
+- A chain link never crosses an occurrence boundary within one session. Otherwise
+  a later tracking pass would walk the chain, decide both occurrences are one, and
+  undo the edit. Tracking stops at session boundaries, so the link a regroup keeps
+  between the pieces of a track it split (``split_at_session_boundaries``) is safe.
 - An edit that changes which detections an occurrence holds clears its grouping
   verification. A person confirmed the set they were shown, not a later one.
 - The stored track statistics of every surviving occurrence the edit touched are
@@ -34,7 +36,7 @@ from collections.abc import Iterable
 from django.db import transaction
 from django.utils import timezone
 
-from ami.main.models import Detection, Identification, Occurrence, SourceImage, User
+from ami.main.models import Detection, Identification, Occurrence, SourceImage, User, update_occurrence_determination
 from ami.main.models_future.track_stats import refresh_track_stats
 
 
@@ -43,13 +45,17 @@ class TrackEditError(ValueError):
 
 
 def _ordered_detections(occurrence: Occurrence) -> list[Detection]:
-    return list(occurrence.detections.order_by("timestamp", "pk"))
+    return list(occurrence.detections.select_related("source_image").order_by("timestamp", "pk"))
 
 
 def _move_to_new_occurrence(occurrence: Occurrence, detections: list[Detection]) -> Occurrence:
-    """Attach ``detections`` to a new occurrence beside ``occurrence``."""
+    """Attach ``detections``, in time order, to a new occurrence beside ``occurrence``.
+
+    The new occurrence takes the session of its first detection's capture, which after a
+    regroup need not be the session of ``occurrence``.
+    """
     new_occurrence = Occurrence.objects.create(
-        event=occurrence.event,
+        event_id=detections[0].source_image.event_id,
         deployment=occurrence.deployment,
         project=occurrence.project,
     )
@@ -139,6 +145,81 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
     return new_occurrence
+
+
+@transaction.atomic
+def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
+    """Split an occurrence whose detections fall in several sessions into one per session.
+
+    Regrouping captures into sessions can draw a boundary through a track, and an
+    occurrence is expected to belong to one session. The piece in the earliest session
+    keeps this occurrence and its identifications; each later piece is a new occurrence
+    holding copies of them. Unlike a manual split, every piece keeps the grouping
+    confirmation and the chain link to the next piece, since each piece is still the
+    whole track within its session and the link records that they are one animal.
+    Returns the new occurrences in time order, or an empty list when nothing was split.
+    """
+    detections = occurrence.detections.select_related("source_image").order_by(
+        "source_image__timestamp", "source_image_id", "pk"
+    )
+    by_session: dict[int, list[Detection]] = {}
+    for detection in detections:
+        # A capture with no session stays with the earliest piece.
+        if detection.source_image.event_id is not None:
+            by_session.setdefault(detection.source_image.event_id, []).append(detection)
+    if len(by_session) < 2:
+        return []
+
+    earliest_event_id, *later_event_ids = by_session
+    pieces = [_move_to_new_occurrence(occurrence, by_session[event_id]) for event_id in later_event_ids]
+    piece_pks = [piece.pk for piece in pieces]
+
+    if occurrence.event_id != earliest_event_id:
+        occurrence.event_id = earliest_event_id
+        Occurrence.objects.filter(pk=occurrence.pk).update(event_id=earliest_event_id)
+    if occurrence.grouping_verified_at is not None:
+        for piece in pieces:
+            piece.grouping_verified_at = occurrence.grouping_verified_at
+            piece.grouping_verified_by_id = occurrence.grouping_verified_by_id
+        Occurrence.objects.filter(pk__in=piece_pks).update(
+            grouping_verified_at=occurrence.grouping_verified_at,
+            grouping_verified_by_id=occurrence.grouping_verified_by_id,
+        )
+
+    _copy_identifications(occurrence, pieces)
+    for piece in [occurrence, *pieces]:
+        update_occurrence_determination(piece, save=True)
+    refresh_track_stats(occurrence, *pieces)
+    return pieces
+
+
+def _copy_identifications(source: Occurrence, targets: list[Occurrence]) -> None:
+    """Give each target a copy of every identification on ``source``, dated as the original.
+
+    Written with ``bulk_create`` to skip ``Identification.save()``, which would withdraw
+    the user's other identifications on the target. The caller recomputes determinations.
+    """
+    originals = list(source.identifications.all())
+    if not originals or not targets:
+        return
+    note = f"Copied from occurrence {source.pk} when regrouping split it at a session boundary."
+    pairs = [(original, target) for target in targets for original in originals]
+    copies = Identification.objects.bulk_create(
+        [
+            Identification(
+                occurrence=target,
+                user_id=original.user_id,
+                taxon_id=original.taxon_id,
+                withdrawn=original.withdrawn,
+                comment=f"{original.comment}\n{note}" if original.comment else note,
+            )
+            for original, target in pairs
+        ]
+    )
+    # created_at is auto_now_add, so the original date can only be written after the insert.
+    for copy, (original, _) in zip(copies, pairs):
+        copy.created_at = original.created_at
+    Identification.objects.bulk_update(copies, ["created_at"])
 
 
 def _cut_links_leaving(occurrence: Occurrence) -> None:

@@ -197,9 +197,15 @@ def event_is_fresh(event: Event) -> tuple[bool, str]:
     A detection with no occurrence at all is not that signal — the chain walk
     creates an occurrence for a chain that has none — so orphans do not block a
     run. Real sessions routinely carry a handful of them.
+
+    Occurrences are found through their detections' captures, not ``Occurrence.event``,
+    so a track that reaches into this session from another one also counts.
     """
     multi_detection_occurrences = (
-        Occurrence.objects.filter(event=event).annotate(_n=Count("detections")).filter(_n__gt=1).count()
+        Occurrence.objects.filter(pk__in=Detection.objects.filter(source_image__event=event).values("occurrence_id"))
+        .annotate(_n=Count("detections"))
+        .filter(_n__gt=1)
+        .count()
     )
     if multi_detection_occurrences:
         return False, f"{multi_detection_occurrences} occurrence(s) already span >1 detection"
@@ -253,6 +259,8 @@ def assign_occurrences_from_detection_chains(
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
     a single occurrence using a merge-into-first strategy:
 
+    - A chain never crosses a session boundary: the walk stops at a detection in another
+      session, and a detection linked from another session starts a chain of its own.
     - Pick the first existing occurrence in the chain as the keeper.
     - Reassign every other detection in the chain to the keeper.
     - Move any identifications off the siblings onto the keeper, then delete them.
@@ -275,16 +283,27 @@ def assign_occurrences_from_detection_chains(
     determinations_recorded = 0
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
+    # A chain ends at a session boundary. A regroup that splits a track keeps the link
+    # between its pieces, and following it would merge them back into one occurrence.
+    session_of_capture = {image.pk: image.event_id for image in source_images}
+
+    def session_of(detection: Detection) -> int | None:
+        if detection.source_image_id not in session_of_capture:
+            session_of_capture[detection.source_image_id] = (
+                SourceImage.objects.filter(pk=detection.source_image_id).values_list("event_id", flat=True).first()
+            )
+        return session_of_capture[detection.source_image_id]
+
     for image in source_images:
         # Null-marker sentinels (bbox IS NULL) mark a capture as processed; they are not insects.
         for det in image.detections.valid():
             if det.pk in visited:
                 continue
             try:
-                has_prior = det.previous_detection is not None
+                prior: Detection | None = det.previous_detection
             except Detection.DoesNotExist:
-                has_prior = False
-            if has_prior:
+                prior = None
+            if prior is not None and session_of(prior) == image.event_id:
                 continue
 
             chain: list[Detection] = []
@@ -293,6 +312,8 @@ def assign_occurrences_from_detection_chains(
                 chain.append(current)
                 visited.add(current.pk)
                 current = current.next_detection
+                if current is not None and session_of(current) != image.event_id:
+                    break
 
             old_occ_ids = {d.occurrence_id for d in chain if d.occurrence_id}
             all_assigned = all(d.occurrence_id is not None for d in chain)
