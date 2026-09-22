@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django import forms
 
+from ami.main.models import Project
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
@@ -59,6 +60,20 @@ class TrackingActionForm(BasePostProcessingActionForm):
             "data is not supported yet, so leaving this on is the safe choice."
         ),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Staff can run tracking on any project; the note keeps them from assuming
+        # its members can then review the result.
+        if self.scope_queryset is not None:
+            projects = Project.objects.filter(pk__in=self.scope_queryset.values("project_id")).order_by("name")
+            disabled = [project.name for project in projects if not project.feature_flags.tracking]
+            if disabled:
+                self.notice = (
+                    f"Tracking is not enabled for {', '.join(disabled)}. The run will go ahead, "
+                    "but members of those projects cannot edit or confirm tracks until the "
+                    "project's tracking flag is turned on."
+                )
 
     def to_config(self) -> dict:
         algorithm = self.cleaned_data["feature_extraction_algorithm_id"]
