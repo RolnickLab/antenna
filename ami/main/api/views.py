@@ -1728,16 +1728,19 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
     Filters taxa based on a TaxaList, or on the taxa list an algorithm manages.
 
     By default, queries for taxa that are directly in the TaxaList and their descendants.
-    If include_descendants=false, only taxa directly in the TaxaList are returned.
+    If include_descendants=false, only taxa directly in the TaxaList are returned. A
+    managed list (TaxaList.is_managed) always uses exact membership regardless of this
+    flag — see the note in _get_filter below for why.
 
     Query parameters:
     - taxa_list_id: ID of the taxa list to filter by
-    - include_descendants: Set to 'false' to exclude descendants (default: true)
+    - include_descendants: Set to 'false' to exclude descendants (default: true).
+      Ignored for a managed list, which always matches exact membership.
     - not_taxa_list_id: ID of taxa list to exclude
     - algorithm_id: ID of an algorithm; resolves to its managed taxa list (see
-      Algorithm.taxa_list) and matches taxa directly in it, ignoring include_descendants
-      (see the note on the algorithm_id branch below for why). An algorithm with no
-      managed list, or one not visible to the active project
+      Algorithm.taxa_list) and applies the same filter above (always exact membership,
+      since an algorithm's list is managed by definition). An algorithm with no managed
+      list, or one not visible to the active project
       (Algorithm.objects.visible_to_project()), yields an empty result, not an error.
     """
 
@@ -1765,8 +1768,15 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
             query_filter = Q(id__in=taxa)
 
-            # Only include descendants if explicitly requested
-            if include_descendants:
+            # A managed list mirrors a classifier's category map one-to-one (see
+            # TaxaList.is_managed); the classifier predicts only its own labels, never a
+            # label's taxonomic children, so descendant expansion would claim predictions
+            # it can't make. It is also the only case large enough to matter: the largest
+            # real category map has 29,176 labels, and expanding descendants there builds
+            # one OR'd JSONB-containment clause per label — EXPLAIN (ANALYZE) against that
+            # scale did not finish after 5+ minutes of continuous CPU, versus ~70ms for
+            # exact membership alone.
+            if include_descendants and not taxa_list.is_managed:
                 for taxon in taxa:
                     query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
 
@@ -1796,13 +1806,10 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             )
             if algorithm is None or algorithm.taxa_list_id is None:
                 return queryset.none()
-            # Always exact membership, ignoring include_descendants: a classifier outputs
-            # one of its own labels, never a label's taxonomic children, so expanding to
-            # descendants would claim predictions it can't make. It also sidesteps a real
-            # cost — the descendants branch builds one OR'd clause per label, and a
-            # 29,176-label managed list (the largest real category map) took minutes
-            # under EXPLAIN (ANALYZE) versus milliseconds for id__in alone.
-            queryset = queryset.filter(_get_filter(algorithm.taxa_list, include_descendants=False))
+            # An algorithm's taxa list is managed by definition (TaxaList.is_managed:
+            # "at least one algorithm points at this list"), so _get_filter already
+            # forces exact membership here — no override needed.
+            queryset = queryset.filter(_get_filter(algorithm.taxa_list))
 
         return queryset
 
