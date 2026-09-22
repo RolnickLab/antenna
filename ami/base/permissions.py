@@ -77,7 +77,9 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
-def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
+def add_m2m_object_permissions(
+    user, instance, project, response_data: dict, project_perms: set[str] | None = None
+) -> dict:
     """
     Add object-level permissions for models with an M2M relationship to Project.
 
@@ -87,7 +89,12 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     against a specific project from the request context instead.
 
     Validates that the instance actually belongs to the given project before
-    granting any permissions (prevents cross-project permission leaks).
+    granting any permissions (prevents cross-project permission leaks); uses
+    `instance.projects`'s prefetch cache when the caller populated one.
+
+    `project_perms` lets a caller resolving many instances for the same
+    (user, project) pass in `guardian.get_perms(user, project)` once instead
+    of once per instance; pass None to look it up here as before.
 
     This is a temporary approach for the M2M permission gap described in #1120.
     Once that issue is resolved, this should be replaced by a generic permission
@@ -96,7 +103,16 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     """
     perms = set(response_data.get("user_permissions", []))
 
-    if not project or not instance.projects.filter(pk=project.pk).exists():
+    if not project:
+        response_data["user_permissions"] = list(perms)
+        return response_data
+
+    if "projects" in getattr(instance, "_prefetched_objects_cache", {}):
+        is_member = any(p.pk == project.pk for p in instance.projects.all())
+    else:
+        is_member = instance.projects.filter(pk=project.pk).exists()
+
+    if not is_member:
         response_data["user_permissions"] = list(perms)
         return response_data
 
@@ -104,7 +120,7 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
         perms.update(["update", "delete"])
     else:
         model_name = instance._meta.model_name
-        all_perms = get_perms(user, project)
+        all_perms = project_perms if project_perms is not None else get_perms(user, project)
         for perm in all_perms:
             if perm.endswith(f"_{model_name}"):
                 action = perm.split("_", 1)[0]
