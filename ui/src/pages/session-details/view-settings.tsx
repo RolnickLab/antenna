@@ -14,9 +14,11 @@ export interface ViewSettingsValues {
 export const ViewSettings = ({
   onSettingsChange,
   settings,
+  showTrackingSettings,
 }: {
   onSettingsChange: (settings: ViewSettingsValues) => void
   settings: ViewSettingsValues
+  showTrackingSettings?: boolean
 }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
@@ -50,17 +52,19 @@ export const ViewSettings = ({
               })
             }
           />
-          <Checkbox
-            id="show-path-crops"
-            label={translate(STRING.SHOW_PATH_CROPS)}
-            checked={settings.showPathCrops}
-            onCheckedChange={() =>
-              onSettingsChange({
-                ...settings,
-                showPathCrops: !settings.showPathCrops,
-              })
-            }
-          />
+          {showTrackingSettings ? (
+            <Checkbox
+              id="show-path-crops"
+              label={translate(STRING.SHOW_PATH_CROPS)}
+              checked={settings.showPathCrops}
+              onCheckedChange={() =>
+                onSettingsChange({
+                  ...settings,
+                  showPathCrops: !settings.showPathCrops,
+                })
+              }
+            />
+          ) : null}
           <div className="flex items-center gap-1">
             <Checkbox
               id="default-filters"

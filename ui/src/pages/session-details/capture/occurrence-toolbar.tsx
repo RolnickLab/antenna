@@ -69,6 +69,7 @@ export const OccurrenceToolbar = ({
   pathError,
   showPathCrops,
   shownFrames,
+  trackingEnabled,
 }: {
   /** The detection this panel is anchored to, which is this track's frame on the capture. */
   detectionId?: string
@@ -94,6 +95,8 @@ export const OccurrenceToolbar = ({
   showPathCrops?: boolean
   /** Ghost boxes actually drawn, which the trail caps below the path's length. */
   shownFrames?: number
+  /** Off, the panel names the occurrence and its score, with no track details or edits. */
+  trackingEnabled?: boolean
 }) => {
   const singleFrame = occurrence.frameCount <= 1
   const pathShown = !!path?.length
@@ -223,79 +226,91 @@ export const OccurrenceToolbar = ({
             scoreLabel={occurrence.scoreLabel}
             verified={occurrence.score === 1}
           />
-          <span className="body-small text-muted-foreground">{subtitle()}</span>
+          {trackingEnabled ? (
+            <span className="body-small text-muted-foreground">
+              {subtitle()}
+            </span>
+          ) : null}
         </div>
       </div>
 
-      <div className="flex flex-col gap-0.5 body-small text-muted-foreground">
-        {framePosition ? <span>{framePosition}</span> : null}
+      {trackingEnabled ? (
+        <>
+          <div className="flex flex-col gap-0.5 body-small text-muted-foreground">
+            {framePosition ? <span>{framePosition}</span> : null}
 
-        {shownFrames !== undefined && path && shownFrames < path.length ? (
-          <span>
-            {translate(STRING.TRACK_SHOWING_PART_OF_PATH, {
-              shown: shownFrames,
-              total: path.length,
-            })}
-          </span>
-        ) : null}
+            {shownFrames !== undefined && path && shownFrames < path.length ? (
+              <span>
+                {translate(STRING.TRACK_SHOWING_PART_OF_PATH, {
+                  shown: shownFrames,
+                  total: path.length,
+                })}
+              </span>
+            ) : null}
 
-        {occurrence.groupingVerified ? (
-          <span>
-            {translate(STRING.TRACK_GROUPING_CONFIRMED_BY, {
-              date: occurrence.groupingVerifiedAt
-                ? getFormatedDateTimeString({
-                    date: occurrence.groupingVerifiedAt,
-                  })
-                : translate(STRING.VALUE_NOT_AVAILABLE),
-              name:
-                occurrence.groupingVerifiedBy ??
-                translate(STRING.ANONYMOUS_USER),
-            })}
-          </span>
-        ) : null}
+            {occurrence.groupingVerified ? (
+              <span>
+                {translate(STRING.TRACK_GROUPING_CONFIRMED_BY, {
+                  date: occurrence.groupingVerifiedAt
+                    ? getFormatedDateTimeString({
+                        date: occurrence.groupingVerifiedAt,
+                      })
+                    : translate(STRING.VALUE_NOT_AVAILABLE),
+                  name:
+                    occurrence.groupingVerifiedBy ??
+                    translate(STRING.ANONYMOUS_USER),
+                })}
+              </span>
+            ) : null}
 
-        {pathError && !pathShown && !isLoadingPath ? (
-          <span className="text-destructive" role="alert">
-            {translate(STRING.TRACK_PATH_ERROR)}
-          </span>
-        ) : null}
+            {pathError && !pathShown && !isLoadingPath ? (
+              <span className="text-destructive" role="alert">
+                {translate(STRING.TRACK_PATH_ERROR)}
+              </span>
+            ) : null}
 
-        <IdRow
-          label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}
-          value={occurrence.id}
-        />
-
-        {detectionId ? (
-          <IdRow
-            label={translate(STRING.FIELD_LABEL_DETECTION_ID)}
-            value={detectionId}
-          >
-            {/* A detection keeps its id through every merge and split, so this link
-                still finds the box after the track it belongs to has changed. */}
-            <CopyLinkButton
-              value={buildDetectionLink(window.location.href, detectionId)}
+            <IdRow
+              label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}
+              value={occurrence.id}
             />
-          </IdRow>
-        ) : null}
-      </div>
 
-      <div className="flex flex-col gap-2 pt-2 border-t border-border">
-        {pathActions.length ? (
-          <div className="flex flex-wrap items-center gap-1">{pathActions}</div>
-        ) : null}
+            {detectionId ? (
+              <IdRow
+                label={translate(STRING.FIELD_LABEL_DETECTION_ID)}
+                value={detectionId}
+              >
+                {/* A detection keeps its id through every merge and split, so this link
+                still finds the box after the track it belongs to has changed. */}
+                <CopyLinkButton
+                  value={buildDetectionLink(window.location.href, detectionId)}
+                />
+              </IdRow>
+            ) : null}
+          </div>
 
-        <div className="flex flex-wrap items-center gap-1">{editActions}</div>
+          <div className="flex flex-col gap-2 pt-2 border-t border-border">
+            {pathActions.length ? (
+              <div className="flex flex-wrap items-center gap-1">
+                {pathActions}
+              </div>
+            ) : null}
 
-        {pathShown ? (
-          <Button onClick={onVerify} size="small" variant="outline">
-            <span>
-              {occurrence.groupingVerified
-                ? translate(STRING.TRACK_UNDO_CONFIRMATION)
-                : translate(STRING.TRACK_CONFIRM_GROUPING)}
-            </span>
-          </Button>
-        ) : null}
-      </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {editActions}
+            </div>
+
+            {pathShown ? (
+              <Button onClick={onVerify} size="small" variant="outline">
+                <span>
+                  {occurrence.groupingVerified
+                    ? translate(STRING.TRACK_UNDO_CONFIRMATION)
+                    : translate(STRING.TRACK_CONFIRM_GROUPING)}
+                </span>
+              </Button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }

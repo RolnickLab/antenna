@@ -64,6 +64,8 @@ interface CaptureProps {
   showDetections?: boolean
   showPathCrops?: boolean
   sources?: TierSources
+  /** Off, the capture shows boxes and their labels only: no paths or track edits. */
+  trackingEnabled?: boolean
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
 }
@@ -79,6 +81,7 @@ export const Capture = ({
   showDetections,
   showPathCrops,
   sources,
+  trackingEnabled,
   transformRef,
   width,
 }: CaptureProps) => {
@@ -106,7 +109,9 @@ export const Capture = ({
   // occurrence stays selected, so stepping between captures redraws the same path.
   const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
   const shownPathId =
-    pathOccurrenceId && activeOccurrences.includes(pathOccurrenceId)
+    trackingEnabled &&
+    pathOccurrenceId &&
+    activeOccurrences.includes(pathOccurrenceId)
       ? pathOccurrenceId
       : undefined
   const {
@@ -351,6 +356,7 @@ export const Capture = ({
               pathOccurrenceId={shownPathId}
               shownFrames={trail?.shownCount}
               showDetections={showDetections}
+              trackingEnabled={trackingEnabled}
             />
           </div>
         </TransformComponent>
@@ -495,6 +501,7 @@ const CaptureDetections = ({
   showDetections,
   showPathCrops,
   shownFrames,
+  trackingEnabled,
 }: {
   boxStyles: { [key: number]: BoxStyle }
   defaultFilters: boolean
@@ -513,6 +520,7 @@ const CaptureDetections = ({
   /** The path's boxes are filled with each frame's crop rather than left empty. */
   showPathCrops?: boolean
   shownFrames?: number
+  trackingEnabled?: boolean
 }) => {
   // Held in state, not a ref: Radix needs the element itself to keep a panel inside
   // the image, and a ref assignment does not re-render to hand it over.
@@ -777,6 +785,7 @@ const CaptureDetections = ({
               >
                 <OccurrenceToolbar
                   detectionId={detection.id}
+                  trackingEnabled={trackingEnabled}
                   isExtended={isExtended}
                   isLoadingPath={
                     isLoadingPath && pathOccurrenceId === detection.occurrenceId

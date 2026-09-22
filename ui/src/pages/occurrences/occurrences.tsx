@@ -23,6 +23,8 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
+import { withoutTrackingColumns } from 'utils/project-features/project-features'
+import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -71,10 +73,14 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
-  const tableColumns = columns({
-    projectId: projectId as string,
-    showActions: selectedItems.length === 0,
-  })
+  const trackingEnabled = useProjectFeature('tracking')
+  const tableColumns = withoutTrackingColumns(
+    columns({
+      projectId: projectId as string,
+      showActions: selectedItems.length === 0,
+    }),
+    trackingEnabled
+  )
 
   useEffect(() => {
     document.getElementById('app')?.scrollTo({ top: 0 })
@@ -105,7 +111,7 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
-            <FilterControl field="grouping_verified" />
+            {trackingEnabled && <FilterControl field="grouping_verified" />}
             <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection

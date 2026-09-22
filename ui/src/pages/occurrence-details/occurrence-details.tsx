@@ -28,6 +28,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
+import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
@@ -104,6 +105,7 @@ export const OccurrenceDetails = ({
     UserPermission.Delete
   )
   const canVerifyGrouping = canUpdate || canRestructure
+  const trackingEnabled = useProjectFeature('tracking')
 
   const sessionRoute = occurrence.sessionId
     ? APP_ROUTES.SESSION_DETAILS({
@@ -342,11 +344,11 @@ export const OccurrenceDetails = ({
                       </Box>
                     )}
 
-                    {occurrence.groupingVerifiedAt ? (
+                    {trackingEnabled && occurrence.groupingVerifiedAt ? (
                       <GroupingConfirmation occurrence={occurrence} />
                     ) : null}
 
-                    {occurrence.groupingSummary ? (
+                    {trackingEnabled && occurrence.groupingSummary ? (
                       <GroupingSummary
                         frameNames={occurrence.frameNames}
                         summary={occurrence.groupingSummary}
@@ -389,7 +391,7 @@ export const OccurrenceDetails = ({
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            {(canRestructure || canVerifyGrouping) && (
+            {trackingEnabled && (canRestructure || canVerifyGrouping) && (
               <GroupingActions
                 canRestructure={canRestructure}
                 canVerify={canVerifyGrouping}
@@ -397,10 +399,10 @@ export const OccurrenceDetails = ({
               />
             )}
             <BlueprintCollection
-              filmStrip
+              filmStrip={trackingEnabled}
               showLicenseInfo={blueprintItems.length > 0}
             >
-              {blueprintItems.length ? (
+              {trackingEnabled && blueprintItems.length ? (
                 <div className="flex flex-wrap items-center justify-between gap-1 pb-2">
                   <span className="body-small text-muted-foreground">
                     {blueprintItems.length === 1
@@ -436,7 +438,7 @@ export const OccurrenceDetails = ({
               {blueprintItems.map((item, index) => (
                 <BlueprintItem
                   actions={
-                    canRestructure ? (
+                    trackingEnabled && canRestructure ? (
                       <FrameMenu
                         isFirstInTime={index === blueprintItems.length - 1}
                         isOnlyFrame={blueprintItems.length < 2}
@@ -454,12 +456,14 @@ export const OccurrenceDetails = ({
                     ) : undefined
                   }
                   caption={
-                    <FrameCaption
-                      detectionId={item.id}
-                      hasVector={item.hasVector}
-                      label={item.frameLabel}
-                      timeLabel={item.timeLabel}
-                    />
+                    trackingEnabled ? (
+                      <FrameCaption
+                        detectionId={item.id}
+                        hasVector={item.hasVector}
+                        label={item.frameLabel}
+                        timeLabel={item.timeLabel}
+                      />
+                    ) : undefined
                   }
                   key={item.id}
                   item={item}

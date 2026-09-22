@@ -83,16 +83,21 @@ export interface ExtendTrackState {
  */
 export const useExtendTrack = ({
   captureId,
+  enabled,
   nextCaptureId,
   onSelectCapture,
 }: {
   captureId?: string
+  /** Off, an `extend` link is ignored rather than opening the mode. */
+  enabled: boolean
   /** Where a successful edit moves on to: the next capture with detections, if any. */
   nextCaptureId?: string
   onSelectCapture: (captureId: string) => void
 }): ExtendTrackState => {
   const { projectId } = useParams()
-  const { extendOccurrenceId, setExtendOccurrenceId } = useExtendOccurrenceId()
+  const { extendOccurrenceId: requestedOccurrenceId, setExtendOccurrenceId } =
+    useExtendOccurrenceId()
+  const extendOccurrenceId = enabled ? requestedOccurrenceId : undefined
   const { occurrence: track } = useOccurrenceDetails(
     extendOccurrenceId ?? '',
     EXTEND_FETCH_OPTIONS

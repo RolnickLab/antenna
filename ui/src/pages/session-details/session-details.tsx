@@ -19,6 +19,7 @@ import { useParams } from 'react-router-dom'
 import { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
+import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { OccurrenceTimelineMarkers } from './activity-plot/occurrence-timeline-markers'
@@ -108,8 +109,10 @@ const Content = ({ session }: { session: SessionDetails }) => {
     projectId: projectId as string,
   })
   const { timeline = [] } = useSessionTimeline(session.id)
+  const trackingEnabled = useProjectFeature('tracking')
   const extend = useExtendTrack({
     captureId: activeCaptureId,
+    enabled: trackingEnabled,
     nextCaptureId: activeCapture
       ? getNextCaptureWithDetectionsId({ capture: activeCapture, timeline })
       : undefined,
@@ -196,6 +199,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               detections={activeCapture?.detections ?? []}
               extend={extend}
               height={activeCapture?.height ?? session.firstCapture.height}
+              trackingEnabled={trackingEnabled}
               onTogglePathCrops={() =>
                 setSettings((current) => ({
                   ...current,
@@ -261,6 +265,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               <ViewSettings
                 onSettingsChange={setSettings}
                 settings={settings}
+                showTrackingSettings={trackingEnabled}
               />
             </div>
           </div>
@@ -272,7 +277,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               setActiveCaptureId={setActiveCaptureId}
               timeline={timeline}
             >
-              {timelineOccurrenceIds.length ? (
+              {trackingEnabled && timelineOccurrenceIds.length ? (
                 <OccurrenceTimelineMarkers
                   occurrenceIds={timelineOccurrenceIds}
                   session={session}
