@@ -26,7 +26,7 @@ from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.tests.fixtures.main import create_captures, setup_test_project
 from ami.users.models import User
-from ami.users.roles import BasicMember, MLDataManager
+from ami.users.roles import BasicMember, MLDataManager, ProjectManager
 
 logger = logging.getLogger(__name__)
 
@@ -1769,7 +1769,9 @@ class TestTrackingJobCreation(APITestCase):
         self.member = User.objects.create_user(email="tracking-member@insectai.org")  # type: ignore
         self.outsider = User.objects.create_user(email="tracking-outsider@insectai.org")  # type: ignore
         self.superuser = User.objects.create_superuser(email="tracking-super@insectai.org")  # type: ignore
+        self.project_manager = User.objects.create_user(email="tracking-owner@insectai.org")  # type: ignore
         MLDataManager.assign_user(self.manager, self.project)
+        ProjectManager.assign_user(self.project_manager, self.project)
         BasicMember.assign_user(self.member, self.project)
 
     def _body(self, **config) -> dict:
@@ -1879,6 +1881,73 @@ class TestTrackingJobCreation(APITestCase):
             response = self.client.post(url, self._body(), format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         enqueue.assert_called_once()
+
+    def test_safety_guards_can_only_be_changed_by_staff(self):
+        for field in ("require_fresh_event", "skip_if_human_identifications"):
+            with self.subTest(field):
+                response = self._post(self._body(event_ids=[self.events[0].pk], **{field: False}), self.manager)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+                self.assertEqual(response.data["params"]["config"], [f"{field}: Only staff can change this setting."])
+        self.assertFalse(Job.objects.filter(job_type_key="post_processing").exists())
+
+        # Restating a guard at its default is accepted.
+        response = self._post(self._body(event_ids=[self.events[0].pk], require_fresh_event=True), self.manager)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def _run(self, job: Job, user: User):
+        self.client.force_authenticate(user=user)
+        url = reverse_with_params("api:job-run", args=[job.pk], params={"project_id": self.project.pk})
+        with patch.object(Job, "enqueue") as enqueue:
+            response = self.client.post(url, format="json")
+        return response, enqueue
+
+    def _staff_job(self, task: str, config: dict) -> Job:
+        return Job.objects.create(
+            name="Staff run",
+            project=self.project,
+            job_type_key="post_processing",
+            params={"task": task, "config": config},
+        )
+
+    def test_project_manager_can_start_a_tracking_run_they_created(self):
+        created = self._post(self._body(), self.project_manager)
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        job = Job.objects.get(pk=created.data["id"])
+
+        cases = [
+            ("project manager", self.project_manager, status.HTTP_200_OK),
+            ("ML data manager", self.manager, status.HTTP_403_FORBIDDEN),
+            ("basic member", self.member, status.HTTP_403_FORBIDDEN),
+            ("non-member", self.outsider, status.HTTP_403_FORBIDDEN),
+            ("superuser", self.superuser, status.HTTP_200_OK),
+        ]
+        for label, user, expected in cases:
+            with self.subTest(label):
+                response, enqueue = self._run(job, user)
+                self.assertEqual(response.status_code, expected, response.data)
+                self.assertEqual(enqueue.called, expected == status.HTTP_200_OK)
+
+    def test_project_manager_cannot_run_staff_post_processing(self):
+        """Staff tasks, staff-only guard settings and tracking without the flag stay superuser-only."""
+        tracking_config = {"event_ids": [self.events[0].pk]}
+        staff_jobs = {
+            "staff task": self._staff_job("small_size_filter", {"source_image_collection_id": self.collection.pk}),
+            "guard turned off": self._staff_job("tracking", {**tracking_config, "require_fresh_event": False}),
+        }
+        for label, job in staff_jobs.items():
+            with self.subTest(label):
+                response, enqueue = self._run(job, self.project_manager)
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+                enqueue.assert_not_called()
+                response, enqueue = self._run(job, self.superuser)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        job = self._staff_job("tracking", tracking_config)
+        self.project.feature_flags.tracking = False
+        self.project.save(update_fields=["feature_flags"])
+        response, enqueue = self._run(job, self.project_manager)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+        enqueue.assert_not_called()
 
     def test_params_are_not_stored_for_other_job_types(self):
         body = {

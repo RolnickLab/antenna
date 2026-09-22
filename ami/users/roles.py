@@ -172,6 +172,9 @@ class ProjectManager(Role):
         | {
             Project.Permissions.UPDATE_PROJECT,
             Project.Permissions.DELETE_PROJECT,
+            # Runs post-processing jobs that a member may create (tracking only, on projects
+            # that opted in); staff tasks stay superuser-only in Job.check_custom_permission.
+            Project.Permissions.RUN_POST_PROCESSING_JOB,
             Project.Permissions.IMPORT_DATA,
             Project.Permissions.POPULATE_COLLECTION,
             Project.Permissions.CREATE_COLLECTION,
