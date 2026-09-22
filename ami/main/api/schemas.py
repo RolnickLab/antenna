@@ -21,3 +21,17 @@ include_public_doc_param = OpenApiParameter(
     required=False,
     type=bool,
 )
+
+taxon_id_doc_param = OpenApiParameter(
+    name="taxon_id",
+    description="Filter to algorithms whose managed taxa list contains this taxon.",
+    required=False,
+    type=int,
+)
+
+algorithm_id_doc_param = OpenApiParameter(
+    name="algorithm_id",
+    description="Filter to taxa in the algorithm's managed taxa list.",
+    required=False,
+    type=int,
+)

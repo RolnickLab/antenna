@@ -6,14 +6,15 @@ from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.base.permissions import IsActiveStaffOrPublicManagerOrReadOnly, ProjectPipelineConfigPermission
+from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin, get_active_project
-from ami.main.api.schemas import include_public_doc_param, project_id_doc_param
+from ami.main.api.schemas import include_public_doc_param, project_id_doc_param, taxon_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
@@ -58,22 +59,35 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
         # The nested taxa_list field must not cost a query per row.
         qs = qs.select_related("taxa_list")
-        # Only scope the list by project. Detail stays unscoped so links from historical
-        # classifications whose pipeline is no longer enabled still resolve.
-        if getattr(self, "action", None) == "list":
-            project = self.get_active_project()
-            if project:
-                # The project-scoped list shows the algorithms available to the project — those
-                # on its enabled pipelines — so a freshly configured project sees what it can
-                # run before anything has run. The algorithms that actually produced results
-                # (including superseded versions) are served by /occurrences/algorithms/.
-                qs = qs.filter(
-                    pipelines__project_pipeline_configs__project=project,
-                    pipelines__project_pipeline_configs__enabled=True,
-                ).distinct()
+        # Detail stays unscoped so links from historical classifications whose pipeline
+        # is no longer enabled still resolve; only "list" applies the filters below.
+        if getattr(self, "action", None) != "list":
+            return qs
+
+        taxon_id = SingleParamSerializer[int].clean(
+            param_name="taxon_id",
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=self.request.query_params,
+        )
+        if taxon_id is not None:
+            # "Which models predict this taxon" is a discovery question, broader than what
+            # the project has enabled: it also surfaces public services not yet added to
+            # the project. See Algorithm.objects.visible_to_project().
+            return qs.visible_to_project(self.get_active_project()).filter(taxa_list__taxa__pk=taxon_id).distinct()
+
+        project = self.get_active_project()
+        if project:
+            # The project-scoped list shows the algorithms available to the project — those
+            # on its enabled pipelines — so a freshly configured project sees what it can
+            # run before anything has run. The algorithms that actually produced results
+            # (including superseded versions) are served by /occurrences/algorithms/.
+            qs = qs.filter(
+                pipelines__project_pipeline_configs__project=project,
+                pipelines__project_pipeline_configs__enabled=True,
+            ).distinct()
         return qs
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param, taxon_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
