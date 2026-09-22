@@ -425,3 +425,390 @@ read off storage formats and off the current table. Before each stage lands:
   `create_classifications` `ami/ml/models/pipeline.py:922`, `save_results`
   `ami/ml/models/pipeline.py:1076`
 - `AlgorithmTaskType` and `Algorithm`: `ami/ml/models/algorithm.py:202`, `:228`
+
+---
+
+## Worked examples
+
+Everything below is written against the code as it stands, so it can be read beside the current models rather than translated. Names are proposals, not decisions.
+
+### The shape, as tables
+
+```mermaid
+erDiagram
+    ALGORITHM ||--o{ CLASSIFICATION : produced
+    ALGORITHM ||--o{ DETECTION_EMBEDDING : produced
+    ALGORITHM ||--o{ DETECTION_MEASUREMENT : produced
+    ALGORITHM ||--o{ ALGORITHM_OUTPUT_RECORD : produced
+
+    DETECTION ||--o{ CLASSIFICATION : "about"
+    DETECTION ||--o{ DETECTION_EMBEDDING : "about"
+    DETECTION ||--o{ DETECTION_MEASUREMENT : "about"
+    DETECTION ||--o{ ALGORITHM_OUTPUT_RECORD : "about"
+
+    CLASSIFICATION ||--o| CLASSIFICATION_SCORES : "raw arrays moved here"
+    CLASSIFICATION }o--o| TAXON : names
+
+    OCCURRENCE ||--o{ DETECTION : groups
+    OCCURRENCE }o--o| TAXON : "determination, read ONLY from CLASSIFICATION"
+
+    ALGORITHM {
+        slug key
+        string task_type "routes the output to its table"
+        int output_dimensions "new, nullable"
+    }
+    CLASSIFICATION {
+        bigint detection_id
+        bigint taxon_id
+        float score
+        bool terminal
+    }
+    CLASSIFICATION_SCORES {
+        bigint classification_id PK "1:1"
+        vector logits "4 bytes a class, was float8[]"
+    }
+    DETECTION_EMBEDDING {
+        bigint detection_id
+        bigint algorithm_id
+        vector vector "dimensionless"
+    }
+    DETECTION_MEASUREMENT {
+        bigint detection_id
+        string kind
+        float value
+        string unit
+        float uncertainty
+    }
+    ALGORITHM_OUTPUT_RECORD {
+        bigint detection_id "one of three targets"
+        bigint source_image_id
+        bigint occurrence_id
+        string output_type
+        jsonb data
+    }
+```
+
+The one rule the diagram encodes: the determination reads `CLASSIFICATION` and nothing else. Every other table is inert by construction.
+
+### Example schema
+
+Note for anyone reading the DDL against a live database: this project runs with `USE_TZ = False`, so these are `timestamp without time zone`, not `timestamptz`.
+
+```sql
+-- One vector per detection per algorithm. The width is the model's business, not ours,
+-- so the column is dimensionless and each algorithm declares what it emits.
+CREATE TABLE main_detectionembedding (
+    id           bigserial PRIMARY KEY,
+    created_at   timestamp NOT NULL,
+    updated_at   timestamp NOT NULL,
+    timestamp    timestamp NOT NULL,
+    detection_id bigint NOT NULL REFERENCES main_detection(id) ON DELETE CASCADE,
+    algorithm_id bigint NOT NULL REFERENCES ml_algorithm(id)   ON DELETE CASCADE,
+    job_id       bigint NULL     REFERENCES jobs_job(id)       ON DELETE SET NULL,
+    vector       vector NOT NULL,
+    CONSTRAINT unique_detection_embedding_per_algorithm UNIQUE (detection_id, algorithm_id)
+);
+
+-- Similarity is only meaningful within one algorithm, so the index says so out loud.
+-- The cast is what a dimensionless column needs; the predicate is the domain rule.
+CREATE INDEX detectionembedding_hnsw_algo_7
+    ON main_detectionembedding
+    USING hnsw ((vector::vector(1024)) vector_cosine_ops)
+    WHERE algorithm_id = 7;
+
+-- The raw arrays leave the hot row. Keyed on the classification, so it is a join
+-- nobody makes by accident, rather than a column a careless select_related drags in.
+CREATE TABLE main_classificationscores (
+    classification_id bigint PRIMARY KEY REFERENCES main_classification(id) ON DELETE CASCADE,
+    created_at        timestamp NOT NULL,
+    updated_at        timestamp NOT NULL,
+    logits            vector NOT NULL
+);
+
+-- The long tail. One row per output, validated per type on write.
+CREATE TABLE main_algorithmoutputrecord (
+    id              bigserial PRIMARY KEY,
+    created_at      timestamp NOT NULL,
+    updated_at      timestamp NOT NULL,
+    timestamp       timestamp NOT NULL,
+    algorithm_id    bigint NOT NULL REFERENCES ml_algorithm(id) ON DELETE CASCADE,
+    job_id          bigint NULL REFERENCES jobs_job(id) ON DELETE SET NULL,
+    detection_id    bigint NULL REFERENCES main_detection(id)   ON DELETE CASCADE,
+    source_image_id bigint NULL REFERENCES main_sourceimage(id) ON DELETE CASCADE,
+    occurrence_id   bigint NULL REFERENCES main_occurrence(id)  ON DELETE CASCADE,
+    output_type     varchar(255) NOT NULL,
+    data            jsonb NOT NULL,
+    CONSTRAINT exactly_one_target CHECK (
+        (detection_id IS NOT NULL)::int
+      + (source_image_id IS NOT NULL)::int
+      + (occurrence_id IS NOT NULL)::int = 1
+    )
+);
+
+CREATE INDEX algorithmoutputrecord_type_idx ON main_algorithmoutputrecord (output_type);
+```
+
+### Model definitions
+
+**A refinement of the design document, with a reason.** The document sketched the spine as carrying all three target foreign keys. Writing it out against `BaseModel.get_project_accessor()` shows why that only suits the generic table: the accessor is a single classmethod path, so a table that genuinely mixes targets has no one path and will not filter correctly for permissions. So the spine carries provenance only, and each concrete table declares the target it is about along with its own `project_accessor`, exactly as `Classification` and `DetectionEmbedding` already do.
+
+```python
+class AlgorithmOutput(BaseModel):
+    """What a model said, by whom, and when. Abstract: it owns provenance, not the target.
+
+    Concrete tables declare the thing the output is about, because `project_accessor`
+    is a single path and a table mixing targets cannot resolve one.
+    """
+
+    algorithm = models.ForeignKey(
+        "ml.Algorithm", on_delete=models.CASCADE, related_name="%(class)ss"
+    )
+    timestamp = models.DateTimeField(help_text="When the model produced this")
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="%(class)ss", help_text="The run that wrote it, for auditing",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class DetectionEmbedding(AlgorithmOutput):
+    """A feature vector for one detection from one algorithm.
+
+    Apart from classifications so every detection can have one, including those the
+    moth/non-moth filter rejected, without adding a prediction that could change a
+    determination. Vectors compare only within one algorithm.
+    """
+
+    project_accessor = "detection__source_image__project"
+
+    # No separate index: the unique constraint's index leads with detection_id.
+    detection = models.ForeignKey(
+        Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False
+    )
+    vector = pgvector.django.VectorField(
+        help_text="Backbone embedding. Dimensionless: the algorithm declares its width."
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["detection", "algorithm"],
+                name="unique_detection_embedding_per_algorithm",
+            )
+        ]
+
+
+class DetectionMeasurement(AlgorithmOutput):
+    """One scalar a model measured about a detection: wingspan, body length, mass."""
+
+    project_accessor = "detection__source_image__project"
+
+    detection = models.ForeignKey(
+        Detection, on_delete=models.CASCADE, related_name="measurements"
+    )
+    kind = models.CharField(max_length=255, help_text="wingspan, body_length, mass")
+    value = models.FloatField()
+    unit = models.CharField(max_length=32, help_text="mm, g")
+    uncertainty = models.FloatField(null=True, blank=True)
+
+
+class AlgorithmOutputRecord(AlgorithmOutput):
+    """Everything with no table of its own yet, and everything experimental.
+
+    Promotion to a typed table is the expected end of a type's life here, not a failure.
+    """
+
+    project_accessor = "detection__source_image__project"
+
+    detection = models.ForeignKey(
+        Detection, on_delete=models.CASCADE, null=True, blank=True, related_name="outputs"
+    )
+    source_image = models.ForeignKey(
+        SourceImage, on_delete=models.CASCADE, null=True, blank=True, related_name="outputs"
+    )
+    occurrence = models.ForeignKey(
+        Occurrence, on_delete=models.CASCADE, null=True, blank=True, related_name="outputs"
+    )
+    output_type = models.CharField(
+        max_length=255, db_index=True,
+        choices=[t.as_choice() for t in AlgorithmTaskType],
+    )
+    data = models.JSONField(help_text="Validated against the schema registered for output_type")
+
+    def save(self, *args, **kwargs):
+        schema = OUTPUT_SCHEMAS.get(self.output_type)
+        if schema is not None:
+            # An unregistered type is stored as-is: a service trying a new output is
+            # never blocked on an Antenna deploy, it just gets no validation and no UI.
+            self.data = schema(**self.data).dict()
+        return super().save(*args, **kwargs)
+```
+
+The algorithm declares its own width, which is what makes a dimensionless column safe:
+
+```python
+class Algorithm(BaseModel):
+    ...
+    output_dimensions = models.IntegerField(
+        null=True, blank=True,
+        help_text="Width of the vector this algorithm emits, when it emits one.",
+    )
+```
+
+### ORM usage
+
+**Writing, on the save path.** One statement for a batch, with re-processing replacing rather than duplicating, which is what the unique constraint is for:
+
+```python
+DetectionEmbedding.objects.bulk_create(
+    [
+        DetectionEmbedding(
+            detection_id=detection_id,
+            algorithm=algorithm,
+            vector=vector,
+            timestamp=response.timestamp,
+            job_id=job_id,
+        )
+        for detection_id, vector in vectors.items()
+    ],
+    update_conflicts=True,
+    unique_fields=["detection", "algorithm"],
+    update_fields=["vector", "timestamp", "job"],
+)
+```
+
+**Reading. The migration is one function, which is the point.** Tracking reads vectors through `latest_feature_vectors()` in `ami/ml/post_processing/tracking_task.py:379`. It reads classifications today:
+
+```python
+# today
+rows = (
+    Classification.objects.filter(
+        detection_id__in=list(detection_ids),
+        algorithm_id=algorithm_id,
+        features_2048__isnull=False,
+    )
+    .order_by("-timestamp", "-pk")
+    .values_list("detection_id", "features_2048")
+)
+```
+
+and would read the vector table instead, keeping the same signature and the same one-query-per-batch promise. The unique constraint removes the need to pick a winner per detection:
+
+```python
+# proposed
+rows = (
+    DetectionEmbedding.objects.filter(
+        detection_id__in=list(detection_ids),
+        algorithm_id=algorithm_id,
+    )
+    .values_list("detection_id", "vector")
+)
+```
+
+`resolve_feature_algorithm()` (`tracking_task.py:149`) is unchanged: it already returns a single algorithm, and every query stays pinned to it. That rule is not advice here, it is the shape of the index.
+
+**Similarity, pinned to one algorithm.** The pin is required for correctness, and it is also what lets the partial index match:
+
+```python
+from pgvector.django import CosineDistance
+
+neighbours = (
+    DetectionEmbedding.objects.filter(algorithm_id=algorithm_id)
+    .exclude(detection_id=detection_id)
+    .annotate(distance=CosineDistance("vector", query_vector))
+    .order_by("distance")
+    .values_list("detection_id", "distance")[:20]
+)
+```
+
+**Not reading the arrays, which is the whole point of the side table.** Today an incautious query can drag 4.2 GB of arrays along. Afterwards they are simply not on the row, and asking for them is explicit:
+
+```python
+scores = ClassificationScores.objects.filter(classification_id=classification.pk).first()
+```
+
+### API design and usage
+
+**On the wire, from a processing service.** `DetectionResponse` (`ami/ml/schemas.py:204`) gains one optional field beside `classifications`, and vectors keep their own typed field, because a vector inside `data` is JSON-encoded floats at roughly three times the bytes with no width check at the boundary:
+
+```python
+class AlgorithmOutputResponse(pydantic.BaseModel):
+    algorithm: AlgorithmReference
+    type: str                  # an AlgorithmTaskType value
+    data: dict[str, typing.Any]
+
+
+class DetectionResponse(pydantic.BaseModel):
+    ...
+    classifications: list[ClassificationResponse] | None = None
+    embeddings: list[EmbeddingResponse] | None = None
+    outputs: list[AlgorithmOutputResponse] | None = None   # new
+```
+
+A service posting a pose alongside its classification:
+
+```json
+{
+  "source_image_id": "12345",
+  "bbox": [0.12, 0.44, 0.31, 0.58],
+  "outputs": [
+    {
+      "algorithm": { "key": "moth-pose-v2" },
+      "type": "pose_estimation",
+      "data": { "keypoints": [{ "name": "head", "x": 0.21, "y": 0.47, "score": 0.88 }] }
+    }
+  ]
+}
+```
+
+Three rules on arrival, the first of which already exists for embeddings: an algorithm key the service never declared in `/info` fails the batch with `PipelineNotConfigured`; an output whose `type` contradicts its algorithm's registered `task_type` is caught here, and whether it warns or fails is still open; an unrecognised `type` never fails, it goes to the generic table.
+
+**Reading it back.** Following the conventions already used by `merge_candidates` (`ami/main/api/views.py:1857`): an action on the occurrence viewset, parameters parsed through `SingleParamSerializer` so bad input is a 400 rather than a 500, and the response typed for the schema.
+
+```python
+@extend_schema(
+    parameters=[OpenApiParameter(name="type", type=OpenApiTypes.STR, required=False)],
+    responses=AlgorithmOutputSerializer(many=True),
+)
+@action(detail=True, methods=["get"], name="outputs", url_path="outputs")
+def outputs(self, request: Request, pk=None) -> Response:
+    """Everything models recorded about this occurrence's detections, except its species.
+
+    Classifications are not returned here: they are the determination, and they have
+    their own place in the occurrence payload.
+    """
+    occurrence = self.get_object()
+    output_type = SingleParamSerializer[str].clean(
+        param_name="type",
+        serializer_class=serializers.ChoiceField,
+        serializer_kwargs={"choices": [t.value for t in AlgorithmTaskType], "required": False},
+        request=request,
+    )
+    queryset = AlgorithmOutputRecord.objects.filter(
+        detection__occurrence=occurrence
+    ).select_related("algorithm")
+    if output_type:
+        queryset = queryset.filter(output_type=output_type)
+    return Response(AlgorithmOutputSerializer(queryset, many=True).data)
+```
+
+```
+GET /api/v2/occurrences/634532/outputs/?type=pose_estimation
+```
+
+```json
+[
+  {
+    "id": 91,
+    "detection_id": 668170,
+    "algorithm": { "id": 7, "key": "moth-pose-v2", "name": "Moth Pose v2", "task_type": "pose_estimation" },
+    "type": "pose_estimation",
+    "timestamp": "2026-09-22T21:14:03",
+    "data": { "keypoints": [{ "name": "head", "x": 0.21, "y": 0.47, "score": 0.88 }] }
+  }
+]
+```
+
+Vectors deliberately get no such endpoint. They are large, they are only comparable within one algorithm, and nothing in the interface reads a raw vector. What the interface needs is whether one exists, which the occurrence payload already answers with `frames_with_vectors`.
