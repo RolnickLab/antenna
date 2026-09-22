@@ -21,6 +21,7 @@ from rich import print
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
+from ami.main.api.views import SourceImageUploadPagination
 from ami.main.models import (
     Classification,
     Deployment,
@@ -2236,6 +2237,39 @@ class TestProjectScopingOnListEndpoints(APITestCase):
 
         other_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_b.pk}")
         self.assertEqual(other_project.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class TestPaginationDefaults(APITestCase):
+    """Pins the API-wide default page size, and the one endpoint that deliberately raises it.
+
+    ``SourceImageUploadViewSet`` used to raise its page size by assigning to
+    ``LimitOffsetPaginationWithPermissions.default_limit`` in its class body. That statement
+    runs once at import time and mutates the shared class every other viewset falls back to
+    via ``DEFAULT_PAGINATION_CLASS``, so it silently raised every endpoint's default page size
+    from the configured 10 to 20.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.client.force_authenticate(user=self.project.owner)
+
+    def test_an_endpoint_without_its_own_paginator_uses_the_configured_page_size(self):
+        Site.objects.bulk_create(Site(name=f"Site {i}", project=self.project) for i in range(15))
+
+        response = self.client.get(f"/api/v2/deployments/sites/?project_id={self.project.pk}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["results"]), settings.REST_FRAMEWORK["PAGE_SIZE"])
+
+    def test_the_uploads_endpoint_keeps_its_own_larger_default(self):
+        for i in range(SourceImageUploadPagination.default_limit + 5):
+            fake_image = SimpleUploadedFile(f"upload-{i}.jpg", b"fake image content", content_type="image/jpeg")
+            SourceImageUpload.objects.create(image=fake_image, deployment=self.deployment, user=self.project.owner)
+
+        response = self.client.get(f"/api/v2/captures/upload/?project_id={self.project.pk}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["results"]), SourceImageUploadPagination.default_limit)
 
 
 class TestCapturesProcessedFilter(APITestCase):
@@ -5035,8 +5069,13 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         self.project.save()
         self.project.default_filters_include_taxa.set(self.include_taxa_and_parents)
 
-        # With apply_defaults=false and low threshold, should get everything
-        url = f"/api/v2/occurrences/?project_id={self.project.pk}&apply_defaults=false&classification_threshold=0.0"
+        # With apply_defaults=false and low threshold, should get everything. Request
+        # more rows than setUp() creates so the assertions below see every fixture
+        # occurrence on one page rather than only whatever the default page size holds.
+        url = (
+            f"/api/v2/occurrences/?project_id={self.project.pk}"
+            "&apply_defaults=false&classification_threshold=0.0&limit=100"
+        )
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
