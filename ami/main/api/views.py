@@ -39,7 +39,12 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import include_public_doc_param, limit_doc_param, project_id_doc_param
+from ami.main.api.schemas import (
+    algorithm_id_doc_param,
+    include_public_doc_param,
+    limit_doc_param,
+    project_id_doc_param,
+)
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
@@ -1720,7 +1725,7 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
-    Filters taxa based on a TaxaList.
+    Filters taxa based on a TaxaList, or on the taxa list an algorithm manages.
 
     By default, queries for taxa that are directly in the TaxaList and their descendants.
     If include_descendants=false, only taxa directly in the TaxaList are returned.
@@ -1729,15 +1734,26 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
     - taxa_list_id: ID of the taxa list to filter by
     - include_descendants: Set to 'false' to exclude descendants (default: true)
     - not_taxa_list_id: ID of taxa list to exclude
+    - algorithm_id: ID of an algorithm; resolves to its managed taxa list (see
+      Algorithm.taxa_list) and matches taxa directly in it, ignoring include_descendants
+      (see the note on the algorithm_id branch below for why). An algorithm with no
+      managed list, or one not visible to the active project
+      (Algorithm.objects.visible_to_project()), yields an empty result, not an error.
     """
 
     query_param = "taxa_list_id"
     query_param_exclusive = f"not_{query_param}"
+    algorithm_query_param = "algorithm_id"
 
     def filter_queryset(self, request, queryset, view):
         taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
         taxalist_id_exclusive = IntegerField(required=False).clean(
             request.query_params.get(self.query_param_exclusive)
+        )
+        algorithm_id = SingleParamSerializer[int].clean(
+            param_name=self.algorithm_query_param,
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=request.query_params,
         )
 
         include_descendants_default = True
@@ -1745,7 +1761,7 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
         if include_descendants is not None:
             include_descendants = BooleanField(required=False).clean(include_descendants)
 
-        def _get_filter(taxa_list: TaxaList) -> models.Q:
+        def _get_filter(taxa_list: TaxaList, include_descendants: bool = include_descendants) -> models.Q:
             taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
             query_filter = Q(id__in=taxa)
 
@@ -1767,6 +1783,26 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             if taxa_list:
                 query_filter = _get_filter(taxa_list)
                 queryset = queryset.exclude(query_filter)
+
+        if algorithm_id is not None:
+            # Same visibility rule as AlgorithmViewSet's taxon_id filter, so an algorithm
+            # private to another project's processing service can't be probed for its
+            # taxa from here either. See Algorithm.objects.visible_to_project().
+            algorithm = (
+                Algorithm.objects.visible_to_project(view.get_active_project())
+                .filter(pk=algorithm_id)
+                .select_related("taxa_list")
+                .first()
+            )
+            if algorithm is None or algorithm.taxa_list_id is None:
+                return queryset.none()
+            # Always exact membership, ignoring include_descendants: a classifier outputs
+            # one of its own labels, never a label's taxonomic children, so expanding to
+            # descendants would claim predictions it can't make. It also sidesteps a real
+            # cost — the descendants branch builds one OR'd clause per label, and a
+            # 29,176-label managed list (the largest real category map) took minutes
+            # under EXPLAIN (ANALYZE) versus milliseconds for id__in alone.
+            queryset = queryset.filter(_get_filter(algorithm.taxa_list, include_descendants=False))
 
         return queryset
 
@@ -2202,7 +2238,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             status=status.HTTP_200_OK,
         )
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param, algorithm_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
