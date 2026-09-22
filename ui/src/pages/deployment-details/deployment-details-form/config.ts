@@ -1,5 +1,6 @@
 import { FormConfig } from 'components/form/types'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
+import { validateMetadata } from 'utils/fieldProcessors'
 import { STRING, translate } from 'utils/language'
 import { bytesToMB } from 'utils/numberFormats'
 
@@ -10,6 +11,13 @@ export const config: FormConfig = {
   },
   description: {
     label: translate(STRING.FIELD_LABEL_DESCRIPTION),
+  },
+  metadata: {
+    label: translate(STRING.FIELD_LABEL_METADATA),
+    description: translate(STRING.MESSAGE_METADATA_DESCRIPTION),
+    rules: {
+      validate: validateMetadata,
+    },
   },
   siteId: {
     label: translate(STRING.FIELD_LABEL_SITE),

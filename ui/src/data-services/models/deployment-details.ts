@@ -17,6 +17,8 @@ export interface DeploymentFieldValues {
   deviceId?: string
   name: string
   image?: File | null
+  // JSON text for the station's metadata object, as typed in the form.
+  metadata?: string
   latitude: number
   longitude: number
   projectId?: string
@@ -52,6 +54,11 @@ export class DeploymentDetails extends Deployment {
 
   get description(): string {
     return this._deployment.description
+  }
+
+  /* Free-form metadata object, empty when the station has none. */
+  get metadata(): object {
+    return this._deployment.metadata ?? {}
   }
 
   get exampleCaptures(): { id: string; src: string }[] {
