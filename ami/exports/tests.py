@@ -551,3 +551,210 @@ class ExportNewFieldsTest(TestCase):
         ]
         for field in expected_fields:
             self.assertIn(field, headers, f"Missing CSV field: {field}")
+
+
+class TracksExportTest(TestCase):
+    """The tracks CSV: one row per detection, a fixed column contract, and bounded queries."""
+
+    EXPECTED_HEADER = (
+        "occurrence_id,detection_id,event_id,deployment_id,source_image_id,timestamp,frame_index,frame_count,"
+        "bbox_x1,bbox_y1,bbox_x2,bbox_y2,image_width,image_height,detection_label,detection_score,"
+        "occurrence_determination,occurrence_determination_score,grouping_verified,grouping_verified_at,"
+        "has_feature_vector,next_detection_id"
+    )
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.user = self.project.owner
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
+        group_images_into_events(self.deployment)
+        create_taxa(self.project)
+        self.taxon = Taxon.objects.filter(projects=self.project).first()
+        self.algorithm, _ = Algorithm.objects.get_or_create(
+            name="test-classifier", defaults={"key": "test-classifier"}
+        )
+        self.captures = list(self.project.captures.order_by("timestamp"))
+        self.captures[0].width, self.captures[0].height = 4096, 2160
+        self.captures[0].save()
+        # Three occurrences of three detections each, created latest frame first so that
+        # the export cannot get frame order from detection pks.
+        self.occurrences = [self._make_track(offset=i * 100) for i in range(3)]
+
+    def _make_track(self, offset: int) -> Occurrence:
+        occurrence = Occurrence.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            event=self.captures[0].event,
+            determination=self.taxon,
+            determination_score=0.9,
+        )
+        for capture in reversed(self.captures):
+            detection = Detection.objects.create(
+                source_image=capture,
+                timestamp=capture.timestamp,
+                bbox=[offset, offset, offset + 10, offset + 20],
+                occurrence=occurrence,
+            )
+            detection.classifications.create(
+                taxon=self.taxon, score=0.8, timestamp=capture.timestamp, algorithm=self.algorithm, terminal=True
+            )
+        return occurrence
+
+    def _rows(self, occurrences=None, **kwargs) -> list[dict[str, str]]:
+        from ami.exports.tracks import iter_track_rows
+
+        return list(iter_track_rows(occurrences or Occurrence.objects.filter(project=self.project), **kwargs))
+
+    def _run_format_export(self) -> tuple[str, DataExport]:
+        data_export = DataExport.objects.create(user=self.user, project=self.project, format="tracks_csv")
+        file_path = data_export.run_export().replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            content = f.read()
+        default_storage.delete(file_path)
+        data_export.refresh_from_db()
+        return content, data_export
+
+    def test_format_export_header_is_the_contract(self):
+        content, data_export = self._run_format_export()
+        lines = content.splitlines()
+        self.assertEqual(lines[0], self.EXPECTED_HEADER)
+        self.assertEqual(len(lines) - 1, 9)
+        self.assertEqual(data_export.record_count, 9, "A tracks export counts detection rows")
+
+    def test_frame_index_follows_capture_time(self):
+        rows = [row for row in self._rows() if row["occurrence_id"] == str(self.occurrences[0].pk)]
+        by_capture = {int(row["source_image_id"]): row for row in rows}
+        for index, capture in enumerate(self.captures):
+            row = by_capture[capture.pk]
+            self.assertEqual(row["frame_index"], str(index))
+            self.assertEqual(row["frame_count"], "3")
+            self.assertEqual(row["timestamp"], capture.timestamp.isoformat())
+        first = by_capture[self.captures[0].pk]
+        self.assertEqual((first["image_width"], first["image_height"]), ("4096", "2160"))
+        self.assertEqual((first["bbox_x1"], first["bbox_y2"]), ("0", "20"))
+        self.assertEqual((first["detection_label"], first["detection_score"]), (self.taxon.name, "0.8"))
+        self.assertEqual(by_capture[self.captures[1].pk]["image_width"], "")
+
+    def test_grouping_verified_flag(self):
+        from django.utils import timezone
+
+        verified = self.occurrences[1]
+        verified.grouping_verified_at = timezone.now()
+        verified.save(update_fields=["grouping_verified_at"])
+
+        rows = self._rows()
+        flags = {row["occurrence_id"]: (row["grouping_verified"], row["grouping_verified_at"]) for row in rows}
+        self.assertEqual(flags[str(verified.pk)], ("true", verified.grouping_verified_at.isoformat()))
+        self.assertEqual(flags[str(self.occurrences[0].pk)], ("false", ""))
+
+    def test_feature_vector_and_next_detection(self):
+        from ami.tests.fixtures.tracking import pgvector_is_available
+
+        detections = list(self.occurrences[0].detections.order_by("source_image__timestamp"))
+        detections[0].next_detection = detections[1]
+        detections[0].save(update_fields=["next_detection"])
+        if pgvector_is_available():
+            detections[0].classifications.update(features_2048=[0.1] * 2048)
+
+        rows = {int(row["detection_id"]): row for row in self._rows()}
+        self.assertEqual(rows[detections[0].pk]["next_detection_id"], str(detections[1].pk))
+        self.assertEqual(rows[detections[1].pk]["next_detection_id"], "")
+        self.assertEqual(rows[detections[1].pk]["has_feature_vector"], "false")
+        if pgvector_is_available():
+            self.assertEqual(rows[detections[0].pk]["has_feature_vector"], "true")
+
+    def test_query_count_is_one_pair_per_chunk(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from ami.main.tests import cachalot_disabled
+
+        # Three occurrences in chunks of two: occurrences, detections, occurrences, detections.
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            rows = self._rows(chunk_size=2)
+        self.assertEqual(len(rows), 9)
+        self.assertEqual(len(ctx.captured_queries), 4)
+
+        # Doubling the detections per occurrence adds no queries.
+        for occurrence in self.occurrences:
+            for detection in list(occurrence.detections.all()):
+                detection.pk = None
+                detection.next_detection = None
+                detection.save()
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            rows = self._rows(chunk_size=2)
+        self.assertEqual(len(rows), 18)
+        self.assertEqual(len(ctx.captured_queries), 4)
+
+    def _run_command(self, **options) -> tuple[list[dict[str, str]], str]:
+        import io
+
+        from django.core.management import call_command
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        call_command("export_tracks", project=self.project.pk, stdout=stdout, stderr=stderr, **options)
+        lines = stdout.getvalue().splitlines()
+        self.assertEqual(lines[0], self.EXPECTED_HEADER)
+        return list(csv.DictReader(lines)), stderr.getvalue()
+
+    def test_management_command_writes_the_same_csv(self):
+        rows, summary = self._run_command()
+        self.assertEqual(len(rows), 9)
+        self.assertIn("Wrote 9 detection rows", summary)
+
+    def test_management_command_event_filter(self):
+        import datetime
+
+        from ami.main.models import Event
+
+        first_event = self.captures[0].event
+        other_event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2030-01-01",
+            start=datetime.datetime(2030, 1, 1, 22, 0),
+        )
+        moved = self.occurrences[2]
+        moved.event = other_event
+        moved.save(update_fields=["event"])
+
+        rows, _ = self._run_command(events=[first_event.pk])
+        self.assertEqual(
+            {row["occurrence_id"] for row in rows}, {str(self.occurrences[0].pk), str(self.occurrences[1].pk)}
+        )
+        self.assertEqual(len(rows), 6)
+
+        rows, _ = self._run_command(events=[first_event.pk, other_event.pk])
+        self.assertEqual({row["occurrence_id"] for row in rows}, {str(o.pk) for o in self.occurrences})
+        self.assertEqual(len(rows), 9)
+
+    def test_management_command_verified_only(self):
+        from django.utils import timezone
+
+        rows, _ = self._run_command(verified_only=True)
+        self.assertEqual(rows, [], "No confirmed tracks yet, so only the header comes out")
+
+        verified = self.occurrences[1]
+        verified.grouping_verified_at = timezone.now()
+        verified.save(update_fields=["grouping_verified_at"])
+        rows, _ = self._run_command(verified_only=True)
+        self.assertEqual({row["occurrence_id"] for row in rows}, {str(verified.pk)})
+        self.assertEqual(len(rows), 3)
+        self.assertEqual({row["grouping_verified"] for row in rows}, {"true"})
+
+    def test_occurrence_csv_carries_grouping_confirmation(self):
+        from django.utils import timezone
+
+        verified = self.occurrences[0]
+        verified.grouping_verified_at = timezone.now()
+        verified.save(update_fields=["grouping_verified_at"])
+        data_export = DataExport.objects.create(user=self.user, project=self.project, format="occurrences_simple_csv")
+        file_path = data_export.run_export().replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            rows = {row["id"]: row for row in csv.DictReader(f)}
+        default_storage.delete(file_path)
+        self.assertNotIn("grouping_verified_by", next(iter(rows.values())))
+        self.assertEqual(rows[str(verified.pk)]["grouping_verified"], "True")
+        self.assertTrue(rows[str(verified.pk)]["grouping_verified_at"])
+        self.assertEqual(rows[str(self.occurrences[1].pk)]["grouping_verified"], "False")
+        self.assertEqual(rows[str(self.occurrences[1].pk)]["grouping_verified_at"], "")

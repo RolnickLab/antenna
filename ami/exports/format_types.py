@@ -115,6 +115,10 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     agreed_with_user = serializers.SerializerMethodField()
     determination_matches_machine_prediction = serializers.SerializerMethodField()
 
+    # Track grouping confirmation; who confirmed it is user data and is not exported.
+    grouping_verified = serializers.BooleanField(read_only=True)
+    grouping_verified_at = serializers.DateTimeField(allow_null=True, read_only=True)
+
     # Detection fields
     best_detection_url = serializers.SerializerMethodField()
     best_detection_bbox = serializers.SerializerMethodField()
@@ -144,6 +148,8 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "agreed_with_algorithm",
             "agreed_with_user",
             "determination_matches_machine_prediction",
+            "grouping_verified",
+            "grouping_verified_at",
             "detections_count",
             "first_appearance_timestamp",
             "last_appearance_timestamp",
@@ -257,3 +263,24 @@ class CSVExporter(BaseExporter):
                 self.update_job_progress(records_exported)
         self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return the file path
+
+
+class TracksCSVExporter(BaseExporter):
+    """One row per detection of every occurrence in scope; see ami/exports/tracks.py for the columns."""
+
+    file_format = "csv"
+
+    def get_queryset(self):
+        return Occurrence.objects.valid().filter(project=self.project)  # type: ignore[union-attr]
+
+    def export(self):
+        from ami.exports.tracks import write_tracks_csv
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="", encoding="utf-8")
+        with open(temp_file.name, "w", newline="", encoding="utf-8") as csvfile:
+            rows = write_tracks_csv(self.queryset, csvfile, on_chunk=self.update_job_progress)
+        self.update_export_stats(file_temp_path=temp_file.name)
+        # A tracks file holds one record per detection, not per occurrence.
+        self.data_export.record_count = rows
+        self.data_export.save(update_fields=["record_count"])
+        return temp_file.name
