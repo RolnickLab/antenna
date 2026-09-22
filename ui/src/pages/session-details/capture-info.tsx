@@ -7,20 +7,6 @@ import { STRING, translate } from 'utils/language'
 
 export const CaptureInfo = ({ capture }: { capture: CaptureDetails }) => {
   const { projectId } = useParams()
-  const { detectionsValid, detectionsWithFeatures } = capture
-  // Only worth a row when a box is missing a vector; tracking skips those boxes.
-  const vectorField =
-    detectionsValid !== undefined &&
-    detectionsWithFeatures !== undefined &&
-    detectionsWithFeatures < detectionsValid
-      ? {
-          label: translate(STRING.FIELD_LABEL_BOXES_WITH_VECTORS),
-          value: translate(STRING.VALUE_COUNT_OF_TOTAL, {
-            count: detectionsWithFeatures,
-            total: detectionsValid,
-          }),
-        }
-      : undefined
 
   const fields = [
     {
@@ -55,7 +41,6 @@ export const CaptureInfo = ({ capture }: { capture: CaptureDetails }) => {
       label: translate(STRING.FIELD_LABEL_TAXA),
       value: capture.numTaxa,
     },
-    ...(vectorField ? [vectorField] : []),
   ]
 
   return <InfoBlock fields={fields} />

@@ -111,7 +111,7 @@ export const MachinePrediction = ({
               isLoading={isLoading}
             />
             {topN?.map(({ score, taxon }) => {
-              const applied = taxon.id === occurrence.determinationTaxon?.id
+              const applied = taxon.id === occurrence.determinationTaxon.id
 
               return (
                 <MachinePredictionDetails

@@ -7,7 +7,6 @@ import { BooleanFilter } from './filters/boolean-filter'
 import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
 import { DeviceFilter } from './filters/device-filter'
-import { GroupingStatusFilter } from './filters/grouping-status-filter'
 import { ImageFilter } from './filters/image-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { SessionFilter } from './filters/session-filter'
@@ -36,7 +35,6 @@ const ComponentMap: {
   deployment__research_site: SiteFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
-  grouping_verified: GroupingStatusFilter,
   processed: ProcessingStatusFilter,
   include_unobserved: BooleanFilter,
   job_type_key: TypeFilter,

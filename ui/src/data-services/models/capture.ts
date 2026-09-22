@@ -6,40 +6,26 @@ export type ServerCapture = any // TODO: Update this type
 
 export type DetectionOccurrence = {
   id: string
-  detections_count: number | null
   determination: {
     name: string
-  } | null
-  determination_score: number | null
-  grouping_verified: boolean
-  grouping_verified_at: string | null
-  grouping_verified_by: string | null
+  }
+  determination_score: number
 }
 
 export type CaptureDetection = {
   bbox: number[]
-  /** Frames this detection's occurrence spans, so the toolbar can offer a path or say there is none. */
-  frameCount: number
-  groupingVerified: boolean
-  groupingVerifiedAt: Date | null
-  groupingVerifiedBy: string | null
   id: string
   label: string
   occurrence?: DetectionOccurrence
   occurrenceId?: string
   occurrenceMeetsCriteria: boolean
   score: number
-  /** Undefined when the detection's occurrence has no determination. */
-  scoreLabel?: string
+  scoreLabel: string
 }
 
 const getDetectionLabel = (detection: CaptureDetection) => {
   if (detection.occurrence?.determination) {
     return detection.occurrence.determination.name
-  }
-
-  if (detection.occurrence) {
-    return translate(STRING.UNIDENTIFIED)
   }
 
   return detection.id
@@ -58,10 +44,6 @@ const getDetectionScore = (detection: CaptureDetection) => {
 }
 
 const getDetectionScoreLabel = (detection: CaptureDetection) => {
-  if (detection.occurrence && !detection.occurrence.determination) {
-    return undefined
-  }
-
   const score = getDetectionScore(detection)
 
   if (score === 1) {
@@ -83,14 +65,6 @@ export class Capture {
         (detection: any): CaptureDetection => {
           return {
             bbox: detection.bbox,
-            frameCount: detection.occurrence?.detections_count ?? 0,
-            groupingVerified: !!detection.occurrence?.grouping_verified,
-            groupingVerifiedAt: detection.occurrence?.grouping_verified_at
-              ? new Date(detection.occurrence.grouping_verified_at)
-              : null,
-            // Accounts without a display name serialize as an empty string.
-            groupingVerifiedBy:
-              detection.occurrence?.grouping_verified_by || null,
             id: `${detection.id}`,
             label: getDetectionLabel(detection),
             occurrenceId: detection.occurrence

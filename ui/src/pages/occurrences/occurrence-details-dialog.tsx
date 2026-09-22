@@ -1,5 +1,4 @@
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
-import _ from 'lodash'
 import { Dialog } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -36,9 +35,6 @@ export const OccurrenceDetailsDialog = ({
   const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
-  const detailsLabel = translate(STRING.ENTITY_DETAILS, {
-    type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
-  })
 
   useEffect(() => {
     // If a default tab is set from router state, set this as active
@@ -72,11 +68,6 @@ export const OccurrenceDetailsDialog = ({
         error={error}
         isLoading={isLoading}
       >
-        <div className="sr-only">
-          <Dialog.Header title={occurrence?.displayName ?? detailsLabel}>
-            <Dialog.Description>{detailsLabel}</Dialog.Description>
-          </Dialog.Header>
-        </div>
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}

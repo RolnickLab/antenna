@@ -1,4 +1,3 @@
-import { CaptureDetails } from 'data-services/models/capture-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 
 export const findClosestCaptureId = ({
@@ -45,88 +44,6 @@ export const findClosestCaptureId = ({
   })
 
   return closestCaptureId
-}
-
-const findNextCaptureWithDetections = ({
-  date,
-  timeline,
-}: {
-  date: Date
-  timeline: TimelineTick[]
-}) =>
-  findClosestCaptureId({
-    minDate: date,
-    snapToDetections: true,
-    targetDate: date,
-    timeline,
-  })
-
-const findPrevCaptureWithDetections = ({
-  date,
-  timeline,
-}: {
-  date: Date
-  timeline: TimelineTick[]
-}) =>
-  findClosestCaptureId({
-    maxDate: date,
-    snapToDetections: true,
-    targetDate: date,
-    timeline,
-  })
-
-type CaptureNeighbours = Pick<
-  CaptureDetails,
-  'date' | 'nextCaptureWithDetectionsId' | 'prevCaptureWithDetectionsId'
->
-
-// The server sees every capture; the timeline keeps one per minute, so it only
-// stands in when the capture was fetched without the server's answer.
-export const getNextCaptureWithDetectionsId = ({
-  capture,
-  timeline,
-}: {
-  capture: CaptureNeighbours
-  timeline: TimelineTick[]
-}) =>
-  capture.nextCaptureWithDetectionsId === undefined
-    ? findNextCaptureWithDetections({ date: capture.date, timeline })
-    : capture.nextCaptureWithDetectionsId ?? undefined
-
-export const getPrevCaptureWithDetectionsId = ({
-  capture,
-  timeline,
-}: {
-  capture: CaptureNeighbours
-  timeline: TimelineTick[]
-}) =>
-  capture.prevCaptureWithDetectionsId === undefined
-    ? findPrevCaptureWithDetections({ date: capture.date, timeline })
-    : capture.prevCaptureWithDetectionsId ?? undefined
-
-// The timeline resolves to one tick per minute, so a shorter session collapses
-// into a single tick with nothing to scrub. An unknown span stays visible.
-const MIN_TIMELINE_SPAN_MS = 60 * 1000
-
-export const showSessionTimeline = ({
-  startDate,
-  endDate,
-}: {
-  startDate?: Date
-  endDate?: Date
-}) => {
-  const start = startDate?.getTime()
-  const end = endDate?.getTime()
-
-  if (start === undefined || end === undefined) {
-    return true
-  }
-
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return true
-  }
-
-  return end - start >= MIN_TIMELINE_SPAN_MS
 }
 
 export const dateToValue = ({

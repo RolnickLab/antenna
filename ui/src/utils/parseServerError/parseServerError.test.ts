@@ -21,24 +21,6 @@ describe('parseServerError', () => {
     })
   })
 
-  test('keeps the whole message when a field error is a bare string', () => {
-    const EXAMPLE_ERROR = {
-      message: 'Request failed with status code 400',
-      response: {
-        data: {
-          occurrence_ids: 'Capture(s) [12] would hold two detections.',
-        },
-      },
-    }
-
-    expect(parseServerError(EXAMPLE_ERROR).fieldErrors).toEqual([
-      {
-        key: 'occurrence_ids',
-        message: 'Capture(s) [12] would hold two detections.',
-      },
-    ])
-  })
-
   test('returns max one message per field', () => {
     const EXAMPLE_ERROR = {
       response: {

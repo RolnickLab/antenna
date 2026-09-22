@@ -152,7 +152,7 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
             item={{
               image: { src: occurrence.images[0]?.src },
               text: occurrence.dateLabel,
-              title: occurrence.determinationLabel,
+              title: occurrence.determinationTaxon.name,
             }}
           />
         </Link>

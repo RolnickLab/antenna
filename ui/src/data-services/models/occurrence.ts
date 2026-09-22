@@ -3,35 +3,22 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
-import {
-  convertTrackStats,
-  getIdAgreementLabel,
-  getMotionLabel,
-  getSizeChangeLabel,
-  TrackStats,
-} from './track-stats'
 
 export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
   protected readonly _occurrence: ServerOccurrence
-  private readonly _determinationTaxon?: Taxon
+  private readonly _determinationTaxon: Taxon
   private readonly _images: { src: string }[] = []
-  private readonly _trackStats?: TrackStats
 
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
 
-    const determinationTaxon = occurrence.determination_details?.taxon
-    this._determinationTaxon = determinationTaxon
-      ? new Taxon(determinationTaxon)
-      : undefined
+    this._determinationTaxon = new Taxon(occurrence.determination_details.taxon)
 
     this._images = occurrence.detection_images
       .filter((src: string) => !!src.length)
       .map((src: string) => ({ src }))
-
-    this._trackStats = convertTrackStats(occurrence.track_stats)
   }
 
   get createdAt(): Date {
@@ -62,10 +49,8 @@ export class Occurrence {
     return this._occurrence.deployment?.name
   }
 
-  get determinationId(): string | undefined {
-    return this._occurrence.determination
-      ? `${this._occurrence.determination.id}`
-      : undefined
+  get determinationId(): string {
+    return `${this._occurrence.determination.id}`
   }
 
   get determinationIdentificationId(): string | undefined {
@@ -77,10 +62,6 @@ export class Occurrence {
       : undefined
   }
 
-  get determinationLabel(): string {
-    return this._determinationTaxon?.name ?? translate(STRING.UNIDENTIFIED)
-  }
-
   get determinationPredictionId(): string | undefined {
     const determinationPrediction =
       this._occurrence.determination_details?.prediction
@@ -89,7 +70,15 @@ export class Occurrence {
   }
 
   get determinationScore(): number | undefined {
-    return this._occurrence.determination_details?.score ?? undefined
+    const score = this._occurrence.determination_details.score
+
+    if (score || score === 0) {
+      return score
+    }
+
+    if (!score) {
+      return undefined
+    }
   }
 
   get determinationScoreLabel(): string | undefined {
@@ -100,17 +89,17 @@ export class Occurrence {
     return undefined
   }
 
-  get determinationTaxon(): Taxon | undefined {
+  get determinationTaxon(): Taxon {
     return this._determinationTaxon
   }
 
   get determinationVerified(): boolean {
-    return !!this._occurrence.determination_details?.identification
+    return !!this._occurrence.determination_details.identification
   }
 
   get determinationVerifiedBy() {
     const verifiedBy =
-      this._occurrence.determination_details?.identification?.user
+      this._occurrence.determination_details.identification?.user
 
     return verifiedBy
       ? {
@@ -129,7 +118,7 @@ export class Occurrence {
   }
 
   get displayName(): string {
-    return `${this.determinationLabel} #${this.id}`
+    return `${this.determinationTaxon.name} #${this.id}`
   }
 
   get firstAppearanceTimestamp(): string {
@@ -141,16 +130,8 @@ export class Occurrence {
     return `${this._occurrence.id}`
   }
 
-  get idAgreementLabel(): string | undefined {
-    return getIdAgreementLabel(this._trackStats)
-  }
-
   get images(): { src: string }[] {
     return this._images
-  }
-
-  get motionLabel(): string | undefined {
-    return getMotionLabel(this._trackStats)
   }
 
   get numDetections(): number {
@@ -173,20 +154,11 @@ export class Occurrence {
     return this._occurrence.event.name
   }
 
-  get sizeChangeLabel(): string | undefined {
-    return getSizeChangeLabel(this._trackStats)
-  }
-
   get timeLabel(): string {
     return getFormatedTimeString({
       date: new Date(this.firstAppearanceTimestamp),
       options: { second: true },
     })
-  }
-
-  /** Undefined until tracking, a track edit or a backfill has stored them. */
-  get trackStats(): TrackStats | undefined {
-    return this._trackStats
   }
 
   get userPermissions(): UserPermission[] {
@@ -199,7 +171,7 @@ export class Occurrence {
         return false
       }
 
-      if (identification.withdrawn || !identification.taxon) {
+      if (identification.withdrawn) {
         return false
       }
 
@@ -211,7 +183,7 @@ export class Occurrence {
       }
 
       return (
-        identificationTaxonId === this.determinationTaxon?.id &&
+        identificationTaxonId === this.determinationTaxon.id &&
         identificationUserId === userId
       )
     })

@@ -79,11 +79,8 @@
   .infoWrapper {
     width: auto;
 
-    // Stack the grouping actions above the frames; side by side leaves the frame
-    // details too narrow to read on a phone.
     .blueprintContainer {
       display: flex;
-      flex-direction: column;
     }
 
     .blueprintContainer,

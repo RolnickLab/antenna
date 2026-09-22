@@ -2,7 +2,6 @@ import { ChevronRightIcon, MinusIcon } from 'lucide-react'
 import { Tooltip } from 'nova-ui-kit'
 import { cn } from 'nova-ui-kit/utils'
 import { ReactNode } from 'react'
-import { STRING, translate } from 'utils/language'
 import { Taxon } from './types'
 import { getMainParent, isGenusOrBelow } from './utils'
 
@@ -10,8 +9,7 @@ interface TaxonDetailsProps {
   compact?: boolean
   onTaxonClick?: (id: string) => void
   size?: 'default' | 'lg'
-  /** Absent when nothing has identified the occurrence yet. */
-  taxon?: Taxon
+  taxon: Taxon
 }
 
 export const TaxonDetails = ({
@@ -20,17 +18,6 @@ export const TaxonDetails = ({
   size = 'default',
   taxon,
 }: TaxonDetailsProps) => {
-  const nameClassName = cn('font-medium text-primary-500', {
-    'body-large': size === 'default',
-    'body-xlarge': size === 'lg',
-  })
-
-  if (!taxon) {
-    return (
-      <span className={nameClassName}>{translate(STRING.UNIDENTIFIED)}</span>
-    )
-  }
-
   const mainParent = compact ? getMainParent(taxon) : undefined
 
   const parents = compact
@@ -40,7 +27,13 @@ export const TaxonDetails = ({
   return (
     <div className="flex flex-col items-start gap-1">
       <TaxonLabel onTaxonClick={onTaxonClick} taxon={taxon}>
-        <span className={cn(nameClassName, { italic: isGenusOrBelow(taxon) })}>
+        <span
+          className={cn('font-medium text-primary-500', {
+            'body-large': size === 'default',
+            'body-xlarge': size === 'lg',
+            italic: isGenusOrBelow(taxon),
+          })}
+        >
           {taxon.name}
         </span>
       </TaxonLabel>

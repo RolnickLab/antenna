@@ -42,25 +42,21 @@ export const OccurrenceActions = ({
       ) : null}
       {showActions && canUpdate ? (
         <>
-          {item.determinationTaxon ? (
-            <Agree
-              agreed={agreed}
-              agreeWith={{
-                identificationId: item.determinationIdentificationId,
-                predictionId: item.determinationPredictionId,
-              }}
-              applied
-              compact
-              occurrenceId={item.id}
-              taxonId={item.determinationTaxon.id}
-            />
-          ) : null}
+          <Agree
+            agreed={agreed}
+            agreeWith={{
+              identificationId: item.determinationIdentificationId,
+              predictionId: item.determinationPredictionId,
+            }}
+            applied
+            compact
+            occurrenceId={item.id}
+            taxonId={item.determinationTaxon.id}
+          />
           <SuggestIdPopover occurrenceIds={[item.id]} />
           <IdQuickActions
             occurrenceIds={[item.id]}
-            occurrenceTaxa={
-              item.determinationTaxon ? [item.determinationTaxon] : []
-            }
+            occurrenceTaxa={[item.determinationTaxon]}
           />
         </>
       ) : null}
