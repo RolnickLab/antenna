@@ -38,6 +38,7 @@ archived.
 |---|---|
 | `planning/stats-list-pattern.md` | Deferred list/paginator pattern for stats endpoints — companion to api-stats-pattern.md |
 | `planning/celery-queue-split-rollout.md` | Rollout plan for the Celery queue split (`feat/celery-queue-split`) |
+| `planning/2026-09-18-jobs-panel-schema-driven-design.md` | Design: Create Job panel that selects a job type (ML pipeline / post-processing task) and generates its config form from the task's pydantic schema. Keywords: jobs, post-processing, pydantic, JSON Schema, forms, job types |
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
 
