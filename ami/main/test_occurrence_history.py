@@ -2,6 +2,7 @@
 
 from django.test import TestCase
 
+from ami.main import tests as main_tests
 from ami.main.models import Occurrence, OccurrenceHistoryRecord
 from ami.tests.fixtures.main import setup_test_project
 
@@ -52,3 +53,57 @@ class OccurrenceHistoryPayloadTestCase(TestCase):
         with self.assertRaises(ValueError):
             record.save()
         self.assertFalse(OccurrenceHistoryRecord.objects.exists())
+
+
+class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
+    """Confirming a track posts a review only when the confirmed set of detections differs from the last one."""
+
+    def verify(self, occurrence: Occurrence | None = None):
+        self.client.force_authenticate(user=self.curator)
+        occurrence = occurrence or self.occurrence
+        response = self.client.post(f"/api/v2/occurrences/{occurrence.pk}/verify-grouping/", format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def reviews(self, occurrence: Occurrence | None = None):
+        return OccurrenceHistoryRecord.objects.filter(
+            occurrence=occurrence or self.occurrence,
+            kind=OccurrenceHistoryRecord.Kind.REVIEW,
+            subtype="track_complete",
+        ).order_by("timestamp", "pk")
+
+    def test_the_first_confirmation_posts_a_review_and_an_unchanged_one_does_not(self):
+        self.verify()
+        self.verify()
+
+        review = self.reviews().get()
+        self.assertEqual(review.user, self.curator)
+        self.assertEqual(review.payload["detection_ids"], sorted(d.pk for d in self.detections))
+        self.assertEqual(review.payload["frames_count"], len(self.captures))
+        self.assertEqual(review.payload["first_timestamp"], self.captures[0].timestamp.isoformat())
+        self.assertEqual(review.payload["last_timestamp"], self.captures[-1].timestamp.isoformat())
+        self.assertEqual((review.payload["detections_added"], review.payload["detections_removed"]), ([], []))
+        self.occurrence.refresh_from_db()
+        self.assertEqual(self.occurrence.grouping_verified_by, self.curator)
+        self.assertGreaterEqual(self.occurrence.grouping_verified_at, review.timestamp)
+
+    def test_a_confirmation_after_an_edit_records_what_changed(self):
+        self.verify()
+        response = self.post("remove-detection", self.detections[-1], user=self.curator)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.verify()
+
+        first, second = self.reviews()
+        self.assertEqual(second.payload["detections_removed"], [self.detections[-1].pk])
+        self.assertEqual(second.payload["detections_added"], [])
+        self.assertEqual(second.payload["frames_count"], len(self.captures) - 1)
+        self.assertEqual(first.payload["detection_ids"], sorted(d.pk for d in self.detections))
+
+    def test_merging_an_occurrence_keeps_its_reviews(self):
+        other, _ = self._make_track(1, captures=self._make_captures_after(1))
+        self.verify(other)
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/", {"occurrence_ids": [other.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.reviews().count(), 1)

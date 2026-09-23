@@ -46,11 +46,13 @@ from ami.main.models import (
     Detection,
     Identification,
     Occurrence,
+    OccurrenceHistoryRecord,
     SourceImage,
     User,
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
+from ami.main.models_future.history import record_track_complete_review
 from ami.main.models_future.track_stats import refresh_track_stats
 
 # Frame order within a track: capture time, then capture, then detection. The edits,
@@ -387,16 +389,16 @@ def clear_grouping_verification(*occurrences: Occurrence) -> None:
 
 
 def _absorb(target: Occurrence, sources: list[Occurrence]) -> None:
-    """Move every detection and identification off ``sources`` and delete them.
+    """Move every detection, identification and history record off ``sources`` and delete them.
 
-    Identifications move first. ``Identification.occurrence`` cascades on delete, so
-    a source removed before its identifications were reassigned would take a
-    person's work with it.
+    Identifications and history move first. Both cascade on delete, so a source removed
+    before they were reassigned would take a person's work and its record with it.
     """
     source_pks = [o.pk for o in sources]
     if not source_pks:
         return
     Identification.objects.filter(occurrence_id__in=source_pks).update(occurrence=target)
+    OccurrenceHistoryRecord.objects.filter(occurrence_id__in=source_pks).update(occurrence=target)
     Detection.objects.filter(occurrence_id__in=source_pks).update(occurrence=target)
     Occurrence.objects.filter(pk__in=source_pks).delete()
 
@@ -533,15 +535,18 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     return target
 
 
+@transaction.atomic
 def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
     """Record that a person confirmed this occurrence holds the right detections.
 
     This is the label the tracking methods are scored against, so it is deliberately
-    an explicit act — no operation in this module sets it as a side effect.
+    an explicit act — no operation in this module sets it as a side effect. The review
+    goes into the occurrence's history; the two fields here cache the latest one.
     """
     occurrence.grouping_verified_at = timezone.now()
     occurrence.grouping_verified_by = user
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])
+    record_track_complete_review(occurrence, user, timestamp=occurrence.grouping_verified_at)
     return occurrence
 
 

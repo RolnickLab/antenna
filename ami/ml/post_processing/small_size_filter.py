@@ -2,7 +2,16 @@ import pydantic
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
+from ami.main.models import (
+    Classification,
+    Detection,
+    Occurrence,
+    OccurrenceHistoryRecord,
+    SourceImageCollection,
+    Taxon,
+    TaxonRank,
+)
+from ami.main.schemas import SizeFilterResultPayload
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.schemas import BoundingBox
 
@@ -90,6 +99,10 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         updated_occurrence_ids: set[int] = set()
         modified_occurrences = 0
         checked = 0
+        # Occurrence id -> (determination before the run, flagged detection ids), written
+        # as one history record per occurrence once the run is done.
+        history: dict[int, tuple[int | None, list[int]]] = {}
+        determinations_after: dict[int, int | None] = {}
 
         for i, det in enumerate(detections.iterator(), start=1):
             bbox = det.get_bbox()
@@ -131,6 +144,8 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 detections_to_update.add(det)
                 if det.occurrence is not None:
                     occcurrences_to_update.add(det.occurrence)
+                    _, flagged = history.setdefault(det.occurrence.pk, (det.occurrence.determination_id, []))
+                    flagged.append(det.pk)
                 self.logger.debug(f"Marking detection {det.pk} as {not_identifiable_taxon.name}")
 
             # Update progress every 100 detections
@@ -159,6 +174,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                     occ.save(update_determination=True)
                     if occ.pk is not None and occ.determination_id != prev_determination_id:
                         updated_occurrence_ids.add(occ.pk)
+                    determinations_after[occ.pk] = occ.determination_id
                 modified_occurrences = len(updated_occurrence_ids)
                 occcurrences_to_update.clear()
 
@@ -172,4 +188,22 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                     }
                 )
 
+        OccurrenceHistoryRecord.objects.bulk_create(
+            OccurrenceHistoryRecord.build(
+                occurrence_id=occurrence_id,
+                kind=OccurrenceHistoryRecord.Kind.ALGORITHM_RESULT,
+                subtype="size_filter",
+                payload=SizeFilterResultPayload(
+                    size_threshold=threshold,
+                    detection_ids=sorted(detection_ids),
+                    taxon_before_id=taxon_before_id,
+                    taxon_after_id=determinations_after.get(occurrence_id),
+                ),
+                job=self.job,
+                algorithm=self.algorithm,
+            )
+            for occurrence_id, (taxon_before_id, detection_ids) in history.items()
+            # A detection flagged in a batch that never flushed was not saved, so it gets no record.
+            if occurrence_id in determinations_after
+        )
         self.logger.info(f"=== Completed {self.name}: {modified_detections} of {total} detections modified ===")
