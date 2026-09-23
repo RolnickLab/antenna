@@ -1800,3 +1800,61 @@ class TestJobSourceImageSingleFilter(APITestCase):
         html = response.content.decode()
         self.assertNotIn('<select name="source_image_single"', html)
         self.assertIn('<input type="number" name="source_image_single"', html)
+
+
+class TestRetrainingJobPermissions(APITestCase):
+    """
+    Who may run a retrain, an evaluation, or an embedding run.
+
+    Job.check_custom_permission builds the codename from the job type key, so a type with
+    no matching permission on Project is runnable by nobody but a superuser. All three of
+    these were in that state: even a project manager could create such a job and then not
+    start it.
+    """
+
+    RETRAINING_JOB_PERMISSIONS = (
+        "run_generate_embeddings_job",
+        "run_train_classifier_job",
+        "run_evaluate_algorithm_job",
+    )
+
+    def setUp(self):
+        from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager
+
+        self.project = Project.objects.create(name="Retraining Permissions Project")
+        self.superuser = User.objects.create_user(email="rp-super@insectai.org", is_superuser=True, is_staff=True)
+        self.project_manager = User.objects.create_user(email="rp-manager@insectai.org")
+        self.ml_data_manager = User.objects.create_user(email="rp-mldata@insectai.org")
+        self.identifier = User.objects.create_user(email="rp-identifier@insectai.org")
+        self.basic_member = User.objects.create_user(email="rp-basic@insectai.org")
+        self.outsider = User.objects.create_user(email="rp-outsider@insectai.org")
+
+        ProjectManager.assign_user(self.project_manager, self.project)
+        MLDataManager.assign_user(self.ml_data_manager, self.project)
+        Identifier.assign_user(self.identifier, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+
+    def _may_run(self, user) -> set:
+        # Re-read the user so guardian's permission cache reflects the role assignment.
+        user = User.objects.get(pk=user.pk)
+        return {perm for perm in self.RETRAINING_JOB_PERMISSIONS if user.has_perm(perm, self.project)}
+
+    def test_an_ml_data_manager_may_run_all_three(self):
+        self.assertEqual(self._may_run(self.ml_data_manager), set(self.RETRAINING_JOB_PERMISSIONS))
+
+    def test_a_project_manager_may_run_all_three(self):
+        """ProjectManager inherits MLDataManager's permissions, but guardian rows are per
+        group, so this is not implied by the test above."""
+        self.assertEqual(self._may_run(self.project_manager), set(self.RETRAINING_JOB_PERMISSIONS))
+
+    def test_a_superuser_may_run_all_three(self):
+        self.assertEqual(self._may_run(self.superuser), set(self.RETRAINING_JOB_PERMISSIONS))
+
+    def test_an_identifier_may_not(self):
+        self.assertEqual(self._may_run(self.identifier), set())
+
+    def test_a_basic_member_may_not(self):
+        self.assertEqual(self._may_run(self.basic_member), set())
+
+    def test_a_non_member_may_not(self):
+        self.assertEqual(self._may_run(self.outsider), set())
