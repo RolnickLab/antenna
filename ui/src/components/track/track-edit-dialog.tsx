@@ -73,12 +73,18 @@ export const TrackEditDialog = ({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
+        // A wide dialog grows with its table instead of taking the full height, and scrolls past the cap.
+        className={
+          isWide
+            ? '!h-fit !max-h-[calc(100dvh-128px)] [&>div]:max-h-[inherit]'
+            : undefined
+        }
         isCompact={!isWide}
       >
         <Dialog.Header title={title} />
         <div
           className={classNames('flex flex-col gap-4 p-6', {
-            'w-[680px] max-w-full': isWide,
+            'w-[840px] max-w-full': isWide,
           })}
         >
           <span className="body-small text-muted-foreground">

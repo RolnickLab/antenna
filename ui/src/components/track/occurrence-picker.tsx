@@ -491,10 +491,11 @@ export const OccurrencePicker = ({
                         />
                       ) : null}
                     </td>
-                    <td className={cellClassName}>
+                    {/* One line per row; long names are cut and shown in full on hover. */}
+                    <td className={classNames(cellClassName, 'min-w-32')}>
                       <button
                         aria-pressed={selected}
-                        className="text-left"
+                        className="block max-w-56 truncate text-left"
                         onBlur={hideComparison}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -506,6 +507,7 @@ export const OccurrencePicker = ({
                             e.currentTarget.closest('tr') ?? e.currentTarget
                           )
                         }
+                        title={candidate.displayName}
                         type="button"
                       >
                         {candidate.displayName}
