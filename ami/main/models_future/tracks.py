@@ -52,7 +52,7 @@ from ami.main.models import (
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
-from ami.main.models_future.history import record_track_complete_review
+from ami.main.models_future.history import carry_confirmation_over_split, record_track_complete_review
 from ami.main.models_future.track_stats import refresh_track_stats
 
 # Frame order within a track: capture time, then capture, then detection. The edits,
@@ -159,7 +159,8 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     keeps this occurrence and its identifications; each later piece is a new occurrence
     holding copies of them. Unlike a manual split, every piece keeps the grouping
     confirmation and the chain link to the next piece, since each piece is still the
-    whole track within its session and the link records that they are one animal.
+    whole track within its session and the link records that they are one animal. The
+    confirmation is restated as a review of each piece's own detections.
     Returns the new occurrences in time order, or an empty list when nothing was split.
     """
     detections = occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER)
@@ -186,6 +187,7 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
             grouping_verified_at=occurrence.grouping_verified_at,
             grouping_verified_by_id=occurrence.grouping_verified_by_id,
         )
+        carry_confirmation_over_split(occurrence, pieces)
 
     _copy_identifications(occurrence, pieces)
     for piece in [occurrence, *pieces]:
@@ -540,13 +542,14 @@ def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
     """Record that a person confirmed this occurrence holds the right detections.
 
     This is the label the tracking methods are scored against, so it is deliberately
-    an explicit act — no operation in this module sets it as a side effect. The review
-    goes into the occurrence's history; the two fields here cache the latest one.
+    an explicit act — no operation in this module sets it as a side effect. The two
+    fields hold the current confirmation; the history keeps every review.
     """
+    was_confirmed = occurrence.grouping_verified_at is not None
     occurrence.grouping_verified_at = timezone.now()
     occurrence.grouping_verified_by = user
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])
-    record_track_complete_review(occurrence, user, timestamp=occurrence.grouping_verified_at)
+    record_track_complete_review(occurrence, user, occurrence.grouping_verified_at, was_confirmed)
     return occurrence
 
 

@@ -4133,7 +4133,8 @@ class OccurrenceHistoryRecord(BaseModel):
     Identifications and predictions keep their own tables; the history endpoint merges all
     three. An algorithm result stands for the prediction change a run made, and a run writes
     at most one record per occurrence, none when it changed nothing about it. Reviews are
-    append-only; ``Occurrence.grouping_verified_at`` and ``_by`` cache the latest one.
+    append-only; ``Occurrence.grouping_verified_at`` and ``_by`` hold the current confirmation,
+    which unverifying or editing the track clears while its reviews stay.
     The payload is validated against the schema for its kind and subtype (ami/main/schemas.py).
     """
 

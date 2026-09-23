@@ -51,6 +51,12 @@ class TrackCompleteReviewPayload(HistoryPayload):
     # Compared with the previous track_complete review; the first review lists none.
     detections_added: list[int] = []
     detections_removed: list[int] = []
+    # The occurrence reviewed. A merge moves reviews onto the surviving occurrence, and
+    # only its own reviews are compared with a later confirmation of it.
+    occurrence_id: int | None = None
+    # Set when regrouping split a confirmed occurrence at a session boundary: the
+    # confirmation carries over to each piece, restated for the piece's own detections.
+    split_from_occurrence_id: int | None = None
 
 
 # Keyed by (kind, subtype). A subtype missing here cannot be written.

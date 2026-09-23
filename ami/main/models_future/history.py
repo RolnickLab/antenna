@@ -11,8 +11,6 @@ import dataclasses
 import datetime
 import typing
 
-from django.utils import timezone
-
 from ami.main.models import Detection, Identification, Occurrence, OccurrenceHistoryRecord, Taxon, User
 from ami.main.schemas import TrackCompleteReviewPayload
 
@@ -24,9 +22,13 @@ TRACK_COMPLETE = "track_complete"
 
 
 def latest_track_complete_review(occurrence: Occurrence) -> OccurrenceHistoryRecord | None:
+    """The latest review written for this occurrence, ignoring reviews a merge brought in."""
     return (
         OccurrenceHistoryRecord.objects.filter(
-            occurrence=occurrence, kind=OccurrenceHistoryRecord.Kind.REVIEW, subtype=TRACK_COMPLETE
+            occurrence=occurrence,
+            kind=OccurrenceHistoryRecord.Kind.REVIEW,
+            subtype=TRACK_COMPLETE,
+            payload__occurrence_id=occurrence.pk,
         )
         .order_by("-timestamp", "-pk")
         .first()
@@ -34,13 +36,54 @@ def latest_track_complete_review(occurrence: Occurrence) -> OccurrenceHistoryRec
 
 
 def record_track_complete_review(
-    occurrence: Occurrence, user: User, timestamp: datetime.datetime | None = None
+    occurrence: Occurrence, user: User, timestamp: datetime.datetime, was_confirmed: bool
 ) -> OccurrenceHistoryRecord | None:
-    """Record that ``user`` confirmed this occurrence's detections, unless they are the set last confirmed.
+    """Record that ``user`` confirmed this occurrence's detections.
 
-    Re-confirming an unchanged track adds nothing to the history, so the review list shows
-    only the sets a person actually looked at. The first review always posts.
+    Nothing is written when the same person re-confirms a still-confirmed, unchanged set,
+    so the review list shows each distinct confirmation once.
     """
+    previous = latest_track_complete_review(occurrence)
+    record = _build_track_complete_review(occurrence, user.pk, timestamp, previous)
+    if (
+        was_confirmed
+        and previous is not None
+        and previous.user_id == user.pk
+        and sorted(previous.payload["detection_ids"]) == record.payload["detection_ids"]
+    ):
+        return None
+    record.save()
+    return record
+
+
+def carry_confirmation_over_split(occurrence: Occurrence, pieces: list[Occurrence]) -> None:
+    """Restate a confirmed occurrence's review for each piece a session split left.
+
+    Each review keeps the original reviewer and time but lists only its piece's
+    detections, so a later re-confirmation of a piece compares against what it holds.
+    """
+    if occurrence.grouping_verified_at is None:
+        return
+    OccurrenceHistoryRecord.objects.bulk_create(
+        _build_track_complete_review(
+            piece,
+            occurrence.grouping_verified_by_id,
+            occurrence.grouping_verified_at,
+            previous=None,
+            split_from_occurrence_id=occurrence.pk,
+        )
+        for piece in [occurrence, *pieces]
+    )
+
+
+def _build_track_complete_review(
+    occurrence: Occurrence,
+    user_id: int | None,
+    timestamp: datetime.datetime,
+    previous: OccurrenceHistoryRecord | None,
+    split_from_occurrence_id: int | None = None,
+) -> OccurrenceHistoryRecord:
+    """An unsaved review of the occurrence's current detections, with the change since ``previous``."""
     frames = list(
         Detection.objects.valid()
         .filter(occurrence=occurrence)
@@ -48,29 +91,26 @@ def record_track_complete_review(
         .values_list("pk", "source_image_id", "source_image__timestamp")
     )
     detection_ids = sorted(pk for pk, _, _ in frames)
-    previous = latest_track_complete_review(occurrence)
-    previous_ids = sorted(previous.payload.get("detection_ids", [])) if previous else None
-    if previous_ids == detection_ids:
-        return None
-
+    previous_ids = set(previous.payload["detection_ids"]) if previous else set(detection_ids)
     capture_times = [captured for _, _, captured in frames if captured is not None]
     payload = TrackCompleteReviewPayload(
         detection_ids=detection_ids,
         frames_count=len({capture_id for _, capture_id, _ in frames}),
         first_timestamp=min(capture_times, default=None),
         last_timestamp=max(capture_times, default=None),
-        detections_added=sorted(set(detection_ids) - set(previous_ids)) if previous_ids is not None else [],
-        detections_removed=sorted(set(previous_ids) - set(detection_ids)) if previous_ids is not None else [],
+        detections_added=sorted(set(detection_ids) - previous_ids),
+        detections_removed=sorted(previous_ids - set(detection_ids)),
+        occurrence_id=occurrence.pk,
+        split_from_occurrence_id=split_from_occurrence_id,
     )
     record = OccurrenceHistoryRecord.build(
         occurrence_id=occurrence.pk,
         kind=OccurrenceHistoryRecord.Kind.REVIEW,
         subtype=TRACK_COMPLETE,
         payload=payload,
-        timestamp=timestamp or timezone.now(),
-        user=user,
+        timestamp=timestamp,
     )
-    record.save()
+    record.user_id = user_id
     return record
 
 

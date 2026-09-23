@@ -9,6 +9,7 @@ from ami.main.models import Classification, Identification, Occurrence, Occurren
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import setup_test_project
 from ami.users.models import User
+from ami.users.roles import MLDataManager
 
 # Measured: two savepoints, the project, the occurrence, then history records, their taxa,
 # identifications and predictions.
@@ -64,10 +65,10 @@ class OccurrenceHistoryPayloadTestCase(TestCase):
 
 
 class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
-    """Confirming a track posts a review only when the confirmed set of detections differs from the last one."""
+    """Confirming a track posts a review unless the same person re-confirms a still-confirmed, unchanged set."""
 
-    def verify(self, occurrence: Occurrence | None = None):
-        self.client.force_authenticate(user=self.curator)
+    def verify(self, occurrence: Occurrence | None = None, user: User | None = None):
+        self.client.force_authenticate(user=user or self.curator)
         occurrence = occurrence or self.occurrence
         response = self.client.post(f"/api/v2/occurrences/{occurrence.pk}/verify-grouping/", format="json")
         self.assertEqual(response.status_code, 200, response.data)
@@ -105,6 +106,37 @@ class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
         self.assertEqual(second.payload["detections_added"], [])
         self.assertEqual(second.payload["frames_count"], len(self.captures) - 1)
         self.assertEqual(first.payload["detection_ids"], sorted(d.pk for d in self.detections))
+
+    def test_a_confirmation_after_it_was_withdrawn_or_by_someone_else_posts_a_review(self):
+        self.verify()
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/", format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.verify()
+        other_curator = User.objects.create_user(email="second-curator@insectai.org")  # type: ignore
+        MLDataManager.assign_user(other_curator, self.project)
+        self.verify(user=other_curator)
+
+        reviews = list(self.reviews())
+        self.assertEqual([r.user for r in reviews], [self.curator, self.curator, other_curator])
+        self.assertTrue(all(r.payload["detections_added"] == [] for r in reviews))
+        self.occurrence.refresh_from_db()
+        self.assertEqual(self.occurrence.grouping_verified_at, reviews[-1].timestamp)
+
+    def test_a_confirmation_after_a_merge_compares_with_this_occurrences_own_review(self):
+        other, other_detections = self._make_track(1, captures=self._make_captures_after(1))
+        self.verify()
+        self.verify(other)
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/", {"occurrence_ids": [other.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.verify()
+
+        latest = self.reviews().last()
+        self.assertEqual(latest.payload["detections_added"], [d.pk for d in other_detections])
+        self.assertEqual(latest.payload["detections_removed"], [])
 
     def test_merging_an_occurrence_keeps_its_reviews(self):
         other, _ = self._make_track(1, captures=self._make_captures_after(1))

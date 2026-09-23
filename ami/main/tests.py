@@ -1537,6 +1537,26 @@ class TestRegroupSplitsTracks(TestCase):
             self.assertEqual(piece.grouping_verified_at, verified_at)
             self.assertEqual(piece.grouping_verified_by_id, self.user.pk)
 
+    def test_each_piece_gets_a_review_of_its_own_detections(self):
+        from ami.main.models_future.history import latest_track_complete_review
+        from ami.main.models_future.tracks import verify_grouping
+
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_track(self.captures)
+        verify_grouping(occurrence, self.user)
+        verified_at = Occurrence.objects.get(pk=occurrence.pk).grouping_verified_at
+
+        self._group(gap_hours=2)
+
+        for piece in Occurrence.objects.filter(deployment=self.deployment):
+            review = latest_track_complete_review(piece)
+            self.assertEqual(review.payload["detection_ids"], sorted(self._detection_ids(piece)))
+            self.assertEqual((review.user_id, review.timestamp), (self.user.pk, verified_at))
+            self.assertEqual(review.payload["split_from_occurrence_id"], occurrence.pk)
+            # Re-confirming the piece as it stands changes nothing, so it records nothing.
+            verify_grouping(piece, self.user)
+            self.assertEqual(latest_track_complete_review(piece).pk, review.pk)
+
     def test_identifications_are_copied_to_every_piece(self):
         self._group(gap_hours=6)
         occurrence, _ = self._make_track(self.captures)
