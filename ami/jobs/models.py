@@ -1135,7 +1135,9 @@ class Job(BaseModel):
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = AsyncResult(task_id).status
+        # A task that was just sent is PENDING by definition. Asking the result backend
+        # adds nothing and fails the request when its idle connection has been reset.
+        self.status = JobState.PENDING
         self.update_progress(save=False)
         self.save()
 

@@ -1,6 +1,7 @@
 # from rich import print
 import logging
 from typing import Any
+from unittest.mock import patch
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
@@ -1606,6 +1607,22 @@ class TestRegroupEventsJob(TestCase):
         with patch("ami.main.models.group_images_into_events", side_effect=RuntimeError("boom")):
             with self.assertRaises(RuntimeError):
                 job.run()
+
+
+class TestJobEnqueue(TestCase):
+    def test_enqueue_marks_the_job_pending_without_asking_the_result_backend(self):
+        """Creating a job must not depend on the result backend, whose idle connection
+        can be reset and turn the request into a 500."""
+        project = Project.objects.create(name="Enqueue Project")
+        job = Job.objects.create(name="Enqueue test", project=project, job_type_key=RegroupEventsJob.key)
+
+        with patch("ami.jobs.models.AsyncResult") as async_result:
+            job.enqueue()
+
+        async_result.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.PENDING.value)
+        self.assertIsNotNone(job.task_id)
 
 
 class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
