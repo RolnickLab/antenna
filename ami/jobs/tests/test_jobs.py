@@ -276,6 +276,23 @@ class TestJobView(APITestCase):
         # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
         self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
+    def test_anonymous_writes_are_refused_before_the_body_is_validated(self):
+        """An unauthenticated caller learns nothing from validation errors, while reads stay public."""
+        self.client.force_authenticate(user=None)
+        jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        bodies = {
+            "empty": {},
+            "unknown job type": {"project_id": self.project.pk, "name": "x", "job_type_key": "no-such-type"},
+            "post-processing": {"project_id": self.project.pk, "job_type_key": "post_processing", "params": {}},
+        }
+        for label, body in bodies.items():
+            with self.subTest(label):
+                resp = self.client.post(jobs_create_url, body, format="json")
+                self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED, resp.data)
+        self.assertEqual(self.client.get(jobs_create_url).status_code, status.HTTP_200_OK)
+        detail_url = reverse_with_params("api:job-detail", args=[self.job.pk], params={"project_id": self.project.pk})
+        self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_200_OK)
+
     def _create_job(self, name: str, start_now: bool = True):
         jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
 

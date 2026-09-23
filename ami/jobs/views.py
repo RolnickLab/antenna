@@ -14,6 +14,7 @@ from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from ami.base.filters import RelatedIdFilter
@@ -228,7 +229,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "pipeline",
     ]
 
-    permission_classes = [ObjectPermission]
+    # Anonymous writes are refused before the body is validated; reads stay public.
+    permission_classes = [IsAuthenticatedOrReadOnly, ObjectPermission]
 
     def get_serializer_class(self):
         """
