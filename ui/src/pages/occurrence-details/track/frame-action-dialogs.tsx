@@ -2,7 +2,7 @@ import { useAddDetections } from 'data-services/hooks/occurrences/track/useAddDe
 import { useRemoveDetection } from 'data-services/hooks/occurrences/track/useRemoveDetection'
 import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTrack'
 import {
-  getDetectionError,
+  getCandidatesEmptyMessage,
   MERGE_SCOPES,
   MergeScopeKey,
   useMergeCandidates,
@@ -179,10 +179,7 @@ export const FrameActionDialogs = ({
             description={translate(STRING.TRACK_MOVE_SCOPE_DESCRIPTION, {
               scope: translate(moveScope.label).toLowerCase(),
             })}
-            emptyMessage={
-              getDetectionError(candidatesError) ??
-              translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)
-            }
+            emptyMessage={getCandidatesEmptyMessage(candidatesError)}
             isLoading={candidatesLoading}
             onScopeChange={(key) => {
               setScope(key)

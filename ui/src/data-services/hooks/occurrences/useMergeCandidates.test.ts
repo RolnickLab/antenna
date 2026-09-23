@@ -1,4 +1,5 @@
 import {
+  getCandidatesEmptyMessage,
   getDetectionError,
   getMergeCandidatesParams,
 } from './useMergeCandidates'
@@ -51,5 +52,19 @@ describe('getDetectionError', () => {
       undefined
     )
     expect(getDetectionError(badRequest([]))).toBeUndefined()
+  })
+})
+
+describe('getCandidatesEmptyMessage', () => {
+  test('tells a failed request apart from an empty scope', () => {
+    const empty = getCandidatesEmptyMessage(undefined)
+    const failed = getCandidatesEmptyMessage({ response: { status: 500 } })
+
+    expect(failed).not.toBe(empty)
+    expect(
+      getCandidatesEmptyMessage({
+        response: { data: { detection: 'Has no box.' } },
+      })
+    ).toBe('Has no box.')
   })
 })

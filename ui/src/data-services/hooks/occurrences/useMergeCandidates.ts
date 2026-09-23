@@ -5,7 +5,7 @@ import {
   ServerMergeCandidates,
 } from 'data-services/models/merge-candidate'
 import { useMemo } from 'react'
-import { STRING } from 'utils/language'
+import { STRING, translate } from 'utils/language'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const DEFAULT_WINDOW_MINUTES = 5
@@ -60,6 +60,15 @@ export const getDetectionError = (error: unknown): string | undefined => {
 
   return message ? `${message}` : undefined
 }
+
+/** A failed request must not read as an empty scope, or the operator widens it for nothing. */
+export const getCandidatesEmptyMessage = (error: unknown): string =>
+  getDetectionError(error) ??
+  translate(
+    error
+      ? STRING.TRACK_MERGE_CANDIDATES_LOAD_FAILED
+      : STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE
+  )
 
 /**
  * Occurrences this one could be merged with, ranked by the tracking method. Given a

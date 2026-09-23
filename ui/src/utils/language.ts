@@ -482,6 +482,7 @@ export enum STRING {
   TRACK_MATCH_SKIPPED_SESSION,
   TRACK_MATCH_UNLIKELY,
   TRACK_MATCH_WOULD_LINK,
+  TRACK_MERGE_CANDIDATES_LOAD_FAILED,
   TRACK_MERGE_CANDIDATES_TITLE,
   TRACK_MERGE_COUNT,
   TRACK_MERGE_MANY_DESCRIPTION,
@@ -1148,6 +1149,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Automatic tracking would skip this session: no feature vectors. Colors use box geometry only.',
   [STRING.TRACK_MATCH_UNLIKELY]: 'Unlikely',
   [STRING.TRACK_MATCH_WOULD_LINK]: 'Automatic tracking would link this',
+  [STRING.TRACK_MERGE_CANDIDATES_LOAD_FAILED]:
+    'Could not load the candidates. Close this dialog and try again.',
   [STRING.TRACK_MERGE_CANDIDATES_TITLE]: 'Candidates to merge',
   [STRING.TRACK_MERGE_COUNT]: 'Merge {{count}} occurrences',
   [STRING.TRACK_MERGE_MANY_DESCRIPTION]:

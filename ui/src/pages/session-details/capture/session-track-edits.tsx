@@ -8,6 +8,7 @@ import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTra
 import {
   MERGE_SCOPES,
   MergeScopeKey,
+  getCandidatesEmptyMessage,
   useMergeCandidates,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
 import { MergeCandidate } from 'data-services/models/merge-candidate'
@@ -144,6 +145,7 @@ export const SessionTrackEdits = ({
   const {
     candidates,
     costThreshold,
+    error: candidatesError,
     isLoading: candidatesLoading,
     requiresFeatures,
   } = useMergeCandidates({
@@ -251,7 +253,7 @@ export const SessionTrackEdits = ({
             description={translate(STRING.TRACK_MERGE_SCOPE_DESCRIPTION, {
               scope: translate(mergeScope.label).toLowerCase(),
             })}
-            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
+            emptyMessage={getCandidatesEmptyMessage(candidatesError)}
             isLoading={candidatesLoading}
             onScopeChange={setScope}
             onToggle={toggleSource}
