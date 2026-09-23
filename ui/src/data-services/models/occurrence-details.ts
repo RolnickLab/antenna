@@ -60,7 +60,6 @@ export interface HumanIdentification extends Identification {
 }
 
 export interface MachinePrediction extends Identification {
-  algorithm: Algorithm
   /** Whether a feature embedding was stored; null when the API did not say. */
   hasFeatures?: boolean | null
   score: number

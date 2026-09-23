@@ -181,6 +181,20 @@ describe('getTimelineItems', () => {
   })
 })
 
+describe('prediction cards built from the history', () => {
+  test('have no algorithm when the server names none', () => {
+    const [item] = getTimelineItems({
+      entries: [{ ...predictionEntry(6), algorithm: null }],
+      identifications: [],
+      predictions: [],
+    })
+
+    expect(item.type === 'prediction' && item.prediction.algorithm).toBe(
+      undefined
+    )
+  })
+})
+
 describe('getFallbackTimelineItems', () => {
   test('merges identifications and predictions newest first', () => {
     const items = getFallbackTimelineItems({

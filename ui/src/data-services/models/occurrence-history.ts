@@ -182,7 +182,7 @@ const toPrediction = (
   const taxon = convertHistoryTaxon(entry.taxon)
 
   return {
-    algorithm: new Algorithm(entry.algorithm ?? {}),
+    algorithm: entry.algorithm ? new Algorithm(entry.algorithm) : undefined,
     applied: taxon.id === determinationTaxonId,
     createdAt: entry.timestamp,
     id: `${entry.id}`,

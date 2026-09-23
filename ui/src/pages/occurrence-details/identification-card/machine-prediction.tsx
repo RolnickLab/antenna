@@ -47,6 +47,7 @@ export const MachinePrediction = ({
     date: new Date(identification.createdAt),
   })
   const showAgree = occurrence.userPermissions.includes(UserPermission.Update)
+  const { algorithm } = identification
 
   return (
     <div>
@@ -66,16 +67,14 @@ export const MachinePrediction = ({
             ? translate(STRING.TERMINAL_CLASSIFICATION)
             : translate(STRING.INTERMEDIATE_CLASSIFICATION)
         }
-        title={
-          identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
-        }
+        title={algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)}
         onTitleClick={
-          identification.algorithm
+          algorithm
             ? () =>
                 navigate(
                   APP_ROUTES.ALGORITHM_DETAILS({
                     projectId: projectId as string,
-                    algorithmId: identification.algorithm?.id,
+                    algorithmId: algorithm.id,
                   })
                 )
             : undefined
