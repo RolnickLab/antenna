@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { getAdjacentIds } from './adjacent-occurrences'
 
 // Returns a handler for a finished confirm that moves to the next item, or closes
-// after the last one. A confirm that lands after the user has moved on is ignored.
+// after the last one. An unlisted item, or one the user has left, stays put.
 export const useAdvanceOnConfirm = ({
   close,
   currentId,
@@ -30,10 +30,11 @@ export const useAdvanceOnConfirm = ({
     if (confirmedId !== currentIdRef.current) {
       return
     }
-    const { nextId } = getAdjacentIds(latest.current.items, confirmedId)
+    const { items } = latest.current
+    const { nextId } = getAdjacentIds(items, confirmedId)
     if (nextId) {
       latest.current.goTo(nextId)
-    } else {
+    } else if (items?.[items.length - 1]?.id === confirmedId) {
       latest.current.close()
     }
   }, [])

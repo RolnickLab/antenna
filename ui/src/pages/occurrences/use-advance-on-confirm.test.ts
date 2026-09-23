@@ -34,6 +34,15 @@ describe('useAdvanceOnConfirm', () => {
     expect(goTo).not.toHaveBeenCalled()
   })
 
+  test('stays on a confirmed item that is not in the list, as from a deep link', () => {
+    const { close, goTo, result } = renderAdvance('9')
+
+    result.current('9')
+
+    expect(close).not.toHaveBeenCalled()
+    expect(goTo).not.toHaveBeenCalled()
+  })
+
   test('ignores a confirm that finishes after the user moved to another item', () => {
     const { close, goTo, rerender, result } = renderAdvance('1')
 
