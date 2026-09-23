@@ -45,6 +45,10 @@ Candidates of every relation are sorted together by cost and capped once.
 Vectors are loaded only for the frames in the scored pairs: one per candidate and the
 occurrence's frames those are paired with.
 
+Passing ``detection_id`` ranks destinations for that one frame of the occurrence
+instead, for moving it to another occurrence: the frame stands in for the whole track,
+so the search, the exclusions and the scores are all taken from it alone.
+
 ``match_capture_detections`` previews what tracking would link on one capture, with the
 tracker's own matcher, for a person extending the track capture by capture.
 """
@@ -89,6 +93,10 @@ _FRAME_FIELDS = (
     "source_image__width",
     "source_image__height",
 )
+
+
+class DetectionNotInOccurrence(ValueError):
+    """The frame asked to be ranked for is not a frame of the occurrence."""
 
 
 def _timed_frames(queryset) -> list[dict[str, Any]]:
@@ -183,6 +191,7 @@ def rank_merge_candidates(
     minutes: int | None = None,
     captures: int = DEFAULT_ADJACENT_CAPTURES,
     limit: int = MAX_CANDIDATES,
+    detection_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Candidates for merging with ``occurrence``, lowest cost first, at most ``limit``.
 
@@ -205,11 +214,24 @@ def rank_merge_candidates(
     occurrence's frames, the adjacent capture ids (two queries, skipped in minutes
     mode), the searched frames, the candidate occurrences, and one vector query for
     each side of the pairs.
+
+    With ``detection_id`` the ranking is for moving that one frame, so it is scored in
+    place of the track's frames. Raises ``DetectionNotInOccurrence`` when it is not one
+    of the occurrence's frames.
     """
     from ami.main.models import Classification, Detection, get_media_url
 
     config = tracking_config_for(occurrence)
-    target_frames = _timed_frames(Detection.objects.valid().filter(occurrence_id=occurrence.pk))
+    track = Detection.objects.valid().filter(occurrence_id=occurrence.pk)
+    if detection_id is None:
+        target_frames = _timed_frames(track)
+    else:
+        # Read without the timestamp filter, so an untimed frame of the occurrence is not
+        # mistaken for another occurrence's frame.
+        rows = list(track.filter(pk=detection_id).values(*_FRAME_FIELDS))
+        if not rows:
+            raise DetectionNotInOccurrence(detection_id)
+        target_frames = [row for row in rows if row["timestamp"] is not None]
     if not target_frames:
         return []
     first, last = target_frames[0], target_frames[-1]

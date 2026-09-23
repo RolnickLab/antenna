@@ -10039,6 +10039,61 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data["candidates"]), 3)
 
+    def _stray_frame(self) -> Detection:
+        """The track's second frame, moved across the image so it reads as another animal's box."""
+        stray = self.detections[1]
+        stray.bbox = [300, 300, 330, 330]
+        stray.save(update_fields=["bbox"])
+        return stray
+
+    def test_a_detection_is_ranked_against_other_occurrences_from_its_own_box(self):
+        """Destinations for one frame are scored from that frame alone, so an occurrence on the
+        track's other captures is offered, and one on the frame's own capture is not."""
+        stray = self._stray_frame()
+        near = self._make_occurrence([self.captures[0], self.captures[2]], bbox=[302, 302, 332, 332])
+        far = self._make_occurrence([self.captures[2]], bbox=[700, 700, 730, 730])
+        same_capture = self._make_occurrence([self.captures[1]], bbox=[304, 304, 334, 334])
+
+        response = self.get_candidates(f"&detection={stray.pk}")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        rows = response.data["candidates"]
+        self.assertEqual([row["id"] for row in rows], [near.pk, far.pk])
+        self.assertNotIn(same_capture.pk, [row["id"] for row in rows])
+        self.assertEqual((rows[0]["relation"], rows[0]["time_offset_seconds"]), ("gap", 0.0))
+        self.assertEqual((rows[1]["relation"], rows[1]["time_offset_seconds"]), ("after", 60.0))
+        self.assertEqual({row["edge_timestamp"] for row in rows}, {stray.timestamp.isoformat()})
+        whole_track = [row["id"] for row in self.get_candidates().data["candidates"]]
+        self.assertNotIn(near.pk, whole_track, "The whole track shares a capture with it")
+
+    def test_the_detection_must_be_one_of_the_occurrences_frames(self):
+        other = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+        foreign = other.detections.get()
+        for junk in ("abc", "0", str(foreign.pk)):
+            response = self.get_candidates(f"&detection={junk}")
+            self.assertEqual(response.status_code, 400, junk)
+            self.assertIn("detection", response.data)
+
+    def test_a_detection_ranking_has_a_fixed_query_count(self):
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+        stray = self._stray_frame()
+        for offset in range(3):
+            self._make_occurrence(
+                [self.captures[2]], bbox=[300 + offset, 300, 330 + offset, 330], vector=vector, algorithm=extractor
+            )
+
+        # Uncached: the savepoint pair, the object lookup with its identifications and
+        # permission checks, then the same seven ranking queries as for the whole track,
+        # the frame lookup doubling as the check that the detection is the occurrence's.
+        with cachalot_disabled(), self.assertNumQueries(15):
+            response = self.get_candidates(f"&detection={stray.pk}")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["candidates"]), 3)
+        self.assertTrue(all(row["similarity"] == 1.0 for row in response.data["candidates"]))
+
 
 class CaptureMatchesTestCase(APITestCase):
     """Previewing, box by box, what tracking would link on one capture of a track.
