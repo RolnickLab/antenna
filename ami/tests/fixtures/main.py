@@ -435,6 +435,9 @@ def create_complete_test_project(with_tracking_session: bool = False, **tracking
         ground_truth = None
         if with_tracking_session:
             ground_truth = create_tracking_session(deployment, taxa_list=taxa_list, **tracking_kwargs)
+            # Track editing is opt-in per project; a demo built for tracking opts in.
+            project.feature_flags.tracking = True
+            project.save(update_fields=["feature_flags"])
         logger.info(f"Created test project {project}")
         return project, ground_truth
 
