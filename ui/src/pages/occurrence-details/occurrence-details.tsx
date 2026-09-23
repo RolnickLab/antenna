@@ -449,7 +449,6 @@ export const OccurrenceDetails = ({
                         onAction={(action) =>
                           setPendingFrameAction({
                             action,
-                            captureId: item.captureId,
                             detectionId: item.id,
                             movedBySplit: index + 1,
                             timeLabel: item.timeLabel,

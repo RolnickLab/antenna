@@ -48,7 +48,7 @@ export const FrameActionDialogs = ({
   } = useMergeCandidates({
     captures: moveScope.captures,
     detectionId: pending?.detectionId,
-    enabled: pending?.action === 'move',
+    enabled: pending?.action === 'move' && !move.result,
     minutes: moveScope.minutes,
     occurrenceId: occurrence.id,
     projectId: projectId as string,
@@ -84,6 +84,7 @@ export const FrameActionDialogs = ({
 
   const close = () => {
     setTargetId(undefined)
+    setScope(DEFAULT_SCOPE)
     split.reset()
     remove.reset()
     move.reset()
@@ -161,6 +162,7 @@ export const FrameActionDialogs = ({
         isLoading={move.isLoading}
         onConfirm={() => move.addDetections([pending.detectionId])}
         onOpenChange={(open) => (open ? undefined : close())}
+        isWide
         open={pending.action === 'move'}
         result={
           move.result

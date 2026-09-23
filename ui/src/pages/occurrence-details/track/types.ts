@@ -6,7 +6,6 @@ export type FrameAction = 'split' | 'remove' | 'move'
  */
 export interface PendingFrameAction {
   action: FrameAction
-  captureId?: string
   detectionId: string
   /** Frames a split would move: this frame and every later one. */
   movedBySplit: number
