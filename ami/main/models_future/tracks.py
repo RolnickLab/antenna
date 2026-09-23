@@ -9,7 +9,7 @@ two animals into one, because a wrong merge destroys a record that no later
 step recovers. These operations are the repair for the merges it still gets
 wrong: cut a track in two, or pull a single detection out of it.
 
-All operations work on the occurrence's detections in timestamp order, which is
+All operations work on the occurrence's detections in capture order, which is
 what the occurrence view shows. That means they behave sensibly on occurrences
 that were never tracked and so carry no links at all.
 
@@ -39,6 +39,7 @@ from collections import Counter
 from collections.abc import Iterable
 
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from ami.main.models import (
@@ -52,13 +53,23 @@ from ami.main.models import (
 )
 from ami.main.models_future.track_stats import refresh_track_stats
 
+# Frame order within a track: capture time, then capture, then detection. The edits,
+# the chain links and the tracks export all use it, so they agree on what "next" is.
+CAPTURE_ORDER = (F("source_image__timestamp").asc(nulls_last=True), "source_image_id", "pk")
+
+
+def _capture_order_key(row: dict) -> tuple:
+    """``CAPTURE_ORDER`` for a detection row read with ``.values()``."""
+    timestamp = row["source_image__timestamp"]
+    return (timestamp is None, timestamp or datetime.datetime.min, row["source_image_id"], row["pk"])
+
 
 class TrackEditError(ValueError):
     """A track edit that cannot be applied to this occurrence and detection."""
 
 
 def _ordered_detections(occurrence: Occurrence) -> list[Detection]:
-    return list(occurrence.detections.select_related("source_image").order_by("timestamp", "pk"))
+    return list(occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER))
 
 
 def _move_to_new_occurrence(occurrence: Occurrence, detections: list[Detection]) -> Occurrence:
@@ -86,7 +97,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     "After" means later in time. Note that the occurrence detail endpoint
     serves detections newest-first (prefetch_detections_for_detail), so an
     interface that splits at the frame the operator clicked must map the
-    displayed position back to timestamp order, or it will keep the wrong half.
+    displayed position back to capture order, or it will keep the wrong half.
     """
     ordered = _ordered_detections(occurrence)
     index = next((i for i, d in enumerate(ordered) if d.pk == detection.pk), None)
@@ -149,9 +160,7 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     whole track within its session and the link records that they are one animal.
     Returns the new occurrences in time order, or an empty list when nothing was split.
     """
-    detections = occurrence.detections.select_related("source_image").order_by(
-        "source_image__timestamp", "source_image_id", "pk"
-    )
+    detections = occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER)
     by_session: dict[int, list[Detection]] = {}
     for detection in detections:
         # A capture with no session stays with the earliest piece.
@@ -280,14 +289,7 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict
     for member in members:
         by_occurrence.setdefault(member["occurrence_id"], []).append(member)
     for occurrence_id, rows in by_occurrence.items():
-        rows.sort(
-            key=lambda m: (
-                m["source_image__timestamp"] is None,
-                m["source_image__timestamp"] or datetime.datetime.min,
-                m["source_image_id"],
-                m["pk"],
-            )
-        )
+        rows.sort(key=_capture_order_key)
         chain: list[dict] = []
         for _, same_capture in itertools.groupby(rows, key=lambda m: m["source_image_id"]):
             # A second box on a capture is a second animal. Keep the box the chain

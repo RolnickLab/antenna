@@ -12,9 +12,10 @@ import typing
 from collections.abc import Callable, Iterator
 
 from django.db import models
-from django.db.models import Exists, F, OuterRef, Subquery
+from django.db.models import Exists, OuterRef, Subquery
 
 from ami.main.models import BEST_MACHINE_PREDICTION_ORDER, Classification, Detection, Occurrence
+from ami.main.models_future.tracks import CAPTURE_ORDER
 
 TRACKS_CSV_COLUMNS: typing.Final = (
     "occurrence_id",
@@ -71,7 +72,7 @@ def _detections_for(occurrence_ids: list[int]) -> models.QuerySet:
                 Classification.objects.filter(detection=OuterRef("pk"), features_2048__isnull=False)
             ),
         )
-        .order_by("occurrence_id", F("source_image__timestamp").asc(nulls_last=True), "pk")
+        .order_by("occurrence_id", *CAPTURE_ORDER)
         .values(
             "pk",
             "occurrence_id",

@@ -9798,6 +9798,25 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
         self.assertEqual(len(rows), 6)
         self.assertEqual([row["next_detection_id"] for row in rows], [row["detection_id"] for row in rows[1:]] + [""])
 
+    def test_the_export_lists_frames_in_chain_order_when_two_captures_share_a_timestamp(self):
+        from ami.exports.tracks import iter_track_rows
+
+        timestamp = self.captures[-1].timestamp + datetime.timedelta(minutes=1)
+        earlier, later = (
+            SourceImage.objects.create(
+                deployment=self.deployment, event=self.event, timestamp=timestamp, path=f"test/same-time-{i}.jpg"
+            )
+            for i in range(2)
+        )
+        # The detection on the later capture gets the lower pk.
+        other, _ = self._make_track(1, captures=[later])
+        loose, _ = self._make_track(1, captures=[earlier])
+        merge_occurrences(self.occurrence, [other, loose])
+
+        rows = list(iter_track_rows(Occurrence.objects.filter(pk=self.occurrence.pk)))
+
+        self.assertEqual([row["next_detection_id"] for row in rows], [row["detection_id"] for row in rows[1:]] + [""])
+
     def test_relinking_a_merge_costs_the_same_queries_however_many_frames_moved(self):
         """Two reads and two writes, with no read or write per detection."""
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
