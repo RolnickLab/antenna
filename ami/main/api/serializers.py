@@ -768,20 +768,38 @@ class TaxaListSerializer(DefaultSerializer):
         """
         Return the number of taxa in this list.
         Uses annotated_taxa_count if available (from ViewSet) for performance.
+
+        `getattr(obj, name, obj.taxa.count())` would evaluate `obj.taxa.count()`
+        as a default argument on every call regardless of whether the attribute
+        is present, running a COUNT query per row even when annotated.
         """
-        return getattr(obj, "annotated_taxa_count", obj.taxa.count())
+        annotated_count = getattr(obj, "annotated_taxa_count", None)
+        return annotated_count if annotated_count is not None else obj.taxa.count()
 
     def get_permissions(self, instance, instance_data):
+        # DRF's ListSerializer reuses one child instance across every row, and a
+        # fresh serializer is built per request, so caching on `self` resolves
+        # the project and the member's permissions once per request, not per row.
         request = self.context["request"]
-        project = get_active_project(request=request)
-        return add_m2m_object_permissions(request.user, instance, project, instance_data)
+        if not hasattr(self, "_active_project"):
+            self._active_project = get_active_project(request=request)
+        project = self._active_project
+
+        project_perms = None
+        if project and not request.user.is_superuser:
+            if not hasattr(self, "_project_perms"):
+                self._project_perms = set(get_perms(request.user, project))
+            project_perms = self._project_perms
+
+        return add_m2m_object_permissions(request.user, instance, project, instance_data, project_perms=project_perms)
 
     def get_projects(self, obj):
         """
-        Return list of project IDs this taxa list belongs to.
-        This is read-only and managed by the server.
+        Return list of project IDs this taxa list belongs to, sorted for a
+        deterministic response. Reads the `projects` prefetched by
+        TaxaListViewSet.get_queryset instead of querying per row.
         """
-        return list(obj.projects.values_list("id", flat=True))
+        return sorted(project.pk for project in obj.projects.all())
 
 
 class OccurrenceSetSerializer(DefaultSerializer):
