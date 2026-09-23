@@ -7,7 +7,7 @@ describe('getAdjacentIds', () => {
     expect(getAdjacentIds(items, '2')).toEqual({ prevId: '1', nextId: '3' })
   })
 
-  test('has no next id on the last item, so confirming there closes the dialog', () => {
+  test('has no next id on the last item', () => {
     expect(getAdjacentIds(items, '3')).toEqual({
       prevId: '2',
       nextId: undefined,
