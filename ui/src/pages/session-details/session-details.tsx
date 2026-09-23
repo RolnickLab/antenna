@@ -122,6 +122,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
       ? getNextCaptureWithDetectionsId({ capture: activeCapture, timeline })
       : undefined,
     onSelectCapture: setActiveCaptureId,
+    sessionId: session.id,
   })
   // While extending, the track being built is the only selection.
   const timelineOccurrenceIds = extend.occurrenceId

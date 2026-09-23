@@ -28,6 +28,7 @@ import { getTrackEditRights } from 'pages/occurrence-details/track/track-edit-ri
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { useExtendOccurrenceId } from '../hooks/useExtendOccurrenceId'
+import { getExtendOccurrenceId } from './extend-access'
 import {
   ExtendChoice,
   ExtendClick,
@@ -86,6 +87,7 @@ export const useExtendTrack = ({
   enabled,
   nextCaptureId,
   onSelectCapture,
+  sessionId,
 }: {
   captureId?: string
   /** Off, an `extend` link is ignored rather than opening the mode. */
@@ -93,15 +95,23 @@ export const useExtendTrack = ({
   /** Where a successful edit moves on to: the next capture with detections, if any. */
   nextCaptureId?: string
   onSelectCapture: (captureId: string) => void
+  /** The session on screen; an `extend` link to another session's occurrence is ignored. */
+  sessionId: string
 }): ExtendTrackState => {
   const { projectId } = useParams()
   const { extendOccurrenceId: requestedOccurrenceId, setExtendOccurrenceId } =
     useExtendOccurrenceId()
-  const extendOccurrenceId = enabled ? requestedOccurrenceId : undefined
-  const { occurrence: track } = useOccurrenceDetails(
-    extendOccurrenceId ?? '',
+  const { occurrence: requestedTrack } = useOccurrenceDetails(
+    enabled ? requestedOccurrenceId ?? '' : '',
     EXTEND_FETCH_OPTIONS
   )
+  const extendOccurrenceId = getExtendOccurrenceId({
+    enabled,
+    requestedOccurrenceId,
+    sessionId,
+    track: requestedTrack,
+  })
+  const track = extendOccurrenceId ? requestedTrack : undefined
   const [choice, setChoice] = useState<ExtendChoice>()
   // The merge deletes the clicked occurrence, so its frames are read while it still exists.
   const { occurrence: clickedTrack } = useOccurrenceDetails(
