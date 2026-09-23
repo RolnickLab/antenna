@@ -242,8 +242,37 @@ export const getTimelineItems = ({
   })
 
 /**
+ * The best prediction of each algorithm: highest score, then terminal, then latest, then id.
+ * The occurrence lists every frame tied for an algorithm's top score, and the history keeps one.
+ */
+const onePredictionPerAlgorithm = (predictions: MachinePrediction[]) => {
+  const rank = (p: MachinePrediction) => [
+    p.score ?? -Infinity,
+    p.terminal ? 1 : 0,
+    new Date(p.createdAt).getTime() || 0,
+    Number(p.id) || 0,
+  ]
+  const isBetter = (a: MachinePrediction, b: MachinePrediction) => {
+    const [rankA, rankB] = [rank(a), rank(b)]
+    const index = rankA.findIndex((value, i) => value !== rankB[i])
+
+    return index !== -1 && rankA[index] > rankB[index]
+  }
+  const best = new Map<string, MachinePrediction>()
+  predictions.forEach((prediction) => {
+    const key = `${prediction.algorithm?.id}`
+    const current = best.get(key)
+    if (!current || isBetter(prediction, current)) {
+      best.set(key, prediction)
+    }
+  })
+
+  return [...best.values()]
+}
+
+/**
  * Identifications and predictions merged newest first, for while the history loads or when it is
- * unavailable. Ties break on id like the server does, so cards keep their place once it arrives.
+ * unavailable. Predictions and tie breaks follow the server, so cards keep their place once it arrives.
  */
 export const getFallbackTimelineItems = ({
   identifications,
@@ -260,7 +289,7 @@ export const getFallbackTimelineItems = ({
         identification,
       })
     ),
-    ...predictions.map(
+    ...onePredictionPerAlgorithm(predictions).map(
       (prediction): TimelineItem => ({
         type: 'prediction',
         id: `prediction-${prediction.id}`,

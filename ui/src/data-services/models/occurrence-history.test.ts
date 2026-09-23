@@ -200,7 +200,7 @@ describe('getFallbackTimelineItems', () => {
       identifications: [ownIdentification],
       predictions: [
         ownPrediction('6', 7, NOCTUA, '2026-04-29T23:00:00'),
-        ownPrediction('7', 7, NOCTUA, '2026-04-29T20:00:00'),
+        ownPrediction('7', 12, NOCTUA, '2026-04-29T20:00:00'),
       ],
     })
 
@@ -221,6 +221,41 @@ describe('getFallbackTimelineItems', () => {
       'prediction-6',
       'identification-1',
     ])
+  })
+})
+
+describe('fallback predictions', () => {
+  const tied = (id: string, terminal: boolean, createdAt: string) => ({
+    ...ownPrediction(id, 7, NOCTUA, createdAt),
+    terminal,
+  })
+
+  test('keep one per algorithm when frames tie for its top score', () => {
+    const items = getFallbackTimelineItems({
+      identifications: [],
+      predictions: [
+        tied('6', true, '2026-04-29T21:00:00'),
+        tied('7', true, '2026-04-29T22:00:00'),
+        ownPrediction('8', 12),
+      ],
+    })
+
+    expect(items.map((item) => item.id)).toEqual([
+      'prediction-7',
+      'prediction-8',
+    ])
+  })
+
+  test('prefer a terminal prediction over a later intermediate one', () => {
+    const items = getFallbackTimelineItems({
+      identifications: [],
+      predictions: [
+        tied('6', true, '2026-04-29T21:00:00'),
+        tied('7', false, '2026-04-29T22:00:00'),
+      ],
+    })
+
+    expect(items.map((item) => item.id)).toEqual(['prediction-6'])
   })
 })
 
