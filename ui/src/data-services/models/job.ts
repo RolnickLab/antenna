@@ -21,6 +21,7 @@ export const SERVER_JOB_TYPES = [
   'data_storage_sync',
   'populate_captures_collection',
   'data_export',
+  'post_processing',
   'unknown',
 ] as const
 
@@ -116,7 +117,7 @@ export class Job extends Entity {
     key: ServerJobType
     label: string
   } {
-    return Job.getJobTypeInfo(this._job.job_type.key)
+    return Job.getJobTypeInfo(this._job.job_type.key, this._job.job_type.name)
   }
 
   get deployment(): { id: string; name: string } | undefined {
@@ -158,14 +159,19 @@ export class Job extends Entity {
     )
   }
 
-  static getJobTypeInfo(key: ServerJobType) {
-    const label = {
-      ml: 'ML pipeline',
-      data_storage_sync: 'Data storage sync',
-      populate_captures_collection: 'Populate captures collection',
-      data_export: 'Data export',
-      unknown: 'Unknown',
-    }[key]
+  /** A type this list does not know yet shows the server's name for it. */
+  static getJobTypeInfo(key: ServerJobType, serverName?: string) {
+    const label =
+      {
+        ml: 'ML pipeline',
+        data_storage_sync: 'Data storage sync',
+        populate_captures_collection: 'Populate captures collection',
+        data_export: 'Data export',
+        post_processing: 'Post-processing',
+        unknown: 'Unknown',
+      }[key] ??
+      serverName ??
+      key
 
     return {
       key,
