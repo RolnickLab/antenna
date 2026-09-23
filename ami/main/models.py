@@ -4126,6 +4126,73 @@ class Occurrence(BaseModel):
         ]
 
 
+@final
+class OccurrenceHistoryRecord(BaseModel):
+    """One dated entry in an occurrence's history: an algorithm's result or a person's review.
+
+    Identifications and predictions keep their own tables; the history endpoint merges all
+    three. An algorithm result stands for the prediction change a run made, and a run writes
+    at most one record per occurrence, none when it changed nothing about it. Reviews are
+    append-only; ``Occurrence.grouping_verified_at`` and ``_by`` cache the latest one.
+    The payload is validated against the schema for its kind and subtype (ami/main/schemas.py).
+    """
+
+    project_accessor = "occurrence__project"
+
+    class Kind(models.TextChoices):
+        ALGORITHM_RESULT = "algorithm_result"
+        REVIEW = "review"
+
+    occurrence = models.ForeignKey(Occurrence, on_delete=models.CASCADE, related_name="history")
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    # "tracking", "class_masking", "size_filter" or "track_complete"; see HISTORY_PAYLOAD_SCHEMAS.
+    subtype = models.CharField(max_length=64)
+    job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    timestamp = models.DateTimeField()
+    payload = models.JSONField(default=dict)
+
+    class Meta:
+        indexes = [models.Index(fields=["occurrence", "-timestamp"], name="occur_history_occ_time_idx")]
+
+    def __str__(self) -> str:
+        return f"#{self.pk} {self.kind}/{self.subtype} for Occurrence #{self.occurrence_id}"
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        occurrence_id: int,
+        kind: str,
+        subtype: str,
+        payload,
+        timestamp: datetime.datetime | None = None,
+        job=None,
+        algorithm=None,
+        user: User | None = None,
+    ) -> "OccurrenceHistoryRecord":
+        """An unsaved record with a validated payload, for writers that bulk_create, which skips save()."""
+        from ami.main.schemas import validate_history_payload
+
+        return cls(
+            occurrence_id=occurrence_id,
+            kind=kind,
+            subtype=subtype,
+            payload=validate_history_payload(kind, subtype, payload),
+            timestamp=timestamp or timezone.now(),
+            job=job,
+            algorithm=algorithm,
+            user=user,
+        )
+
+    def save(self, *args, **kwargs):
+        from ami.main.schemas import validate_history_payload
+
+        self.payload = validate_history_payload(self.kind, self.subtype, self.payload)
+        super().save(*args, **kwargs)
+
+
 def update_occurrence_determination(
     occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
 ) -> bool:
