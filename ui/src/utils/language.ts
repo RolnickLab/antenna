@@ -1075,13 +1075,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_EXTEND_CAPTURE_COVERED]:
     'This capture already has a frame of this track',
   [STRING.TRACK_EXTEND_CHOICE_DESCRIPTION]:
-    'This frame is part of {{name}} with {{count}} frames. Merge the whole track into the one you are extending, or move only this frame across.',
+    'This frame is part of {{name}} with {{count}} frames. Merge the whole track into the one you are editing, or move only this frame across.',
   [STRING.TRACK_EXTEND_CLICKED_FRAME]: 'Frame you clicked',
   [STRING.TRACK_EXTEND_DETAILS]: 'Details',
-  [STRING.TRACK_EXTEND_HERE]: 'Extend this track',
+  [STRING.TRACK_EXTEND_HERE]: 'Edit this track',
   [STRING.TRACK_EXTEND_HIDE_DETAILS]: 'Hide box details',
-  [STRING.TRACK_EXTEND_IN_SESSION]: 'Extend in session view',
-  [STRING.TRACK_EXTEND_LABEL]: 'Extending',
+  [STRING.TRACK_EXTEND_IN_SESSION]: 'Edit in session view',
+  [STRING.TRACK_EXTEND_LABEL]: 'Editing',
   [STRING.TRACK_EXTEND_LATEST_FRAME]: 'Latest frame in the track',
   [STRING.TRACK_EXTEND_MERGE_OVERLAPS]:
     'Both tracks have a frame on the same capture',
@@ -1098,7 +1098,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_EXTEND_REPLACE_PROMPT]:
     "Replace this capture's frame with this one?",
   [STRING.TRACK_EXTEND_SHOW_DETAILS]: 'Show box details',
-  [STRING.TRACK_EXTEND_STOP]: 'Stop extending this track',
+  [STRING.TRACK_EXTEND_STOP]: 'Stop editing this track',
   [STRING.TRACK_EXTEND_TITLE]: 'Add this frame to the track',
   [STRING.TRACK_FIRST_FRAME]: 'First track frame',
   [STRING.TRACK_FRAMES_COUNT]: '{{count}} frames',
