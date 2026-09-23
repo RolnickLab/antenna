@@ -571,8 +571,15 @@ class TestIdentificationsSurviveMerging(TestCase):
             params["Result"], "Nothing was tracked: 1 session(s) skipped (1 because it has human identifications)."
         )
 
-    def test_a_run_that_tracks_a_session_adds_no_nothing_tracked_line(self):
+    def test_a_retried_run_that_tracks_replaces_the_nothing_tracked_line(self):
+        """A retry keeps text stage params, so a run that tracks must overwrite the earlier
+        "Nothing was tracked" line rather than leave it beside a non-zero count."""
         job = self._tracking_job()
+        TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+        self.assertTrue(self._stage_params(job)["Result"].startswith("Nothing was tracked"))
+
+        job.progress.reset()
+        job.save()
         TrackingTask(
             job=job,
             event_ids=[self.event.pk],
@@ -583,4 +590,4 @@ class TestIdentificationsSurviveMerging(TestCase):
 
         params = self._stage_params(job)
         self.assertEqual(params["Events tracked"], 1)
-        self.assertNotIn("Result", params)
+        self.assertEqual(params["Result"], "Tracked 1 session(s).")

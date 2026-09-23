@@ -795,11 +795,15 @@ class TrackingTask(BasePostProcessingTask):
             "Occurrences merged": totals["occurrences_merged"],
         }
         # The job still succeeds, so without this line a run that skipped every session
-        # looks the same in the job details as one that did the work.
-        if not totals["events_tracked"] and skip_reasons:
-            summary = nothing_tracked_summary(skip_reasons)
-            self.logger.warning(summary)
-            metrics["Result"] = summary
+        # looks the same in the job details as one that did the work. It is written on every
+        # run because a retry keeps text params, and a stale line would contradict the counts.
+        if totals["events_tracked"]:
+            metrics["Result"] = f"Tracked {totals['events_tracked']} session(s)."
+        elif skip_reasons:
+            metrics["Result"] = nothing_tracked_summary(skip_reasons)
+            self.logger.warning(metrics["Result"])
+        else:
+            metrics["Result"] = "Nothing was tracked: no sessions in scope."
         self.report_stage_metrics(metrics)
         self.update_progress(1.0)
         self.logger.info(f"Tracking finished: {totals}")
