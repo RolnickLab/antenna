@@ -124,3 +124,16 @@ class SizeFilterHistoryTestCase(HistoryWriterFixture):
         occurrence = self._singleton(self.captures[0], [0, 0, 500, 500])
         SmallSizeFilterTask(logger=logger, occurrence_id=occurrence.pk, size_threshold=0.01).run()
         self.assertFalse(self.records("size_filter").exists())
+
+    def test_a_skipped_last_detection_still_saves_the_batch_before_it(self):
+        occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
+        # Inserted last, so the scan reaches it last; it has no box and is skipped.
+        Detection.objects.create(
+            source_image=self.captures[1], bbox=None, timestamp=self.captures[1].timestamp, occurrence=occurrence
+        )
+
+        SmallSizeFilterTask(logger=logger, occurrence_id=occurrence.pk, size_threshold=0.01).run()
+
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination.name, "Not identifiable")
+        self.assertEqual(self.records("size_filter").get().payload["taxon_after_id"], occurrence.determination_id)
