@@ -1,3 +1,4 @@
+import collections
 import logging
 import math
 import typing
@@ -418,6 +419,13 @@ def assign_occurrences_from_detection_chains(
     }
 
 
+def nothing_tracked_summary(skip_reasons: collections.Counter[str]) -> str:
+    """The line a job shows when every session in scope was skipped, with the count per reason."""
+    total = sum(skip_reasons.values())
+    reasons = "; ".join(f"{count} because {reason}" for reason, count in skip_reasons.most_common())
+    return f"Nothing was tracked: {total} session(s) skipped ({reasons})."
+
+
 def latest_feature_vectors(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, typing.Any]:
     """The most recent embedding from one algorithm for each detection given, by detection id.
 
@@ -715,6 +723,8 @@ class TrackingTask(BasePostProcessingTask):
 
         totals = {"events_tracked": 0, "events_skipped": 0, "links_created": 0, "occurrences_merged": 0}
         tracked_event_ids: list[int] = []
+        # Why each session was skipped, so a run that tracks nothing can say so.
+        skip_reasons: collections.Counter[str] = collections.Counter()
 
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
@@ -728,11 +738,13 @@ class TrackingTask(BasePostProcessingTask):
                         "Re-tracking previously-tracked data lands in v2 (incremental)."
                     )
                     totals["events_skipped"] += 1
+                    skip_reasons["it was already tracked or edited"] += 1
                     continue
 
             algorithm, should_track = self._resolve_algorithm(event)
             if not should_track:
                 totals["events_skipped"] += 1
+                skip_reasons["it has no embeddings from a single feature extractor to compare"] += 1
                 continue
 
             if (
@@ -741,6 +753,7 @@ class TrackingTask(BasePostProcessingTask):
             ):
                 self.logger.info(f"Skipping event {event.pk}: has human identifications.")
                 totals["events_skipped"] += 1
+                skip_reasons["it has human identifications"] += 1
                 continue
 
             if (
@@ -750,6 +763,7 @@ class TrackingTask(BasePostProcessingTask):
             ):
                 self.logger.info(f"Skipping event {event.pk}: not fully processed.")
                 totals["events_skipped"] += 1
+                skip_reasons["it is not fully processed"] += 1
                 continue
 
             def _stage_progress(p: float, _idx=idx, _total=total) -> None:
@@ -774,13 +788,18 @@ class TrackingTask(BasePostProcessingTask):
         # This already runs in a background job, so the station refresh stays inline.
         update_calculated_fields_for_sessions_and_stations(tracked_event_ids, stations_async=False)
 
-        self.report_stage_metrics(
-            {
-                "Events tracked": totals["events_tracked"],
-                "Events skipped": totals["events_skipped"],
-                "Detection links created": totals["links_created"],
-                "Occurrences merged": totals["occurrences_merged"],
-            }
-        )
+        metrics: dict[str, typing.Any] = {
+            "Events tracked": totals["events_tracked"],
+            "Events skipped": totals["events_skipped"],
+            "Detection links created": totals["links_created"],
+            "Occurrences merged": totals["occurrences_merged"],
+        }
+        # The job still succeeds, so without this line a run that skipped every session
+        # looks the same in the job details as one that did the work.
+        if not totals["events_tracked"] and skip_reasons:
+            summary = nothing_tracked_summary(skip_reasons)
+            self.logger.warning(summary)
+            metrics["Result"] = summary
+        self.report_stage_metrics(metrics)
         self.update_progress(1.0)
         self.logger.info(f"Tracking finished: {totals}")

@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections import defaultdict
 
 import numpy as np
@@ -542,3 +543,44 @@ class TestIdentificationsSurviveMerging(TestCase):
             <= set(surviving),
             "Every identification must point at an occurrence that still exists",
         )
+
+    def _tracking_job(self) -> Job:
+        job = Job.objects.create(
+            name="Tracking summary test",
+            project=self.project,
+            job_type_key="post_processing",
+            params={"task": "tracking", "config": {"event_ids": [self.event.pk]}},
+        )
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        return job
+
+    def _stage_params(self, job: Job) -> dict[str, typing.Any]:
+        job.refresh_from_db()
+        return {param.name: param.value for param in job.progress.get_stage("post_processing").params}
+
+    def test_a_run_that_skips_every_session_says_why_in_the_job(self):
+        """A run whose sessions were all skipped still succeeds, so the job details must say
+        that nothing was tracked and why, instead of looking like a run that did the work."""
+        job = self._tracking_job()
+        TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+
+        params = self._stage_params(job)
+        self.assertEqual(params["Events tracked"], 0)
+        self.assertEqual(
+            params["Result"], "Nothing was tracked: 1 session(s) skipped (1 because it has human identifications)."
+        )
+
+    def test_a_run_that_tracks_a_session_adds_no_nothing_tracked_line(self):
+        job = self._tracking_job()
+        TrackingTask(
+            job=job,
+            event_ids=[self.event.pk],
+            require_features=False,
+            cost_threshold=0.5,
+            skip_if_human_identifications=False,
+        ).run()
+
+        params = self._stage_params(job)
+        self.assertEqual(params["Events tracked"], 1)
+        self.assertNotIn("Result", params)
