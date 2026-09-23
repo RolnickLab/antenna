@@ -243,7 +243,10 @@ export const getTimelineItems = ({
     }
   })
 
-/** Identifications and predictions merged newest first, for when the history is unavailable. */
+/**
+ * Identifications and predictions merged newest first, for while the history loads or when it is
+ * unavailable. Ties break on id like the server does, so cards keep their place once it arrives.
+ */
 export const getFallbackTimelineItems = ({
   identifications,
   predictions,
@@ -267,9 +270,24 @@ export const getFallbackTimelineItems = ({
       })
     ),
   ]
-    .map((item) => ({ item, time: new Date(getCreatedAt(item)).getTime() }))
-    .sort((a, b) => b.time - a.time)
+    .map((item) => ({
+      item,
+      time: new Date(getCreatedAt(item)).getTime(),
+      id: Number(getSourceId(item)),
+    }))
+    .sort((a, b) => b.time - a.time || b.id - a.id)
     .map(({ item }) => item)
+
+const getSourceId = (item: TimelineItem) => {
+  switch (item.type) {
+    case 'identification':
+      return item.identification.id
+    case 'prediction':
+      return item.prediction.id
+    default:
+      return item.entry.id
+  }
+}
 
 const getCreatedAt = (item: TimelineItem) => {
   switch (item.type) {

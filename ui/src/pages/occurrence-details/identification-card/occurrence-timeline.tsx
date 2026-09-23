@@ -46,7 +46,8 @@ export const OccurrenceTimeline = ({
 
   return (
     <>
-      {isLoading ? (
+      {/* The fallback cards stand in while the history loads, so the spinner only fills an empty list. */}
+      {isLoading && !items.length ? (
         <div className="flex justify-center py-2">
           <Loader2Icon className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>

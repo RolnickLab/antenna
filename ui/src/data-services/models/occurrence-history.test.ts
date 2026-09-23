@@ -210,6 +210,18 @@ describe('getFallbackTimelineItems', () => {
       'prediction-7',
     ])
   })
+
+  test('breaks timestamp ties on id, newest first, as the server does', () => {
+    const items = getFallbackTimelineItems({
+      identifications: [ownIdentification],
+      predictions: [ownPrediction('6', 7, NOCTUA, ownIdentification.createdAt)],
+    })
+
+    expect(items.map((item) => item.id)).toEqual([
+      'prediction-6',
+      'identification-1',
+    ])
+  })
 })
 
 describe('getFoldedPrediction', () => {
