@@ -7,12 +7,18 @@ list for the history endpoint.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import typing
 
 from django.utils import timezone
 
-from ami.main.models import Detection, Occurrence, OccurrenceHistoryRecord, User
+from ami.main.models import Detection, Identification, Occurrence, OccurrenceHistoryRecord, Taxon, User
 from ami.main.schemas import TrackCompleteReviewPayload
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
+    from ami.ml.models import Algorithm
 
 TRACK_COMPLETE = "track_complete"
 
@@ -66,3 +72,97 @@ def record_track_complete_review(
     )
     record.save()
     return record
+
+
+@dataclasses.dataclass
+class TimelineEntry:
+    """One entry of the merged history, in the shape ``OccurrenceTimelineEntrySerializer`` reads."""
+
+    type: str
+    id: int
+    timestamp: datetime.datetime
+    subtype: str | None = None
+    user: User | None = None
+    algorithm: Algorithm | None = None
+    job: Job | None = None
+    taxon: Taxon | None = None
+    taxon_before: Taxon | None = None
+    score: float | None = None
+    payload: dict = dataclasses.field(default_factory=dict)
+
+
+def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
+    """History records, identifications and predictions of one occurrence, merged newest first.
+
+    A prediction made by an algorithm that also left a history record here is left out: the
+    record already stands for that change and names the taxon before and after. Costs four
+    queries whatever the number of entries.
+    """
+    records = list(
+        OccurrenceHistoryRecord.objects.filter(occurrence=occurrence)
+        .select_related("user", "algorithm", "job")
+        .order_by("-timestamp", "-pk")
+    )
+    taxon_ids = {
+        record.payload.get(key)
+        for record in records
+        for key in ("taxon_before_id", "taxon_after_id")
+        if record.payload.get(key) is not None
+    }
+    taxa = {taxon.pk: taxon for taxon in Taxon.objects.filter(pk__in=taxon_ids)} if taxon_ids else {}
+
+    entries = [
+        TimelineEntry(
+            type=record.kind,
+            id=record.pk,
+            timestamp=record.timestamp,
+            subtype=record.subtype,
+            user=record.user,
+            algorithm=record.algorithm,
+            job=record.job,
+            taxon=taxa.get(record.payload.get("taxon_after_id")),
+            taxon_before=taxa.get(record.payload.get("taxon_before_id")),
+            payload=record.payload,
+        )
+        for record in records
+    ]
+
+    identifications = Identification.objects.filter(occurrence=occurrence).select_related("user", "taxon")
+    entries.extend(
+        TimelineEntry(
+            type="identification",
+            id=identification.pk,
+            timestamp=identification.created_at,
+            user=identification.user,
+            taxon=identification.taxon,
+            payload={
+                "comment": identification.comment,
+                "withdrawn": identification.withdrawn,
+                "agreed_with_identification_id": identification.agreed_with_identification_id,
+                "agreed_with_prediction_id": identification.agreed_with_prediction_id,
+            },
+        )
+        for identification in identifications
+    )
+
+    folded = {record.algorithm_id for record in records if record.algorithm_id is not None}
+    entries.extend(
+        TimelineEntry(
+            type="prediction",
+            id=prediction.pk,
+            timestamp=prediction.created_at,
+            algorithm=prediction.algorithm,
+            taxon=prediction.taxon,
+            score=prediction.score,
+            payload={
+                "detection_id": prediction.detection_id,
+                "terminal": prediction.terminal,
+                "applied_to_id": prediction.applied_to_id,
+            },
+        )
+        for prediction in occurrence.predictions()
+        if prediction.algorithm_id not in folded
+    )
+
+    entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
+    return entries

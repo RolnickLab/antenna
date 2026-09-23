@@ -2223,6 +2223,52 @@ class OccurrenceGroupingSerializer(serializers.Serializer):
     grouping_verified_by = serializers.CharField(allow_null=True)
 
 
+class HistoryUserSerializer(serializers.Serializer):
+    """A person in an occurrence's history: name and picture only, never an email address."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    image = serializers.ImageField(allow_null=True)
+
+
+class HistoryAlgorithmSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+
+
+class HistoryJobSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class HistoryTaxonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.CharField()
+
+
+class OccurrenceHistoryEntrySerializer(serializers.Serializer):
+    """One entry of an occurrence's history, newest first. ``type`` says which table it came from."""
+
+    type = serializers.ChoiceField(choices=["algorithm_result", "review", "identification", "prediction"])
+    id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
+    timestamp = serializers.DateTimeField()
+    subtype = serializers.CharField(
+        allow_null=True,
+        help_text="For algorithm results and reviews: tracking, class_masking, size_filter or track_complete.",
+    )
+    user = HistoryUserSerializer(allow_null=True)
+    algorithm = HistoryAlgorithmSerializer(allow_null=True)
+    job = HistoryJobSerializer(allow_null=True)
+    taxon = HistoryTaxonSerializer(
+        allow_null=True, help_text="The identified or predicted taxon, or the determination after a result."
+    )
+    taxon_before = HistoryTaxonSerializer(allow_null=True, help_text="The determination before a result.")
+    score = serializers.FloatField(allow_null=True)
+    payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
+
+
 class OccurrencePathCaptureSerializer(serializers.Serializer):
     """The capture one frame of a path was measured against."""
 

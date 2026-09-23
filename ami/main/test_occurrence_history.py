@@ -1,10 +1,18 @@
 """An occurrence's history: algorithm results and reviews, and the endpoint that reads them."""
 
+import datetime
+
 from django.test import TestCase
 
 from ami.main import tests as main_tests
-from ami.main.models import Occurrence, OccurrenceHistoryRecord
+from ami.main.models import Classification, Identification, Occurrence, OccurrenceHistoryRecord, Taxon
+from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import setup_test_project
+from ami.users.models import User
+
+# Measured: two savepoints, the project, its default-filter taxa (2), the occurrence, then
+# history records, their taxa, identifications and predictions.
+HISTORY_QUERIES = 10
 
 
 class OccurrenceHistoryPayloadTestCase(TestCase):
@@ -107,3 +115,106 @@ class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self.reviews().count(), 1)
+
+
+class OccurrenceHistoryEndpointTestCase(main_tests.TrackFixtureTestCase):
+    """GET /occurrences/{id}/history/ merges records, identifications and predictions, newest first."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.tracking = Algorithm.objects.create(name="Occurrence Tracking", key="tracking-history-test")
+        self.other_taxon = Taxon.objects.filter(projects=self.project).exclude(pk=self.taxon.pk).first()
+        self.superuser = User.objects.create_superuser(email="history-super@insectai.org")  # type: ignore
+        self.outsider = User.objects.create_user(email="history-outsider@insectai.org")  # type: ignore
+
+    def url(self, occurrence: Occurrence | None = None) -> str:
+        return f"/api/v2/occurrences/{(occurrence or self.occurrence).pk}/history/?project_id={self.project.pk}"
+
+    def _add_history(self, start: datetime.datetime, rounds: int = 1) -> None:
+        """Per round: a tracking result, a folded tracking prediction, an identification and a review."""
+        for i in range(rounds):
+            at = start + datetime.timedelta(hours=4 * i)
+            OccurrenceHistoryRecord.build(
+                occurrence_id=self.occurrence.pk,
+                kind=OccurrenceHistoryRecord.Kind.ALGORITHM_RESULT,
+                subtype="tracking",
+                payload={
+                    "detections_count": 4,
+                    "frames_linked": 3,
+                    "taxon_before_id": self.other_taxon.pk,
+                    "taxon_after_id": self.taxon.pk,
+                },
+                timestamp=at,
+                algorithm=self.tracking,
+            ).save()
+            Classification.objects.create(
+                detection=self.detections[0], taxon=self.taxon, score=0.1, algorithm=self.tracking, timestamp=at
+            )
+            identification = Identification.objects.create(
+                occurrence=self.occurrence, user=self.reader, taxon=self.other_taxon, comment=f"round {i}"
+            )
+            Identification.objects.filter(pk=identification.pk).update(created_at=at + datetime.timedelta(hours=1))
+            OccurrenceHistoryRecord.build(
+                occurrence_id=self.occurrence.pk,
+                kind=OccurrenceHistoryRecord.Kind.REVIEW,
+                subtype="track_complete",
+                payload={"detection_ids": [d.pk for d in self.detections], "frames_count": 4},
+                timestamp=at + datetime.timedelta(hours=2),
+                user=self.curator,
+            ).save()
+
+    def test_entries_are_merged_newest_first_and_a_folded_prediction_is_left_out(self):
+        # Predictions are stamped with created_at (now), so the history rows sit in the past.
+        self._add_history(datetime.datetime.now() - datetime.timedelta(days=2))
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(self.url())
+        self.assertEqual(response.status_code, 200, response.data)
+
+        types = [entry["type"] for entry in response.data]
+        self.assertEqual(types[-3:], ["review", "identification", "algorithm_result"])
+        self.assertEqual(set(types[:-3]), {"prediction"})
+        self.assertEqual(len(types[:-3]), len(self.detections))
+        self.assertTrue(all(entry["algorithm"] is None for entry in response.data[:-3]))
+        timestamps = [entry["timestamp"] for entry in response.data]
+        self.assertEqual(timestamps, sorted(timestamps, reverse=True))
+
+        review, identification, result = response.data[-3:]
+        self.assertEqual(set(review["user"]), {"id", "name", "image"})
+        self.assertEqual(review["user"]["id"], self.curator.pk)
+        self.assertEqual(identification["user"]["id"], self.reader.pk)
+        self.assertEqual(identification["taxon"]["id"], self.other_taxon.pk)
+        self.assertEqual(identification["payload"]["comment"], "round 0")
+        self.assertEqual(result["subtype"], "tracking")
+        self.assertEqual(result["algorithm"]["key"], self.tracking.key)
+        self.assertEqual(result["taxon"]["id"], self.taxon.pk)
+        self.assertEqual(result["taxon_before"]["id"], self.other_taxon.pk)
+        self.assertNotIn("email", str(response.data))
+
+    def test_query_count_does_not_grow_with_the_number_of_entries(self):
+        self.client.force_authenticate(user=self.reader)
+        now = datetime.datetime.now()
+        for rounds, total in ((1, 1), (2, 3)):
+            self._add_history(now - datetime.timedelta(days=3 * total), rounds=rounds)
+            with self.subTest(rounds=total), main_tests.cachalot_disabled():
+                with self.assertNumQueries(HISTORY_QUERIES):
+                    response = self.client.get(self.url())
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(len(response.data), 3 * total + len(self.detections))
+
+    def test_visible_to_whoever_can_open_the_occurrence(self):
+        """Member, non-member, anonymous and superuser, on a public and on a draft project."""
+        expected = {
+            False: {"member": 200, "non-member": 200, "anonymous": 200, "superuser": 200},
+            True: {"member": 200, "non-member": 404, "anonymous": 404, "superuser": 200},
+        }
+        users = {"member": self.reader, "non-member": self.outsider, "anonymous": None, "superuser": self.superuser}
+        for draft, codes in expected.items():
+            self.project.draft = draft
+            self.project.save()
+            for label, user in users.items():
+                with self.subTest(draft=draft, user=label):
+                    self.client.force_authenticate(user=user)
+                    detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
+                    history = self.client.get(self.url())
+                    self.assertEqual(history.status_code, codes[label])
+                    self.assertEqual(history.status_code, detail.status_code)
