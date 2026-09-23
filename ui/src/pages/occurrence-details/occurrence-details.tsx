@@ -364,6 +364,7 @@ export const OccurrenceDetails = ({
                       error={history.error}
                       isLoading={history.isLoading}
                       occurrence={occurrence}
+                      onConfirmed={onConfirmed}
                     />
                   </div>
                 </Tabs.Content>

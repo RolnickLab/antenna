@@ -25,11 +25,13 @@ export const HumanIdentification = ({
   currentUser,
   identification,
   occurrence,
+  onConfirmed,
   user,
 }: {
   currentUser?: UserInfo
   identification: Identification
   occurrence: Occurrence
+  onConfirmed?: (occurrenceId: string) => void
   user: {
     id?: string
     image?: string
@@ -107,6 +109,7 @@ export const HumanIdentification = ({
                     agreeWith={{ identificationId: identification.id }}
                     applied={identification.applied}
                     occurrenceId={occurrence.id}
+                    onSuccess={onConfirmed}
                     taxonId={identification.taxon.id}
                   />
                 )}

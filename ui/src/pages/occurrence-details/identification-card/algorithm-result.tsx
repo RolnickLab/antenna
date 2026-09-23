@@ -44,10 +44,12 @@ export const AlgorithmResult = ({
   currentUser,
   entry,
   occurrence,
+  onConfirmed,
 }: {
   currentUser?: UserInfo
   entry: AlgorithmResultEntry
   occurrence: Occurrence
+  onConfirmed?: (occurrenceId: string) => void
 }) => {
   const { projectId } = useParams()
   const { icon: Icon, label } = SUBTYPES[entry.subtype]
@@ -174,6 +176,7 @@ export const AlgorithmResult = ({
               agreeWith={{ predictionId: foldedPrediction.id }}
               applied={foldedPrediction.applied}
               occurrenceId={occurrence.id}
+              onSuccess={onConfirmed}
               taxonId={foldedPrediction.taxon.id}
             />
           </div>

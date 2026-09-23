@@ -19,12 +19,14 @@ export const OccurrenceTimeline = ({
   error,
   isLoading,
   occurrence,
+  onConfirmed,
 }: {
   currentUser?: UserInfo
   entries?: ServerOccurrenceHistoryEntry[]
   error?: unknown
   isLoading: boolean
   occurrence: Occurrence
+  onConfirmed?: (occurrenceId: string) => void
 }) => {
   const items = useMemo(
     () =>
@@ -68,6 +70,7 @@ export const OccurrenceTimeline = ({
                 currentUser={currentUser}
                 identification={item.identification}
                 occurrence={occurrence}
+                onConfirmed={onConfirmed}
                 user={item.identification.user}
               />
             )
@@ -78,6 +81,7 @@ export const OccurrenceTimeline = ({
                 currentUser={currentUser}
                 identification={item.prediction}
                 occurrence={occurrence}
+                onConfirmed={onConfirmed}
               />
             )
           case 'algorithm_result':
@@ -87,6 +91,7 @@ export const OccurrenceTimeline = ({
                 currentUser={currentUser}
                 entry={item.entry}
                 occurrence={occurrence}
+                onConfirmed={onConfirmed}
               />
             )
           case 'review':

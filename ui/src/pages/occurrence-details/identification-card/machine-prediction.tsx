@@ -28,10 +28,12 @@ export const MachinePrediction = ({
   currentUser,
   identification,
   occurrence,
+  onConfirmed,
 }: {
   currentUser?: UserInfo
   identification: Identification
   occurrence: Occurrence
+  onConfirmed?: (occurrenceId: string) => void
 }) => {
   const [open, setOpen] = useState(false)
   const { classification, error, isLoading } = useClassificationDetails(
@@ -98,6 +100,7 @@ export const MachinePrediction = ({
               agreeWith={{ predictionId: identification.id }}
               applied={identification.applied}
               occurrenceId={occurrence.id}
+              onSuccess={onConfirmed}
               taxonId={identification.taxon.id}
             />
           )}
@@ -129,6 +132,7 @@ export const MachinePrediction = ({
                       agreeWith={{ predictionId: identification.id }}
                       applied={applied}
                       occurrenceId={occurrence.id}
+                      onSuccess={onConfirmed}
                       taxonId={taxon.id}
                     />
                   )}
