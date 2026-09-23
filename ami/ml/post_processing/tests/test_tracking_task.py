@@ -519,7 +519,7 @@ class TestTrackingWithEmbeddings(TestCase):
 
     def _embed(self, detections, algorithm: Algorithm) -> None:
         DetectionEmbedding.objects.bulk_create(
-            [DetectionEmbedding(detection=d, algorithm=algorithm, features_2048=self.vector) for d in detections]
+            [DetectionEmbedding(detection=d, algorithm=algorithm, vector=self.vector) for d in detections]
         )
 
     def _pair(self, current: list[Detection], following: list[Detection]) -> int:

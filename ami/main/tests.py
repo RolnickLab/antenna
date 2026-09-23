@@ -10529,9 +10529,7 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         vector = [1.0] + [0.0] * 2047
         self._give_target_vectors(vector, extractor)
         candidate = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42])
-        DetectionEmbedding.objects.create(
-            detection=candidate.detections.get(), algorithm=extractor, features_2048=vector
-        )
+        DetectionEmbedding.objects.create(detection=candidate.detections.get(), algorithm=extractor, vector=vector)
 
         response = self.get_candidates()
         self.assertEqual(response.status_code, 200, response.data)
@@ -10546,8 +10544,8 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self._give_target_vectors(vector, extractor)
         same = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42])
         different = self._make_occurrence([self.after_capture], bbox=[500, 500, 530, 530])
-        DetectionEmbedding.objects.create(detection=same.detections.get(), algorithm=extractor, features_2048=vector)
-        DetectionEmbedding.objects.create(detection=different.detections.get(), algorithm=other, features_2048=vector)
+        DetectionEmbedding.objects.create(detection=same.detections.get(), algorithm=extractor, vector=vector)
+        DetectionEmbedding.objects.create(detection=different.detections.get(), algorithm=other, vector=vector)
 
         response = self.get_candidates()
         self.assertEqual(response.status_code, 200, response.data)
@@ -10568,7 +10566,7 @@ class MergeCandidatesTestCase(TrackEditTestCase):
             )
             if not offset % 2:
                 DetectionEmbedding.objects.create(
-                    detection=candidate.detections.get(), algorithm=extractor, features_2048=vector
+                    detection=candidate.detections.get(), algorithm=extractor, vector=vector
                 )
 
         # The savepoint pair, the object lookup with its permission checks, then the
@@ -10835,7 +10833,7 @@ class CaptureMatchesTestCase(APITestCase):
         appearance and linked like one whose vector came with a classification."""
         track = self._track(self.captures[1:3], vector=self.VECTOR)
         box = self._box(self.captures[3], self.NEAR_BOX)
-        DetectionEmbedding.objects.create(detection=box, algorithm=self.extractor, features_2048=self.VECTOR)
+        DetectionEmbedding.objects.create(detection=box, algorithm=self.extractor, vector=self.VECTOR)
 
         data = self.get_matches(track, self.captures[3].pk).data
 
@@ -11443,7 +11441,7 @@ class FeatureVectorPresenceTestCase(APITestCase):
         extractor = Algorithm.objects.create(name="Embedding model", key="embedding-model")
         occurrence = self._make_occurrence([True, False, False])
         embedded = occurrence.detections.get(source_image=self.captures[1])
-        DetectionEmbedding.objects.create(detection=embedded, algorithm=extractor, features_2048=self.vector)
+        DetectionEmbedding.objects.create(detection=embedded, algorithm=extractor, vector=self.vector)
 
         response, queries = self._get(self._occurrence_url(occurrence))
         self.assertEqual(response.data["grouping_summary"]["frames_with_vectors"], 2)
@@ -11463,7 +11461,7 @@ class FeatureVectorPresenceTestCase(APITestCase):
             detection.classifications.create(
                 taxon=self.taxon, score=0.9, timestamp=capture.timestamp, algorithm=algorithm
             )
-        DetectionEmbedding.objects.create(detection=detection, algorithm=embedder, features_2048=self.vector)
+        DetectionEmbedding.objects.create(detection=detection, algorithm=embedder, vector=self.vector)
 
         flags = dict(
             Classification.objects.filter(detection=detection)
@@ -11504,7 +11502,7 @@ class DetectionVectorReadTestCase(TestCase):
         )
 
     def _embedding(self, detection: Detection, algorithm: Algorithm, value: float) -> None:
-        DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, features_2048=[value] * 2048)
+        DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, vector=[value] * 2048)
 
     @staticmethod
     def _read(detections: list[Detection], algorithm: Algorithm) -> dict[int, float]:

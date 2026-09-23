@@ -690,6 +690,7 @@ def create_detection_embeddings(
     detection_responses: list[DetectionResponse],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> list[DetectionEmbedding]:
     """
     Store the feature vectors sent with each detection, one row per (detection, algorithm).
@@ -701,7 +702,7 @@ def create_detection_embeddings(
     Responses are matched to detections by image and box, the key ``get_or_create_detection``
     reuses detections by, because ``create_detections`` does not return them in response order.
     An algorithm key the pipeline has not registered raises ``PipelineNotConfigured``, as it
-    does for classifications.
+    does for classifications. ``job_id`` records the job whose results stored each vector.
     """
     by_box = {
         (str(detection.source_image_id), tuple(detection.bbox)): detection
@@ -726,14 +727,14 @@ def create_detection_embeddings(
                     f"Known algorithms: {list(algorithms_known.keys())}"
                 ) from err
             embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
-                detection=detection, algorithm=algorithm, features_2048=embedding_resp.features
+                detection=detection, algorithm=algorithm, vector=embedding_resp.features, job_id=job_id
             )
 
     DetectionEmbedding.objects.bulk_create(
         list(embeddings.values()),
         update_conflicts=True,
         unique_fields=["detection", "algorithm"],
-        update_fields=["features_2048", "updated_at"],
+        update_fields=["vector", "job", "updated_at"],
         batch_size=EMBEDDING_BATCH_SIZE,
     )
     logger.info(f"Stored {len(embeddings)} detection embeddings for {len(detections)} detections.")
@@ -1149,6 +1150,7 @@ def save_results(
         detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     classifications = create_classifications(
