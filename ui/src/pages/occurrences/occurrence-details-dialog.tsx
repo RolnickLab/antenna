@@ -34,6 +34,7 @@ export const OccurrenceDetailsDialog = ({
   id: string
   // Identifies the list's page, filters and sort. When set, prev/next and advance follow the
   // order the list had when opened or last changed by the user, not a background refetch.
+  // Omit it only when the list's ids are meant to change under the dialog, as on the taxa list.
   listKey?: string
   // Ordered items the prev/next buttons page through. Only the id is used.
   occurrences?: { id: string }[]
@@ -49,8 +50,7 @@ export const OccurrenceDetailsDialog = ({
   const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
-  const snapshot = useListSnapshot(occurrences, listKey ?? '')
-  const navItems = listKey === undefined ? occurrences : snapshot
+  const navItems = useListSnapshot(occurrences, listKey)
   const navigation = useOccurrenceNavigation(navItems, id, onNavigate)
   // Clears ?tab= too, so the next occurrence opened from the list starts on the default tab.
   const handleClose = () => {
