@@ -1,9 +1,11 @@
 FROM postgres:16
 # FROM esgn/pgtuned:latest
 
-# Install pgvector (required by ami.main migration 0084 for Classification.features_2048).
+# pgvector for Classification.features_2048 (migration 0096). Pinned to the 0.8 series so
+# every environment starts on the same current release.
+ARG PGVECTOR_VERSION=0.8.*
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-16-pgvector \
+    && apt-get install -y --no-install-recommends "postgresql-16-pgvector=${PGVECTOR_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./compose/local/postgres/maintenance /usr/local/bin/maintenance
