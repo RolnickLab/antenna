@@ -1459,18 +1459,27 @@ def update_calculated_fields_for_events(
     return to_update
 
 
-def update_calculated_fields_for_sessions_and_stations(event_ids: typing.Iterable[int | None]) -> None:
+def update_calculated_fields_for_sessions_and_stations(
+    event_ids: typing.Iterable[int | None], stations_async: bool = True
+) -> None:
     """Refresh the cached counts of these sessions and of the stations they belong to.
 
     Call once after occurrences are created, merged or split, which neither the
     occurrence nor the detection saves do. The project's counts are live and need nothing.
+    The station refresh scans the whole station, so by default it runs in a background
+    task after the transaction commits, keeping it and the station row lock out of the request.
     """
+    from ami.main.tasks import refresh_deployment_cached_counts
+
     pks = sorted({pk for pk in event_ids if pk is not None})
     if not pks:
         return
     update_calculated_fields_for_events(pks=pks)
-    for deployment in Deployment.objects.filter(events__pk__in=pks).distinct():
-        deployment.update_calculated_fields(save=True)
+    deployment_ids = list(Deployment.objects.filter(events__pk__in=pks).values_list("pk", flat=True).distinct())
+    if stations_async:
+        transaction.on_commit(lambda: refresh_deployment_cached_counts.delay(deployment_ids))
+    else:
+        refresh_deployment_cached_counts(deployment_ids)
 
 
 def audit_event_lengths(deployment: Deployment):

@@ -751,7 +751,8 @@ class TrackingTask(BasePostProcessingTask):
             totals["occurrences_merged"] += counters.get("occurrences_merged", 0)
 
         # Merging occurrences changes the session and station counts, which no save refreshes.
-        update_calculated_fields_for_sessions_and_stations(tracked_event_ids)
+        # This already runs in a background job, so the station refresh stays inline.
+        update_calculated_fields_for_sessions_and_stations(tracked_event_ids, stations_async=False)
 
         self.report_stage_metrics(
             {

@@ -9011,7 +9011,12 @@ class TrackEditTestCase(TrackFixtureTestCase):
         self.assertEqual(self.occurrence.detections.count(), 1)
 
     def test_every_track_edit_refreshes_the_session_and_station_counts(self):
-        """Each edit adds or removes an occurrence, and the session and station lists show cached counts."""
+        """Each edit adds or removes an occurrence, and the session and station lists show cached counts.
+
+        The station refresh is queued after commit, so the test runs the queued task inline.
+        """
+        from ami.main.tasks import refresh_deployment_cached_counts
+
         self.client.force_authenticate(user=self.curator)
         url = f"/api/v2/occurrences/{self.occurrence.pk}"
         edits = [
@@ -9021,8 +9026,12 @@ class TrackEditTestCase(TrackFixtureTestCase):
             ("add-detections", lambda: {"detection_ids": [self.detections[1].pk]}, 1),
         ]
         for action, body, expected in edits:
-            response = self.client.post(f"{url}/{action}/", body(), format="json")
+            with mock.patch.object(
+                refresh_deployment_cached_counts, "delay", side_effect=refresh_deployment_cached_counts
+            ) as queued, self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(f"{url}/{action}/", body(), format="json")
             self.assertEqual(response.status_code, 200, (action, response.data))
+            queued.assert_called_once_with([self.deployment.pk])
             self.event.refresh_from_db()
             self.deployment.refresh_from_db()
             self.assertEqual(Occurrence.objects.filter(event=self.event).count(), expected, action)
