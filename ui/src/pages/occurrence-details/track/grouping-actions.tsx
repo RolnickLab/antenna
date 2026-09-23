@@ -9,7 +9,7 @@ import {
 } from 'data-services/hooks/occurrences/useMergeCandidates'
 import { MergeCandidate } from 'data-services/models/merge-candidate'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
-import { GitMergeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
+import { GitMergeIcon, Loader2Icon, PencilIcon } from 'lucide-react'
 import { Badge, Button, buttonVariants } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -142,7 +142,7 @@ export const GroupingActions = ({
             className={buttonVariants({ size: 'small', variant: 'outline' })}
             to={extendRoute}
           >
-            <PlusIcon className="w-4 h-4" />
+            <PencilIcon className="w-4 h-4" />
             <span>{translate(STRING.TRACK_EXTEND_IN_SESSION)}</span>
           </Link>
         ) : null}
