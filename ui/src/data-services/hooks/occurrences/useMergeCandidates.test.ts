@@ -2,6 +2,8 @@ import {
   getCandidatesEmptyMessage,
   getDetectionError,
   getMergeCandidatesParams,
+  getServerMessage,
+  shouldRetryCandidates,
 } from './useMergeCandidates'
 
 describe('getMergeCandidatesParams', () => {
@@ -66,5 +68,52 @@ describe('getCandidatesEmptyMessage', () => {
         response: { data: { detection: 'Has no box.' } },
       })
     ).toBe('Has no box.')
+  })
+})
+
+describe('shouldRetryCandidates', () => {
+  const failed = (status?: number) => ({ response: { status } })
+
+  test('does not retry an answer that asking again cannot change', () => {
+    for (const status of [401, 403, 404]) {
+      expect(shouldRetryCandidates(0, failed(status))).toBe(false)
+    }
+  })
+
+  test('retries other failures a few times', () => {
+    expect(shouldRetryCandidates(0, failed(500))).toBe(true)
+    expect(shouldRetryCandidates(0, new Error('Network Error'))).toBe(true)
+    expect(shouldRetryCandidates(3, failed(500))).toBe(false)
+  })
+})
+
+describe('getServerMessage', () => {
+  test("shows the server's reason", () => {
+    const error = {
+      message: 'Request failed with status code 403',
+      response: { data: { detail: 'Tracking is not enabled.' } },
+    }
+
+    expect(getServerMessage(error)).toBe('Tracking is not enabled.')
+    expect(getCandidatesEmptyMessage(error)).toBe('Tracking is not enabled.')
+  })
+
+  test('reads a field error when there is no general one', () => {
+    expect(
+      getServerMessage({
+        message: 'Request failed with status code 400',
+        response: { data: { minutes: ['Must be positive.'] } },
+      })
+    ).toBe('Must be positive.')
+  })
+
+  test('is undefined when the response carries no reason', () => {
+    expect(getServerMessage(undefined)).toBeUndefined()
+    expect(
+      getServerMessage({
+        message: 'Request failed with status code 500',
+        response: { data: '<html>Server error</html>' },
+      })
+    ).toBeUndefined()
   })
 })

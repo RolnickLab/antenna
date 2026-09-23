@@ -6,9 +6,12 @@ import {
 } from 'data-services/models/merge-candidate'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const DEFAULT_WINDOW_MINUTES = 5
+const MAX_RETRIES = 3
+const FINAL_STATUSES = [401, 403, 404]
 
 export type MergeScopeKey = 'next' | 'near' | 'minutes5' | 'minutes30'
 
@@ -61,9 +64,38 @@ export const getDetectionError = (error: unknown): string | undefined => {
   return message ? `${message}` : undefined
 }
 
+/** Retry a failed request unless the answer cannot change by asking again. */
+export const shouldRetryCandidates = (failureCount: number, error: unknown) => {
+  const status = (error as { response?: { status?: number } })?.response?.status
+
+  return (
+    failureCount < MAX_RETRIES &&
+    (status === undefined || !FINAL_STATUSES.includes(status))
+  )
+}
+
+/** The reason the server gave for a failed request, if it gave one. */
+export const getServerMessage = (error: unknown): string | undefined => {
+  const axiosError = error as {
+    message?: string
+    response?: { data?: unknown }
+  }
+
+  if (!axiosError?.response?.data) {
+    return undefined
+  }
+
+  const { fieldErrors, message } = parseServerError(error)
+
+  return message && message !== axiosError.message
+    ? message
+    : fieldErrors[0]?.message
+}
+
 /** A failed request must not read as an empty scope, or the operator widens it for nothing. */
 export const getCandidatesEmptyMessage = (error: unknown): string =>
   getDetectionError(error) ??
+  getServerMessage(error) ??
   translate(
     error
       ? STRING.TRACK_MERGE_CANDIDATES_LOAD_FAILED
@@ -121,6 +153,7 @@ export const useMergeCandidates = ({
       'merge-candidates',
       { captures, detectionId, minutes, projectId },
     ],
+    retry: shouldRetryCandidates,
     url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${occurrenceId}/merge-candidates/?${params}`,
   })
 
