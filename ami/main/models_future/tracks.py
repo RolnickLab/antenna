@@ -545,11 +545,10 @@ def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
     an explicit act — no operation in this module sets it as a side effect. The two
     fields hold the current confirmation; the history keeps every review.
     """
-    was_confirmed = occurrence.grouping_verified_at is not None
     occurrence.grouping_verified_at = timezone.now()
     occurrence.grouping_verified_by = user
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])
-    record_track_complete_review(occurrence, user, occurrence.grouping_verified_at, was_confirmed)
+    record_track_complete_review(occurrence, user, occurrence.grouping_verified_at)
     return occurrence
 
 

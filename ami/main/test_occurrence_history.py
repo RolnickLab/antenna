@@ -65,7 +65,7 @@ class OccurrenceHistoryPayloadTestCase(TestCase):
 
 
 class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
-    """Confirming a track posts a review unless the same person re-confirms a still-confirmed, unchanged set."""
+    """Confirming a track posts a review only when its detections or its confirming person changed."""
 
     def verify(self, occurrence: Occurrence | None = None, user: User | None = None):
         self.client.force_authenticate(user=user or self.curator)
@@ -95,8 +95,14 @@ class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
         self.assertEqual(self.occurrence.grouping_verified_by, self.curator)
         self.assertGreaterEqual(self.occurrence.grouping_verified_at, review.timestamp)
 
+    def unverify(self):
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/", format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
     def test_a_confirmation_after_an_edit_records_what_changed(self):
         self.verify()
+        self.unverify()
         response = self.post("remove-detection", self.detections[-1], user=self.curator)
         self.assertEqual(response.status_code, 200, response.data)
         self.verify()
@@ -107,18 +113,27 @@ class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
         self.assertEqual(second.payload["frames_count"], len(self.captures) - 1)
         self.assertEqual(first.payload["detection_ids"], sorted(d.pk for d in self.detections))
 
-    def test_a_confirmation_after_it_was_withdrawn_or_by_someone_else_posts_a_review(self):
+    def test_withdrawing_and_reconfirming_an_unchanged_track_posts_no_new_review(self):
         self.verify()
-        self.client.force_authenticate(user=self.curator)
-        response = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/", format="json")
-        self.assertEqual(response.status_code, 200, response.data)
+        review = self.reviews().get()
+        for _ in range(2):
+            self.unverify()
+            self.verify()
+
+        self.assertEqual(list(self.reviews()), [review])
+        self.occurrence.refresh_from_db()
+        self.assertEqual(self.occurrence.grouping_verified_by, self.curator)
+        self.assertGreater(self.occurrence.grouping_verified_at, review.timestamp)
+
+    def test_a_confirmation_by_someone_else_posts_a_review(self):
         self.verify()
         other_curator = User.objects.create_user(email="second-curator@insectai.org")  # type: ignore
         MLDataManager.assign_user(other_curator, self.project)
+        self.unverify()
         self.verify(user=other_curator)
 
         reviews = list(self.reviews())
-        self.assertEqual([r.user for r in reviews], [self.curator, self.curator, other_curator])
+        self.assertEqual([r.user for r in reviews], [self.curator, other_curator])
         self.assertTrue(all(r.payload["detections_added"] == [] for r in reviews))
         self.occurrence.refresh_from_db()
         self.assertEqual(self.occurrence.grouping_verified_at, reviews[-1].timestamp)

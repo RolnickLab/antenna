@@ -45,18 +45,18 @@ def edited_since_track_complete_review(occurrence: Occurrence) -> bool:
 
 
 def record_track_complete_review(
-    occurrence: Occurrence, user: User, timestamp: datetime.datetime, was_confirmed: bool
+    occurrence: Occurrence, user: User, timestamp: datetime.datetime
 ) -> OccurrenceHistoryRecord | None:
     """Record that ``user`` confirmed this occurrence's detections.
 
-    Nothing is written when the same person re-confirms a still-confirmed, unchanged set,
-    so the review list shows each distinct confirmation once.
+    A review is written only when the detections differ from the latest review or a
+    different person confirms them, so withdrawing and re-confirming an unchanged track
+    does not repeat the same review.
     """
     previous = latest_track_complete_review(occurrence)
     record = _build_track_complete_review(occurrence, user.pk, timestamp, previous)
     if (
-        was_confirmed
-        and previous is not None
+        previous is not None
         and previous.user_id == user.pk
         and sorted(previous.payload["detection_ids"]) == record.payload["detection_ids"]
     ):
