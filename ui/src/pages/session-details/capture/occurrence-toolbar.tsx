@@ -9,6 +9,7 @@ import { ReactNode } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { buildDetectionLink } from '../hooks/useActiveDetection'
 
 export interface ToolbarOccurrence {
@@ -260,9 +261,11 @@ export const OccurrenceToolbar = ({
                     date: occurrence.groupingVerifiedAt,
                   })
                 : translate(STRING.VALUE_NOT_AVAILABLE),
-              name:
-                occurrence.groupingVerifiedBy ??
-                translate(STRING.ANONYMOUS_USER),
+              name: getUserLabel(
+                occurrence.groupingVerifiedBy === null
+                  ? null
+                  : { name: occurrence.groupingVerifiedBy }
+              ),
             })}
           </span>
         ) : null}
