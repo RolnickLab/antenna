@@ -31,6 +31,7 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
@@ -232,7 +233,10 @@ export const OccurrenceDetails = ({
               content={
                 occurrence.determinationVerified
                   ? translate(STRING.VERIFIED_BY, {
-                      name: occurrence.determinationVerifiedBy?.name,
+                      name: getUserLabel(
+                        occurrence.determinationVerifiedBy,
+                        userInfo
+                      ),
                     })
                   : translate(STRING.MACHINE_PREDICTION_SCORE, {
                       score: `${occurrence.determinationScore}`,

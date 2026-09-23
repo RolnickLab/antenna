@@ -1,4 +1,4 @@
-import { STRING, translate } from 'utils/language'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
 import { Taxon } from './taxa'
@@ -166,11 +166,9 @@ const toIdentification = (
       ? {
           id: `${entry.user.id}`,
           image: entry.user.image ?? undefined,
-          name: entry.user.name?.length
-            ? entry.user.name
-            : translate(STRING.ANONYMOUS_USER),
+          name: getUserLabel(entry.user),
         }
-      : { name: translate(STRING.ANONYMOUS_USER) },
+      : { name: getUserLabel(entry.user) },
     userPermissions: [],
   }
 }

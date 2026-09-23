@@ -6,6 +6,8 @@ import { APP_ROUTES } from 'utils/constants'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
+import { getUserLabel } from 'utils/user/getUserLabel'
+import { UserInfo } from 'utils/user/types'
 import {
   HistoryStat,
   HistoryStats,
@@ -13,7 +15,13 @@ import {
   HistoryTypeBadge,
 } from './history-stats'
 
-export const TrackReview = ({ entry }: { entry: TrackCompleteReviewEntry }) => {
+export const TrackReview = ({
+  currentUser,
+  entry,
+}: {
+  currentUser?: UserInfo
+  entry: TrackCompleteReviewEntry
+}) => {
   const { projectId } = useParams()
   const { payload, user } = entry
   const added = payload.detections_added.length
@@ -60,9 +68,7 @@ export const TrackReview = ({ entry }: { entry: TrackCompleteReviewEntry }) => {
             : undefined
         }
         title={translate(STRING.HISTORY_TRACK_COMPLETE_BY, {
-          name: user?.name?.length
-            ? user.name
-            : translate(STRING.ANONYMOUS_USER),
+          name: getUserLabel(user, currentUser),
         })}
         titleAddon={
           <HistoryTypeBadge label={translate(STRING.HISTORY_REVIEW)} />

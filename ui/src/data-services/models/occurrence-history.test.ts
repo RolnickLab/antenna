@@ -158,7 +158,7 @@ describe('getTimelineItems', () => {
       {
         applied: true,
         comment: 'Looks right',
-        user: { id: '9', name: 'Anonymous user' },
+        user: { id: '9', name: 'Unnamed user' },
         userPermissions: [],
       }
     )

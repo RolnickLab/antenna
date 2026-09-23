@@ -96,7 +96,13 @@ export const OccurrenceTimeline = ({
               />
             )
           case 'review':
-            return <TrackReview key={item.id} entry={item.entry} />
+            return (
+              <TrackReview
+                key={item.id}
+                currentUser={currentUser}
+                entry={item.entry}
+              />
+            )
         }
       })}
     </>

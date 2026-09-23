@@ -1,5 +1,6 @@
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { UserPermission } from 'utils/user/types'
 import { Algorithm } from './algorithm'
 import { Occurrence, ServerOccurrence } from './occurrence'
@@ -240,12 +241,10 @@ export class OccurrenceDetails extends Occurrence {
           user: i.user
             ? {
                 id: `${i.user.id}`,
-                name: i.user.name?.length
-                  ? i.user.name
-                  : translate(STRING.ANONYMOUS_USER),
+                name: getUserLabel(i.user),
                 image: i.user.image,
               }
-            : { name: translate(STRING.ANONYMOUS_USER) },
+            : { name: getUserLabel(i.user) },
           comment: i.comment,
           userPermissions: i.user_permissions,
           createdAt: i.created_at,
@@ -322,7 +321,7 @@ export class OccurrenceDetails extends Occurrence {
     return {
       id: `${user.id}`,
       image: user.image ?? undefined,
-      name: user.name?.length ? user.name : translate(STRING.ANONYMOUS_USER),
+      name: getUserLabel(user),
     }
   }
 
