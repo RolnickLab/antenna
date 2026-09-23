@@ -3629,6 +3629,41 @@ class TestFineGrainedJobRunPermission(APITestCase):
         self.assertNotIn("run", response.data.get("user_permissions", []))
 
 
+class TestRunTrackingProjectPermission(APITestCase):
+    """The project detail reports ``run_tracking`` only when a tracking job could be created and run."""
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Tracking Permission Project")
+        self.ml_data_manager = User.objects.create_user(email="mldm@insectai.org")
+        self.basic_member = User.objects.create_user(email="basic@insectai.org")
+        self.superuser = User.objects.create_superuser(email="super@insectai.org", password="password123")
+        MLDataManager.assign_user(self.ml_data_manager, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+
+    def _set_tracking(self, enabled: bool):
+        self.project.feature_flags.tracking = enabled
+        self.project.save(update_fields=["feature_flags"])
+
+    def _may_run_tracking(self, user) -> bool:
+        self.client.force_authenticate(user)
+        response = self.client.get(f"/api/v2/projects/{self.project.pk}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return Project.Permissions.RUN_TRACKING in response.data["user_permissions"]
+
+    def test_flag_on(self):
+        self._set_tracking(True)
+        self.assertTrue(self._may_run_tracking(self.ml_data_manager))
+        self.assertTrue(self._may_run_tracking(self.superuser))
+        self.assertFalse(self._may_run_tracking(self.basic_member))
+        self.assertFalse(self._may_run_tracking(None))
+
+    def test_flag_off(self):
+        self._set_tracking(False)
+        for user in (self.ml_data_manager, self.superuser, self.basic_member, None):
+            self.assertFalse(self._may_run_tracking(user))
+
+
 class TestRunSingleImageJobPermission(APITestCase):
     def setUp(self):
         super().setUp()

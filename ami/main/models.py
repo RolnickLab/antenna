@@ -429,6 +429,20 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
 
+    def get_custom_user_permissions(self, user) -> list[str]:
+        # Reads the permissions once for both the project actions and the tracking check.
+        perms = set(get_perms(user, self))
+        custom_perms = {
+            perm.split("_", 1)[0]
+            for perm in perms
+            if perm.endswith("_project") and perm.split("_", 1)[0] not in ("view", "create", "update", "delete")
+        }
+        # Mirrors what creating and then running a tracking job checks, so the UI can offer it.
+        tracking_job_perms = {Project.Permissions.CREATE_JOB, Project.Permissions.RUN_POST_PROCESSING_JOB}
+        if self.feature_flags.tracking and tracking_job_perms <= perms:
+            custom_perms.add(Project.Permissions.RUN_TRACKING)
+        return list(custom_perms)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
@@ -454,6 +468,8 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
+        # Not a stored permission: reported to the UI when the tracking job permissions and flag all hold.
+        RUN_TRACKING = "run_tracking"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
