@@ -25,19 +25,27 @@ const SUBTYPES = {
   tracking: { icon: RouteIcon, label: STRING.HISTORY_TRACKING },
 }
 
-const getDeterminationLabel = (
+/** The determination row, left out when there was no determination before or after. */
+const getDeterminationStats = (
   before: ServerHistoryTaxon | null,
   after: ServerHistoryTaxon | null
-) => {
-  const notAvailable = translate(STRING.VALUE_NOT_AVAILABLE)
-
-  if (before?.id === after?.id) {
-    return translate(STRING.HISTORY_DETERMINATION_UNCHANGED, {
-      name: after?.name ?? notAvailable,
-    })
+): HistoryStat[] => {
+  if (!before && !after) {
+    return []
   }
 
-  return `${before?.name ?? notAvailable} → ${after?.name ?? notAvailable}`
+  const notAvailable = translate(STRING.VALUE_NOT_AVAILABLE)
+  const value =
+    before?.id === after?.id
+      ? translate(STRING.HISTORY_DETERMINATION_UNCHANGED, {
+          name: after?.name ?? notAvailable,
+        })
+      : translate(STRING.HISTORY_DETERMINATION_CHANGED, {
+          after: after?.name ?? notAvailable,
+          before: before?.name ?? notAvailable,
+        })
+
+  return [{ label: translate(STRING.HISTORY_DETERMINATION), value }]
 }
 
 export const AlgorithmResult = ({
@@ -86,10 +94,7 @@ export const AlgorithmResult = ({
       break
     case 'class_masking':
       stats.push(
-        {
-          label: translate(STRING.HISTORY_DETERMINATION),
-          value: getDeterminationLabel(entry.taxon_before, entry.taxon),
-        },
+        ...getDeterminationStats(entry.taxon_before, entry.taxon),
         {
           label: translate(STRING.HISTORY_SPECIES_LIST),
           value: (
@@ -114,10 +119,7 @@ export const AlgorithmResult = ({
       break
     case 'size_filter':
       stats.push(
-        {
-          label: translate(STRING.HISTORY_DETERMINATION),
-          value: getDeterminationLabel(entry.taxon_before, entry.taxon),
-        },
+        ...getDeterminationStats(entry.taxon_before, entry.taxon),
         {
           label: translate(STRING.HISTORY_SIZE_THRESHOLD),
           value: entry.payload.size_threshold,
