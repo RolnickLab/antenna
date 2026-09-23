@@ -25,8 +25,45 @@ export const MERGE_SCOPES: MergeScope[] = [
   { key: 'minutes30', label: STRING.TRACK_SCOPE_MINUTES_30, minutes: 30 },
 ]
 
+/** The query string of a candidates request: a capture scope replaces the minutes window. */
+export const getMergeCandidatesParams = ({
+  captures,
+  detectionId,
+  minutes = DEFAULT_WINDOW_MINUTES,
+  projectId,
+}: {
+  captures?: number
+  detectionId?: string
+  minutes?: number
+  projectId: string
+}) => {
+  const params = new URLSearchParams({ project_id: projectId })
+
+  if (detectionId) {
+    params.set('detection', detectionId)
+  }
+  if (captures !== undefined) {
+    params.set('captures', `${captures}`)
+  } else {
+    params.set('minutes', `${minutes}`)
+  }
+
+  return params
+}
+
+/** The server's reason a frame cannot be scored, sent as a string or a list of them. */
+export const getDetectionError = (error: unknown): string | undefined => {
+  const detection = (error as { response?: { data?: { detection?: unknown } } })
+    ?.response?.data?.detection
+  const message =
+    detection !== undefined ? ([] as unknown[]).concat(detection)[0] : undefined
+
+  return message ? `${message}` : undefined
+}
+
 /**
- * Occurrences this one could be merged with, ranked by the tracking method.
+ * Occurrences this one could be merged with, ranked by the tracking method. Given a
+ * detection, they are candidates to move that frame to, measured from it instead.
  *
  * Fetched only while `enabled`: a merge dialog opens for one occurrence at a time,
  * and the list is keyed under the occurrences route so a completed track edit
@@ -34,6 +71,7 @@ export const MERGE_SCOPES: MergeScope[] = [
  */
 export const useMergeCandidates = ({
   captures,
+  detectionId,
   enabled,
   minutes = DEFAULT_WINDOW_MINUTES,
   occurrenceId,
@@ -41,6 +79,8 @@ export const useMergeCandidates = ({
 }: {
   /** Captures either side of the occurrence to search. Given, it replaces the `minutes` window. */
   captures?: number
+  /** A frame of the occurrence to rank candidates against, for moving it elsewhere. */
+  detectionId?: string
   enabled?: boolean
   minutes?: number
   occurrenceId: string
@@ -57,13 +97,12 @@ export const useMergeCandidates = ({
   /** The window searched when no `captures` scope is given. */
   minutes: number
 } => {
-  const params = new URLSearchParams({ project_id: projectId })
-
-  if (captures !== undefined) {
-    params.set('captures', `${captures}`)
-  } else {
-    params.set('minutes', `${minutes}`)
-  }
+  const params = getMergeCandidatesParams({
+    captures,
+    detectionId,
+    minutes,
+    projectId,
+  })
 
   const { data, isLoading, error } = useAuthorizedQuery<ServerMergeCandidates>({
     enabled: !!occurrenceId && !!enabled,
@@ -71,7 +110,7 @@ export const useMergeCandidates = ({
       API_ROUTES.OCCURRENCES,
       occurrenceId,
       'merge-candidates',
-      { captures, minutes, projectId },
+      { captures, detectionId, minutes, projectId },
     ],
     url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${occurrenceId}/merge-candidates/?${params}`,
   })

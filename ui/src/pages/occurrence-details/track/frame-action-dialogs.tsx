@@ -1,16 +1,25 @@
 import { useAddDetections } from 'data-services/hooks/occurrences/track/useAddDetections'
 import { useRemoveDetection } from 'data-services/hooks/occurrences/track/useRemoveDetection'
 import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTrack'
+import {
+  getDetectionError,
+  MERGE_SCOPES,
+  MergeScopeKey,
+  useMergeCandidates,
+} from 'data-services/hooks/occurrences/useMergeCandidates'
+import { MergeCandidate } from 'data-services/models/merge-candidate'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { getCandidateSessionRoute } from 'components/track/candidate-session-route'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
 import { PendingFrameAction } from './types'
-import { useTrackCandidates } from 'components/track/useTrackCandidates'
+
+const DEFAULT_SCOPE: MergeScopeKey = 'near'
 
 export const FrameActionDialogs = ({
   occurrence,
@@ -23,16 +32,43 @@ export const FrameActionDialogs = ({
 }) => {
   const { projectId } = useParams()
   const [targetId, setTargetId] = useState<string>()
+  const [scope, setScope] = useState<MergeScopeKey>(DEFAULT_SCOPE)
 
   const split = useSplitTrack(occurrence.id)
   const remove = useRemoveDetection(occurrence.id)
   const move = useAddDetections(targetId ?? occurrence.id)
-  const { candidates, isLoading: candidatesLoading } = useTrackCandidates({
-    captureIds:
-      pending?.action === 'move' ? [pending.captureId, pending.captureId] : [],
-    excludeIds: [occurrence.id],
+  const moveScope =
+    MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
+  const {
+    candidates,
+    costThreshold,
+    error: candidatesError,
+    isLoading: candidatesLoading,
+    requiresFeatures,
+  } = useMergeCandidates({
+    captures: moveScope.captures,
+    detectionId: pending?.detectionId,
+    enabled: pending?.action === 'move',
+    minutes: moveScope.minutes,
+    occurrenceId: occurrence.id,
     projectId: projectId as string,
   })
+
+  const sessionRoute = occurrence.sessionId
+    ? APP_ROUTES.SESSION_DETAILS({
+        projectId: projectId as string,
+        sessionId: occurrence.sessionId,
+      })
+    : undefined
+
+  const candidateSessionLink = (candidate: MergeCandidate) =>
+    sessionRoute && candidate.captureId
+      ? getCandidateSessionRoute({
+          captureId: candidate.captureId,
+          occurrenceIds: [occurrence.id, candidate.id],
+          sessionRoute,
+        })
+      : undefined
 
   // A split or a removal can leave the new occurrence scoring under the project's
   // default threshold, which hides it from every lookup. Carry the bypass on the link
@@ -139,9 +175,24 @@ export const FrameActionDialogs = ({
         {move.result ? null : (
           <OccurrencePicker
             candidates={candidates}
+            costThreshold={costThreshold}
+            description={translate(STRING.TRACK_MOVE_SCOPE_DESCRIPTION, {
+              scope: translate(moveScope.label).toLowerCase(),
+            })}
+            emptyMessage={
+              getDetectionError(candidatesError) ??
+              translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)
+            }
             isLoading={candidatesLoading}
+            onScopeChange={(key) => {
+              setScope(key)
+              setTargetId(undefined)
+            }}
             onSelect={setTargetId}
+            requiresFeatures={requiresFeatures}
+            scope={scope}
             selectedId={targetId}
+            sessionLink={candidateSessionLink}
           />
         )}
       </TrackEditDialog>

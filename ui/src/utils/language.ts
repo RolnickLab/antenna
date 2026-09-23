@@ -490,6 +490,7 @@ export enum STRING {
   TRACK_MERGE_RESULT,
   TRACK_MERGE,
   TRACK_MOVE_DESCRIPTION,
+  TRACK_MOVE_SCOPE_DESCRIPTION,
   TRACK_MOVE_FRAME,
   TRACK_MOVE_RESULT,
   TRACK_NEXT_FRAME,
@@ -498,7 +499,6 @@ export enum STRING {
   TRACK_OFFSET_MINUTES,
   TRACK_OFFSET_SECONDS,
   TRACK_OPEN_NEW_OCCURRENCE,
-  TRACK_NO_OTHER_OCCURRENCES,
   TRACK_PERCENT,
   TRACK_PATH_ERROR,
   TRACK_PATH_RANGE,
@@ -510,7 +510,6 @@ export enum STRING {
   TRACK_PATH_GO_TO_FRAME,
   TRACK_PATH_GO_TO_NEAREST,
   TRACK_PICK_OCCURRENCE,
-  TRACK_PICK_OCCURRENCE_SCOPE,
   TRACK_POSITION_AFTER_LAST,
   TRACK_POSITION_BEFORE_FIRST,
   TRACK_POSITION_BETWEEN,
@@ -1162,6 +1161,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MOVE_DESCRIPTION]:
     'The frame at {{time}} moves to the occurrence you pick. The rest of this occurrence stays together.',
   [STRING.TRACK_MOVE_FRAME]: 'Move to another occurrence',
+  [STRING.TRACK_MOVE_SCOPE_DESCRIPTION]:
+    'Searching {{scope}}. Lists occurrences this frame could belong to, best match to it by the tracking method first. Occurrences with a box on the same capture are left out.',
   [STRING.TRACK_MOVE_RESULT]:
     'Moved. Occurrence #{{id}} now holds {{count}} frames.',
   [STRING.TRACK_NEXT_FRAME]: 'Next track frame',
@@ -1171,8 +1172,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_OFFSET_MINUTES]: '{{count}} min',
   [STRING.TRACK_OFFSET_SECONDS]: '{{count}} s',
   [STRING.TRACK_OPEN_NEW_OCCURRENCE]: 'Open it',
-  [STRING.TRACK_NO_OTHER_OCCURRENCES]:
-    'No other occurrence shares a capture with this frame or the ones either side of it.',
   [STRING.TRACK_PATH_ERROR]: 'Could not load the path',
   [STRING.TRACK_PATH_RANGE]: '{{start}}–{{end}} · {{frames}}',
   [STRING.TRACK_PATH_STATUS_ERROR]:
@@ -1186,8 +1185,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Go to the nearest capture with this occurrence',
   [STRING.TRACK_PERCENT]: '{{percent}}%',
   [STRING.TRACK_PICK_OCCURRENCE]: 'Candidates near this frame',
-  [STRING.TRACK_PICK_OCCURRENCE_SCOPE]:
-    'Occurrences sharing a capture with this frame or the ones either side of it. Occurrences further away in time are not listed.',
   [STRING.TRACK_POSITION_AFTER_LAST]: 'After the last frame',
   [STRING.TRACK_POSITION_BEFORE_FIRST]: 'Before the first frame',
   [STRING.TRACK_POSITION_BETWEEN]: 'Between frames {{before}} and {{after}}',

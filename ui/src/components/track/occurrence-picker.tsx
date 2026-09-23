@@ -156,8 +156,8 @@ const getPanelStyle = (
 export const OccurrencePicker = ({
   candidates,
   costThreshold,
-  description = translate(STRING.TRACK_PICK_OCCURRENCE_SCOPE),
-  emptyMessage = translate(STRING.TRACK_NO_OTHER_OCCURRENCES),
+  description,
+  emptyMessage,
   isLoading,
   onScopeChange,
   onSelect,
@@ -172,8 +172,8 @@ export const OccurrencePicker = ({
   candidates: OccurrencePickerCandidate[]
   /** Tracking links a pair only under this cost; shown beside each cost in the preview. */
   costThreshold?: number
-  description?: string
-  emptyMessage?: string
+  description: string
+  emptyMessage: string
   isLoading?: boolean
   onScopeChange?: (key: MergeScopeKey) => void
   /** Single-select: clicking a row makes it the one selection. */
