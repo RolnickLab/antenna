@@ -26,6 +26,7 @@ export const OccurrenceTimeline = ({
   error?: unknown
   isLoading: boolean
   occurrence: Occurrence
+  /** Runs only when a card confirms the current ID, so applying a different ID keeps the reviewer here to see the result. */
   onConfirmed?: (occurrenceId: string) => void
 }) => {
   const items = useMemo(

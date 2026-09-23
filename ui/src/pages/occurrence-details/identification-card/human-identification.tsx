@@ -110,7 +110,7 @@ export const HumanIdentification = ({
                     agreeWith={{ identificationId: identification.id }}
                     applied={identification.applied}
                     occurrenceId={occurrence.id}
-                    onSuccess={onConfirmed}
+                    onSuccess={identification.applied ? onConfirmed : undefined}
                     taxonId={identification.taxon.id}
                   />
                 )}

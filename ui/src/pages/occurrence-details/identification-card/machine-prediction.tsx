@@ -100,7 +100,7 @@ export const MachinePrediction = ({
               agreeWith={{ predictionId: identification.id }}
               applied={identification.applied}
               occurrenceId={occurrence.id}
-              onSuccess={onConfirmed}
+              onSuccess={identification.applied ? onConfirmed : undefined}
               taxonId={identification.taxon.id}
             />
           )}
@@ -132,7 +132,7 @@ export const MachinePrediction = ({
                       agreeWith={{ predictionId: identification.id }}
                       applied={applied}
                       occurrenceId={occurrence.id}
-                      onSuccess={onConfirmed}
+                      onSuccess={applied ? onConfirmed : undefined}
                       taxonId={taxon.id}
                     />
                   )}

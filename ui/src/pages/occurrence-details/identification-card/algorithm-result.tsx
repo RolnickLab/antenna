@@ -178,7 +178,7 @@ export const AlgorithmResult = ({
               agreeWith={{ predictionId: foldedPrediction.id }}
               applied={foldedPrediction.applied}
               occurrenceId={occurrence.id}
-              onSuccess={onConfirmed}
+              onSuccess={foldedPrediction.applied ? onConfirmed : undefined}
               taxonId={foldedPrediction.taxon.id}
             />
           </div>
