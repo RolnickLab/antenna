@@ -9010,6 +9010,25 @@ class TrackEditTestCase(TrackFixtureTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.occurrence.detections.count(), 1)
 
+    def test_every_track_edit_refreshes_the_session_and_station_counts(self):
+        """Each edit adds or removes an occurrence, and the session and station lists show cached counts."""
+        self.client.force_authenticate(user=self.curator)
+        url = f"/api/v2/occurrences/{self.occurrence.pk}"
+        edits = [
+            ("split-track", lambda: {"detection_id": self.detections[2].pk}, 2),
+            ("merge", lambda: {"occurrence_ids": [Detection.objects.get(pk=self.detections[2].pk).occurrence_id]}, 1),
+            ("remove-detection", lambda: {"detection_id": self.detections[1].pk}, 2),
+            ("add-detections", lambda: {"detection_ids": [self.detections[1].pk]}, 1),
+        ]
+        for action, body, expected in edits:
+            response = self.client.post(f"{url}/{action}/", body(), format="json")
+            self.assertEqual(response.status_code, 200, (action, response.data))
+            self.event.refresh_from_db()
+            self.deployment.refresh_from_db()
+            self.assertEqual(Occurrence.objects.filter(event=self.event).count(), expected, action)
+            self.assertEqual(self.event.occurrences_count, self.event.get_occurrences_count(), action)
+            self.assertEqual(self.deployment.occurrences_count, self.event.get_occurrences_count(), action)
+
     def test_a_member_without_curation_rights_cannot_edit_a_track(self):
         response = self.post("split-track", self.detections[2], user=self.reader)
         self.assertEqual(response.status_code, 403)

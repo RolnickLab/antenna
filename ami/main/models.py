@@ -1459,6 +1459,20 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def update_calculated_fields_for_sessions_and_stations(event_ids: typing.Iterable[int | None]) -> None:
+    """Refresh the cached counts of these sessions and of the stations they belong to.
+
+    Call once after occurrences are created, merged or split, which neither the
+    occurrence nor the detection saves do. The project's counts are live and need nothing.
+    """
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if not pks:
+        return
+    update_calculated_fields_for_events(pks=pks)
+    for deployment in Deployment.objects.filter(events__pk__in=pks).distinct():
+        deployment.update_calculated_fields(save=True)
+
+
 def audit_event_lengths(deployment: Deployment):
     logger.info("Checking for unusual event durations")
 

@@ -17,6 +17,7 @@ from ami.main.models import (
     Occurrence,
     SourceImage,
     SourceImageCollection,
+    update_calculated_fields_for_sessions_and_stations,
 )
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.ml.models import Algorithm
@@ -693,6 +694,7 @@ class TrackingTask(BasePostProcessingTask):
         self.logger.info(f"Tracking: {total} event(s) in scope")
 
         totals = {"events_tracked": 0, "events_skipped": 0, "links_created": 0, "occurrences_merged": 0}
+        tracked_event_ids: list[int] = []
 
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
@@ -744,8 +746,12 @@ class TrackingTask(BasePostProcessingTask):
                 progress_cb=_stage_progress,
             )
             totals["events_tracked"] += 1
+            tracked_event_ids.append(event.pk)
             totals["links_created"] += counters.get("links_created", 0)
             totals["occurrences_merged"] += counters.get("occurrences_merged", 0)
+
+        # Merging occurrences changes the session and station counts, which no save refreshes.
+        update_calculated_fields_for_sessions_and_stations(tracked_event_ids)
 
         self.report_stage_metrics(
             {

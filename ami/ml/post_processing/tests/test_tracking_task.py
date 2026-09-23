@@ -7,7 +7,16 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, Event, Identification, Occurrence, SourceImageCollection, Taxon
+from ami.main.models import (
+    Classification,
+    Detection,
+    Event,
+    Identification,
+    Occurrence,
+    SourceImageCollection,
+    Taxon,
+    update_calculated_fields_for_events,
+)
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
@@ -257,6 +266,22 @@ class TestTrackingWithoutFeatures(TestCase):
             0,
             "Every detection should still belong to an occurrence after tracking",
         )
+
+    def test_session_and_station_counts_are_refreshed_after_tracking(self):
+        """The cached counts the session and station lists show follow the merged occurrences."""
+        update_calculated_fields_for_events(pks=[self.event.pk])
+        self.deployment.update_calculated_fields(save=True)
+        self.event.refresh_from_db()
+        before = self.event.occurrences_count
+
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+
+        self.event.refresh_from_db()
+        self.deployment.refresh_from_db()
+        live = self.event.get_occurrences_count()
+        self.assertLess(live, before, "Tracking must merge occurrences for this test to mean anything")
+        self.assertEqual(self.event.occurrences_count, live)
+        self.assertEqual(self.deployment.occurrences_count, live)
 
     def test_requiring_features_leaves_data_untouched(self):
         before = Occurrence.objects.filter(event=self.event).count()

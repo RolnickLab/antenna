@@ -14,7 +14,7 @@ what the occurrence view shows, and repair the chain links to match. That means
 they behave sensibly on occurrences that were never tracked and so carry no
 links at all.
 
-Three invariants hold after every operation here:
+Four invariants hold after every operation here:
 
 - A chain link never crosses an occurrence boundary within one session. Otherwise
   a later tracking pass would walk the chain, decide both occurrences are one, and
@@ -25,6 +25,8 @@ Three invariants hold after every operation here:
 - The stored track statistics of every surviving occurrence the edit touched are
   recomputed, so the list sorts on current numbers. This costs three queries per
   edit however many occurrences it touched (see ``track_stats.refresh_track_stats``).
+- The cached counts of the sessions and stations the edit touched are refreshed once,
+  since an edit adds or removes occurrences.
 """
 
 from __future__ import annotations
@@ -37,7 +39,15 @@ from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
-from ami.main.models import Detection, Identification, Occurrence, SourceImage, User, update_occurrence_determination
+from ami.main.models import (
+    Detection,
+    Identification,
+    Occurrence,
+    SourceImage,
+    User,
+    update_calculated_fields_for_sessions_and_stations,
+    update_occurrence_determination,
+)
 from ami.main.models_future.track_stats import refresh_track_stats
 
 
@@ -100,6 +110,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     occurrence.save()
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
+    update_calculated_fields_for_sessions_and_stations([occurrence.event_id, new_occurrence.event_id])
     return new_occurrence
 
 
@@ -145,6 +156,7 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     occurrence.save()
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
+    update_calculated_fields_for_sessions_and_stations([occurrence.event_id, new_occurrence.event_id])
     return new_occurrence
 
 
@@ -348,6 +360,7 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     _clear_verification(target)
     target.save()
     refresh_track_stats(target)
+    update_calculated_fields_for_sessions_and_stations([target.event_id])
     return target
 
 
@@ -407,6 +420,7 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     _clear_verification(target, *remaining)
     target.save()
     refresh_track_stats(target, *remaining)
+    update_calculated_fields_for_sessions_and_stations([target.event_id, *(donor.event_id for donor in donors)])
     return target
 
 
