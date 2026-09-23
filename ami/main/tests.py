@@ -3781,12 +3781,15 @@ class TestRunSingleImageJobPermission(APITestCase):
         )
 
         # Should not be able to run job now
+        jobs_before = Job.objects.filter(project=self.project).count()
         response = self.client.post(run_url, payload, format="json")
         self.assertEqual(
             response.status_code,
             403,
             f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )
+        # The refusal comes before the save, so no job is left behind.
+        self.assertEqual(Job.objects.filter(project=self.project).count(), jobs_before)
 
 
 class TestMLDataManagerCanRunBatchMLJob(APITestCase):
