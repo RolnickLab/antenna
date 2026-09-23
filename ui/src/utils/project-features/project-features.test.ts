@@ -3,6 +3,7 @@ import {
   hasProjectFeature,
   withoutTrackingColumns,
 } from './project-features'
+import { UserPermission } from 'utils/user/types'
 
 describe('hasProjectFeature', () => {
   test('is on only when the flag is true', () => {
@@ -40,15 +41,23 @@ describe('withoutTrackingColumns', () => {
 })
 
 describe('canStartTracking', () => {
-  test('needs both the flag and the right to change the project', () => {
+  const run = [UserPermission.RunTracking]
+
+  test('needs both the flag and the run tracking permission', () => {
     const flags = { tracking: true }
-    expect(canStartTracking({ canUpdate: true, featureFlags: flags })).toBe(
-      true
-    )
-    expect(canStartTracking({ canUpdate: false, featureFlags: flags })).toBe(
+    expect(
+      canStartTracking({ userPermissions: run, featureFlags: flags })
+    ).toBe(true)
+    expect(
+      canStartTracking({
+        userPermissions: [UserPermission.Update],
+        featureFlags: flags,
+      })
+    ).toBe(false)
+    expect(canStartTracking({ featureFlags: flags })).toBe(false)
+    expect(canStartTracking({ userPermissions: run, featureFlags: {} })).toBe(
       false
     )
-    expect(canStartTracking({ canUpdate: true, featureFlags: {} })).toBe(false)
     expect(canStartTracking(undefined)).toBe(false)
   })
 })

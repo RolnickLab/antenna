@@ -1,3 +1,5 @@
+import { UserPermission } from 'utils/user/types'
+
 export type ProjectFeature = 'tags' | 'tracking'
 
 /** Flags a project owner has not switched on read as off, including while loading. */
@@ -6,15 +8,17 @@ export const hasProjectFeature = (
   feature: ProjectFeature
 ) => featureFlags?.[feature] === true
 
-/**
- * Starting a tracking run is offered to those who can change the project, since a
- * member who can only create jobs would have the job saved and then refused.
- */
+/** The server grants run_tracking only while tracking is on, so the flag check is a safeguard. */
 export const canStartTracking = (
   project:
-    | { canUpdate: boolean; featureFlags?: { [key: string]: boolean } }
+    | {
+        featureFlags?: { [key: string]: boolean }
+        userPermissions?: UserPermission[]
+      }
     | undefined
-) => !!project?.canUpdate && hasProjectFeature(project.featureFlags, 'tracking')
+) =>
+  !!project?.userPermissions?.includes(UserPermission.RunTracking) &&
+  hasProjectFeature(project.featureFlags, 'tracking')
 
 // Occurrence list columns that only mean something once occurrences are tracks.
 export const TRACKING_COLUMN_IDS = [
