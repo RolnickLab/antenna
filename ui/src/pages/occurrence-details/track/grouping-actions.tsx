@@ -28,10 +28,13 @@ const DEFAULT_SCOPE: MergeScopeKey = 'next'
 export const GroupingActions = ({
   canRestructure,
   canVerify,
+  editedSinceComplete,
   occurrence,
 }: {
   canRestructure: boolean
   canVerify: boolean
+  /** The detections differ from those in the latest "Mark complete" review. */
+  editedSinceComplete?: boolean
   occurrence: OccurrenceDetails
 }) => {
   const { projectId } = useParams()
@@ -121,6 +124,10 @@ export const GroupingActions = ({
             })}
           </span>
         </div>
+      ) : editedSinceComplete ? (
+        <span className="body-small text-warning-700">
+          {translate(STRING.TRACK_EDITED_SINCE_COMPLETE)}
+        </span>
       ) : (
         <span className="body-small text-muted-foreground">
           {translate(STRING.TRACK_GROUPING_NOT_CONFIRMED)}
