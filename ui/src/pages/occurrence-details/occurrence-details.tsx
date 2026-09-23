@@ -76,11 +76,14 @@ const JumpToFrame = ({
 
 export const OccurrenceDetails = ({
   occurrence,
+  onConfirmed,
   onNavigate,
   selectedTab,
   setSelectedTab,
 }: {
   occurrence: Occurrence
+  /** Called after the header Confirm button confirms the determination. */
+  onConfirmed?: () => void
   /** Called when a frame's link is followed, so a dialog around these details can close. */
   onNavigate?: () => void
   selectedTab?: string
@@ -245,6 +248,8 @@ export const OccurrenceDetails = ({
             <>
               {occurrence.determinationTaxon ? (
                 <Agree
+                  // Keyed so a confirmed state does not carry over to the next occurrence.
+                  key={occurrence.id}
                   agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
                   agreeWith={{
                     identificationId: occurrence.determinationIdentificationId,
@@ -252,6 +257,7 @@ export const OccurrenceDetails = ({
                   }}
                   applied
                   occurrenceId={occurrence.id}
+                  onSuccess={onConfirmed}
                   taxonId={occurrence.determinationTaxon.id}
                 />
               ) : null}

@@ -235,6 +235,7 @@ export const Occurrences = () => {
       </PageFooter>
       {id ? (
         <OccurrenceDetailsDialog
+          advanceOnConfirm
           id={id}
           occurrences={occurrences}
           onClose={() =>

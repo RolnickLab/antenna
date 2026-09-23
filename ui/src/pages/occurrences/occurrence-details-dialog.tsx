@@ -10,17 +10,24 @@ import { useLocation } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useSelectedView } from 'utils/useSelectedView'
-import { OccurrenceNavigation } from './occurrence-navigation'
+import {
+  OccurrenceNavigation,
+  useOccurrenceNavigation,
+} from './occurrence-navigation'
 
 // Occurrence identification modal. Rendered over a list (occurrences or taxa);
 // the parent owns which occurrence is shown and how closing updates the URL.
 export const OccurrenceDetailsDialog = ({
+  advanceOnConfirm,
   id,
   occurrences,
   onClose,
   onNavigate,
   defaultTab = TABS.FIELDS,
 }: {
+  // Confirming the determination moves on to the next occurrence, or closes the
+  // dialog after the last one, so reviewing a list is one click per occurrence.
+  advanceOnConfirm?: boolean
   id: string
   // Ordered items the prev/next buttons page through. Only the id is used.
   occurrences?: { id: string }[]
@@ -36,6 +43,7 @@ export const OccurrenceDetailsDialog = ({
   const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const navigation = useOccurrenceNavigation(occurrences, id, onNavigate)
   const detailsLabel = translate(STRING.ENTITY_DETAILS, {
     type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
   })
@@ -80,15 +88,16 @@ export const OccurrenceDetailsDialog = ({
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
+            onConfirmed={
+              advanceOnConfirm
+                ? () => (navigation.nextId ? navigation.goToNext() : onClose())
+                : undefined
+            }
             selectedTab={selectedView}
             setSelectedTab={setSelectedView}
           />
         ) : null}
-        <OccurrenceNavigation
-          occurrences={occurrences}
-          currentId={id}
-          onNavigate={onNavigate}
-        />
+        <OccurrenceNavigation navigation={navigation} />
       </Dialog.Content>
     </Dialog.Root>
   )

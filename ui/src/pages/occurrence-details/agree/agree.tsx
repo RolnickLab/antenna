@@ -13,6 +13,7 @@ interface AgreeProps {
   applied?: boolean
   compact?: boolean
   occurrenceId: string
+  onSuccess?: () => void
   taxonId: string
 }
 
@@ -22,10 +23,11 @@ export const Agree = ({
   applied,
   compact,
   occurrenceId,
+  onSuccess,
   taxonId,
 }: AgreeProps) => {
   const { createIdentification, isLoading, isSuccess, error, reset } =
-    useCreateIdentification()
+    useCreateIdentification(onSuccess)
 
   useEffect(() => {
     reset()
