@@ -123,6 +123,10 @@ export const TrackingJobForm = ({
         />
       ) : null}
       <FormSection description={translate(STRING.TRACKING_JOB_DESCRIPTION)}>
+        {/* The payload leaves the server defaults skip_if_human_identifications and require_fresh_event on. */}
+        <p className="body-small text-muted-foreground">
+          {translate(STRING.TRACKING_JOB_SKIPPED_SESSIONS)}
+        </p>
         {scope ? null : (
           <FormRow>
             <FormController

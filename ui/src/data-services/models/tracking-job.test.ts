@@ -48,6 +48,17 @@ describe('buildTrackingJobPayload', () => {
     expect(config).not.toHaveProperty('cost_threshold')
   })
 
+  test('keeps the server skipping identified and already tracked sessions, as the form says', () => {
+    const { config } = buildTrackingJobPayload({
+      projectId: '3',
+      requireFeatures: true,
+      scope: { type: 'session', sessionId: '42' },
+    }).params
+
+    expect(config).not.toHaveProperty('skip_if_human_identifications')
+    expect(config).not.toHaveProperty('require_fresh_event')
+  })
+
   test('names the job after its scope when no name is given', () => {
     expect(
       buildTrackingJobPayload({
