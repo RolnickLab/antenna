@@ -1,6 +1,6 @@
 # Jobs panel v1 backend — implementation plan and its open blockers
 
-**Status:** planned and reviewed, not started. No implementation code written.  
+**Status:** planned and reviewed, not started. Decisions recorded 2026-09-23 (see below). No implementation code written.  
 **Date:** 2026-09-22  
 **Plans:** phases 1&ndash;3 of `2026-09-18-jobs-panel-schema-driven-design.md` §4 (the backend contract). Phase 4, the `SchemaForm` UI, is not planned here.
 
@@ -9,6 +9,23 @@
 The v1 backend slice makes the jobs API describe itself and accept per-job configuration, so that a later UI can render a Create Job form for any job type without hardcoding its knobs. Phase 1 moves every post-processing task's documentation out of Python comments and Django form files and onto the pydantic config fields themselves, so the generated JSON Schema carries real labels, help text and numeric bounds instead of "Source Image Collection Id". Phase 2 attaches a descriptor (description, permission, scope fields, config schema, variants) to each job type class and serves all of them from a new read endpoint, GET /api/v2/jobs/types/?project_id=N, with an `allowed` flag resolved for the requesting user; it also grants `run_post_processing_job` to the roles that can already run ML jobs, without which the feature stays superuser-only. Phase 3 makes `Job.params` writable on create and validates it against the resolved task's pydantic schema, so a bad config returns 400 with per-field errors instead of failing inside a Celery worker after the job already shows as started. The serializer copies the scope ids from the Job's own columns into `params["config"]` server-side, so an API-created job and an admin-created job produce byte-identical params and `PostProcessingJob.run` is untouched. Only two post-processing tasks exist in this worktree (class masking and small size filter), not the four the design doc's phasing table assumes. No schema migration is needed anywhere in phases 1-3: `VALID_JOB_TYPES` is not changed, so `job_type_key.choices` is unchanged, and `Job.params` already exists as a JSONField. The one optional migration is a belt-and-suspenders data migration for the role grant, following the precedent at ami/main/migrations/0095.
 
 The plan below was produced from a reading of the post-processing framework, the jobs model and API, the permission roles and the frontend create-job form, then reviewed by three independent critics: one checking that every file, class and line it cites actually exists, one checking it against the approved design, and one hunting the bug classes that do not show up in a diff. All three returned `needs-changes`. **Ten blockers are unresolved, so the step list below is not yet safe to implement as written.**
+
+## Decisions and corrections, 2026-09-23
+
+**The premise about task count is out of date.** This plan was written against a worktree without the tracking work. The tracking pull request (#1272) adds a third post-processing task, `tracking`, and has already built a tracking-only version of much of phases 2 and 3:
+
+- `params` is writable on create and validated by `validate_post_processing_params` in `ami/jobs/serializers.py`: a task allowlist (`MEMBER_POST_PROCESSING_TASKS`), the task's pydantic schema, staff-only settings, and event and capture-set ids checked against the job's project.
+- A PATCH without `job_type_key` drops `params`; with it, the same validation runs (B9, mostly closed for tracking).
+- `Job._members_may_run_post_processing` re-checks the task, the staff-only settings and the project's tracking flag whenever someone other than a superuser runs or retries a post-processing job.
+- `run_post_processing_job` is granted to `MLDataManager` (and so `ProjectManager`) in `ami/users/roles.py`, with data migration 0101.
+- The interface pull request (#1432) has a hand-built "Run tracking" dialog. It is what this panel replaces.
+
+**Decisions:**
+
+1. **Role:** `MLDataManager`, as recommended. Already applied in #1272, so step 8 here becomes "nothing to do" once #1272 merges.
+2. **Tracking is the panel's first user.** Annotate `TrackingConfig` in phase 1 alongside the other two tasks. Phase 3's `JobType.validate_params` should absorb `validate_post_processing_params` from #1272 rather than write a parallel version. After that, every registered post-processing task appears in the panel, as it does in the Django admin. Widening beyond tracking still needs B7's project scoping of every id inside each task's config.
+3. **Task count:** three once #1272 merges (class masking, small size filter, tracking). Rank rollup (#1361) joins when it lands.
+4. **Sequencing:** build this plan's backend steps after #1272 merges, so the jobs serializer and its validation contract change in one place, once.
 
 ## Two findings that change the shape of the work
 
