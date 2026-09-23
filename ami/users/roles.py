@@ -146,6 +146,11 @@ class MLDataManager(Role):
         Project.Permissions.SYNC_DEPLOYMENT,
         Project.Permissions.RUN_REGROUP_EVENTS_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
+        # Retraining a head and scoring one are ML data work, so they sit with the
+        # other run_*_job permissions this role already holds.
+        Project.Permissions.RUN_GENERATE_EMBEDDINGS_JOB,
+        Project.Permissions.RUN_TRAIN_CLASSIFIER_JOB,
+        Project.Permissions.RUN_EVALUATE_ALGORITHM_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
         Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
