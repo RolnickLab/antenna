@@ -11,6 +11,8 @@ class BaseExporter(ABC):
     """Base class for all data export handlers."""
 
     file_format = ""  # To be defined in child classes
+    # A project feature flag that must be on before this format can be requested.
+    required_feature_flag: str | None = None
     serializer_class = None
     filter_backends = []
 
