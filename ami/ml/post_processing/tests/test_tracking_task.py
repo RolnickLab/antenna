@@ -143,6 +143,30 @@ class TestTracking(TestCase):
         self.assertEqual(keeper.detections.count(), 2)
         self.assertFalse(Classification.objects.filter(algorithm=tracking_algorithm).exists())
 
+    def test_a_merge_clears_verification_only_where_frames_changed(self):
+        """A keeper that gains frames loses its "complete and accurate" mark, as after a
+        manual edit, while an occurrence tracking leaves unchanged keeps its mark."""
+        det_a, det_b, _, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
+        user = UserFactory()
+        untouched = (
+            Occurrence.objects.filter(detections__source_image__in=self.source_images[:2])
+            .exclude(pk__in=[det_a.occurrence_id, det_b.occurrence_id])
+            .first()
+        )
+        assert untouched is not None
+        Occurrence.objects.filter(pk__in=[det_a.occurrence_id, det_b.occurrence_id, untouched.pk]).update(
+            grouping_verified_at=timezone.now(), grouping_verified_by=user
+        )
+
+        assign_occurrences_from_detection_chains(self.source_images[:2], logger)
+
+        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
+        self.assertEqual(keeper.detections.count(), 2)
+        self.assertEqual((keeper.grouping_verified_at, keeper.grouping_verified_by), (None, None))
+        untouched.refresh_from_db()
+        self.assertIsNotNone(untouched.grouping_verified_at)
+        self.assertEqual(untouched.grouping_verified_by, user)
+
     def test_null_marker_sentinels_are_ignored(self):
         """A capture marked "processed, nothing found" carries a bbox-less sentinel detection;
         tracking must neither score it nor give it an occurrence."""

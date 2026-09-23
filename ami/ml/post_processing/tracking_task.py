@@ -268,6 +268,8 @@ def assign_occurrences_from_detection_chains(
     - If no detection in the chain has an occurrence yet, create one.
     - With ``record_as`` set, a merge that changes the keeper's determination leaves a
       classification attributed to that algorithm (see ``record_tracking_determination``).
+    - Clear grouping verification from every occurrence whose detection set changed;
+      an occurrence the chains leave as it was keeps its mark.
     - Store the track statistics of every occurrence the chains settle on, so the list
       can sort by them (see ``track_stats.refresh_track_stats_for_ids``).
 
@@ -278,6 +280,8 @@ def assign_occurrences_from_detection_chains(
     """
     visited: set[int] = set()
     settled: set[int] = set()
+    # Occurrences whose detection set a chain changed; their grouping verification is cleared.
+    changed_frames: set[int] = set()
     created = 0
     merged = 0
     identifications_moved = 0
@@ -343,10 +347,12 @@ def assign_occurrences_from_detection_chains(
                 created += 1
 
             # Reassign chain detections to keeper.
+            keeper_gained_frames = False
             for d in chain:
                 if d.occurrence_id != keeper.pk:
                     d.occurrence = keeper
                     d.save()
+                    keeper_gained_frames = True
 
             # Move identifications onto the keeper before deleting the occurrences that
             # held them. Identification.occurrence CASCADEs, so deleting first destroys a
@@ -365,11 +371,25 @@ def assign_occurrences_from_detection_chains(
                 except Exception as e:
                     logger.error(f"Failed to delete occurrence {occ_id}: {e}")
 
+            # A confirmation covers the frames a person looked at, so an occurrence whose
+            # frames tracking changes loses it, the same as after a manual edit. The instance
+            # is cleared too, or the save below would write the stale mark back.
+            if keeper_gained_frames:
+                keeper.grouping_verified_at = None
+                keeper.grouping_verified_by = None
+                changed_frames.add(keeper.pk)
+            changed_frames.update(doomed)
+
             keeper.save()
             if record_as is not None and keeper.determination_id != previous_determination_id:
                 if record_tracking_determination(keeper, record_as) is not None:
                     determinations_recorded += 1
             settled.add(keeper.pk)
+
+    if changed_frames:
+        Occurrence.objects.filter(pk__in=changed_frames).exclude(grouping_verified_at=None).update(
+            grouping_verified_at=None, grouping_verified_by=None
+        )
 
     # Stored once every determination is settled, since id_agreement is measured against
     # it, and in batches for the whole event rather than three queries per chain.
