@@ -146,6 +146,9 @@ class MLDataManager(Role):
         Project.Permissions.SYNC_DEPLOYMENT,
         Project.Permissions.RUN_REGROUP_EVENTS_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
+        # Runs post-processing jobs that a member may create (tracking only, on projects
+        # that opted in); staff tasks stay superuser-only in Job.check_custom_permission.
+        Project.Permissions.RUN_POST_PROCESSING_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
         Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,

@@ -13,6 +13,10 @@ from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
+from ami.main.models_future.merge_candidates import CAPTURE_MATCH_RELATIONS
+from ami.main.models_future.merge_candidates import MAX_CANDIDATES as MAX_MERGE_CANDIDATES
+from ami.main.models_future.merge_candidates import RELATIONS as MERGE_CANDIDATE_RELATIONS
+from ami.main.models_future.merge_candidates import SKIPPED_REASONS as CAPTURE_MATCH_SKIPPED_REASONS
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
@@ -1067,6 +1071,11 @@ class TaxonSerializer(DefaultSerializer):
 class CaptureOccurrenceSerializer(DefaultSerializer):
     determination = TaxonNoParentNestedSerializer(read_only=True)
     determination_algorithm = AlgorithmSerializer(read_only=True)
+    # Annotated by the capture viewset's detections prefetch. The session toolbar reads
+    # it to say how many frames an occurrence spans before deciding whether to ask for
+    # its path, so a one-frame occurrence is never offered a fetch that returns nothing.
+    detections_count = serializers.IntegerField(read_only=True)
+    grouping_verified_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -1076,7 +1085,17 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "determination",
             "determination_score",
             "determination_algorithm",
+            "detections_count",
+            # Whether a person confirmed this occurrence holds the right detections.
+            # The session view offers to undo a confirmation rather than repeat it, and
+            # can show which occurrences have been checked without a further request.
+            "grouping_verified",
+            "grouping_verified_at",
+            "grouping_verified_by",
         ]
+
+    def get_grouping_verified_by(self, obj: Occurrence) -> str | None:
+        return obj.grouping_verified_by.name if obj.grouping_verified_by else None
 
 
 class ClassificationPredictionItemSerializer(serializers.Serializer):
@@ -1157,6 +1176,14 @@ class ClassificationListSerializer(DefaultSerializer):
 
 
 class ClassificationNestedSerializer(ClassificationSerializer):
+    # Annotated by ClassificationQuerySet.with_has_features(); null when the queryset
+    # did not annotate it. The embedding itself is never serialized.
+    has_features = serializers.BooleanField(
+        read_only=True,
+        allow_null=True,
+        help_text="Whether a feature embedding was stored for this classification.",
+    )
+
     def get_permissions(self, instance, instance_data):
         instance_data["user_permissions"] = []
         return instance_data
@@ -1169,6 +1196,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "taxon",
             "score",
             "terminal",
+            "has_features",
             "algorithm",
             "applied_to",
             "created_at",
@@ -1322,6 +1350,16 @@ class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
     collections = SourceImageCollectionNestedSerializer(many=True, read_only=True)
+    # Annotated by SourceImageQuerySet.with_detections_with_features() on the detail
+    # queryset only; the keys are omitted wherever they are not annotated.
+    detections_valid = serializers.IntegerField(
+        read_only=True,
+        help_text="Valid detections on this capture, the total detections_with_features is out of.",
+    )
+    detections_with_features = serializers.IntegerField(
+        read_only=True,
+        help_text="Valid detections with at least one classification that stored a feature embedding.",
+    )
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -1331,8 +1369,12 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "detections_valid",
+            "detections_with_features",
             "event_next_capture_id",
             "event_prev_capture_id",
+            "event_next_capture_with_detections_id",
+            "event_prev_capture_with_detections_id",
             "event_current_capture_index",
             "event_total_captures",
         ]
@@ -1499,6 +1541,35 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
         ]
 
 
+class TrackStatsSerializer(serializers.Serializer):
+    """Per-occurrence track statistics; the definitions live in ``models_future/track_stats.py``."""
+
+    frames = serializers.IntegerField()
+    motion = serializers.FloatField()
+    size_ratio = serializers.FloatField()
+    distinct_taxa = serializers.IntegerField()
+    id_agreement = serializers.FloatField(allow_null=True)
+
+
+class TrackingAlgorithmSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+
+
+class GroupingSummarySerializer(TrackStatsSerializer):
+    """How an occurrence's detections hang together, computed on read from the current detections."""
+
+    derived = serializers.BooleanField()
+    algorithm = TrackingAlgorithmSerializer(allow_null=True)
+    frames_with_vectors = serializers.IntegerField()
+    linked_detections = serializers.IntegerField()
+    duration_seconds = serializers.FloatField(allow_null=True)
+    score_min = serializers.FloatField(allow_null=True)
+    score_mean = serializers.FloatField(allow_null=True)
+    score_max = serializers.FloatField(allow_null=True)
+
+
 class OccurrenceListSerializer(DefaultSerializer):
     # List cards render one cover image; detail subclass raises this to 100.
     detection_images_limit: int | None = 1
@@ -1511,16 +1582,23 @@ class OccurrenceListSerializer(DefaultSerializer):
     determination_details = serializers.SerializerMethodField()
     best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    track_stats = serializers.SerializerMethodField()
 
     def get_permissions(self, instance, instance_data):
         request: Request = self.context["request"]
         user = request.user
         project = instance.get_project()
+        project_perms = get_perms(user, project)
         permissions = set()
-        if Project.Permissions.CREATE_IDENTIFICATION in get_perms(user, project):
+        if Project.Permissions.CREATE_IDENTIFICATION in project_perms:
             # check if the user has identification permissions on this project,
             # then add  update permission to response
             permissions.add("update")
+        if Project.Permissions.DELETE_OCCURRENCES in project_perms:
+            # Mirrors Occurrence.check_custom_permission: this is the right the track
+            # editing actions are gated on, so the interface can only offer them when
+            # the API would accept them.
+            permissions.add("delete")
 
         instance_data["user_permissions"] = list(permissions)
         return instance_data
@@ -1550,6 +1628,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
             "best_machine_prediction",
             "identifications",
+            "track_stats",
             "created_at",
             "updated_at",
         ]
@@ -1558,6 +1637,13 @@ class OccurrenceListSerializer(DefaultSerializer):
         from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
 
         return detection_image_urls_from_prefetch(obj, limit=self.detection_images_limit)
+
+    @extend_schema_field(TrackStatsSerializer(allow_null=True))
+    def get_track_stats(self, obj: Occurrence) -> dict | None:
+        from ami.main.models_future.track_stats import stored_track_stats
+
+        # Null until tracking, a track edit or the backfill has stored the numbers.
+        return stored_track_stats(obj, frames=obj.detections_count)  # type: ignore[attr-defined]
 
     def get_determination_details(self, obj: Occurrence):
         from ami.main.models_future.occurrence import best_identification_from_prefetch, best_prediction_from_prefetch
@@ -1626,18 +1712,38 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    grouping_verified_by = UserNestedSerializer(read_only=True)
+    grouping_summary = serializers.SerializerMethodField()
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
-        fields = OccurrenceListSerializer.Meta.fields + [
+        # The stored track_stats belong to the list; the detail carries grouping_summary,
+        # computed live from the current detections, instead.
+        fields = [name for name in OccurrenceListSerializer.Meta.fields if name != "track_stats"] + [
             "determination_id",
             "detections",
             "predictions",
+            # Whether a person confirmed this occurrence holds the right detections,
+            # which is a separate judgement from the taxon it was identified as.
+            "grouping_verified",
+            "grouping_verified_at",
+            "grouping_verified_by",
+            "grouping_summary",
         ]
         read_only_fields = [
             "determination_score",
         ]
+
+    @extend_schema_field(GroupingSummarySerializer())
+    def get_grouping_summary(self, obj: Occurrence) -> dict:
+        from ami.main.models_future.track_stats import grouping_summary_from_prefetch, tracking_algorithm_summary
+
+        context = self.context
+        if "tracking_algorithm" not in context:
+            # One lookup per request; the row is absent where the tracking task never ran.
+            context["tracking_algorithm"] = tracking_algorithm_summary()
+        return grouping_summary_from_prefetch(obj, context["tracking_algorithm"])
 
 
 class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):
@@ -2061,3 +2167,256 @@ class ModelAgreementSerializer(serializers.Serializer):
         required=False,
         help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )
+
+
+class TrackEditSerializer(serializers.Serializer):
+    """Body for the track edit actions: which detection in the track to act on."""
+
+    detection_id = serializers.IntegerField(
+        help_text="A detection belonging to this occurrence.",
+    )
+
+
+class TrackEditResultSerializer(serializers.Serializer):
+    """What a track edit produced.
+
+    Only identifiers are returned: the caller refetches both occurrences through
+    the list or detail endpoints, which is where the prefetches those serializers
+    require are wired up.
+    """
+
+    occurrence_id = serializers.IntegerField(help_text="The occurrence that was edited.")
+    occurrence_detections_count = serializers.IntegerField(help_text="Detections it has left.")
+    new_occurrence_id = serializers.IntegerField(help_text="The occurrence the detections moved into.")
+    new_occurrence_detections_count = serializers.IntegerField(help_text="Detections it received.")
+
+
+class OccurrenceMergeSerializer(serializers.Serializer):
+    """Body for merging other occurrences into this one."""
+
+    occurrence_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="Occurrences to fold into this one. They must be in the same session.",
+    )
+
+
+class OccurrenceAddDetectionsSerializer(serializers.Serializer):
+    """Body for moving individual detections into this occurrence."""
+
+    detection_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="Detections to move into this occurrence, from wherever they are now.",
+    )
+
+
+class OccurrenceGroupingSerializer(serializers.Serializer):
+    """The state of one occurrence after its detections or its verification changed."""
+
+    occurrence_id = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+    grouping_verified = serializers.BooleanField(
+        help_text="Whether a person has confirmed this occurrence holds the right detections."
+    )
+    grouping_verified_at = serializers.DateTimeField(allow_null=True)
+    grouping_verified_by = serializers.CharField(allow_null=True)
+
+
+class OccurrencePathCaptureSerializer(serializers.Serializer):
+    """The capture one frame of a path was measured against."""
+
+    id = serializers.IntegerField()
+    timestamp = serializers.DateTimeField(allow_null=True)
+    width = serializers.IntegerField(
+        allow_null=True,
+        help_text="Stored pixel width of the capture. A box is measured in this space, "
+        "so drawing it over a different frame requires these dimensions rather than "
+        "those of the frame being viewed.",
+    )
+    height = serializers.IntegerField(allow_null=True)
+
+
+class OccurrencePathFrameSerializer(serializers.Serializer):
+    """One frame of an occurrence's path: a box and the capture it belongs to."""
+
+    detection_id = serializers.IntegerField()
+    bbox = serializers.ListField(child=serializers.FloatField(), allow_null=True)
+    crop_url = serializers.CharField(
+        allow_null=True,
+        help_text="The detection's cropped image, drawn inside the box so a reviewer can "
+        "read the animal in a frame they are not viewing. Null until the crop is generated.",
+    )
+    capture = OccurrencePathCaptureSerializer()
+
+
+class MergeCandidateDeterminationSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class MergeCandidateSerializer(serializers.Serializer):
+    """One occurrence the requested occurrence could be merged with, and how well it fits.
+
+    The fit is judged from the two frames nearest in time: the requested
+    occurrence's first or last frame and the candidate's frame closest to it.
+    """
+
+    id = serializers.IntegerField()
+    determination = MergeCandidateDeterminationSerializer(allow_null=True)
+    detections_count = serializers.IntegerField()
+    first_appearance_timestamp = serializers.DateTimeField(allow_null=True)
+    last_appearance_timestamp = serializers.DateTimeField(allow_null=True)
+    relation = serializers.ChoiceField(
+        choices=MERGE_CANDIDATE_RELATIONS,
+        help_text="Where the candidate sits in time: before or after the requested occurrence, or in a gap of "
+        "it, on captures inside its span that it has no frame on.",
+    )
+    time_offset_seconds = serializers.FloatField(
+        help_text="Gap between the two spans: negative when the candidate ends first, positive when it starts "
+        "after the requested occurrence ends, zero for a candidate in a gap.",
+    )
+    distance = serializers.FloatField(
+        allow_null=True,
+        help_text="Centre-to-centre distance between the nearest pair of boxes as a fraction of the frame diagonal.",
+    )
+    similarity = serializers.FloatField(
+        allow_null=True,
+        help_text="Cosine similarity of the nearest pair's feature vectors, from the algorithm that produced the "
+        "requested occurrence's vector. Null when either frame has none.",
+    )
+    cost = serializers.FloatField(
+        allow_null=True,
+        help_text="The tracking method's matching cost for the nearest pair; lower fits better. Uses the geometry "
+        "terms only when similarity is null.",
+    )
+    iou = serializers.FloatField(
+        allow_null=True, help_text="Overlap of the nearest pair of boxes, intersection over union."
+    )
+    size_ratio = serializers.FloatField(
+        allow_null=True, help_text="Area of the smaller of the two boxes over that of the larger."
+    )
+    likelihood = serializers.FloatField(
+        allow_null=True,
+        help_text="1 minus the mean term of the tracking cost, from 0 to 1, higher fits better. The tracker's own "
+        "decision is would_link.",
+    )
+    would_link = serializers.BooleanField(
+        help_text="Whether the pair passes the tracker's pairing rule: a cost under cost_threshold, with a feature "
+        "vector on both frames when requires_features is set. The rule alone; tracking only pairs adjacent "
+        "captures and claims each box once."
+    )
+    image = serializers.CharField(allow_null=True, help_text="A crop of the candidate, nearest frame first.")
+    capture_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="The capture holding the candidate's frame in the scored pair, the one `image` is cropped from.",
+    )
+    image_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that frame was captured.")
+    edge_image = serializers.CharField(
+        allow_null=True,
+        help_text="A crop of the track frame in the scored pair: its first frame for a before candidate, its last "
+        "for an after one, the nearest one in time for a gap candidate.",
+    )
+    edge_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that track frame was captured.")
+
+
+class MergeCandidatesResponseSerializer(serializers.Serializer):
+    """Candidates before, after or in a gap of the requested occurrence, ordered by cost, lowest first."""
+
+    candidates = MergeCandidateSerializer(
+        many=True,
+        help_text=f"At most {MAX_MERGE_CANDIDATES}. Occurrences with a frame on one of the requested occurrence's "
+        "captures are other animals and are left out.",
+    )
+    cost_threshold = serializers.FloatField(help_text="Tracking links a pair only below this cost.")
+    requires_features = serializers.BooleanField(
+        help_text="Whether tracking skips detections without an embedding rather than matching them on geometry."
+    )
+
+
+class CaptureMatchReferenceSerializer(serializers.Serializer):
+    """The track frame every box on the capture was scored against."""
+
+    detection_id = serializers.IntegerField()
+    capture_id = serializers.IntegerField()
+    timestamp = serializers.DateTimeField()
+    relation = serializers.ChoiceField(
+        choices=CAPTURE_MATCH_RELATIONS,
+        help_text="Where the capture sits against the track: before its first frame, after its last, in a gap "
+        "of it, or on a capture that already holds one of its frames (same).",
+    )
+    capture_offset = serializers.IntegerField(
+        allow_null=True,
+        help_text="Captures from the reference frame's capture to this one, signed: 1 is the adjacent capture "
+        "tracking pairs, -1 the one before.",
+    )
+    skipped_reason = serializers.ChoiceField(
+        choices=CAPTURE_MATCH_SKIPPED_REASONS,
+        allow_null=True,
+        help_text="no_vector when tracking would skip this frame for lacking an embedding while it requires them.",
+    )
+
+
+class CaptureMatchSerializer(serializers.Serializer):
+    """One box on the capture and how likely it is to be the requested occurrence's animal."""
+
+    detection_id = serializers.IntegerField()
+    occurrence_id = serializers.IntegerField(allow_null=True, help_text="Null for a box that was never grouped.")
+    in_track = serializers.BooleanField(help_text="The requested occurrence's own box on this capture; unscored.")
+    would_link = serializers.BooleanField(
+        help_text="Whether tracking's matcher, run between this capture and the reference frame's capture, links "
+        "the reference frame to this box."
+    )
+    skipped_reason = serializers.ChoiceField(
+        choices=CAPTURE_MATCH_SKIPPED_REASONS,
+        allow_null=True,
+        help_text="no_vector when tracking would skip this box for lacking an embedding while it requires them. "
+        "Its cost is then geometry alone.",
+    )
+    likelihood = serializers.FloatField(
+        allow_null=True,
+        help_text="1 minus the mean term of the tracking cost, from 0 to 1, higher fits better. Comparable across "
+        "captures; the tracker's own decision is would_link.",
+    )
+    cost = serializers.FloatField(
+        allow_null=True,
+        help_text="The tracking method's matching cost against the reference frame; lower fits better. Uses the "
+        "geometry terms only when similarity is null.",
+    )
+    distance = serializers.FloatField(
+        allow_null=True,
+        help_text="Centre-to-centre distance to the reference box as a fraction of the frame diagonal.",
+    )
+    iou = serializers.FloatField(allow_null=True, help_text="Overlap with the reference box, intersection over union.")
+    size_ratio = serializers.FloatField(
+        allow_null=True, help_text="Area of the smaller of the two boxes over that of the larger."
+    )
+    similarity = serializers.FloatField(
+        allow_null=True,
+        help_text="Cosine similarity to the reference frame's feature vector, from the same algorithm. Null when "
+        "either has none.",
+    )
+    time_offset_seconds = serializers.FloatField(
+        allow_null=True, help_text="Capture time minus reference time; negative when the capture is earlier."
+    )
+
+
+class CaptureMatchesResponseSerializer(serializers.Serializer):
+    """Every box on one capture scored against the requested occurrence's track, best match first."""
+
+    capture_id = serializers.IntegerField()
+    cost_threshold = serializers.FloatField(help_text="Tracking links a pair only below this cost.")
+    feature_algorithm_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="The feature extractor tracking would compare embeddings from, read from the two captures being "
+        "paired. Null when they carry none or more than one.",
+    )
+    requires_features = serializers.BooleanField(
+        help_text="Whether tracking skips detections without an embedding rather than matching them on geometry."
+    )
+    reference = CaptureMatchReferenceSerializer(
+        allow_null=True,
+        help_text="The track frame nearest in time on another capture. Null when the track has no other frame, "
+        "and then every score is null.",
+    )
+    detections = CaptureMatchSerializer(many=True)

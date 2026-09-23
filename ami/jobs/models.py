@@ -19,7 +19,12 @@ from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.ml.post_processing.registry import (
+    MEMBER_POST_PROCESSING_TASKS,
+    get_postprocessing_task,
+    staff_only_config_fields,
+)
+from ami.ml.post_processing.tracking_task import TrackingTask
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -572,7 +577,7 @@ class MLJob(JobType):
         total_classifications = 0
 
         config = job.pipeline.get_config(project_id=job.project.pk)
-        chunk_size = config.get("request_source_image_batch_size", 1)
+        chunk_size = config.request_source_image_batch_size
         chunks = [images[i : i + chunk_size] for i in range(0, image_count, chunk_size)]  # noqa
         request_failed_images = []
         job.logger.info(f"Processing {image_count} images in {len(chunks)} batches of up to {chunk_size}")
@@ -691,6 +696,7 @@ REGROUP_STAGE_PARAM_NAMES = (
     "Events created",
     "Events touched",
     "Empty events deleted",
+    "Tracks split at a session boundary",
     "Duplicate timestamps",
     "Ungrouped captures",
     "Captures missing timestamp",
@@ -1395,7 +1401,27 @@ class Job(BaseModel):
             permission_codename = f"{action}_{job_type}_job"
 
         project = self.get_project() if hasattr(self, "get_project") else None
+        if job_type == PostProcessingJob.key and action in ("run", "retry") and not user.is_superuser:
+            if not self._members_may_run_post_processing(project):
+                return False
         return user.has_perm(permission_codename, project)
+
+    def _members_may_run_post_processing(self, project: Project | None) -> bool:
+        """Whether a project role may run this post-processing job, as opposed to staff only.
+
+        Holds for the tasks and config a member could have created through the API, so a
+        staff task or a staff-only guard setting cannot be re-run by a project role.
+        """
+        params = self.params or {}
+        task_key = params.get("task")
+        if task_key not in MEMBER_POST_PROCESSING_TASKS:
+            return False
+        config = params.get("config") or {}
+        if not isinstance(config, dict) or staff_only_config_fields(task_key, config):
+            return False
+        if task_key == TrackingTask.key and not (project and project.feature_flags.tracking):
+            return False
+        return True
 
     def get_custom_user_permissions(self, user) -> list[str]:
         project = self.get_project()

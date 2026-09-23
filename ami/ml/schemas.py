@@ -133,6 +133,20 @@ class ClassificationResponse(pydantic.BaseModel):
     )
     scores: list[float] = []
     logits: list[float] | None = None
+    features: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Optional feature embedding vector from the model backbone, used for tracking and similarity search. "
+            "Must be exactly 2048 floats to match the Classification.features_2048 column."
+        ),
+    )
+
+    @pydantic.validator("features")
+    def _features_length(cls, v):
+        if v is not None and len(v) != 2048:
+            raise ValueError(f"features must be length 2048 to match Classification.features_2048, got {len(v)}")
+        return v
+
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True
@@ -178,23 +192,45 @@ class DetectionResponse(pydantic.BaseModel):
     classifications: list[ClassificationResponse] = []
 
 
-class PipelineRequestConfigParameters(dict):
+class PipelineRequestConfigParameters(pydantic.BaseModel):
     """Parameters used to configure a pipeline request.
 
-    Accepts any serializable key-value pair.
+    The declared fields carry Antenna's defaults for every request; any other
+    serializable key-value pair is accepted and forwarded as-is, so a pipeline
+    or project config can pass service-specific options without a schema change.
     Example: {"force_reprocess": True, "auth_token": "abc123"}
 
     Supported parameters are defined by the pipeline in the processing service
     and should be published in the Pipeline's info response.
 
     Parameters that are used by Antenna before sending the request to the Processing Service
-    should be prefixed with "request_".
-    Example: {"request_source_image_batch_size": 8}
-    Such parameters need to be ignored by the schema in the Processing Service, or
-    removed before sending the request to the Processing Service.
+    are prefixed with "request_". The processing service ignores them.
     """
 
-    pass
+    include_features: bool = pydantic.Field(
+        default=True,
+        description=(
+            "Ask the processing service for a feature vector with each classification. "
+            "Tracking and the merge picker compare detections by these vectors; a service "
+            "that cannot produce them ignores the flag."
+        ),
+    )
+    request_source_image_batch_size: int = pydantic.Field(
+        default=1,
+        ge=1,
+        description="How many source images Antenna sends to the processing service per request.",
+    )
+    reprocess_existing_detections: bool = pydantic.Field(
+        default=True,
+        description=(
+            "Send the existing detections of each image along with the request so the service "
+            "classifies them again instead of detecting anew. Only applies when the project's "
+            "feature flag of the same name is on."
+        ),
+    )
+
+    class Config:
+        extra = "allow"
 
 
 class PipelineRequest(pydantic.BaseModel):
