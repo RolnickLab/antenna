@@ -10,6 +10,7 @@ import pgvector.django.vector
 
 class Migration(migrations.Migration):
     dependencies = [
+        ("jobs", "0023_alter_job_job_type_key"),
         ("ml", "0028_normalize_empty_endpoint_url_to_null"),
         ("main", "0101_grant_run_post_processing_to_ml_data_manager"),
     ]
@@ -22,7 +23,7 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
-                    "features_2048",
+                    "vector",
                     pgvector.django.vector.VectorField(
                         dimensions=2048, help_text="Feature embedding from the model backbone"
                     ),
@@ -42,6 +43,16 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="embeddings",
                         to="main.detection",
+                    ),
+                ),
+                (
+                    "job",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to="jobs.job",
                     ),
                 ),
             ],

@@ -33,18 +33,17 @@ def _vector_rows(detection_ids: Iterable[int], algorithm_ids: Iterable[int] | No
         embeddings = embeddings.filter(algorithm_id__in=algorithm_ids)
         classifications = classifications.filter(algorithm_id__in=algorithm_ids)
 
-    # Model fields first, then the annotations in the same order, so both SELECT lists
-    # line up column for column. UNION ALL: de-duplicating would sort the vectors.
-    columns = ("detection_id", "algorithm_id", "features_2048", "id", "preference", "recorded_at")
+    # Model fields first, then the annotations in the same order, so both SELECT lists line up
+    # column for column (the vector columns differ in name). UNION ALL: de-duplicating would sort the vectors.
     embeddings = (
         embeddings.order_by()
         .annotate(preference=Value(_PREFER_EMBEDDING, output_field=IntegerField()), recorded_at=F("updated_at"))
-        .values_list(*columns)
+        .values_list("detection_id", "algorithm_id", "vector", "id", "preference", "recorded_at")
     )
     classifications = (
         classifications.order_by()
         .annotate(preference=Value(_PREFER_CLASSIFICATION, output_field=IntegerField()), recorded_at=F("timestamp"))
-        .values_list(*columns)
+        .values_list("detection_id", "algorithm_id", "features_2048", "id", "preference", "recorded_at")
     )
     return embeddings.union(classifications, all=True).order_by("preference", "-recorded_at", "-id")
 

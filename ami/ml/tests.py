@@ -2448,7 +2448,7 @@ class TestDetectionEmbeddings(TestCase):
         ]
         return self._detection(image, labels, embeddings, box)
 
-    def _save(self, *detections: dict) -> None:
+    def _save(self, *detections: dict, job_id: int | None = None) -> None:
         image_ids = list(dict.fromkeys(d["source_image_id"] for d in detections))
         payload = {
             "pipeline": self.pipeline.slug,
@@ -2456,7 +2456,7 @@ class TestDetectionEmbeddings(TestCase):
             "source_images": [{"id": image_id, "url": f"test/{image_id}.jpg"} for image_id in image_ids],
             "detections": list(detections),
         }
-        save_results(PipelineResultsResponse.parse_obj(payload))
+        save_results(PipelineResultsResponse.parse_obj(payload), job_id=job_id)
 
     @staticmethod
     def _stored(image: SourceImage) -> dict[tuple[float, str], list[float]]:
@@ -2464,7 +2464,7 @@ class TestDetectionEmbeddings(TestCase):
         rows = DetectionEmbedding.objects.filter(detection__source_image=image).select_related(
             "detection", "algorithm"
         )
-        return {(row.detection.bbox[0], row.algorithm.key): row.features_2048.tolist() for row in rows}
+        return {(row.detection.bbox[0], row.algorithm.key): row.vector.tolist() for row in rows}
 
     def test_every_detection_stores_one_vector_per_algorithm(self):
         """Including the rejected crop, which has no species classification that could carry one."""
@@ -2500,6 +2500,22 @@ class TestDetectionEmbeddings(TestCase):
 
         self._save(self._rejected(image, _embedding_payload(self.HIGH)))
         self.assertEqual(self._stored(image), {(0.0, EMBEDDING_SPECIES.key): self.HIGH})
+
+    def test_each_vector_records_the_job_that_last_stored_it_and_outlives_that_job(self):
+        from ami.jobs.models import Job
+
+        image = self._image()
+        first, second = (
+            Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline) for n in (1, 2)
+        )
+        self._save(self._rejected(image, _embedding_payload(self.LOW)), job_id=first.pk)
+        self._save(self._rejected(image, _embedding_payload(self.HIGH)), job_id=second.pk)
+        self.assertEqual(DetectionEmbedding.objects.get(detection__source_image=image).job_id, second.pk)
+
+        second.delete()
+        embedding = DetectionEmbedding.objects.get(detection__source_image=image)
+        self.assertIsNone(embedding.job_id)
+        self.assertEqual(embedding.vector.tolist(), self.HIGH)
 
     def test_a_vector_lands_on_its_own_detection_when_some_detections_already_exist(self):
         """Detection creation returns existing detections ahead of new ones, so pairing responses

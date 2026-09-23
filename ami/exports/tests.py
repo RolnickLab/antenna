@@ -696,7 +696,7 @@ class TracksExportTest(TestCase):
             self.skipTest("This database cannot store embeddings.")
         detection = self.occurrences[0].detections.order_by("source_image__timestamp").last()
         algorithm = Algorithm.objects.create(name="Embedding model", key="embedding-model")
-        DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, features_2048=[0.1] * 2048)
+        DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, vector=[0.1] * 2048)
 
         rows = {int(row["detection_id"]): row for row in self._rows()}
         self.assertEqual(rows[detection.pk]["has_feature_vector"], "true")
