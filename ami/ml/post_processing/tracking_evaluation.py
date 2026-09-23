@@ -72,10 +72,12 @@ class PredictedTrackScore:
 
     ``length`` counts only its detections in confirmed tracks. ``purity`` is the share of
     those held by the confirmed track it overlaps most; ``ground_truth_tracks`` above 1 is
-    a merge of different insects.
+    a merge of different insects. ``first_detection_id`` is its earliest detection among
+    those, a detection id rather than a track id, so it cannot be confused with the
+    occurrence ids that name confirmed tracks.
     """
 
-    track_id: TrackId
+    first_detection_id: DetectionId
     length: int
     ground_truth_tracks: int
     purity: float
@@ -224,12 +226,13 @@ def evaluate_tracks(
         )
 
     pred_scores = []
-    for pred_id in sorted(pred_tracks, key=_sort_key):
+    # Listed in the order of the ids they are reported under.
+    for pred_id in sorted(pred_tracks, key=lambda p: _sort_key(pred_tracks[p][0])):
         spans = gt_by_pred[pred_id]
         length = len(pred_tracks[pred_id])
         pred_scores.append(
             PredictedTrackScore(
-                track_id=pred_id,
+                first_detection_id=pred_tracks[pred_id][0],
                 length=length,
                 ground_truth_tracks=len(spans),
                 purity=max(spans.values()) / length,
