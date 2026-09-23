@@ -44,6 +44,7 @@ import { FrameActionDialogs } from './track/frame-action-dialogs'
 import { FrameCaption } from './track/frame-caption'
 import { FrameMenu } from './track/frame-menu'
 import { GroupingActions } from './track/grouping-actions'
+import { getTrackEditRights } from './track/track-edit-rights'
 import { PendingFrameAction } from './track/types'
 
 export const TABS = {
@@ -102,12 +103,9 @@ export const OccurrenceDetails = ({
   const [pendingFrameAction, setPendingFrameAction] =
     useState<PendingFrameAction>()
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
-  // Restructuring a grouping is gated on the occurrence delete right, confirming one
-  // on either right — the same split the API makes. See #1272.
-  const canRestructure = occurrence.userPermissions.includes(
-    UserPermission.Delete
+  const { canRestructure, canVerify: canVerifyGrouping } = getTrackEditRights(
+    occurrence.userPermissions
   )
-  const canVerifyGrouping = canUpdate || canRestructure
   const trackingEnabled = useProjectFeature('tracking')
 
   const sessionRoute = occurrence.sessionId

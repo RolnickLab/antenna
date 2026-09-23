@@ -24,9 +24,9 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { getTrackEditRights } from 'pages/occurrence-details/track/track-edit-rights'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
-import { UserPermission } from 'utils/user/types'
 import { useExtendOccurrenceId } from '../hooks/useExtendOccurrenceId'
 import {
   ExtendChoice,
@@ -383,9 +383,7 @@ export const ExtendTrackBanner = ({
     frames: occurrence?.frames ?? [],
   })
   const { first, last, position, total } = navigation
-  const canVerify =
-    !!occurrence?.userPermissions.includes(UserPermission.Update) ||
-    !!occurrence?.userPermissions.includes(UserPermission.Delete)
+  const { canVerify } = getTrackEditRights(occurrence?.userPermissions)
   const error = extend.error ?? verify.error
   const errorMessage = error ? parseServerError(error).message : undefined
   const noteInfo = extend.note ? NOTES[extend.note] : undefined

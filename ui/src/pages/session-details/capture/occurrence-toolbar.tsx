@@ -1,8 +1,10 @@
 import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { DeterminationScore } from 'components/determination-score'
+import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
+import { getTrackEditRights } from 'pages/occurrence-details/track/track-edit-rights'
 import { ReactNode } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
@@ -97,6 +99,14 @@ export const OccurrenceToolbar = ({
 }) => {
   const singleFrame = occurrence.frameCount <= 1
   const pathShown = !!path?.length
+  // Capture boxes carry no permissions, so the occurrence's own are read; a track
+  // under the default threshold still needs them.
+  const { occurrence: details } = useOccurrenceDetails(occurrence.id, {
+    skipDefaultFilters: true,
+  })
+  const { canRestructure, canVerify } = getTrackEditRights(
+    details?.userPermissions
+  )
 
   // Matched on the detection rather than the capture: one capture can hold two frames
   // of the same track, and they are different positions along it.
@@ -177,21 +187,24 @@ export const OccurrenceToolbar = ({
     ) : null,
   ].filter(Boolean)
 
-  const editActions = [
-    pathShown ? (
-      <Button key="split" onClick={onSplit} size="small" variant="ghost">
-        <span>{translate(STRING.TRACK_SPLIT_HERE)}</span>
-      </Button>
-    ) : null,
-    <Button key="merge" onClick={onMerge} size="small" variant="ghost">
-      <span>{translate(STRING.TRACK_MERGE)}</span>
-    </Button>,
-    !isExtended ? (
-      <Button key="extend" onClick={onExtend} size="small" variant="ghost">
-        <span>{translate(STRING.TRACK_EXTEND_HERE)}</span>
-      </Button>
-    ) : null,
-  ].filter(Boolean)
+  const editActions = canRestructure
+    ? [
+        pathShown ? (
+          <Button key="split" onClick={onSplit} size="small" variant="ghost">
+            <span>{translate(STRING.TRACK_SPLIT_HERE)}</span>
+          </Button>
+        ) : null,
+        <Button key="merge" onClick={onMerge} size="small" variant="ghost">
+          <span>{translate(STRING.TRACK_MERGE)}</span>
+        </Button>,
+        !isExtended ? (
+          <Button key="extend" onClick={onExtend} size="small" variant="ghost">
+            <span>{translate(STRING.TRACK_EXTEND_HERE)}</span>
+          </Button>
+        ) : null,
+      ].filter(Boolean)
+    : []
+  const showVerify = pathShown && canVerify
 
   return (
     <div className="flex flex-col items-stretch gap-3 min-w-56 max-w-80">
@@ -279,23 +292,31 @@ export const OccurrenceToolbar = ({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2 pt-2 border-t border-border">
-        {pathActions.length ? (
-          <div className="flex flex-wrap items-center gap-1">{pathActions}</div>
-        ) : null}
+      {pathActions.length || editActions.length || showVerify ? (
+        <div className="flex flex-col gap-2 pt-2 border-t border-border">
+          {pathActions.length ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {pathActions}
+            </div>
+          ) : null}
 
-        <div className="flex flex-wrap items-center gap-1">{editActions}</div>
+          {editActions.length ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {editActions}
+            </div>
+          ) : null}
 
-        {pathShown ? (
-          <Button onClick={onVerify} size="small" variant="outline">
-            <span>
-              {occurrence.groupingVerified
-                ? translate(STRING.TRACK_UNDO_CONFIRMATION)
-                : translate(STRING.TRACK_CONFIRM_GROUPING)}
-            </span>
-          </Button>
-        ) : null}
-      </div>
+          {showVerify ? (
+            <Button onClick={onVerify} size="small" variant="outline">
+              <span>
+                {occurrence.groupingVerified
+                  ? translate(STRING.TRACK_UNDO_CONFIRMATION)
+                  : translate(STRING.TRACK_CONFIRM_GROUPING)}
+              </span>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
