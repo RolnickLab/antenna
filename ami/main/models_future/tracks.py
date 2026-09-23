@@ -112,7 +112,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     new_occurrence = _move_to_new_occurrence(occurrence, ordered[index:])
     relink_occurrence_chains([occurrence, new_occurrence])
 
-    _clear_verification(occurrence, new_occurrence)
+    clear_grouping_verification(occurrence, new_occurrence)
     occurrence.save()
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
@@ -140,7 +140,7 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     new_occurrence = _move_to_new_occurrence(occurrence, [ordered[index]])
     relink_occurrence_chains([occurrence, new_occurrence], moved_from={detection.pk: occurrence.pk})
 
-    _clear_verification(occurrence, new_occurrence)
+    clear_grouping_verification(occurrence, new_occurrence)
     occurrence.save()
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
@@ -372,7 +372,7 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict
         Detection.objects.bulk_update(relinked, ["next_detection"])
 
 
-def _clear_verification(*occurrences: Occurrence) -> None:
+def clear_grouping_verification(*occurrences: Occurrence) -> None:
     """Drop grouping verification from occurrences whose detection set just changed.
 
     Clears the loaded instances as well as the rows: a caller that saves the instance
@@ -464,7 +464,7 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
 
     _absorb(target, sources)
     relink_occurrence_chains([target])
-    _clear_verification(target)
+    clear_grouping_verification(target)
     target.save()
     refresh_track_stats(target)
     update_calculated_fields_for_sessions_and_stations([target.event_id])
@@ -526,7 +526,7 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     for donor in remaining:
         donor.save()
 
-    _clear_verification(target, *remaining)
+    clear_grouping_verification(target, *remaining)
     target.save()
     refresh_track_stats(target, *remaining)
     update_calculated_fields_for_sessions_and_stations([target.event_id, *(donor.event_id for donor in donors)])

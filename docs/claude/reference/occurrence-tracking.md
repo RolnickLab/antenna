@@ -237,7 +237,7 @@ change is spot-checking.
   survives across a human's split, the next tracking pass walks that chain and re-merges
   what they separated. `_cut_links_leaving()` cuts the links leaving any moved set.
 - **Any edit that changes the detection set clears verification.** A person confirmed the
-  set they were shown. `_clear_verification()` clears the **loaded instances as well as
+  set they were shown. `clear_grouping_verification()` clears the **loaded instances as well as
   the rows** — clearing only via queryset `.update()` lets a later `occurrence.save()`
   write the stale confirmation straight back. That was a real test failure, not a
   hypothetical.
