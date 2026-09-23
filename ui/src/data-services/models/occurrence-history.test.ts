@@ -200,13 +200,23 @@ describe('getFallbackTimelineItems', () => {
 })
 
 describe('getFoldedPrediction', () => {
-  test('finds the prediction behind an algorithm result by algorithm and taxon', () => {
+  test('finds the prediction behind an algorithm result by its algorithm', () => {
     const folded = ownPrediction('6', 12)
 
     expect(
       getFoldedPrediction(classMasking as never, [
         ownPrediction('5', 7),
-        ownPrediction('4', 12, XESTIA),
+        folded,
+      ])
+    ).toBe(folded)
+  })
+
+  test('finds it when the determination differs from the predicted taxon', () => {
+    const folded = ownPrediction('6', 12, XESTIA)
+
+    expect(
+      getFoldedPrediction(classMasking as never, [
+        ownPrediction('5', 7),
         folded,
       ])
     ).toBe(folded)

@@ -282,17 +282,16 @@ const getCreatedAt = (item: TimelineItem) => {
   }
 }
 
-/** The prediction an algorithm result stands in for, so its taxon can still be agreed with. */
+/**
+ * The prediction an algorithm result stands in for, so it can still be agreed with. Matched on
+ * algorithm alone: the result's taxon is the determination after the run, not what was predicted.
+ */
 export const getFoldedPrediction = (
   entry: AlgorithmResultEntry,
   predictions: MachinePrediction[]
 ) =>
-  entry.algorithm && entry.taxon
-    ? predictions.find(
-        (p) =>
-          `${p.algorithm?.id}` === `${entry.algorithm?.id}` &&
-          p.taxon.id === `${entry.taxon?.id}`
-      )
+  entry.algorithm
+    ? predictions.find((p) => `${p.algorithm?.id}` === `${entry.algorithm?.id}`)
     : undefined
 
 /** Reviews a merge brought in from another occurrence are not reviews of this one. */

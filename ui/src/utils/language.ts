@@ -406,6 +406,7 @@ export enum STRING {
   HISTORY_FRAMES_LINKED,
   HISTORY_LOAD_ERROR,
   HISTORY_OCCURRENCES_MERGED,
+  HISTORY_PREDICTION,
   HISTORY_REVIEW,
   HISTORY_REVIEW_CHANGES,
   HISTORY_SIZE_FILTER,
@@ -1088,6 +1089,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.HISTORY_LOAD_ERROR]:
     'Could not load the full history. Showing identifications and predictions only.',
   [STRING.HISTORY_OCCURRENCES_MERGED]: 'Occurrences merged',
+  [STRING.HISTORY_PREDICTION]: 'Prediction',
   [STRING.HISTORY_REVIEW]: 'Review',
   [STRING.HISTORY_REVIEW_CHANGES]:
     '+{{added}} added, −{{removed}} removed since the previous review',

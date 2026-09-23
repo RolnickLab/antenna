@@ -59,7 +59,16 @@ export const AlgorithmResult = ({
     !!foldedPrediction &&
     occurrence.userPermissions.includes(UserPermission.Update)
 
-  const stats: HistoryStat[] = []
+  const stats: HistoryStat[] = foldedPrediction
+    ? [
+        {
+          label: translate(STRING.HISTORY_PREDICTION),
+          value: `${
+            foldedPrediction.taxon.name
+          } (${foldedPrediction.score.toFixed(2)})`,
+        },
+      ]
+    : []
   switch (entry.subtype) {
     case 'tracking':
       stats.push(
