@@ -1861,9 +1861,10 @@ class TestTrackingJobCreation(APITestCase):
     def test_permission_matrix(self):
         cases = [
             ("superuser", self.superuser, status.HTTP_201_CREATED),
-            ("member who can create jobs", self.manager, status.HTTP_201_CREATED),
-            # Every role may create a job; starting one is the separate run permission.
-            ("basic member", self.member, status.HTTP_201_CREATED),
+            ("ML data manager", self.manager, status.HTTP_201_CREATED),
+            ("project manager", self.project_manager, status.HTTP_201_CREATED),
+            # Creating a post-processing job takes the permission to run it, so no job is left behind.
+            ("basic member", self.member, status.HTTP_403_FORBIDDEN),
             ("non-member", self.outsider, status.HTTP_403_FORBIDDEN),
         ]
         for label, user, expected in cases:
@@ -1873,6 +1874,11 @@ class TestTrackingJobCreation(APITestCase):
         anonymous = self._post(self._body(), None)
         self.assertIn(anonymous.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 3)
+
+    def test_a_basic_member_cannot_create_one_to_start_later(self):
+        response = self._post(self._body(), self.member)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+        self.assertFalse(Job.objects.filter(job_type_key="post_processing").exists())
 
     def test_start_now_enqueues_for_a_user_who_may_run_it(self):
         self.client.force_authenticate(user=self.superuser)

@@ -1,7 +1,7 @@
 import pydantic
 from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
-from rest_framework import serializers
+from rest_framework import exceptions, serializers
 
 from ami.base.permissions import TRACKING_NOT_ENABLED_MESSAGE
 from ami.exports.models import DataExport
@@ -238,10 +238,23 @@ class JobListSerializer(DefaultSerializer):
         if attrs.get("job_type_key") == PostProcessingJob.key:
             project = attrs.get("project") or getattr(self.instance, "project", None)
             attrs["params"] = validate_post_processing_params(project, attrs.get("params"))
+            self._check_may_run_post_processing(project, attrs["params"])
         else:
             # Other job types do not read params, so none are stored for them.
             attrs.pop("params", None)
         return attrs
+
+    def _check_may_run_post_processing(self, project: Project | None, params: dict) -> None:
+        # Creating a post-processing job takes the permission to run it, so a role that
+        # cannot start one is refused before a job it could never run is stored.
+        request = self.context.get("request")
+        if request is None:
+            return
+        job = Job(job_type_key=PostProcessingJob.key, project=project, params=params)
+        if not job.check_custom_permission(request.user, "run"):
+            raise exceptions.PermissionDenied(
+                "You do not have permission to run post-processing jobs in this project."
+            )
 
     @extend_schema_field(
         {
