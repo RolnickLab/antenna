@@ -15,12 +15,14 @@ import {
   useOccurrenceNavigation,
 } from './occurrence-navigation'
 import { useAdvanceOnConfirm } from './use-advance-on-confirm'
+import { useListSnapshot } from './use-list-snapshot'
 
 // Occurrence identification modal. Rendered over a list (occurrences or taxa);
 // the parent owns which occurrence is shown and how closing updates the URL.
 export const OccurrenceDetailsDialog = ({
   advanceOnConfirm,
   id,
+  listKey,
   occurrences,
   onClose,
   onNavigate,
@@ -30,6 +32,9 @@ export const OccurrenceDetailsDialog = ({
   // dialog after the last one, so reviewing a list is one click per occurrence.
   advanceOnConfirm?: boolean
   id: string
+  // Identifies the list's page, filters and sort. When set, prev/next and advance follow the
+  // order the list had when opened or last changed by the user, not a background refetch.
+  listKey?: string
   // Ordered items the prev/next buttons page through. Only the id is used.
   occurrences?: { id: string }[]
   onClose: () => void
@@ -44,7 +49,9 @@ export const OccurrenceDetailsDialog = ({
   const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
-  const navigation = useOccurrenceNavigation(occurrences, id, onNavigate)
+  const snapshot = useListSnapshot(occurrences, listKey ?? '')
+  const navItems = listKey === undefined ? occurrences : snapshot
+  const navigation = useOccurrenceNavigation(navItems, id, onNavigate)
   // Clears ?tab= too, so the next occurrence opened from the list starts on the default tab.
   const handleClose = () => {
     setSelectedView(undefined)
@@ -54,7 +61,7 @@ export const OccurrenceDetailsDialog = ({
     close: handleClose,
     currentId: id,
     goTo: navigation.goTo,
-    items: occurrences,
+    items: navItems,
   })
   const detailsLabel = translate(STRING.ENTITY_DETAILS, {
     type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),

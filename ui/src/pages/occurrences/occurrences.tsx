@@ -237,6 +237,7 @@ export const Occurrences = () => {
         <OccurrenceDetailsDialog
           advanceOnConfirm
           id={id}
+          listKey={JSON.stringify({ filters, pagination, sort })}
           occurrences={occurrences}
           onClose={() =>
             navigate(
