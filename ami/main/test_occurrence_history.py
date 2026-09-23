@@ -5,7 +5,7 @@ import datetime
 from django.test import TestCase
 
 from ami.main import tests as main_tests
-from ami.main.models import Classification, Identification, Occurrence, OccurrenceHistoryRecord, Taxon
+from ami.main.models import Classification, Detection, Identification, Occurrence, OccurrenceHistoryRecord, Taxon
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import setup_test_project
 from ami.users.models import User
@@ -147,6 +147,26 @@ class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self.reviews().count(), 1)
+
+    def edited_since_verified(self) -> bool:
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data["grouping_edited_since_verified"]
+
+    def test_the_detail_says_whether_the_detections_changed_since_the_last_confirmation(self):
+        self.assertFalse(self.edited_since_verified())
+        self.verify()
+        self.assertFalse(self.edited_since_verified())
+        response = self.post("remove-detection", self.detections[-1], user=self.curator)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(self.edited_since_verified())
+
+    def test_a_null_marker_on_the_occurrence_is_not_an_edit(self):
+        self.verify()
+        self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/", format="json")
+        Detection.objects.create(source_image=self.captures[0], occurrence=self.occurrence, bbox=None)
+        self.assertFalse(self.edited_since_verified())
 
 
 class OccurrenceHistoryEndpointTestCase(main_tests.TrackFixtureTestCase):

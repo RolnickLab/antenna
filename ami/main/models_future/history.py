@@ -35,6 +35,15 @@ def latest_track_complete_review(occurrence: Occurrence) -> OccurrenceHistoryRec
     )
 
 
+def edited_since_track_complete_review(occurrence: Occurrence) -> bool:
+    """Whether the occurrence's detections differ from those its latest own review confirmed."""
+    review = latest_track_complete_review(occurrence)
+    if review is None:
+        return False
+    current = set(Detection.objects.valid().filter(occurrence=occurrence).values_list("pk", flat=True))
+    return current != set(review.payload["detection_ids"])
+
+
 def record_track_complete_review(
     occurrence: Occurrence, user: User, timestamp: datetime.datetime, was_confirmed: bool
 ) -> OccurrenceHistoryRecord | None:

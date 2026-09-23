@@ -6,7 +6,6 @@ import {
   getFallbackTimelineItems,
   getFoldedPrediction,
   getTimelineItems,
-  isEditedSinceComplete,
   ServerOccurrenceHistoryEntry,
   TrackCompleteReviewEntry,
 } from './occurrence-history'
@@ -234,57 +233,6 @@ describe('getFoldedPrediction', () => {
         folded,
       ])
     ).toBe(folded)
-  })
-})
-
-describe('isEditedSinceComplete', () => {
-  test('false without a review', () => {
-    expect(
-      isEditedSinceComplete({
-        detectionIds: ['1'],
-        entries: [identificationEntry(1)],
-        occurrenceId: '100',
-      })
-    ).toBe(false)
-  })
-
-  test('false when the detections match the latest review in any order', () => {
-    expect(
-      isEditedSinceComplete({
-        detectionIds: ['2', '1'],
-        entries: [review(9, [1, 2]), review(8, [1])],
-        occurrenceId: '100',
-      })
-    ).toBe(false)
-  })
-
-  test('true when a detection was added or removed since the latest review', () => {
-    const entries = [review(9, [1, 2])]
-
-    expect(
-      isEditedSinceComplete({
-        detectionIds: ['1', '2', '3'],
-        entries,
-        occurrenceId: '100',
-      })
-    ).toBe(true)
-    expect(
-      isEditedSinceComplete({
-        detectionIds: ['1'],
-        entries,
-        occurrenceId: '100',
-      })
-    ).toBe(true)
-  })
-
-  test('ignores reviews a merge brought in from another occurrence', () => {
-    expect(
-      isEditedSinceComplete({
-        detectionIds: ['1', '2', '5'],
-        entries: [review(9, [5], 200), review(8, [1, 2, 5])],
-        occurrenceId: '100',
-      })
-    ).toBe(false)
   })
 })
 

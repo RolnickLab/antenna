@@ -300,6 +300,10 @@ export class OccurrenceDetails extends Occurrence {
     return !!this._occurrence.grouping_verified
   }
 
+  get groupingEditedSinceVerified(): boolean {
+    return !!this._occurrence.grouping_edited_since_verified
+  }
+
   get groupingVerifiedAt(): Date | undefined {
     return this._occurrence.grouping_verified_at
       ? new Date(this._occurrence.grouping_verified_at)

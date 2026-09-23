@@ -9,7 +9,6 @@ import {
   FrameLabel,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
-import { isEditedSinceComplete } from 'data-services/models/occurrence-history'
 import { SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
@@ -111,13 +110,6 @@ export const OccurrenceDetails = ({
     occurrenceId: occurrence.id,
     projectId,
   })
-  const editedSinceComplete = history.entries
-    ? isEditedSinceComplete({
-        detectionIds: occurrence.detections,
-        entries: history.entries,
-        occurrenceId: occurrence.id,
-      })
-    : false
 
   const sessionRoute = occurrence.sessionId
     ? APP_ROUTES.SESSION_DETAILS({
@@ -395,7 +387,7 @@ export const OccurrenceDetails = ({
               <GroupingActions
                 canRestructure={canRestructure}
                 canVerify={canVerifyGrouping}
-                editedSinceComplete={editedSinceComplete}
+                editedSinceComplete={occurrence.groupingEditedSinceVerified}
                 occurrence={occurrence}
               />
             )}

@@ -1714,6 +1714,10 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     event = EventNestedSerializer(read_only=True)
     grouping_verified_by = UserNestedSerializer(read_only=True)
     grouping_summary = serializers.SerializerMethodField()
+    grouping_edited_since_verified = serializers.SerializerMethodField(
+        help_text="Whether the detections changed since the grouping was last confirmed. "
+        "False while it is confirmed, and when it never was."
+    )
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
@@ -1729,11 +1733,18 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "grouping_verified",
             "grouping_verified_at",
             "grouping_verified_by",
+            "grouping_edited_since_verified",
             "grouping_summary",
         ]
         read_only_fields = [
             "determination_score",
         ]
+
+    def get_grouping_edited_since_verified(self, obj: Occurrence) -> bool:
+        from ami.main.models_future.history import edited_since_track_complete_review
+
+        # Editing the detections withdraws the confirmation, so a confirmed grouping is unchanged.
+        return obj.grouping_verified_at is None and edited_since_track_complete_review(obj)
 
     @extend_schema_field(GroupingSummarySerializer())
     def get_grouping_summary(self, obj: Occurrence) -> dict:
