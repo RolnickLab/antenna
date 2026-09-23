@@ -1909,14 +1909,14 @@ class TestTrackingJobCreation(APITestCase):
             params={"task": task, "config": config},
         )
 
-    def test_project_manager_can_start_a_tracking_run_they_created(self):
-        created = self._post(self._body(), self.project_manager)
+    def test_ml_data_manager_can_start_a_tracking_run_a_member_created(self):
+        created = self._post(self._body(), self.manager)
         self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
         job = Job.objects.get(pk=created.data["id"])
 
         cases = [
+            ("ML data manager", self.manager, status.HTTP_200_OK),
             ("project manager", self.project_manager, status.HTTP_200_OK),
-            ("ML data manager", self.manager, status.HTTP_403_FORBIDDEN),
             ("basic member", self.member, status.HTTP_403_FORBIDDEN),
             ("non-member", self.outsider, status.HTTP_403_FORBIDDEN),
             ("superuser", self.superuser, status.HTTP_200_OK),
@@ -1927,7 +1927,7 @@ class TestTrackingJobCreation(APITestCase):
                 self.assertEqual(response.status_code, expected, response.data)
                 self.assertEqual(enqueue.called, expected == status.HTTP_200_OK)
 
-    def test_project_manager_cannot_run_staff_post_processing(self):
+    def test_ml_data_manager_cannot_run_staff_post_processing(self):
         """Staff tasks, staff-only guard settings and tracking without the flag stay superuser-only."""
         tracking_config = {"event_ids": [self.events[0].pk]}
         staff_jobs = {
@@ -1936,7 +1936,7 @@ class TestTrackingJobCreation(APITestCase):
         }
         for label, job in staff_jobs.items():
             with self.subTest(label):
-                response, enqueue = self._run(job, self.project_manager)
+                response, enqueue = self._run(job, self.manager)
                 self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
                 enqueue.assert_not_called()
                 response, enqueue = self._run(job, self.superuser)
@@ -1945,7 +1945,7 @@ class TestTrackingJobCreation(APITestCase):
         job = self._staff_job("tracking", tracking_config)
         self.project.feature_flags.tracking = False
         self.project.save(update_fields=["feature_flags"])
-        response, enqueue = self._run(job, self.project_manager)
+        response, enqueue = self._run(job, self.manager)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
         enqueue.assert_not_called()
 
