@@ -45,8 +45,13 @@ export const OccurrenceDetailsDialog = ({
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
   const navigation = useOccurrenceNavigation(occurrences, id, onNavigate)
+  // Clears ?tab= too, so the next occurrence opened from the list starts on the default tab.
+  const handleClose = () => {
+    setSelectedView(undefined)
+    onClose()
+  }
   const advance = useAdvanceOnConfirm({
-    close: onClose,
+    close: handleClose,
     currentId: id,
     goTo: navigation.goTo,
     items: occurrences,
@@ -77,8 +82,7 @@ export const OccurrenceDetailsDialog = ({
       open={!!id}
       onOpenChange={(open) => {
         if (!open) {
-          setSelectedView(undefined)
-          onClose()
+          handleClose()
         }
       }}
     >
