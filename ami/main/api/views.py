@@ -1634,8 +1634,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     # get_queryset.
     SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path", "history")
     # Actions the project's default filters never hide an occurrence from. The session
-    # view selects occurrences with those filters off and draws their paths.
-    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path")
+    # view selects occurrences with those filters off, then draws their paths and histories.
+    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path", "history")
 
     def get_queryset(self) -> QuerySet["Occurrence"]:
         """Occurrences this request may see, which is wider outside the list.

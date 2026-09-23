@@ -10,9 +10,9 @@ from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import setup_test_project
 from ami.users.models import User
 
-# Measured: two savepoints, the project, its default-filter taxa (2), the occurrence, then
-# history records, their taxa, identifications and predictions.
-HISTORY_QUERIES = 10
+# Measured: two savepoints, the project, the occurrence, then history records, their taxa,
+# identifications and predictions.
+HISTORY_QUERIES = 8
 
 
 class OccurrenceHistoryPayloadTestCase(TestCase):
@@ -218,3 +218,12 @@ class OccurrenceHistoryEndpointTestCase(main_tests.TrackFixtureTestCase):
                     history = self.client.get(self.url())
                     self.assertEqual(history.status_code, codes[label])
                     self.assertEqual(history.status_code, detail.status_code)
+
+    def test_an_occurrence_the_default_filters_hide_still_has_a_history(self):
+        """The session view lists occurrences with the default filters off, so their history must open too."""
+        self.project.default_filters_score_threshold = 0.95
+        self.project.save()
+        self.client.force_authenticate(user=self.reader)
+        detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, 404)
+        self.assertEqual(self.client.get(self.url()).status_code, 200)
