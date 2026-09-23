@@ -36,6 +36,8 @@ export interface ServerMergeCandidates {
 export interface MergeCandidate {
   id: string
   displayName: string
+  /** The determination's name alone, without the id the display name carries; null when undetermined. */
+  speciesName: string | null
   images: { src: string }[]
   numDetections: number
   relation: MergeRelation
@@ -73,6 +75,7 @@ export const convertMergeCandidate = (
   displayName: candidate.determination
     ? `${candidate.determination.name} #${candidate.id}`
     : `#${candidate.id}`,
+  speciesName: candidate.determination?.name ?? null,
   images: candidate.image ? [{ src: candidate.image }] : [],
   numDetections: candidate.detections_count,
   relation: candidate.relation,
@@ -209,6 +212,8 @@ export const getCostLabel = (cost: number | null, threshold?: number): string =>
       })
 
 export type MergeCandidateSortColumn =
+  | 'species'
+  | 'frames'
   | 'when'
   | 'distance'
   | 'similarity'
@@ -223,8 +228,12 @@ export type MergeCandidateSort =
 const sortValue = (
   candidate: MergeCandidate,
   column: MergeCandidateSortColumn
-): number | null =>
-  column === 'when'
+): number | string | null =>
+  column === 'species'
+    ? candidate.speciesName
+    : column === 'frames'
+    ? candidate.numDetections
+    : column === 'when'
     ? getWhenOffsetSeconds(candidate)
     : column === 'distance'
     ? candidate.distance
@@ -235,15 +244,22 @@ const sortValue = (
     : candidate.likelihood
 
 const compare = (
-  valueA: number | null,
-  valueB: number | null,
+  valueA: number | string | null,
+  valueB: number | string | null,
   descending: boolean
 ): number => {
   if (valueA === null || valueB === null) {
     return valueA === valueB ? 0 : valueA === null ? 1 : -1
   }
 
-  return (valueA - valueB) * (descending ? -1 : 1)
+  const result =
+    typeof valueA === 'string' || typeof valueB === 'string'
+      ? String(valueA).localeCompare(String(valueB), undefined, {
+          sensitivity: 'base',
+        })
+      : valueA - valueB
+
+  return result * (descending ? -1 : 1)
 }
 
 // Nearest in time first, then closest, then most alike. Time is unsigned here:

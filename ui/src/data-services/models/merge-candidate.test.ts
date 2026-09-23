@@ -227,6 +227,37 @@ describe('merge candidate sorting', () => {
     ).toEqual(['1', '3', '2'])
   })
 
+  test('species sorts by name alone, keeps the server order on ties and undetermined rows last', () => {
+    const named = [
+      serverCandidate({ id: 1, determination: { id: 1, name: 'Xestia' } }),
+      serverCandidate({ id: 2, determination: null }),
+      serverCandidate({ id: 3, determination: { id: 2, name: 'agrotis' } }),
+      serverCandidate({ id: 4, determination: { id: 1, name: 'Xestia' } }),
+    ].map(convertMergeCandidate)
+
+    expect(
+      ids(sortMergeCandidates(named, { column: 'species', descending: false }))
+    ).toEqual(['3', '1', '4', '2'])
+    expect(
+      ids(sortMergeCandidates(named, { column: 'species', descending: true }))
+    ).toEqual(['1', '4', '3', '2'])
+  })
+
+  test('frames sorts by count as a number, not as text', () => {
+    const counted = [
+      serverCandidate({ id: 1, detections_count: 9 }),
+      serverCandidate({ id: 2, detections_count: 10 }),
+      serverCandidate({ id: 3, detections_count: 2 }),
+    ].map(convertMergeCandidate)
+
+    expect(
+      ids(sortMergeCandidates(counted, { column: 'frames', descending: true }))
+    ).toEqual(['2', '1', '3'])
+    expect(
+      ids(sortMergeCandidates(counted, { column: 'frames', descending: false }))
+    ).toEqual(['3', '1', '2'])
+  })
+
   test('rows without a value go last in either direction', () => {
     expect(
       ids(sortMergeCandidates(rows, { column: 'distance', descending: false }))

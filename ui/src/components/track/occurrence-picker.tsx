@@ -43,6 +43,7 @@ export type OccurrencePickerCandidate = Pick<
   Partial<
     Pick<
       MergeCandidate,
+      | 'speciesName'
       | 'relation'
       | 'timeOffsetSeconds'
       | 'distance'
@@ -66,11 +67,17 @@ const isRanked = (
   candidates.length > 0 &&
   candidates.every((candidate) => candidate.relation !== undefined)
 
-// The first click on a column gives its natural order: earliest first, closest
-// first, or most alike first.
-const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity', 'match']
+// The first click on a column gives its natural order: A to Z, most frames first,
+// earliest first, closest first, or most alike first.
+const DESCENDING_FIRST: MergeCandidateSortColumn[] = [
+  'frames',
+  'similarity',
+  'match',
+]
 
 const COLUMN_LABELS: Record<MergeCandidateSortColumn, STRING> = {
+  species: STRING.TRACK_COLUMN_SPECIES,
+  frames: STRING.TRACK_COLUMN_FRAMES,
   when: STRING.TRACK_COLUMN_WHEN,
   distance: STRING.TRACK_COLUMN_DISTANCE,
   similarity: STRING.TRACK_COLUMN_SIMILARITY,
@@ -236,6 +243,53 @@ export const OccurrencePicker = ({
 
   const hideComparison = () => setHovered(undefined)
 
+  const renderSortHeader = (
+    column: MergeCandidateSortColumn,
+    className?: string
+  ) => {
+    const label = COLUMN_LABELS[column]
+    const help = COLUMN_HELP[column]
+    const active = columnSort?.column === column
+    const DirectionIcon = !active
+      ? ArrowUpDownIcon
+      : columnSort.descending
+      ? ArrowDownIcon
+      : ArrowUpIcon
+
+    return (
+      <th
+        aria-sort={
+          active ? (columnSort.descending ? 'descending' : 'ascending') : 'none'
+        }
+        className={classNames(headerClassName, className)}
+        key={column}
+      >
+        <button
+          aria-label={translate(STRING.TRACK_SORT_BY, {
+            column: translate(label),
+          })}
+          className={classNames(
+            'inline-flex items-center gap-1 hover:text-foreground',
+            { 'text-foreground': active }
+          )}
+          onClick={() => toggleSort(column)}
+          type="button"
+        >
+          {help ? (
+            <BasicTooltip asChild content={translate(help)}>
+              <span className="underline decoration-dotted underline-offset-2">
+                {translate(label)}
+              </span>
+            </BasicTooltip>
+          ) : (
+            <span>{translate(label)}</span>
+          )}
+          <DirectionIcon aria-hidden className="w-3 h-3" />
+        </button>
+      </th>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1">
       <span className="body-small">{title}</span>
@@ -339,60 +393,24 @@ export const OccurrencePicker = ({
                     {translate(STRING.TRACK_COLUMN_IMAGE)}
                   </span>
                 </th>
-                <th className={headerClassName}>
-                  {translate(STRING.TRACK_COLUMN_SPECIES)}
-                </th>
-                <th className={classNames(headerClassName, numberClassName)}>
-                  {translate(STRING.TRACK_COLUMN_FRAMES)}
-                </th>
+                {ranked ? (
+                  renderSortHeader('species')
+                ) : (
+                  <th className={headerClassName}>
+                    {translate(STRING.TRACK_COLUMN_SPECIES)}
+                  </th>
+                )}
+                {ranked ? (
+                  renderSortHeader('frames', numberClassName)
+                ) : (
+                  <th className={classNames(headerClassName, numberClassName)}>
+                    {translate(STRING.TRACK_COLUMN_FRAMES)}
+                  </th>
+                )}
                 {ranked &&
-                  SORT_COLUMNS.map((column) => {
-                    const label = COLUMN_LABELS[column]
-                    const help = COLUMN_HELP[column]
-                    const active = columnSort?.column === column
-                    const DirectionIcon = !active
-                      ? ArrowUpDownIcon
-                      : columnSort.descending
-                      ? ArrowDownIcon
-                      : ArrowUpIcon
-
-                    return (
-                      <th
-                        aria-sort={
-                          active
-                            ? columnSort.descending
-                              ? 'descending'
-                              : 'ascending'
-                            : 'none'
-                        }
-                        className={classNames(headerClassName, numberClassName)}
-                        key={column}
-                      >
-                        <button
-                          aria-label={translate(STRING.TRACK_SORT_BY, {
-                            column: translate(label),
-                          })}
-                          className={classNames(
-                            'inline-flex items-center gap-1 hover:text-foreground',
-                            { 'text-foreground': active }
-                          )}
-                          onClick={() => toggleSort(column)}
-                          type="button"
-                        >
-                          {help ? (
-                            <BasicTooltip asChild content={translate(help)}>
-                              <span className="underline decoration-dotted underline-offset-2">
-                                {translate(label)}
-                              </span>
-                            </BasicTooltip>
-                          ) : (
-                            <span>{translate(label)}</span>
-                          )}
-                          <DirectionIcon aria-hidden className="w-3 h-3" />
-                        </button>
-                      </th>
-                    )
-                  })}
+                  SORT_COLUMNS.map((column) =>
+                    renderSortHeader(column, numberClassName)
+                  )}
                 {ranked && sessionLink ? (
                   <th className={classNames(headerClassName, 'w-8')}>
                     <span className="sr-only">
