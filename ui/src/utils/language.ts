@@ -1266,7 +1266,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACKING_JOB_SCOPE_CAPTURE_SET]: 'A capture set',
   [STRING.TRACKING_JOB_SCOPE_SESSION]: 'One session',
   [STRING.TRACKING_JOB_SKIPPED_SESSIONS]:
-    'Sessions that have human identifications or have already been tracked are skipped.',
+    'Tracking skips a session if it has human identifications, or if any of its occurrences already groups several detections (from an earlier tracking run or a manual merge). It can also skip sessions that are not fully processed or lack feature vectors.',
   [STRING.TRACKING_JOB_START_NOW]: 'Start immediately',
   [STRING.TRACKING_JOB_TYPE]: 'Job type',
   [STRING.TRACKING_JOB_TYPE_PROCESSING]: 'Process images',
