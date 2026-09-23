@@ -240,8 +240,9 @@ class OccurrenceHistoryEndpointTestCase(main_tests.TrackFixtureTestCase):
         types = [entry["type"] for entry in response.data]
         self.assertEqual(types[-3:], ["review", "identification", "algorithm_result"])
         self.assertEqual(set(types[:-3]), {"prediction"})
-        self.assertEqual(len(types[:-3]), len(self.detections))
-        self.assertTrue(all(entry["algorithm"] is None for entry in response.data[:-3]))
+        # The fixture's detections share one tied top prediction, so it is shown once.
+        self.assertEqual(len(types[:-3]), 1)
+        self.assertIsNone(response.data[0]["algorithm"])
         timestamps = [entry["timestamp"] for entry in response.data]
         self.assertEqual(timestamps, sorted(timestamps, reverse=True))
 
@@ -257,6 +258,37 @@ class OccurrenceHistoryEndpointTestCase(main_tests.TrackFixtureTestCase):
         self.assertEqual(result["taxon_before"]["id"], self.other_taxon.pk)
         self.assertNotIn("email", str(response.data))
 
+    def test_each_algorithm_shows_one_prediction_preferring_terminal_then_latest(self):
+        """Tied top scores would otherwise show the same prediction once per detection."""
+        classifier = Algorithm.objects.create(name="Tied classifier", key="tied-classifier-history-test")
+        other = Algorithm.objects.create(name="Second tied classifier", key="second-tied-classifier-history-test")
+        now = datetime.datetime.now()
+
+        def classify(detection, algorithm, terminal, created_at):
+            classification = Classification.objects.create(
+                detection=detection, taxon=self.taxon, score=0.8, algorithm=algorithm, terminal=terminal, timestamp=now
+            )
+            Classification.objects.filter(pk=classification.pk).update(created_at=created_at)
+            return classification
+
+        classify(self.detections[0], classifier, False, now)
+        terminal = classify(self.detections[1], classifier, True, now - datetime.timedelta(hours=1))
+        classify(self.detections[2], other, True, now - datetime.timedelta(hours=1))
+        latest = classify(self.detections[3], other, True, now)
+
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(self.url())
+        self.assertEqual(response.status_code, 200, response.data)
+
+        predictions = [entry for entry in response.data if entry["type"] == "prediction"]
+        by_algorithm = {
+            entry["algorithm"]["key"] if entry["algorithm"] else None: entry["id"] for entry in predictions
+        }
+        self.assertEqual(len(predictions), 3)
+        self.assertEqual(by_algorithm[classifier.key], terminal.pk)
+        self.assertEqual(by_algorithm[other.key], latest.pk)
+        self.assertIn(None, by_algorithm)
+
     def test_query_count_does_not_grow_with_the_number_of_entries(self):
         self.client.force_authenticate(user=self.reader)
         now = datetime.datetime.now()
@@ -266,7 +298,7 @@ class OccurrenceHistoryEndpointTestCase(main_tests.TrackFixtureTestCase):
                 with self.assertNumQueries(HISTORY_QUERIES):
                     response = self.client.get(self.url())
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(len(response.data), 3 * total + len(self.detections))
+                self.assertEqual(len(response.data), 3 * total + 1)
 
     def test_visible_to_whoever_can_open_the_occurrence(self):
         """Member, non-member, anonymous and superuser, on a public and on a draft project."""

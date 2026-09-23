@@ -11,7 +11,7 @@ import dataclasses
 import datetime
 import typing
 
-from ami.main.models import Detection, Identification, Occurrence, OccurrenceHistoryRecord, Taxon, User
+from ami.main.models import Classification, Detection, Identification, Occurrence, OccurrenceHistoryRecord, Taxon, User
 from ami.main.schemas import TrackCompleteReviewPayload
 
 if typing.TYPE_CHECKING:
@@ -143,9 +143,10 @@ class TimelineEntry:
 def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
     """History records, identifications and predictions of one occurrence, merged newest first.
 
-    A prediction made by an algorithm that also left a history record here is left out: the
-    record already stands for that change and names the taxon before and after. Costs four
-    queries whatever the number of entries.
+    Each algorithm contributes one prediction, its best. A prediction made by an algorithm
+    that also left a history record here is left out: the record already stands for that
+    change and names the taxon before and after. Costs four queries whatever the number of
+    entries.
     """
     records = list(
         OccurrenceHistoryRecord.objects.filter(occurrence=occurrence)
@@ -209,9 +210,28 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
                 "applied_to_id": prediction.applied_to_id,
             },
         )
-        for prediction in occurrence.predictions()
+        for prediction in _one_prediction_per_algorithm(occurrence)
         if prediction.algorithm_id not in folded
     )
 
     entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
     return entries
+
+
+def _one_prediction_per_algorithm(occurrence: Occurrence) -> list[Classification]:
+    """The best prediction of each algorithm: highest score, then terminal, then latest.
+
+    ``Occurrence.predictions()`` keeps every classification tied for an algorithm's top
+    score, which would show the same prediction once per detection.
+    """
+
+    def rank(prediction: Classification) -> tuple:
+        score = prediction.score if prediction.score is not None else float("-inf")
+        return (score, prediction.terminal, prediction.created_at, prediction.pk)
+
+    best: dict[int | None, Classification] = {}
+    for prediction in occurrence.predictions():
+        current = best.get(prediction.algorithm_id)
+        if current is None or rank(prediction) > rank(current):
+            best[prediction.algorithm_id] = prediction
+    return list(best.values())
