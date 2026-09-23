@@ -34,6 +34,7 @@ Five invariants hold after every operation here:
 from __future__ import annotations
 
 import datetime
+import itertools
 from collections import Counter
 from collections.abc import Iterable
 
@@ -221,10 +222,11 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict
     The detections of each occurrence are linked one after another in capture-time
     order, so after a manual edit the chain agrees with the membership a reviewer
     confirmed and the tracks export can follow it frame by frame. Within an occurrence,
-    two consecutive detections from different sessions are not linked, and only the
-    first box on a capture joins the chain. Links from these detections to detections
-    outside them, and into them from outside, are cut, since a later tracking pass
-    would walk such a link and fold the occurrences back together.
+    two consecutive detections from different sessions are not linked, and only one
+    box on a capture joins the chain: the one already linked, else the lowest pk.
+    Links from these detections to detections outside them, and into them from
+    outside, are cut, since a later tracking pass would walk such a link and fold the
+    occurrences back together.
 
     A link into another session that some other occurrence holds records one animal
     across a session boundary (see ``split_at_session_boundaries``) and tracking never
@@ -265,6 +267,8 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict
     by_pk = {m["pk"]: m for m in members}
     current: dict[int, int | None] = {m["pk"]: m["next_detection_id"] for m in members}
     current.update({row["pk"]: row["next_detection_id"] for row in inbound})
+    linked = {pk for pk, target in current.items() if target is not None}
+    linked |= {target for target in current.values() if target is not None}
     desired: dict[int, int | None] = {pk: None for pk in current}
     # Each chained member maps to the first and last frame of its session's run, and
     # each (occurrence, session) to the first and last frame of its runs there.
@@ -285,10 +289,11 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict
             )
         )
         chain: list[dict] = []
-        for row in rows:
-            if chain and chain[-1]["source_image_id"] == row["source_image_id"]:
-                continue  # A second box on a capture is a second animal: leave it unlinked.
-            chain.append(row)
+        for _, same_capture in itertools.groupby(rows, key=lambda m: m["source_image_id"]):
+            # A second box on a capture is a second animal. Keep the box the chain
+            # already runs through, so an edit elsewhere does not move the track.
+            boxes = list(same_capture)
+            chain.append(next((box for box in boxes if box["pk"] in linked), boxes[0]))
         runs: list[list[dict]] = []
         for row in chain:
             if runs and not _in_different_sessions(

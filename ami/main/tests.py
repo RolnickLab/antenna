@@ -9739,6 +9739,24 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
         self.assertFullyLinked(donor)
         self.assertEqual(Detection.objects.get(pk=donor_detections[0].pk).next_detection_id, donor_detections[2].pk)
 
+    def test_an_edit_keeps_the_box_the_chain_already_runs_through_on_a_shared_capture(self):
+        """Older tracker output can hold two boxes on one capture; relinking must not swap them."""
+        second_box = Detection.objects.create(
+            source_image=self.captures[1],
+            timestamp=self.captures[1].timestamp,
+            bbox=[100, 100, 140, 140],
+            occurrence=self.occurrence,
+        )
+        Detection.objects.filter(pk=self.detections[1].pk).update(next_detection=None)
+        Detection.objects.filter(pk=self.detections[0].pk).update(next_detection=second_box)
+        Detection.objects.filter(pk=second_box.pk).update(next_detection=self.detections[2])
+
+        split_track(self.occurrence, self.detections[3])
+
+        self.assertEqual(Detection.objects.get(pk=self.detections[0].pk).next_detection_id, second_box.pk)
+        self.assertEqual(Detection.objects.get(pk=second_box.pk).next_detection_id, self.detections[2].pk)
+        self.assertIsNone(Detection.objects.get(pk=self.detections[1].pk).next_detection_id)
+
     def test_a_merge_spanning_two_sessions_links_nothing_across_them(self):
         later_session = Event.objects.create(
             project=self.project,
