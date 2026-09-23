@@ -1464,6 +1464,47 @@ class TestRegroupSplitsTracks(TestCase):
             "A merge into one piece keeps its link into the next session, now from the piece's last frame",
         )
 
+    def test_detaching_the_last_frame_of_the_earlier_piece_hands_its_link_to_the_new_last_frame(self):
+        from ami.main.models_future.tracks import detach_detection
+
+        occurrence, _, detections, _ = self._split_one_track()
+
+        detach_detection(occurrence, detections[2])
+
+        self.assertIsNone(Detection.objects.get(pk=detections[2].pk).next_detection_id, "The rejected frame")
+        self.assertEqual(Detection.objects.get(pk=detections[1].pk).next_detection_id, detections[3].pk)
+
+    def test_detaching_the_first_frame_of_the_later_piece_relinks_to_its_new_first_frame(self):
+        from ami.main.models_future.tracks import detach_detection
+
+        _, piece, detections, _ = self._split_one_track()
+
+        detach_detection(piece, detections[3])
+
+        self.assertIsNone(Detection.objects.get(pk=detections[3].pk).next_detection_id)
+        self.assertEqual(Detection.objects.get(pk=detections[2].pk).next_detection_id, detections[4].pk)
+
+    def test_moving_the_last_frame_of_the_earlier_piece_elsewhere_leaves_the_link_with_that_piece(self):
+        from ami.main.models_future.tracks import add_detections
+
+        _, _, detections, (first, _) = self._split_one_track()
+        other_capture = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=first,
+            timestamp=self.captures[2].timestamp + datetime.timedelta(seconds=30),
+            path="test/regroup-split-other.jpg",
+            width=640,
+            height=480,
+        )
+        other = Occurrence.objects.create(event=first, deployment=self.deployment, project=self.project)
+        Detection.objects.create(
+            source_image=other_capture, timestamp=other_capture.timestamp, bbox=[10, 10, 40, 40], occurrence=other
+        )
+
+        add_detections(other, [Detection.objects.get(pk=detections[2].pk)])
+
+        self.assertEqual(Detection.objects.get(pk=detections[1].pk).next_detection_id, detections[3].pk)
+
     def test_merging_sessions_leaves_tracks_untouched(self):
         self._group(gap_hours=2)
         early, early_detections = self._make_track(self.captures[:3])

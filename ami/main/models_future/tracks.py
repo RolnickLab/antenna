@@ -126,7 +126,7 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
         raise TrackEditError(f"Detection {detection.pk} does not belong to occurrence {occurrence.pk}.")
 
     new_occurrence = _move_to_new_occurrence(occurrence, [ordered[index]])
-    relink_occurrence_chains([occurrence, new_occurrence])
+    relink_occurrence_chains([occurrence, new_occurrence], moved_from={detection.pk: occurrence.pk})
 
     _clear_verification(occurrence, new_occurrence)
     occurrence.save()
@@ -215,7 +215,7 @@ def _in_different_sessions(a: int | None, b: int | None) -> bool:
     return a is not None and b is not None and a != b
 
 
-def relink_occurrence_chains(occurrences: Iterable[Occurrence]) -> None:
+def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict[int, int] | None = None) -> None:
     """Rewrite the chain links of ``occurrences`` to match the detections they now hold.
 
     The detections of each occurrence are linked one after another in capture-time
@@ -229,8 +229,10 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence]) -> None:
     A link into another session that some other occurrence holds records one animal
     across a session boundary (see ``split_at_session_boundaries``) and tracking never
     walks it, so it is kept, moved to the last frame of that session's run or to the
-    first frame of the run it points into. Costs two reads and at most two writes
-    however many occurrences and detections are involved.
+    first frame of the run it points into. ``moved_from`` maps a detection the edit
+    pulled out of a track to the occurrence it left: such a link stays with that
+    track rather than following the rejected frame. Costs two reads and at most two
+    writes however many occurrences and detections are involved.
     """
     occurrence_pks = {o.pk for o in occurrences if o.pk is not None}
     if not occurrence_pks:
@@ -264,14 +266,16 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence]) -> None:
     current: dict[int, int | None] = {m["pk"]: m["next_detection_id"] for m in members}
     current.update({row["pk"]: row["next_detection_id"] for row in inbound})
     desired: dict[int, int | None] = {pk: None for pk in current}
-    # Each chained member maps to the first and last frame of its session's run.
+    # Each chained member maps to the first and last frame of its session's run, and
+    # each (occurrence, session) to the first and last frame of its runs there.
     run_head: dict[int, int] = {}
     run_tail: dict[int, int] = {}
+    session_ends: dict[tuple[int, int | None], tuple[int, int]] = {}
 
     by_occurrence: dict[int, list[dict]] = {}
     for member in members:
         by_occurrence.setdefault(member["occurrence_id"], []).append(member)
-    for rows in by_occurrence.values():
+    for occurrence_id, rows in by_occurrence.items():
         rows.sort(
             key=lambda m: (
                 m["source_image__timestamp"] is None,
@@ -298,14 +302,29 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence]) -> None:
                 desired[earlier["pk"]] = later["pk"]
             for row in run:
                 run_head[row["pk"]], run_tail[row["pk"]] = run[0]["pk"], run[-1]["pk"]
+            key = (occurrence_id, run[0]["source_image__event_id"])
+            session_ends[key] = (session_ends.get(key, (run[0]["pk"],))[0], run[-1]["pk"])
+
+    moved_from = moved_from or {}
+
+    def owner(pk: int, occurrence_id: int | None) -> int | None:
+        return moved_from.get(pk, occurrence_id) if pk in by_pk else occurrence_id
+
+    def endpoint(pk: int, event_id: int | None, ends: dict[int, int], end: int) -> int | None:
+        """Where a carried link attaches: ``pk`` itself unless it is in the edit."""
+        if pk not in by_pk:
+            return pk
+        if pk in moved_from and (moved_from[pk], event_id) in session_ends:
+            return session_ends[(moved_from[pk], event_id)][end]
+        return ends.get(pk)
 
     # Carry over the links into another session that some other occurrence holds.
     carried: list[tuple[int, int, int | None, int | None, int | None, int | None]] = [
         (
             m["pk"],
             m["next_detection_id"],
-            m["occurrence_id"],
-            m["next_detection__occurrence_id"],
+            owner(m["pk"], m["occurrence_id"]),
+            owner(m["next_detection_id"], m["next_detection__occurrence_id"]),
             m["source_image__event_id"],
             m["next_detection__source_image__event_id"],
         )
@@ -317,7 +336,7 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence]) -> None:
             row["pk"],
             row["next_detection_id"],
             row["occurrence_id"],
-            by_pk[row["next_detection_id"]]["occurrence_id"],
+            owner(row["next_detection_id"], by_pk[row["next_detection_id"]]["occurrence_id"]),
             row["source_image__event_id"],
             by_pk[row["next_detection_id"]]["source_image__event_id"],
         )
@@ -327,12 +346,13 @@ def relink_occurrence_chains(occurrences: Iterable[Occurrence]) -> None:
     for source, target, source_occurrence, target_occurrence, source_event, target_event in sorted(carried):
         if source_occurrence == target_occurrence or not _in_different_sessions(source_event, target_event):
             continue
-        if (source in by_pk and source not in run_tail) or (target in by_pk and target not in run_head):
+        new_source = endpoint(source, source_event, run_tail, -1)
+        new_target = endpoint(target, target_event, run_head, 0)
+        if new_source is None or new_target is None:
             continue
-        source, target = run_tail.get(source, source), run_head.get(target, target)
-        if desired.get(source) is None and target not in taken:
-            desired[source] = target
-            taken.add(target)
+        if desired.get(new_source) is None and new_target not in taken:
+            desired[new_source] = new_target
+            taken.add(new_target)
 
     changed = [pk for pk, target in desired.items() if current[pk] != target]
     if not changed:
@@ -492,7 +512,10 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     _absorb(target, emptied)
 
     remaining = [o for o in donors if o.pk not in {e.pk for e in emptied}]
-    relink_occurrence_chains([target, *remaining])
+    relink_occurrence_chains(
+        [target, *remaining],
+        moved_from={d.pk: d.occurrence_id for d in detections if d.occurrence_id in {o.pk for o in remaining}},
+    )
     for donor in remaining:
         donor.save()
 
