@@ -14,6 +14,7 @@ import {
   OccurrenceNavigation,
   useOccurrenceNavigation,
 } from './occurrence-navigation'
+import { useAdvanceOnConfirm } from './use-advance-on-confirm'
 
 // Occurrence identification modal. Rendered over a list (occurrences or taxa);
 // the parent owns which occurrence is shown and how closing updates the URL.
@@ -44,6 +45,12 @@ export const OccurrenceDetailsDialog = ({
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
   const navigation = useOccurrenceNavigation(occurrences, id, onNavigate)
+  const advance = useAdvanceOnConfirm({
+    close: onClose,
+    currentId: id,
+    goTo: navigation.goTo,
+    items: occurrences,
+  })
   const detailsLabel = translate(STRING.ENTITY_DETAILS, {
     type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
   })
@@ -88,11 +95,7 @@ export const OccurrenceDetailsDialog = ({
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
-            onConfirmed={
-              advanceOnConfirm
-                ? () => (navigation.nextId ? navigation.goToNext() : onClose())
-                : undefined
-            }
+            onConfirmed={advanceOnConfirm ? advance : undefined}
             selectedTab={selectedView}
             setSelectedTab={setSelectedView}
           />

@@ -56,6 +56,7 @@ export const useOccurrenceNavigation = (
   return {
     prevId,
     nextId,
+    goTo,
     goToPrev,
     goToNext,
   }

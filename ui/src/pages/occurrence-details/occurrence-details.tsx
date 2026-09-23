@@ -82,8 +82,8 @@ export const OccurrenceDetails = ({
   setSelectedTab,
 }: {
   occurrence: Occurrence
-  /** Called after the header Confirm button confirms the determination. */
-  onConfirmed?: () => void
+  /** Called with the occurrence id after the header Confirm button confirms the determination. */
+  onConfirmed?: (occurrenceId: string) => void
   /** Called when a frame's link is followed, so a dialog around these details can close. */
   onNavigate?: () => void
   selectedTab?: string
