@@ -45,17 +45,28 @@ def verify_callback_token(token: str, job) -> bool:
     return payload.get("job_id") == job.pk
 
 
-def callback_url_for(job) -> str:
-    """Where the service should post its result when training finishes."""
+def _callback_base(job) -> str:
+    """Where the service can reach this Antenna."""
     base = (job.params or {}).get("media_base_url") or getattr(settings, "EXTERNAL_BASE_URL", "")
     if not base:
         raise ValueError(
             "No base URL is configured, so the processing service has no way to report back. "
             "Set EXTERNAL_BASE_URL, or pass media_base_url in the job params."
         )
+    return base
+
+
+def callback_url_for(job) -> str:
+    """Where the service should post its result when training finishes."""
     # reverse(), so the path follows the router rather than a copy of it here.
     path = reverse("api:job-training-result", args=[job.pk])
-    return urljoin(base.rstrip("/") + "/", path.lstrip("/"))
+    return urljoin(_callback_base(job).rstrip("/") + "/", path.lstrip("/"))
+
+
+def head_upload_url_for(job) -> str:
+    """Where the service should upload the head it produced, so Antenna keeps a copy."""
+    path = reverse("api:job-training-head", args=[job.pk])
+    return urljoin(_callback_base(job).rstrip("/") + "/", path.lstrip("/"))
 
 
 def absolute_media_url(url: str, base_url: str | None = None) -> str:
@@ -107,6 +118,9 @@ def send_training_request(job, service, algorithm, dataset: dict) -> dict | None
     # instead, which is the only way a real training set can work.
     payload["callback_url"] = (job.params or {}).get("callback_url") or callback_url_for(job)
     payload["callback_token"] = make_callback_token(job)
+    # The head itself comes back here. A service that does not support the upload simply
+    # ignores this, and the version is registered without a stored copy as before.
+    payload["head_upload_url"] = head_upload_url_for(job)
 
     job.logger.info(f"Sending training request to {endpoint} for {algorithm.key}")
     session = create_session()

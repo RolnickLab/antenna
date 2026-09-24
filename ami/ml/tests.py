@@ -9,6 +9,7 @@ import uuid
 
 import numpy as np
 from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -3448,6 +3449,113 @@ class TestTrainingCallback(APITestCase):
         from ami.ml.training_dispatch import callback_url_for
 
         self.assertEqual(callback_url_for(self.job), f"http://antenna:8000/api/v2/jobs/{self.job.pk}/training-result/")
+
+
+class TestTrainingHeadUpload(APITestCase):
+    """
+    A retrained head is uploaded here so Antenna keeps a copy of the weights.
+
+    Without it the head lives only on the service's disk, under a cache directory, and a
+    rebuild loses it while Antenna still reports the version as existing.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.project = Project.objects.create(name="Head Upload Project")
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key, "media_base_url": "http://antenna:8000"},
+        )
+        self.url = f"/api/v2/jobs/{self.job.pk}/training-head/"
+        self.stored_paths: list[str] = []
+
+    def tearDown(self):
+        for path in self.stored_paths:
+            if default_storage.exists(path):
+                default_storage.delete(path)
+
+    def _token(self):
+        from ami.ml.training_dispatch import make_callback_token
+
+        return make_callback_token(self.job)
+
+    def _files(self, head=b"weights", labels=b'{"labels": []}'):
+        return {
+            "head": SimpleUploadedFile("head.npz", head),
+            "labels": SimpleUploadedFile("head.label_map.json", labels),
+        }
+
+    def _post(self, token=None, files=None):
+        headers = {"HTTP_AUTHORIZATION": f"Token {token}"} if token else {}
+        response = self.client.post(self.url, files if files is not None else self._files(), **headers)
+        if response.status_code == 200:
+            self.stored_paths += [item["path"] for item in response.json()["files"].values()]
+        return response
+
+    def test_a_valid_token_stores_the_head(self):
+        response = self._post(self._token())
+
+        self.assertEqual(response.status_code, 200)
+        stored = response.json()["files"]
+        self.assertEqual(sorted(stored), ["head", "labels"])
+        for item in stored.values():
+            self.assertTrue(default_storage.exists(item["path"]), item["path"])
+
+    def test_the_stored_head_holds_what_was_uploaded(self):
+        response = self._post(self._token(), files=self._files(head=b"the real weights"))
+
+        path = response.json()["files"]["head"]["path"]
+        with default_storage.open(path, "rb") as f:
+            self.assertEqual(f.read(), b"the real weights")
+
+    def test_no_token_is_refused(self):
+        self.assertEqual(self._post().status_code, 403)
+
+    def test_a_forged_token_is_refused(self):
+        self.assertEqual(self._post("not-a-real-token").status_code, 403)
+
+    def test_another_jobs_token_is_refused(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+        from ami.ml.training_dispatch import make_callback_token
+
+        other = Job.objects.create(project=self.project, name="Other", job_type_key=TrainClassifierJob.key)
+        self.assertEqual(self._post(make_callback_token(other)).status_code, 403)
+
+    def test_an_upload_for_a_non_training_job_is_refused(self):
+        from ami.jobs.models import Job, MLJob
+        from ami.ml.training_dispatch import make_callback_token
+
+        other = Job.objects.create(project=self.project, name="ML", job_type_key=MLJob.key)
+        response = self.client.post(
+            f"/api/v2/jobs/{other.pk}/training-head/",
+            self._files(),
+            HTTP_AUTHORIZATION=f"Token {make_callback_token(other)}",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_upload_with_no_files_is_refused(self):
+        self.assertEqual(self._post(self._token(), files={}).status_code, 400)
+
+    def test_an_oversized_head_is_refused(self):
+        """The cap is well clear of a real head; it stops a wrong upload filling the bucket."""
+        from ami.ml.trained_head import MAX_HEAD_BYTES
+
+        oversized = {"head": SimpleUploadedFile("head.npz", b"x" * (MAX_HEAD_BYTES + 1))}
+
+        self.assertEqual(self._post(self._token(), files=oversized).status_code, 400)
+
+    def test_re_running_the_same_job_replaces_its_head(self):
+        """A retry must not leave a second copy behind."""
+        first = self._post(self._token()).json()["files"]["head"]["path"]
+        second = self._post(self._token(), files=self._files(head=b"second run")).json()["files"]["head"]["path"]
+
+        self.assertEqual(first, second)
+        with default_storage.open(second, "rb") as f:
+            self.assertEqual(f.read(), b"second run")
 
 
 class TestTrainingDataPermissions(APITestCase):

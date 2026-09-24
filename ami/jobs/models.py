@@ -1413,6 +1413,9 @@ class TrainClassifierJob(JobType):
         return Algorithm.objects.create(
             name=parent.name,
             key=f"{parent.key}-v{version}-{stamp}",
+            # Where the weights are kept. Empty when the service did not upload them, in
+            # which case the head exists only on that service's own disk.
+            uri=result.get("head_url") or "",
             version=version,
             version_name=str(trained_at) or stamp,
             task_type=parent.task_type,
