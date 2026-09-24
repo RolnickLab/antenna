@@ -228,6 +228,36 @@ class AsyncJobStateManager:
             return set()
         return {m.decode() if isinstance(m, (bytes, bytearray)) else str(m) for m in members}
 
+    def all_tasks_processed(self) -> bool | None:
+        """Tri-state truth signal for NATS-task SREM completeness across both
+        process and results pending sets.
+
+        True  — both pending sets empty AND total > 0 (or total == 0)
+        False — at least one pending set has members
+        None  — Redis state absent (cleaned up, expired, never initialized,
+                or transient RedisError)
+
+        Scope: tracks NATS task lifecycle only; does not know about `collect`
+        or any future post-results stages.
+        """
+        try:
+            redis = self._get_redis()
+            with redis.pipeline() as pipe:
+                for stage in self.STAGES:
+                    pipe.scard(self._get_pending_key(stage))
+                pipe.get(self._total_key)
+                results = pipe.execute()
+        except RedisError as e:
+            logger.warning(f"Redis error reading all_tasks_processed for job {self.job_id}: {e}")
+            return None
+
+        *pending_counts, total_raw = results
+        if total_raw is None:
+            return None
+        if int(total_raw) == 0:
+            return True
+        return all(count == 0 for count in pending_counts)
+
     def cleanup(self) -> None:
         """
         Delete all Redis keys associated with this job.
