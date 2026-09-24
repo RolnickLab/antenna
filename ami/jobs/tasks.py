@@ -146,7 +146,12 @@ def run_job(self, job_id: int) -> None:
         raise e
         # self.retry(exc=e, countdown=1, max_retries=1)
     else:
-        job.logger.info(f"Running job {job}")
+        # Log the Redis DB index at task start so cross-host DB-index drift is visible per job
+        # (workers reading state from a different DB than run_job wrote it to fail silently in
+        # process_nats_pipeline_result). Public log carries only the DB index; host:port goes
+        # to the server log, since the host names internal infrastructure.
+        job.logger.info(f"Running job {job} on Redis db {_redis_db_index()}")
+        logger.info("Job %s Redis target: %s", job.pk, _describe_redis_target())
         try:
             job.run()
         except Exception as e:
@@ -281,10 +286,16 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     if not progress_info:
         # State keys genuinely missing (the total-images key returned None).
         # Ack so NATS stops redelivering and fail the job — there's no state
-        # left to reconcile against.
+        # left to reconcile against. The reason is built from a live Redis
+        # snapshot (DB index, keys present under job:{id}:*) so the FAILURE log
+        # and the UI progress.errors entry name the actual cause (DB-index
+        # misconfig vs eviction vs concurrent cleanup).
         _log_missing_state_context(job_id, "process")
         _ack_task_via_nats(reply_subject, logger)
-        _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
+        _fail_job(
+            job_id,
+            f"Job state missing from Redis (stage=process): {state_manager.diagnose_missing_state()}",
+        )
         return
 
     try:
@@ -367,7 +378,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             # then fail the job. Mirrors the stage=process missing-state path.
             _log_missing_state_context(job_id, "results")
             _ack_task_via_nats(reply_subject, job.logger)
-            _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
+            _fail_job(
+                job_id,
+                f"Job state missing from Redis (stage=results): {state_manager.diagnose_missing_state()}",
+            )
             return
 
         # update complete state based on latest progress info after saving results
@@ -416,6 +430,40 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         job.logger.error(error)
 
 
+def _redis_db_index() -> str:
+    """Return just the DB index of the "default" Redis connection (e.g. ``"1"``).
+
+    Safe for the public job log: the DB index is the load-bearing signal for diagnosing
+    cross-host DB drift, without exposing the internal Redis host. Pair with
+    :func:`_describe_redis_target` (host:port, server logs only) when an operator needs the host.
+    """
+    try:
+        from django_redis import get_redis_connection
+
+        redis = get_redis_connection("default")
+        kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
+        return str(kwargs.get("db", "?"))
+    except Exception as e:
+        return f"(unavailable: {e})"
+
+
+def _describe_redis_target() -> str:
+    """Return a ``redis=host:port/dbN`` string for the "default" Redis connection.
+
+    For server-side logs only — it names the internal Redis host, so it must not reach the
+    public job log (use :func:`_redis_db_index` there). Logged server-side at ``run_job`` start
+    so an operator can resolve a DB-index drift to a specific host.
+    """
+    try:
+        from django_redis import get_redis_connection
+
+        redis = get_redis_connection("default")
+        kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
+        return f"redis={kwargs.get('host', '?')}:{kwargs.get('port', '?')}/db{kwargs.get('db', '?')}"
+    except Exception as e:
+        return f"redis=(unavailable: {e})"
+
+
 def _fail_job(job_id: int, reason: str) -> None:
     from ami.jobs.models import Job, JobState
     from ami.ml.orchestration.jobs import cleanup_async_job_resources
@@ -425,6 +473,16 @@ def _fail_job(job_id: int, reason: str) -> None:
             job = Job.objects.select_for_update().get(pk=job_id)
             if job.status in (JobState.CANCELING, *JobState.final_states()):
                 return
+            # Mirror the reason into progress.errors so the UI surfaces it
+            # alongside the FAILURE status. Operators can see the cause in the
+            # job detail view without digging through Celery worker logs.
+            try:
+                job.progress.errors.append(reason)
+            except Exception as e:
+                # Don't let a diagnostic-write failure mask the original FAILURE, but record
+                # that the reason could not be attached so the swallow is observable — otherwise
+                # the UI silently loses the cause this PR exists to surface.
+                logger.warning("Job %s: could not append failure reason to progress.errors: %s", job_id, e)
             job.update_status(JobState.FAILURE, save=False)
             job.finished_at = datetime.datetime.now()
             job.save(update_fields=["status", "progress", "finished_at"])
