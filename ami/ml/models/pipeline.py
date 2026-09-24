@@ -507,9 +507,13 @@ def get_or_create_algorithm_and_category_map(
     # These are fields that we have added to the API since the algorithm was first created
     fields_to_update = {
         "task_type": algorithm_config.task_type,
-        "uri": algorithm_config.uri,
         "trainable": algorithm_config.trainable,
     }
+    if algorithm_config.uri:
+        # Only when the service names one. A head Antenna retrained has its weights
+        # stored by Antenna, and the service reports no uri for it, so overwriting
+        # unconditionally would erase the only record of where they are.
+        fields_to_update["uri"] = algorithm_config.uri
     if algorithm_config.training_info:
         # A fact about where these weights came from, so the service always wins.
         fields_to_update["training_info"] = algorithm_config.training_info

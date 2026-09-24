@@ -3451,6 +3451,47 @@ class TestTrainingCallback(APITestCase):
         self.assertEqual(callback_url_for(self.job), f"http://antenna:8000/api/v2/jobs/{self.job.pk}/training-result/")
 
 
+class TestAlgorithmUriIsNotErasedByInfo(TestCase):
+    """
+    Reading /info must not wipe the location of a head Antenna stored itself.
+
+    A retrained head's weights are uploaded to Antenna, and the service reports no uri for
+    it, so overwriting the field unconditionally left the only record of where the weights
+    are pointing nowhere. Caught end to end, not by a unit test: the sync runs after
+    training, when the service registers the head as a new pipeline.
+    """
+
+    def _config(self, key: str, uri: str | None):
+        from ami.ml.schemas import AlgorithmCategoryMapResponse, AlgorithmConfigResponse
+
+        return AlgorithmConfigResponse(
+            name=key,
+            key=key,
+            version=1,
+            uri=uri,
+            category_map=AlgorithmCategoryMapResponse(data=[], labels=[], version="v1", uri=None),
+        )
+
+    def test_a_service_reporting_no_uri_leaves_a_stored_one_alone(self):
+        algorithm = get_or_create_algorithm_and_category_map(self._config("kept-uri", uri=None))
+        algorithm.uri = "/media/algorithms/kept-uri/head.npz"
+        algorithm.save()
+
+        get_or_create_algorithm_and_category_map(self._config("kept-uri", uri=None))
+
+        algorithm.refresh_from_db()
+        self.assertEqual(algorithm.uri, "/media/algorithms/kept-uri/head.npz")
+
+    def test_a_service_that_names_a_uri_still_wins(self):
+        """A published head's location is the service's to report, and may move."""
+        algorithm = get_or_create_algorithm_and_category_map(self._config("moved-uri", uri="https://hub/old"))
+
+        get_or_create_algorithm_and_category_map(self._config("moved-uri", uri="https://hub/new"))
+
+        algorithm.refresh_from_db()
+        self.assertEqual(algorithm.uri, "https://hub/new")
+
+
 class TestTrainingHeadUpload(APITestCase):
     """
     A retrained head is uploaded here so Antenna keeps a copy of the weights.
