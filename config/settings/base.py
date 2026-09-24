@@ -232,20 +232,22 @@ X_FRAME_OPTIONS = "DENY"
 
 # EMAIL
 # ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
-EMAIL_BACKEND = env(
-    "DJANGO_EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",  # type: ignore[no-untyped-call]
-)
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
+# Note that EMAIL_BACKEND is a deprecated way to say this.
+EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND")
 EMAIL_TIMEOUT = 5
 
-# Sendgrid
+# Credentials for providers which may be selected by EMAIL_BACKEND.
 ANYMAIL = {
     "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),  # type: ignore[no-untyped-call]
+    "MANDRILL_API_KEY": env("MANDRILL_API_KEY", default=None),  # type: ignore[no-untyped-call]
 }
+# Config for the Sendgrid email provider, which may be selected by EMAIL_BACKEND.
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
+
+DEFAULT_FROM_EMAIL = "Automated Monitoring of Insects ML Platform <noreply@insectai.org>"
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+EMAIL_SUBJECT_PREFIX = "[Automated Monitoring of Insects ML Platform]"
 
 # TCP keepalive (shared by Redis cache and Celery/RabbitMQ broker)
 # ------------------------------------------------------------------------------
