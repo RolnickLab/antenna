@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import logging
 import math
 import random
@@ -109,6 +110,23 @@ def make_random_detection(source_images: list[SourceImage]) -> list[Detection]:
     return detector_responses
 
 
+# Width of the stand-in embeddings below. Matches Antenna's DetectionEmbedding column,
+# which is sized for BioCLIP 2.5 (ViT-H/14).
+FEATURE_DIMENSIONS = 1024
+
+
+def make_fake_features(label: str, dimensions: int = FEATURE_DIMENSIONS) -> list[float]:
+    """
+    A stand-in for a backbone's output, so the embedding path can be exercised without a
+    real model. Seeded by the label, so crops of the same class land near each other and
+    nearest-neighbour search returns something meaningful.
+    """
+    seed = int(hashlib.sha256(label.encode()).hexdigest()[:8], 16)
+    centroid = random.Random(seed)
+    jitter = random.Random()
+    return [centroid.gauss(0, 1) + jitter.gauss(0, 0.15) for _ in range(dimensions)]
+
+
 def make_random_prediction(
     algorithm: AlgorithmConfigResponse,
     terminal: bool = True,
@@ -127,6 +145,7 @@ def make_random_prediction(
         labels=category_labels if len(category_labels) <= max_labels else None,
         scores=softmax,
         logits=logits,
+        features=make_fake_features(top_class),
         timestamp=datetime.datetime.now(),
         algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
         terminal=terminal,
@@ -146,6 +165,7 @@ def make_classifications(detections: list[Detection], type: str) -> list[Detecti
                 classification=labels[0],
                 labels=labels,
                 scores=[0.9],
+                features=make_fake_features(labels[0]),
                 timestamp=datetime.datetime.now(),
                 algorithm=AlgorithmReference(
                     name=algorithms.CONSTANT_CLASSIFIER.name, key=algorithms.CONSTANT_CLASSIFIER.key

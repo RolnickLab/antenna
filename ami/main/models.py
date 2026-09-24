@@ -279,6 +279,10 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
     async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
+    # Whether to save the feature vectors returned with classifications, for retraining
+    # classifier heads from verified labels. Off by default: a stored vector costs about
+    # 5 KB once the vector index is counted, so this is opt-in per project.
+    store_classification_embeddings: bool = False
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -308,6 +312,18 @@ class Project(ProjectSettingsMixin, BaseModel):
         default=get_default_feature_flags,
         null=False,
         blank=True,
+    )
+    default_taxa_list = models.ForeignKey(
+        "TaxaList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_projects",
+        help_text=(
+            "The species this project expects to see. Used as the class list when retraining "
+            "a classifier head, so the head covers the region rather than only the species "
+            "someone happened to verify."
+        ),
     )
 
     active = models.BooleanField(default=True)
@@ -452,6 +468,9 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
+        RUN_GENERATE_EMBEDDINGS_JOB = "run_generate_embeddings_job"
+        RUN_TRAIN_CLASSIFIER_JOB = "run_train_classifier_job"
+        RUN_EVALUATE_ALGORITHM_JOB = "run_evaluate_algorithm_job"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -535,6 +554,9 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
             ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
+            ("run_generate_embeddings_job", "Can run/retry/cancel Generate Embeddings jobs"),
+            ("run_train_classifier_job", "Can run/retry/cancel Train Classifier jobs"),
+            ("run_evaluate_algorithm_job", "Can run/retry/cancel Evaluate Algorithm jobs"),
             ("delete_job", "Can delete a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
@@ -4128,6 +4150,41 @@ class TaxonQuerySet(BaseQuerySet):
 
         return qs
 
+    def with_training_crop_counts(
+        self,
+        project: Project,
+        *,
+        occurrence_filters: models.Q,
+    ):
+        """Annotate ``training_crops_count``: verified crops a classifier head can be fit on.
+
+        Counted against the exact determination, without the hierarchical rollup
+        :meth:`with_verification_counts` does — a head is fit on the label itself, so a crop
+        verified as a species is not training data for its genus. Crops still need an
+        embedding from the chosen feature extractor before a job can use them; this is the
+        upper bound, not the row count of the next training set.
+
+        The project's default filters are deliberately not applied, so that this matches what
+        a retrain would actually use (``ami.ml.training_data``). The score threshold hides
+        predictions the model was unsure about, but these rows are human answers — and a
+        person correcting a low-confidence prediction is the most useful crop there is, so
+        filtering on the model's confidence would hide exactly the data worth training on.
+        """
+        verified_occurrences = (
+            Occurrence.objects.filter(occurrence_filters)
+            .filter(determination_id__isnull=False)
+            .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
+        )
+        crop_counts = {
+            row["occurrence__determination_id"]: row["crops"]
+            for row in (
+                Detection.objects.filter(occurrence__in=verified_occurrences)
+                .values("occurrence__determination_id")
+                .annotate(crops=models.Count("pk"))
+            )
+        }
+        return self.annotate(training_crops_count=_case_from_map(crop_counts, 0, models.IntegerField()))
+
     def with_example_occurrence_ids(
         self,
         project: Project,
@@ -4870,6 +4927,57 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "detections_only",
     "common_combined",  # Deprecated
 ]
+
+
+class OccurrenceSetQuerySet(BaseQuerySet):
+    def for_project(self, project) -> models.QuerySet:
+        """Sets this project can use: its own, plus any that belong to no project."""
+        return self.filter(models.Q(projects=project) | models.Q(projects__isnull=True)).distinct()
+
+    def visible_for_user(self, user) -> models.QuerySet:
+        """
+        Global sets stay visible; project sets follow their project.
+
+        The inherited filter keeps a row only if it reaches a non-draft project, which a
+        set belonging to no project never does. Without this a global set is hidden from
+        everyone but a superuser, which is the opposite of what global means. Only a set's
+        name and size are exposed, never the occurrences inside it.
+        """
+        visible = super().visible_for_user(user)
+        return self.filter(models.Q(pk__in=visible.values("pk")) | models.Q(projects__isnull=True)).distinct()
+
+
+class OccurrenceSet(BaseModel):
+    """
+    A fixed list of occurrences to score models against.
+
+    Two models can only be compared if they were scored on the same occurrences, so the
+    membership is stored rather than re-sampled. A set with no projects is global, which is
+    how one set compares models across the platform; that follows how TaxaList already
+    treats a list with no project.
+    """
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    occurrences = models.ManyToManyField("main.Occurrence", related_name="evaluation_sets", blank=True)
+    projects = models.ManyToManyField(
+        "main.Project",
+        related_name="occurrence_sets",
+        blank=True,
+        help_text="Projects this set belongs to. A set with none is available everywhere.",
+    )
+
+    objects = OccurrenceSetQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.occurrences.count()} occurrences)"
+
+    @property
+    def is_global(self) -> bool:
+        return not self.projects.exists()
 
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
