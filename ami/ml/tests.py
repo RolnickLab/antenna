@@ -3574,7 +3574,7 @@ class TestTrainingHeadUpload(APITestCase):
         response = self.client.post(
             f"/api/v2/jobs/{other.pk}/training-head/",
             self._files(),
-            HTTP_AUTHORIZATION=f"Token {make_callback_token(other)}",
+            headers={"authorization": f"Token {make_callback_token(other)}"},
         )
         self.assertEqual(response.status_code, 400)
 
