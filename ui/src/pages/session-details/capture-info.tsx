@@ -4,9 +4,26 @@ import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 
 export const CaptureInfo = ({ capture }: { capture: CaptureDetails }) => {
   const { projectId } = useParams()
+  const trackingEnabled = useProjectFeature('tracking')
+  const { detectionsValid, detectionsWithFeatures } = capture
+  // Only worth a row when a box is missing a vector; tracking skips those boxes.
+  const vectorField =
+    trackingEnabled &&
+    detectionsValid !== undefined &&
+    detectionsWithFeatures !== undefined &&
+    detectionsWithFeatures < detectionsValid
+      ? {
+          label: translate(STRING.FIELD_LABEL_BOXES_WITH_VECTORS),
+          value: translate(STRING.VALUE_COUNT_OF_TOTAL, {
+            count: detectionsWithFeatures,
+            total: detectionsValid,
+          }),
+        }
+      : undefined
 
   const fields = [
     {
@@ -41,6 +58,7 @@ export const CaptureInfo = ({ capture }: { capture: CaptureDetails }) => {
       label: translate(STRING.FIELD_LABEL_TAXA),
       value: capture.numTaxa,
     },
+    ...(vectorField ? [vectorField] : []),
   ]
 
   return <InfoBlock fields={fields} />

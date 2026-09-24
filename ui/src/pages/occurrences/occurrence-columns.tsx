@@ -145,12 +145,50 @@ export const columns = ({
     renderCell: (item: Occurrence) => <BasicTableCell value={item.timeLabel} />,
   },
   {
+    id: 'detections',
+    name: translate(STRING.FIELD_LABEL_DETECTIONS),
+    sortField: 'detections_count',
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell value={item.numDetections} />
+    ),
+  },
+  {
     id: 'duration',
     name: translate(STRING.FIELD_LABEL_DURATION),
     sortField: 'duration',
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.durationLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
+      />
+    ),
+  },
+  {
+    id: 'motion',
+    name: translate(STRING.FIELD_LABEL_MOTION),
+    sortField: 'track_motion',
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell
+        value={item.motionLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
+      />
+    ),
+  },
+  {
+    id: 'size-change',
+    name: translate(STRING.FIELD_LABEL_SIZE_CHANGE),
+    sortField: 'track_size_ratio',
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell
+        value={item.sizeChangeLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
+      />
+    ),
+  },
+  {
+    id: 'id-agreement',
+    name: translate(STRING.FIELD_LABEL_ID_AGREEMENT),
+    sortField: 'track_id_agreement',
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell
+        value={item.idAgreementLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
       />
     ),
   },
