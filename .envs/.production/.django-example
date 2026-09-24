@@ -49,8 +49,11 @@ RABBITMQ_DEFAULT_USER=
 RABBITMQ_DEFAULT_PASS=
 RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
 
-# Sendgrid
+# Email server
+# If using Sendgrid
 SENDGRID_API_KEY=
+# If using Mandrill
+# MANDRILL_API_KEY=
 
 # Newrelic
 # ------------------------------------------------------------------------------

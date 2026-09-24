@@ -105,8 +105,7 @@ COLLECTFAST_STRATEGY = "collectfast.strategies.boto3.Boto3Strategy"
 EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
 
 DEFAULT_FROM_EMAIL = env(
-    "DJANGO_DEFAULT_FROM_EMAIL",
-    default="Automated Monitoring of Insects ML Platform <noreply@app.insectai.org>",
+    "DJANGO_DEFAULT_FROM_EMAIL", default="Automated Monitoring of Insects ML Platform <noreply@insectai.org>"
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#server-email
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
@@ -132,6 +131,7 @@ ADMIN_URL = env("DJANGO_ADMIN_URL")
 EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
 ANYMAIL = {
     "SENDGRID_API_KEY": env("SENDGRID_API_KEY"),
+    # "MANDRILL_API_KEY": env("MANDRILL_API_KEY",
     # "MAILGUN_API_KEY": env("MAILGUN_API_KEY"),
     # "MAILGUN_SENDER_DOMAIN": env("MAILGUN_DOMAIN"),
     # "MAILGUN_API_URL": env("MAILGUN_API_URL", default="https://api.mailgun.net/v3"),

@@ -240,10 +240,14 @@ EMAIL_BACKEND = env(
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
 EMAIL_TIMEOUT = 5
 
-# Sendgrid
+# Sendgrid is currently used for prod, mailchimp/mandrill can be used for testing. Populate
+# populate with both keys we could be using or None.
 ANYMAIL = {
     "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),  # type: ignore[no-untyped-call]
+    "MANDRILL_API_KEY": env("MANDRILL_API_KEY", default=None),  # type: ignore[no-untyped-call]
 }
+
+# Sendgrid
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
 
