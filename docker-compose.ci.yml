@@ -63,7 +63,7 @@ services:
       - ./.envs/.ci/.django
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: reg.mini.dev/minio:latest
     command: minio server --console-address ":9001" /data
     volumes:
       - "minio_ci_data:/data"
@@ -76,7 +76,7 @@ services:
       retries: 5
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-03-12T17-29-24Z
+    image: reg.mini.dev/minio:latest
     env_file:
       - ./.envs/.ci/.django
     depends_on:
