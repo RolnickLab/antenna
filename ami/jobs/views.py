@@ -15,6 +15,7 @@ from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
@@ -484,6 +485,24 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             job.logger.debug(fetch_msg)
         return Response({"tasks": tasks})
 
+    def _job_for_callback(self, pk, request) -> Job:
+        """
+        The job a processing service is reporting about, if its token proves it may.
+
+        get_object() applies project visibility, which an unauthenticated service fails,
+        so the job is looked up directly and the signed token is what authorises the call.
+        """
+        from ami.ml.training_dispatch import verify_callback_token
+
+        job = Job.objects.filter(pk=pk).first()
+        if not job:
+            raise Http404("Job not found.")
+
+        token = request.headers.get("Authorization", "").removeprefix("Token ").strip()
+        if not verify_callback_token(token, job):
+            raise PermissionDenied("Invalid or expired training callback token.")
+        return job
+
     @extend_schema(
         request=MLJobResultsRequestSerializer,
         responses={200: MLJobResultsResponseSerializer},
@@ -508,17 +527,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         instead of holding the connection open.
         """
         from ami.jobs.models import TrainClassifierJob
-        from ami.ml.training_dispatch import verify_callback_token
 
-        # get_object() applies project visibility, which an unauthenticated service fails.
-        # The token is what authorises this call, so look the job up directly.
-        job = Job.objects.filter(pk=pk).first()
-        if not job:
-            raise Http404("Job not found.")
-
-        token = request.headers.get("Authorization", "").removeprefix("Token ").strip()
-        if not verify_callback_token(token, job):
-            raise PermissionDenied("Invalid or expired training callback token.")
+        job = self._job_for_callback(pk, request)
 
         if job.job_type_key != TrainClassifierJob.key:
             raise ValidationError(f"Job #{job.pk} is not a training job.")
@@ -532,6 +542,44 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         TrainClassifierJob.record_result(job=job, payload=request.data)
         logger.info("Recorded a training result for job %s", job.pk)
         return Response({"status": "recorded"})
+
+    @extend_schema(exclude=True)
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="training-head",
+        name="training-head",
+        # Same token as the result callback: a processing service has no Antenna account.
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+        parser_classes=[MultiPartParser],
+    )
+    def training_head(self, request, pk=None):
+        """
+        Receive the head a retraining run produced, so Antenna keeps a copy of the weights.
+
+        Without this the head exists only on the service's disk, under a cache directory,
+        and Antenna records that a version exists without being able to say where it is.
+        """
+        from ami.jobs.models import TrainClassifierJob
+        from ami.ml.trained_head import HeadTooLarge, store
+
+        job = self._job_for_callback(pk, request)
+
+        if job.job_type_key != TrainClassifierJob.key:
+            raise ValidationError(f"Job #{job.pk} is not a training job.")
+
+        if not request.FILES:
+            raise ValidationError("No head files were uploaded.")
+
+        algorithm_key = (job.params or {}).get("algorithm_key") or "head"
+        try:
+            stored = store(algorithm_key=algorithm_key, job_id=job.pk, files=request.FILES)
+        except HeadTooLarge as e:
+            raise ValidationError(str(e))
+
+        job.logger.info(f"Stored the retrained head: {', '.join(item['path'] for item in stored.values())}")
+        return Response({"files": stored})
 
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
