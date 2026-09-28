@@ -25,8 +25,11 @@ Each candidate is described by:
   positive for ``after`` and zero for ``gap``.
 - ``distance``: centre-to-centre distance of the nearest pair of boxes as a fraction
   of the frame diagonal.
-- ``similarity``: cosine similarity of the pair's feature vectors, from the same
-  algorithm that produced the occurrence's own vector. Null when either has none.
+- ``similarity``: cosine similarity of the pair's feature vectors. Vectors from different
+  algorithms are not comparable, so every candidate is scored with one algorithm: the one
+  with vectors on the most of the occurrence's scored frames. A frame's vector is its
+  embedding, or failing that its classification vector from that algorithm (see
+  ``embeddings``). Null when either frame has no vector from it.
 - ``cost``: the tracking method's matching cost for the pair. Geometry only when
   similarity is null, which lowers the total, so a candidate without a vector can
   outrank one with a poor vector match. Null when either box is malformed.
@@ -55,11 +58,13 @@ tracker's own matcher, for a person extending the track capture by capture.
 
 from __future__ import annotations
 
+import collections
 import datetime
 from typing import TYPE_CHECKING, Any
 
 from django.db.models import Q, QuerySet
 
+from ami.main.models_future.embeddings import algorithm_ids_with_vectors, latest_vectors, vectors_for_detections
 from ami.main.models_future.track_stats import bbox_corners, frame_diagonal
 
 if TYPE_CHECKING:
@@ -152,13 +157,11 @@ def _pair_diagonal(track_frame: dict, frame: dict, corners_a, corners_b) -> floa
     return frame_diagonal(None, None, max(corners_a[2], corners_b[2]), max(corners_a[3], corners_b[3]))
 
 
-def _latest_vectors(classifications) -> dict[tuple[int, int], Any]:
-    """Most recent feature vector per (detection, algorithm) among the rows given."""
-    vectors: dict[tuple[int, int], Any] = {}
-    rows = classifications.order_by("-timestamp", "-pk").values_list("detection_id", "algorithm_id", "features_2048")
-    for detection_id, algorithm_id, vector in rows:
-        vectors.setdefault((detection_id, algorithm_id), vector)
-    return vectors
+def _comparison_algorithm(track_vectors: dict[tuple[int, int], Any]) -> int | None:
+    """The algorithm every candidate is scored with: the one with vectors on the most of the
+    occurrence's scored frames, the lowest id on a tie so the choice is stable."""
+    counts = collections.Counter(algorithm_id for _, algorithm_id in track_vectors)
+    return min(counts, key=lambda algorithm_id: (-counts[algorithm_id], algorithm_id)) if counts else None
 
 
 def _score_pair(track_frame: dict, frame: dict, track_vector, frame_vector) -> dict[str, float | None]:
@@ -219,7 +222,7 @@ def rank_merge_candidates(
     place of the track's frames. Raises ``DetectionNotInOccurrence`` when it is not one
     of the occurrence's frames.
     """
-    from ami.main.models import Classification, Detection, get_media_url
+    from ami.main.models import Detection, get_media_url
 
     config = tracking_config_for(occurrence)
     track = Detection.objects.valid().filter(occurrence_id=occurrence.pk)
@@ -279,31 +282,17 @@ def rank_merge_candidates(
         for candidate, relation, _ in scored
     }
 
-    track_vectors = _latest_vectors(
-        Classification.objects.filter(
-            detection_id__in={track_frame["pk"] for track_frame, _ in pairs.values()},
-            algorithm_id__isnull=False,
-            features_2048__isnull=False,
-        )
-    )
-    frame_vectors: dict[tuple[int, int], Any] = {}
-    if track_vectors:
-        frame_vectors = _latest_vectors(
-            Classification.objects.filter(
-                detection_id__in=[frame["pk"] for _, frame in pairs.values()],
-                algorithm_id__in={algorithm_id for _, algorithm_id in track_vectors},
-                features_2048__isnull=False,
-            )
-        )
-    vector_by_track_frame = {
-        detection_id: (algorithm_id, vector) for (detection_id, algorithm_id), vector in track_vectors.items()
-    }
+    track_vectors = latest_vectors({track_frame["pk"] for track_frame, _ in pairs.values()})
+    algorithm_id = _comparison_algorithm(track_vectors)
+    frame_vectors: dict[int, Any] = {}
+    if algorithm_id is not None:
+        frame_vectors = vectors_for_detections([frame["pk"] for _, frame in pairs.values()], algorithm_id)
 
     rows: list[dict[str, Any]] = []
     for candidate, relation, offset in scored:
         track_frame, frame = pairs[candidate.pk]
-        algorithm_id, track_vector = vector_by_track_frame.get(track_frame["pk"], (None, None))
-        frame_vector = frame_vectors.get((frame["pk"], algorithm_id)) if algorithm_id is not None else None
+        track_vector = track_vectors.get((track_frame["pk"], algorithm_id))
+        frame_vector = frame_vectors.get(frame["pk"])
         scores = _score_pair(track_frame, frame, track_vector, frame_vector)
         crop = frame["path"] or next((f["path"] for f in frames_by_occurrence[candidate.pk] if f["path"]), None)
         rows.append(
@@ -407,11 +396,10 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     such a pair of captures. The query count is fixed, whatever the track's length or the
     number of boxes.
     """
-    from ami.main.models import Classification, Detection, SourceImage
+    from ami.main.models import Detection, SourceImage
     from ami.ml.models import Algorithm
     from ami.ml.post_processing.tracking_task import (
         image_diagonal,
-        latest_feature_vectors,
         resolve_feature_algorithm,
         select_links,
     )
@@ -429,21 +417,13 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     if reference is not None and any(box.occurrence_id == occurrence.pk for box in boxes):
         relation = RELATION_SAME
 
-    # Tracking takes the one extractor with embeddings anywhere in the session, which scans
+    # Tracking takes the one extractor with vectors anywhere in the session, which scans
     # every classification (about 40 ms). The two captures being paired give the same answer
     # unless a session mixes extractors.
     detection_ids = [detection.pk for detection in detections]
-    extractor_ids = set(
-        Classification.objects.filter(
-            detection_id__in=detection_ids, features_2048__isnull=False, algorithm_id__isnull=False
-        )
-        .order_by()
-        .values_list("algorithm_id", flat=True)
-        .distinct()
-    )
-    extractors = list(Algorithm.objects.filter(pk__in=extractor_ids))
+    extractors = list(Algorithm.objects.filter(pk__in=algorithm_ids_with_vectors(pk__in=detection_ids)))
     algorithm, _, _ = resolve_feature_algorithm(occurrence.event, config, candidates=extractors)
-    vectors = latest_feature_vectors(detection_ids, algorithm.pk) if algorithm is not None else {}
+    vectors = vectors_for_detections(detection_ids, algorithm.pk) if algorithm is not None else {}
 
     def skipped(detection_id: int) -> str | None:
         return SKIPPED_NO_VECTOR if config.require_features and detection_id not in vectors else None
