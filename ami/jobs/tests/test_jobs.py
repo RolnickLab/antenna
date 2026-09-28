@@ -19,9 +19,10 @@ from ami.jobs.models import (
     MLJob,
     RegroupEventsJob,
     SourceImageCollectionPopulateJob,
+    TrainClassifierJob,
 )
-from ami.main.models import Deployment, Event, Project, SourceImage, SourceImageCollection
-from ami.ml.models import Pipeline
+from ami.main.models import Deployment, Event, OccurrenceSet, Project, SourceImage, SourceImageCollection, TaxaList
+from ami.ml.models import Algorithm, Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.tests.fixtures.main import create_captures
@@ -1858,3 +1859,64 @@ class TestRetrainingJobPermissions(APITestCase):
 
     def test_a_non_member_may_not(self):
         self.assertEqual(self._may_run(self.outsider), set())
+
+
+class TestJobsScopeWhatTheyAreGiven(TestCase):
+    """
+    A job must only reach the evaluation sets and taxa lists its own project may use.
+
+    Both are named by id in the job's params, which any member who can create a job can
+    set. Without scoping, a job in one project can read another project's private set --
+    and save_evaluation stores one row per (algorithm, occurrence set), so it overwrites
+    the other project's stored result rather than only reading it.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Scoping Project")
+        self.other_project = Project.objects.create(name="Someone Else's Project")
+
+        self.own_set = OccurrenceSet.objects.create(name="Our blind set")
+        self.own_set.projects.add(self.project)
+        self.global_set = OccurrenceSet.objects.create(name="Platform-wide blind set")
+        self.their_set = OccurrenceSet.objects.create(name="Their private blind set")
+        self.their_set.projects.add(self.other_project)
+
+        # A real algorithm, so the evaluate job reaches the occurrence-set lookup instead
+        # of failing earlier on an unknown key.
+        self.algorithm = Algorithm.objects.create(name="Scoped model", key="scoped-model")
+
+        self.own_list = TaxaList.objects.create(name="Our species")
+        self.own_list.projects.add(self.project)
+        self.their_list = TaxaList.objects.create(name="Their species")
+        self.their_list.projects.add(self.other_project)
+
+    def _job(self, job_type, **params):
+        return Job.objects.create(
+            project=self.project, name="Scoping", job_type_key=job_type.key, params=params
+        )
+
+    def test_an_evaluate_job_refuses_another_projects_set(self):
+        job = self._job(
+            EvaluateAlgorithmJob,
+            algorithm_key=self.algorithm.key,
+            occurrence_set_id=self.their_set.pk,
+        )
+
+        with self.assertRaises(ValueError):
+            EvaluateAlgorithmJob.run(job)
+
+
+    def test_a_train_job_refuses_another_projects_taxa_list(self):
+        job = self._job(
+            TrainClassifierJob, algorithm_key=self.algorithm.key, taxa_list_id=self.their_list.pk
+        )
+
+        with self.assertRaises(ValueError):
+            TrainClassifierJob.target_taxa_list(job)
+
+    def test_a_train_job_accepts_its_own_taxa_list(self):
+        job = self._job(
+            TrainClassifierJob, algorithm_key=self.algorithm.key, taxa_list_id=self.own_list.pk
+        )
+
+        self.assertEqual(TrainClassifierJob.target_taxa_list(job), self.own_list)

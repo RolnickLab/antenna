@@ -1084,9 +1084,13 @@ class EvaluateAlgorithmJob(JobType):
         algorithm = Algorithm.objects.filter(key=algorithm_key).first()
         if not algorithm:
             raise ValueError(f"No algorithm with key '{algorithm_key}'.")
-        occurrence_set = OccurrenceSet.objects.filter(pk=occurrence_set_id).first()
+        # Scoped to the project: the id comes from the job's params, which any member who
+        # can create a job may set. An unscoped lookup would score a model against another
+        # project's occurrences and, because an evaluation is stored once per algorithm and
+        # set, overwrite that project's own result.
+        occurrence_set = OccurrenceSet.objects.for_project(job.project).filter(pk=occurrence_set_id).first()
         if not occurrence_set:
-            raise ValueError(f"No occurrence set with id {occurrence_set_id}.")
+            raise ValueError(f"No occurrence set with id {occurrence_set_id} in this project.")
 
         job.progress.add_stage("Scoring", cls.STAGE_SCORE)
         job.update_status(JobState.STARTED)
@@ -1271,9 +1275,10 @@ class TrainClassifierJob(JobType):
 
         taxa_list_id = (job.params or {}).get("taxa_list_id")
         if taxa_list_id:
-            taxa_list = TaxaList.objects.filter(pk=taxa_list_id).first()
+            # Scoped for the same reason as the evaluation set above.
+            taxa_list = TaxaList.objects.for_project(job.project).filter(pk=taxa_list_id).first()
             if not taxa_list:
-                raise ValueError(f"No taxa list with id {taxa_list_id}.")
+                raise ValueError(f"No taxa list with id {taxa_list_id} in this project.")
             return taxa_list
         return job.project.default_taxa_list
 

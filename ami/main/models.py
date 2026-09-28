@@ -4785,6 +4785,10 @@ class Taxon(BaseModel):
 
 
 class TaxaListQuerySet(BaseQuerySet):
+    def for_project(self, project) -> models.QuerySet:
+        """Lists this project can use: its own, plus any that belong to no project."""
+        return self.filter(models.Q(projects=project) | models.Q(projects__isnull=True)).distinct()
+
     def get_or_create_for_project(
         self, name: str, project: "Project | None" = None, **defaults
     ) -> tuple["TaxaList", bool]:
