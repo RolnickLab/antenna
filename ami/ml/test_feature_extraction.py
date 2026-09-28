@@ -205,6 +205,13 @@ class TestExtractFeaturesScope(FeatureOnlyFixture, TestCase):
         self._embed(self.images[0].detections.valid(), self.extractor)
         self._embed(self.images[1].detections.valid().filter(bbox=_box(0.0)), self.extractor)
 
+    def test_a_classifier_pipeline_that_also_embeds_skips_classified_images(self):
+        """Its extractor writes no classification, so counting it as a classifier would
+        reprocess every image and add a second set of classifications."""
+        pipeline = Pipeline.objects.create(name="Classify and embed", slug="classify-and-embed")
+        pipeline.algorithms.set([self.detector, self.classifier, self.extractor])
+        self.assertEqual(list(collect_images(collection=self.collection, pipeline=pipeline)), [])
+
     def test_images_whose_detections_all_have_vectors_are_skipped(self):
         collected = collect_images(collection=self.collection, pipeline=self.pipeline)
         self.assertEqual([image.pk for image in collected], [self.images[1].pk, self.images[2].pk])

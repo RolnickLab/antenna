@@ -148,7 +148,9 @@ def filter_processed_images(
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
+    # A feature extractor never classifies, so it cannot mark an image as processed.
+    not_classifier_keys = detection_type_keys | set(Algorithm.feature_extraction_task_types)
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in not_classifier_keys}
     if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
         # set().issubset(anything) is vacuously True, so without this short-circuit
