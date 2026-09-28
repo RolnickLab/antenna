@@ -17,6 +17,7 @@ import csv
 import dataclasses
 import datetime
 import json
+import statistics
 import sys
 import typing
 from collections.abc import Hashable, Iterable, Mapping
@@ -119,6 +120,16 @@ class TrackingEvaluation:
     mean_completeness: float | None
     mean_purity: float | None
 
+    # The same over confirmed tracks of two or more detections: a single-detection track is
+    # recovered by doing nothing, so it never counts here.
+    multi_detection_tracks: int
+    multi_detection_exactly_recovered: int
+    multi_detection_mean_completeness: float | None
+
+    # Predicted tracks joining confirmed tracks whose determinations differ. None when the
+    # determinations were not given.
+    cross_species_merges: int | None
+
     ground_truth_track_scores: list[GroundTruthTrackScore]
     predicted_track_scores: list[PredictedTrackScore]
 
@@ -148,6 +159,9 @@ class TrackingEvaluation:
             f"Exactly recovered: {self.exactly_recovered}/{self.ground_truth_tracks}  "
             f"fragmented: {self.fragmented_tracks}  merges: {self.merges}",
             f"Mean completeness {fmt(self.mean_completeness)}  mean purity {fmt(self.mean_purity)}",
+            f"Multi-detection tracks exactly recovered: {self.multi_detection_exactly_recovered}/"
+            f"{self.multi_detection_tracks}  mean completeness {fmt(self.multi_detection_mean_completeness)}  "
+            f"cross-species merges: {'n/a' if self.cross_species_merges is None else self.cross_species_merges}",
         ]
 
 
@@ -168,6 +182,7 @@ def evaluate_tracks(
     ground_truth: Mapping[DetectionId, TrackId],
     predictions: Mapping[DetectionId, TrackId],
     timestamps: Mapping[DetectionId, typing.Any],
+    ground_truth_taxa: Mapping[TrackId, typing.Any] | None = None,
 ) -> TrackingEvaluation:
     """Score predicted tracks against confirmed tracks.
 
@@ -175,7 +190,8 @@ def evaluate_tracks(
     ``timestamps`` gives each ground-truth detection a sortable capture time. Only detections
     in ``ground_truth`` are scored. A predicted track is cut down to those detections, so its
     links are between consecutive scored detections; a scored detection missing from
-    ``predictions`` counts as a predicted track of its own.
+    ``predictions`` counts as a predicted track of its own. ``ground_truth_taxa`` optionally
+    gives each confirmed track's determination, to count merges across species.
     """
     scored = list(ground_truth)
     missing_times = [d for d in scored if timestamps.get(d) is None]
@@ -239,6 +255,13 @@ def evaluate_tracks(
             )
         )
 
+    multi = [score for score in gt_scores if score.length > 1]
+    cross_species = None
+    if ground_truth_taxa is not None:
+        cross_species = sum(
+            1 for spans in gt_by_pred.values() if len({ground_truth_taxa.get(gt_id) for gt_id in spans} - {None}) > 1
+        )
+
     return TrackingEvaluation(
         ground_truth_tracks=len(gt_tracks),
         detections=len(scored),
@@ -262,6 +285,10 @@ def evaluate_tracks(
         exactly_recovered=sum(1 for s in gt_scores if s.exactly_recovered),
         mean_completeness=(sum(s.completeness for s in gt_scores) / len(gt_scores)) if gt_scores else None,
         mean_purity=(sum(s.purity for s in pred_scores) / len(pred_scores)) if pred_scores else None,
+        multi_detection_tracks=len(multi),
+        multi_detection_exactly_recovered=sum(1 for s in multi if s.exactly_recovered),
+        multi_detection_mean_completeness=(sum(s.completeness for s in multi) / len(multi)) if multi else None,
+        cross_species_merges=cross_species,
         ground_truth_track_scores=gt_scores,
         predicted_track_scores=pred_scores,
     )
@@ -295,6 +322,137 @@ def tracks_from_links(
     if unreached:
         raise ValueError(f"Links form a cycle through {sorted(unreached, key=_sort_key)[:3]}")
     return track_of
+
+
+def summarise_session(
+    predictions: Mapping[DetectionId, TrackId], labels: Mapping[DetectionId, tuple[typing.Any, float]]
+) -> dict[str, typing.Any]:
+    """What tracking does to a whole session, confirmed or not: occurrences and species to review.
+
+    ``predictions`` maps every detection in the session to its predicted track; ``labels``
+    gives a detection's top label as ``(taxon, score)``. Before tracking every detection is
+    its own occurrence; after, each track is one, determined by its highest-scoring label
+    (the way an occurrence takes its best prediction). Unlabelled detections add no species.
+    """
+    members: dict[TrackId, list[DetectionId]] = collections.defaultdict(list)
+    for detection_id, track_id in predictions.items():
+        members[track_id].append(detection_id)
+    lengths = sorted(len(m) for m in members.values())
+
+    def determination(detection_ids: list[DetectionId]) -> typing.Any:
+        scored = [(labels[d][1], d) for d in detection_ids if d in labels]
+        if not scored:
+            return None
+        _, best = min(scored, key=lambda item: (-item[0], _sort_key(item[1])))
+        return labels[best][0]
+
+    after = {determination(m) for m in members.values()} - {None}
+    before = {labels[d][0] for d in predictions if d in labels} - {None}
+    return {
+        "detections": len(predictions),
+        "occurrences_before": len(predictions),
+        "occurrences_after": len(members),
+        "multi_detection_tracks": sum(1 for n in lengths if n > 1),
+        "track_length_median": statistics.median(lengths) if lengths else None,
+        "track_length_max": lengths[-1] if lengths else None,
+        "unique_determinations_before": len(before),
+        "unique_determinations_after": len(after),
+    }
+
+
+def sweep_row(
+    index: int,
+    settings: Mapping[str, typing.Any],
+    scope: typing.Any,
+    evaluation: TrackingEvaluation,
+    session: Mapping[str, typing.Any] | None,
+    links_proposed: int,
+) -> dict[str, typing.Any]:
+    """One line of a sweep table: one setting scored over one session, or over all of them."""
+    session = session or {}
+    return {
+        "run": index,
+        "settings": dict(settings),
+        "scope": scope,
+        "links_proposed": links_proposed,
+        "link_precision": evaluation.link_precision,
+        "link_recall": evaluation.link_recall,
+        "link_f1": evaluation.link_f1,
+        "pairwise_precision": evaluation.pairwise_precision,
+        "pairwise_recall": evaluation.pairwise_recall,
+        "multi_detection_exactly_recovered": evaluation.multi_detection_exactly_recovered,
+        "multi_detection_tracks": evaluation.multi_detection_tracks,
+        "multi_detection_mean_completeness": evaluation.multi_detection_mean_completeness,
+        "ground_truth_singletons": evaluation.ground_truth_singletons,
+        "fragmented_tracks": evaluation.fragmented_tracks,
+        "cross_individual_merges": evaluation.merges,
+        "cross_species_merges": evaluation.cross_species_merges,
+        "track_length_median": session.get("track_length_median"),
+        "track_length_max": session.get("track_length_max"),
+        "occurrences_before": session.get("occurrences_before"),
+        "occurrences_after": session.get("occurrences_after"),
+        "unique_determinations_before": session.get("unique_determinations_before"),
+        "unique_determinations_after": session.get("unique_determinations_after"),
+    }
+
+
+def format_sweep_markdown(rows: list[Mapping[str, typing.Any]]) -> str:
+    """Sweep rows as Markdown: one table per scope (each session, then overall), one line per setting.
+
+    Only the settings that vary between runs are shown, to keep the tables narrow.
+    """
+
+    def fmt(value: typing.Any) -> str:
+        if value is None:
+            return "n/a"
+        if isinstance(value, float):
+            return f"{value:.3f}".rstrip("0").rstrip(".") if value != int(value) else str(int(value))
+        return str(value)
+
+    all_settings = [row["settings"] for row in rows]
+    keys = sorted({key for settings in all_settings for key in settings})
+    varying = [key for key in keys if len({json.dumps(s.get(key), default=str) for s in all_settings}) > 1]
+    columns = [
+        ("links", lambda r: fmt(r["links_proposed"])),
+        ("link P", lambda r: fmt(r["link_precision"])),
+        ("link R", lambda r: fmt(r["link_recall"])),
+        ("link F1", lambda r: fmt(r["link_f1"])),
+        ("pair P", lambda r: fmt(r["pairwise_precision"])),
+        ("pair R", lambda r: fmt(r["pairwise_recall"])),
+        ("exact multi", lambda r: f"{r['multi_detection_exactly_recovered']}/{r['multi_detection_tracks']}"),
+        ("multi compl.", lambda r: fmt(r["multi_detection_mean_completeness"])),
+        ("GT singletons", lambda r: fmt(r["ground_truth_singletons"])),
+        ("fragmented", lambda r: fmt(r["fragmented_tracks"])),
+        ("x-indiv merges", lambda r: fmt(r["cross_individual_merges"])),
+        ("x-species merges", lambda r: fmt(r["cross_species_merges"])),
+        ("track len med/max", lambda r: f"{fmt(r['track_length_median'])}/{fmt(r['track_length_max'])}"),
+        ("occurrences", lambda r: f"{fmt(r['occurrences_before'])} -> {fmt(r['occurrences_after'])}"),
+        (
+            "species",
+            lambda r: f"{fmt(r['unique_determinations_before'])} -> {fmt(r['unique_determinations_after'])}",
+        ),
+    ]
+    scopes: list[typing.Any] = []
+    for row in rows:
+        if row["scope"] not in scopes:
+            scopes.append(row["scope"])
+    scopes.sort(key=lambda scope: (scope == "overall", _sort_key(scope)))
+
+    lines: list[str] = []
+    for scope in scopes:
+        lines.append(f"## {'Overall' if scope == 'overall' else f'Session {scope}'}")
+        lines.append("")
+        header = ["run", *varying, *(name for name, _ in columns)]
+        lines.append("| " + " | ".join(header) + " |")
+        lines.append("|" + "---|" * len(header))
+        for row in rows:
+            if row["scope"] != scope:
+                continue
+            cells = [str(row["run"]), *(fmt(row["settings"].get(key)) for key in varying)]
+            cells.extend(render(row) for _, render in columns)
+            lines.append("| " + " | ".join(cells) + " |")
+        lines.append("")
+    return "\n".join(lines)
 
 
 # CSV adapter: the tracks export writes one row per detection, grouped by occurrence.
