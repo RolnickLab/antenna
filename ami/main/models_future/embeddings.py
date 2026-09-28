@@ -15,7 +15,7 @@ import logging
 from collections.abc import Iterable
 from typing import Any
 
-from django.db.models import Count, F, IntegerField, QuerySet, Value
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, QuerySet, Value
 
 logger = logging.getLogger(__name__)
 
@@ -101,20 +101,53 @@ def algorithm_ids_with_vectors(**detection_lookups: Any) -> set[int]:
     return set(embedded.union(classified))
 
 
+# A configured extractor is preferred only once it covers nearly as many detections as the best
+# one, so a feature-extraction run still in progress does not become the default for the session.
+CONFIGURED_EXTRACTOR_MIN_COVERAGE = 0.9
+
+
+def detections_covered(algorithm_ids: Iterable[int], **detection_lookups: Any) -> dict[int, int]:
+    """How many detections matching the lookups have a vector from each algorithm, in one query.
+
+    A detection counts once per algorithm whichever store (embedding or classification) holds its vector.
+    """
+    from ami.main.models import Classification, Detection, DetectionEmbedding
+
+    algorithm_ids = list(algorithm_ids)
+    if not algorithm_ids:
+        return {}
+    # The Exists terms are annotations, not a Q inside the Count, so cachalot sees their tables
+    # and a newly stored vector invalidates the cached count.
+    flags, counts = {}, {}
+    for algorithm_id in algorithm_ids:
+        embedded, classified = f"embedded_{algorithm_id}", f"classified_{algorithm_id}"
+        flags[embedded] = Exists(
+            DetectionEmbedding.objects.filter(detection_id=OuterRef("pk"), algorithm_id=algorithm_id)
+        )
+        flags[classified] = Exists(
+            Classification.objects.filter(
+                detection_id=OuterRef("pk"), algorithm_id=algorithm_id, features_2048__isnull=False
+            )
+        )
+        counts[f"algorithm_{algorithm_id}"] = Count("pk", filter=Q(**{embedded: True}) | Q(**{classified: True}))
+    totals = Detection.objects.filter(**detection_lookups).order_by().annotate(**flags).aggregate(**counts)
+    return {algorithm_id: totals[f"algorithm_{algorithm_id}"] for algorithm_id in algorithm_ids}
+
+
 def default_feature_algorithm_id(project: Any, algorithm_ids: Iterable[int], **detection_lookups: Any) -> int | None:
     """The extractor to compare when the caller chose none, among ``algorithm_ids``.
 
-    One the project runs (a feature-extraction algorithm in a pipeline enabled for it) wins;
-    among several, or when there is none, the one whose vector was stored most recently for
-    the detections matching the lookups; failing that, the newest algorithm. At most 2 queries.
+    The one with vectors for the most detections matching the lookups, so the choice does not
+    depend on which job wrote last. An extractor the project runs (a feature-extraction algorithm
+    in a pipeline enabled for it) wins when it covers at least CONFIGURED_EXTRACTOR_MIN_COVERAGE
+    of that. Ties go to the newest algorithm. At most 2 queries.
     """
-    from ami.main.models import DetectionEmbedding
     from ami.ml.models import Algorithm, Pipeline
 
     algorithm_ids = sorted(set(algorithm_ids))
     if len(algorithm_ids) <= 1:
         return algorithm_ids[0] if algorithm_ids else None
-    configured = sorted(
+    configured = set(
         Algorithm.objects.filter(
             pk__in=algorithm_ids,
             task_type__in=Algorithm.feature_extraction_task_types,
@@ -122,19 +155,19 @@ def default_feature_algorithm_id(project: Any, algorithm_ids: Iterable[int], **d
         )
         .order_by()
         .values_list("pk", flat=True)
-        .distinct()
     )
-    if len(configured) == 1:
-        return configured[0]
-    choices = configured or algorithm_ids
-    lookups = {f"detection__{key}": value for key, value in detection_lookups.items()}
-    latest = (
-        DetectionEmbedding.objects.filter(algorithm_id__in=choices, **lookups)
-        .order_by("-updated_at", "-pk")
-        .values_list("algorithm_id", flat=True)
-        .first()
-    )
-    return latest if latest is not None else max(choices)
+    coverage = detections_covered(algorithm_ids, **detection_lookups)
+
+    def rank(algorithm_id: int) -> tuple[int, int]:
+        return coverage[algorithm_id], algorithm_id
+
+    best = max(algorithm_ids, key=rank)
+    eligible = [
+        algorithm_id
+        for algorithm_id in configured
+        if coverage[algorithm_id] >= CONFIGURED_EXTRACTOR_MIN_COVERAGE * coverage[best]
+    ]
+    return max(eligible, key=rank) if eligible else best
 
 
 def feature_extractors_with_vectors(project: Any, **detection_lookups: Any) -> list[dict[str, Any]]:

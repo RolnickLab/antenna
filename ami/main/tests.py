@@ -10856,15 +10856,15 @@ class CaptureMatchesTestCase(APITestCase):
         self.assertIsNotNone(row["cost"], "The geometry is still scored")
 
     def test_two_feature_extractors_are_never_compared_with_each_other(self):
-        """With embeddings from two extractors, tracking compares the default one only (here the
-        one stored most recently), so a box whose track frame has no vector from it does not link."""
+        """With embeddings from two extractors, tracking compares the default one only (the one
+        covering the most boxes), so a box whose only vector is from the other does not link."""
         other_extractor = Algorithm.objects.create(name="Other extractor", key="other-extractor")
         track = self._track(self.captures[1:3], vector=self.VECTOR)
         self._box(self.captures[3], self.NEAR_BOX, vector=self.VECTOR, algorithm=other_extractor)
 
         data = self.get_matches(track, self.captures[3].pk).data
 
-        self.assertEqual(data["feature_algorithm_id"], other_extractor.pk)
+        self.assertEqual(data["feature_algorithm_id"], self.extractor.pk)
         self.assertFalse(data["detections"][0]["would_link"])
 
     def test_the_reference_is_the_nearest_track_frame_on_another_capture(self):
