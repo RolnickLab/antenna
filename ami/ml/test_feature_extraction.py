@@ -67,7 +67,8 @@ class FeatureOnlyFixture:
         )
         self.extractor = Algorithm.objects.create(name="Backbone", key="test-backbone", task_type="embedding")
         self.pipeline = Pipeline.objects.create(name="Features only", slug="features-only")
-        self.pipeline.algorithms.set([self.extractor])
+        # A feature-only service also lists the detector whose boxes it echoes back.
+        self.pipeline.algorithms.set([self.detector, self.extractor])
 
         start = datetime.datetime(2024, 6, 1, 22, 0)
         self.images = [
@@ -152,6 +153,15 @@ class TestEmbeddingSchema(TestCase):
 class TestFeatureOnlySave(FeatureOnlyFixture, TestCase):
     def setUp(self) -> None:
         self._set_up_project()
+
+    def test_a_pipeline_is_feature_only_until_it_lists_a_classifier(self):
+        """The detector does not count against it; a classifier does, since its pipeline
+        detects and classifies anew and may embed as well."""
+        self.assertEqual(self.pipeline.feature_extraction_algorithms(), [self.extractor])
+        self.pipeline.algorithms.add(self.classifier)
+        self.assertFalse(self.pipeline.is_feature_only())
+        self.pipeline.algorithms.set([self.detector])
+        self.assertFalse(self.pipeline.is_feature_only())
 
     def test_an_embeddings_only_response_writes_only_vectors(self):
         """No detection, classification or occurrence is created and no determination moves, even

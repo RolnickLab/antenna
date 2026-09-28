@@ -285,7 +285,7 @@ class Algorithm(BaseModel):
         AlgorithmTaskType.CLASSIFICATION,
         AlgorithmTaskType.TAGGING,
     ]
-    # A pipeline made only of these returns vectors for existing detections and nothing else.
+    # A pipeline with one of these and no classifier returns vectors for existing detections only.
     feature_extraction_task_types = [
         AlgorithmTaskType.EMBEDDING,
         AlgorithmTaskType.FEATURE_EXTRACTION,
