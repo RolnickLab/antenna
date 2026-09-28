@@ -29,9 +29,11 @@ extractor's vectors to compare. See #1417 for the original design.
   `{"algorithm": {"name", "key"}, "features": [float, ...]}`. The key `vector` is accepted as an
   alias (root validator). Any non-empty length; the per-algorithm length is enforced at save time.
 - The algorithm key must be declared in the pipeline's `/info`, else `PipelineNotConfigured`.
-- **Feature-only pipeline**: every algorithm in the pipeline has `task_type` in
-  `Algorithm.feature_extraction_task_types` = `embedding` or `feature_extraction`
-  (`feature_extraction_only()` / `Pipeline.is_feature_only()`).
+- **Feature-only pipeline**: at least one algorithm has `task_type` in
+  `Algorithm.feature_extraction_task_types` (`embedding` or `feature_extraction`) and none is a
+  classifier (`classification` / `tagging`). Detector algorithms are allowed because the service
+  lists the detector whose boxes it echoes back (`feature_extractors_if_feature_only()` in
+  `ami/ml/models/pipeline.py`, `Pipeline.feature_extraction_algorithms()` returns only the extractors).
 - Request for a feature-only run (sync, `process_images`): `PipelineRequest` with
   `source_images` = only the images that still have a detection to embed, and `detections` =
   those detections as `DetectionRequest{source_image, bbox, crop_image_url, algorithm=<original

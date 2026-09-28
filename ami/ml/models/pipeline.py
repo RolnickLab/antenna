@@ -134,9 +134,13 @@ def filter_processed_images(
     pipeline_algorithms = list(pipeline.algorithms.all())
     pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
 
-    if feature_extraction_only(pipeline_algorithms):
+    feature_extractors = feature_extractors_if_feature_only(pipeline_algorithms)
+    if feature_extractors:
         yield from filter_images_missing_features(
-            images, pipeline_algorithm_ids, batch_size=batch_size, heartbeat=_CollectHeartbeat(job, total)
+            images,
+            [algorithm.pk for algorithm in feature_extractors],
+            batch_size=batch_size,
+            heartbeat=_CollectHeartbeat(job, total),
         )
         return
 
@@ -233,10 +237,22 @@ def filter_processed_images(
         heartbeat.tick(len(batch))
 
 
+def feature_extractors_if_feature_only(algorithms: list[Algorithm]) -> list[Algorithm]:
+    """The feature extractors of a pipeline that only extracts features, otherwise none.
+
+    Such a pipeline has a feature extractor and no classifier. A detector may be listed too:
+    the service names the detector of the boxes it echoes back, but detects nothing new.
+    """
+    feature_types = set(Algorithm.feature_extraction_task_types)
+    classification_types = set(Algorithm.classification_task_types)
+    if any(algorithm.task_type in classification_types for algorithm in algorithms):
+        return []
+    return [algorithm for algorithm in algorithms if algorithm.task_type in feature_types]
+
+
 def feature_extraction_only(algorithms: list[Algorithm]) -> bool:
     """Whether a pipeline made of these algorithms only extracts features (see ``Pipeline.is_feature_only``)."""
-    feature_types = set(Algorithm.feature_extraction_task_types)
-    return bool(algorithms) and all(algorithm.task_type in feature_types for algorithm in algorithms)
+    return bool(feature_extractors_if_feature_only(algorithms))
 
 
 def embeddable_detections(detections: models.QuerySet) -> models.QuerySet:
@@ -1528,13 +1544,12 @@ class Pipeline(BaseModel):
         return f'#{self.pk} "{self.name}" ({self.slug}) v{self.version}'
 
     def feature_extraction_algorithms(self) -> list[Algorithm]:
-        """The pipeline's algorithms when every one of them extracts features, otherwise none.
+        """The pipeline's feature extractors when it has no classifier, otherwise none.
 
         Such a pipeline is run on existing detections and only stores their vectors: it
         creates no detection, classification or occurrence.
         """
-        algorithms = list(self.algorithms.all())
-        return algorithms if feature_extraction_only(algorithms) else []
+        return feature_extractors_if_feature_only(list(self.algorithms.all()))
 
     def is_feature_only(self) -> bool:
         return bool(self.feature_extraction_algorithms())
