@@ -165,6 +165,24 @@ export const getFrameNames = (labels: FrameLabel[]): FrameName[] => {
   )
 }
 
+/** "Pelosia muscerda ×7, No classification ×2", naming at most `limit` labels. */
+export const formatFrameNames = (names: FrameName[], limit = 4): string => {
+  const shown = names.slice(0, limit).map(({ frames, taxon }) =>
+    translate(STRING.TRACK_FRAME_NAME_COUNT, {
+      count: frames,
+      name: taxon?.name ?? translate(STRING.TRACK_FRAME_NO_CLASSIFICATION),
+    })
+  )
+
+  if (names.length > limit) {
+    shown.push(
+      translate(STRING.TRACK_FRAME_NAMES_MORE, { count: names.length - limit })
+    )
+  }
+
+  return shown.join(', ')
+}
+
 /** Width and height of a `[x1, y1, x2, y2]` box, 0 when the box is malformed. */
 const bboxSize = (bbox?: number[]): [number, number] =>
   bbox?.length === 4

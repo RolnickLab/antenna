@@ -1,6 +1,7 @@
 import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
+import { formatFrameNames } from 'data-services/models/occurrence-details'
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
@@ -107,6 +108,11 @@ export const OccurrenceToolbar = ({
   const { canRestructure, canVerify } = getTrackEditRights(
     details?.userPermissions
   )
+  // The classifier's own name for each frame, which a merge or a confirmed
+  // identification does not change: the evidence behind the track's name.
+  const frameNames = details?.frameNames.length
+    ? formatFrameNames(details.frameNames)
+    : undefined
 
   // Matched on the detection rather than the capture: one capture can hold two frames
   // of the same track, and they are different positions along it.
@@ -241,6 +247,13 @@ export const OccurrenceToolbar = ({
       </div>
 
       <div className="flex flex-col gap-0.5 body-small text-muted-foreground">
+        {frameNames ? (
+          <span>
+            {translate(STRING.TRACK_SUMMARY_FRAME_NAMES)}:{' '}
+            <span className="text-foreground">{frameNames}</span>
+          </span>
+        ) : null}
+
         {framePosition ? <span>{framePosition}</span> : null}
 
         {shownFrames !== undefined && path && shownFrames < path.length ? (

@@ -1,5 +1,6 @@
 import {
   FrameLabel,
+  formatFrameNames,
   frameHasVector,
   getFrameClassification,
   getFrameNames,
@@ -115,6 +116,23 @@ describe('frame names', () => {
       [undefined, 2, undefined],
       ['Xestia c-nigrum', 1, 0.9],
     ])
+  })
+
+  test('reads as one line of names and counts, unclassified frames included', () => {
+    const noctua = new Taxon(NOCTUA)
+    const xestia = new Taxon(XESTIA)
+    const names = getFrameNames([
+      { taxon: noctua },
+      { taxon: noctua },
+      {},
+      { taxon: xestia },
+    ])
+
+    expect(formatFrameNames(names)).toBe(
+      'Noctua pronuba ×2, No classification ×1, Xestia c-nigrum ×1'
+    )
+    expect(formatFrameNames(names, 1)).toBe('Noctua pronuba ×2, 2 more')
+    expect(formatFrameNames([])).toBe('')
   })
 })
 
