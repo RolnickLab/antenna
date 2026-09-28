@@ -6,7 +6,9 @@ extractor's vectors to compare. See #1417 for the original design.
 
 ## Storage
 
-- `DetectionEmbedding` (`ami/main/models.py`, migration `main/0102_detection_embedding.py`):
+- `DetectionEmbedding` (`ami/main/models.py`, migration `main/0102_detection_embedding.py`;
+  `main/0104` re-runs `ALTER COLUMN vector TYPE vector` for databases that applied an earlier
+  0102 draft with `vector(2048)`, which Django state cannot see):
   one row per (detection, algorithm), unique constraint `unique_detection_embedding_per_algorithm`
   (its index leads with `detection_id` and serves reads). `vector` is a pgvector column with
   **no fixed dimension**: extractors differ (2048 for the moth classifier backbones, 1024 for BioCLIP).
@@ -56,8 +58,13 @@ No new job type: an ordinary ML job (`MLJob`, key `ml`) whose pipeline is featur
 permission as any ML job. Scope is the job's capture set, deployment or single capture.
 `filter_processed_images` delegates to `filter_images_missing_features`: an image is sent only
 when a real detection on it lacks a `DetectionEmbedding` from one of the pipeline's algorithms
-(`detections_missing_features`; classification vectors do not count). The project flag
-`reprocess_all_images` sends every real detection again.
+(`detections_missing_features`; classification vectors do not count). Both the image filter
+and the request go through `embeddable_detections` (real box and known detector), so no image
+is chosen without boxes to send. The async path also drops any task left with no boxes
+(`_attach_detections_for_feature_pipeline` returns them), because a worker given an empty list
+runs its own detector. The filter emits the same throttled `collect` heartbeat as regular
+pipelines (`_CollectHeartbeat`). The project flag `reprocess_all_images` sends every real
+detection again.
 
 ## Read path
 
@@ -78,10 +85,14 @@ when a real detection on it lacks a `DetectionEmbedding` from one of the pipelin
 `resolve_feature_algorithm(event, config)`:
 1. `config.feature_extraction_algorithm_id` if given.
 2. The only extractor with vectors in the session.
-3. Several: `default_feature_algorithm_id(project, ids, source_image__event=event)`: a
-   feature-extraction algorithm in a pipeline enabled for the project, else the extractor whose
-   `DetectionEmbedding` was stored most recently in the session, else the newest algorithm id.
-   The run logs which one it compares.
+3. Several: `default_feature_algorithm_id(project, ids, source_image__event=event)`: the
+   extractor with vectors for the most detections in the session (`detections_covered`, one
+   query, either store counts once); a configured one (feature-extraction algorithm in a
+   pipeline enabled for the project) wins if it covers at least
+   `CONFIGURED_EXTRACTOR_MIN_COVERAGE` (0.9) of the best; ties go to the newest algorithm id.
+   A half-finished backfill therefore never becomes the default. The run logs which one it compares.
+   Gotcha: the Exists terms in `detections_covered` must be annotations, not a `Q` inside
+   `Count(filter=...)`, or cachalot misses their tables and serves a stale count.
 4. None: `require_features=True` skips the session; otherwise geometry-only matching.
 
 Merge candidates use the same resolution over the two captures being compared.
