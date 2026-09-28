@@ -3517,9 +3517,9 @@ class DetectionEmbedding(BaseModel):
     # No separate index: the unique constraint's index leads with detection_id.
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings")
+    # No fixed length: extractors differ. Each algorithm keeps one (Algorithm.embedding_dimensions).
     vector = pgvector.django.VectorField(
-        dimensions=2048,
-        help_text="Feature embedding from the model backbone",
+        help_text="Feature embedding from the model backbone. Its length is the algorithm's own.",
     )
     # The job whose results stored this vector; kept when the job is deleted, since the vector stays valid.
     job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")

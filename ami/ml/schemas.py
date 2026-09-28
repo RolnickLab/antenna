@@ -116,6 +116,11 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         description="A URI to the weight or model details, could be a public web URL or object store path.",
     )
     category_map: AlgorithmCategoryMapResponse | None = None
+    embedding_dimensions: int | None = pydantic.Field(
+        default=None,
+        ge=1,
+        description="For a feature extractor, the length of every vector it returns.",
+    )
 
     class Config:
         extra = "ignore"
@@ -186,18 +191,25 @@ class EmbeddingResponse(pydantic.BaseModel):
     """A feature vector for one detection and the algorithm whose backbone produced it.
 
     Carried on the detection rather than on a classification, so storing it can never
-    add a prediction that competes for the occurrence's determination.
+    add a prediction that competes for the occurrence's determination. Its length is the
+    algorithm's own (extractors differ), and only vectors from one algorithm are comparable.
     """
 
     features: list[float] = pydantic.Field(
-        description="The feature vector. Must be exactly 2048 floats.",
+        description="The feature vector. Also accepted under the key 'vector'.",
     )
     algorithm: AlgorithmReference
 
+    @pydantic.root_validator(pre=True)
+    def _accept_vector_key(cls, values):
+        if isinstance(values, dict) and "features" not in values and "vector" in values:
+            values = {**values, "features": values["vector"]}
+        return values
+
     @pydantic.validator("features")
-    def _features_length(cls, v):
-        if len(v) != 2048:
-            raise ValueError(f"features must be length 2048, got {len(v)}")
+    def _features_not_empty(cls, v):
+        if not v:
+            raise ValueError("features must contain at least one value")
         return v
 
 
@@ -319,9 +331,13 @@ class PipelineProcessingTask(pydantic.BaseModel):
     image_id: str
     image_url: str
     reply_subject: str | None = None  # The NATS subject to send the result to
-    # TODO: Do we need these?
-    # detections: list[DetectionRequest] | None = None
-    # config: PipelineRequestConfigParameters | dict | None = None
+    detections: list[DetectionRequest] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Existing detections on the image to run the pipeline on instead of detecting anew. "
+            "Sent for feature-only pipelines, which return these boxes with an embedding each."
+        ),
+    )
 
 
 class ProcessingServiceClientInfo(pydantic.BaseModel):

@@ -107,6 +107,10 @@ def filter_processed_images(
     pipeline_algorithms = list(pipeline.algorithms.all())
     pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
 
+    if feature_extraction_only(pipeline_algorithms):
+        yield from filter_images_missing_features(images, pipeline_algorithm_ids, batch_size=batch_size)
+        return
+
     detection_type_keys = set(Algorithm.detection_task_types)
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
@@ -220,6 +224,84 @@ def filter_processed_images(
                 job.progress.update_stage("collect", progress=fraction)
                 job.save(update_fields=["progress", "updated_at"])
                 last_progress_save_monotonic = now_monotonic
+
+
+def feature_extraction_only(algorithms: list[Algorithm]) -> bool:
+    """Whether a pipeline made of these algorithms only extracts features (see ``Pipeline.is_feature_only``)."""
+    feature_types = set(Algorithm.feature_extraction_task_types)
+    return bool(algorithms) and all(algorithm.task_type in feature_types for algorithm in algorithms)
+
+
+def detections_missing_features(detections: models.QuerySet, algorithm_ids: list[int]) -> models.QuerySet:
+    """Real detections without a stored vector from at least one of the algorithms.
+
+    Only ``DetectionEmbedding`` rows count: they are what a feature-only pipeline writes.
+    """
+    missing = models.Q()
+    for algorithm_id in algorithm_ids:
+        missing |= ~models.Exists(
+            DetectionEmbedding.objects.filter(detection_id=models.OuterRef("pk"), algorithm_id=algorithm_id)
+        )
+    return detections.valid().filter(missing)
+
+
+def filter_images_missing_features(
+    images: typing.Iterable[SourceImage],
+    algorithm_ids: list[int],
+    batch_size: int = FILTER_PROCESSED_BATCH_SIZE,
+) -> typing.Iterable[SourceImage]:
+    """The images with at least one real detection that lacks a vector from the algorithms.
+
+    Images without detections are skipped: a feature-only pipeline has nothing to run on there.
+    """
+    image_iter = iter(images)
+    while True:
+        batch = list(itertools.islice(image_iter, batch_size))
+        if not batch:
+            return
+        needing = set(
+            detections_missing_features(
+                Detection.objects.filter(source_image_id__in=[image.pk for image in batch]), algorithm_ids
+            )
+            .order_by()
+            .values_list("source_image_id", flat=True)
+            .distinct()
+        )
+        yield from (image for image in batch if image.pk in needing)
+
+
+def collect_detections_for_features(
+    source_image_requests: list[SourceImageRequest],
+    algorithm_ids: list[int],
+    include_existing_vectors: bool = False,
+) -> list[DetectionRequest]:
+    """The existing detections a feature-only pipeline should embed, for all the images in one query.
+
+    Detections that already have a vector from every one of the algorithms are left out
+    unless ``include_existing_vectors`` is set.
+    """
+    request_by_image_id = {int(request.id): request for request in source_image_requests}
+    detections = Detection.objects.filter(source_image_id__in=list(request_by_image_id))
+    detections = (
+        detections.valid() if include_existing_vectors else detections_missing_features(detections, algorithm_ids)
+    )
+    detection_requests: list[DetectionRequest] = []
+    for detection in detections.select_related("detection_algorithm").order_by("source_image_id", "pk"):
+        bbox = detection.get_bbox()
+        if bbox is None or detection.detection_algorithm is None:
+            continue
+        detection_requests.append(
+            DetectionRequest(
+                source_image=request_by_image_id[detection.source_image_id],
+                bbox=bbox,
+                crop_image_url=detection.url(),
+                algorithm=AlgorithmReference(
+                    name=detection.detection_algorithm.name,
+                    key=detection.detection_algorithm.key,
+                ),
+            )
+        )
+    return detection_requests
 
 
 def collect_images(
@@ -349,6 +431,8 @@ def process_images(
         if pipeline_config.reprocess_existing_detections:
             reprocess_existing_detections = True
 
+    feature_algorithm_ids = [algorithm.pk for algorithm in pipeline.feature_extraction_algorithms()]
+
     for source_image, url in zip(images, urls):
         if url:
             source_image_request = SourceImageRequest(
@@ -357,10 +441,20 @@ def process_images(
             )
             source_image_requests.append(source_image_request)
 
-            if reprocess_existing_detections:
+            if reprocess_existing_detections and not feature_algorithm_ids:
                 detection_requests += collect_detections(source_image, source_image_request)
 
-    if reprocess_existing_detections:
+    if feature_algorithm_ids:
+        # A feature-only pipeline only ever runs on the boxes Antenna already has.
+        detection_requests = collect_detections_for_features(
+            source_image_requests, feature_algorithm_ids, include_existing_vectors=reprocess_all_images
+        )
+        images_with_detections = {request.source_image.id for request in detection_requests}
+        source_image_requests = [request for request in source_image_requests if request.id in images_with_detections]
+        task_logger.info(f"Sending {len(detection_requests)} existing detections for feature extraction.")
+        if not source_image_requests:
+            return PipelineResultsResponse(pipeline=pipeline.slug, source_images=[], detections=[], total_time=0)
+    elif reprocess_existing_detections:
         task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
     else:
         task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
@@ -512,6 +606,17 @@ def get_or_create_algorithm_and_category_map(
             logger.warning(f"Field '{field}' changed for algorithm {algo} from {getattr(algo, field)} to {new_value}")
             setattr(algo, field, new_value)
             algo_fields_updated.append(field)
+
+    if algorithm_config.embedding_dimensions and algo.embedding_dimensions != algorithm_config.embedding_dimensions:
+        if algo.embedding_dimensions is None:
+            algo.embedding_dimensions = algorithm_config.embedding_dimensions
+            algo_fields_updated.append("embedding_dimensions")
+        else:
+            # Stored vectors keep their length; a new length needs a new algorithm version.
+            logger.warning(
+                f"Algorithm {algo} reports {algorithm_config.embedding_dimensions}-dimension vectors but "
+                f"stores {algo.embedding_dimensions}; keeping {algo.embedding_dimensions}."
+            )
 
     if algo_fields_updated:
         algo.save(update_fields=algo_fields_updated)
@@ -683,6 +788,41 @@ def create_detections(
 
 # A vector is roughly 40 KB of SQL text (estimate), so this keeps each INSERT to a few MB.
 EMBEDDING_BATCH_SIZE = 200
+# Boxes are matched to responses at this precision, so a service that re-serialises the
+# coordinates it was sent still lands its vectors on the same detections.
+BOX_MATCH_DECIMALS = 3
+
+
+def _box_key(source_image_id, coordinates) -> tuple:
+    return (str(source_image_id), tuple(round(float(value), BOX_MATCH_DECIMALS) for value in coordinates))
+
+
+class EmbeddingDimensionMismatch(PipelineNotConfigured):
+    """A vector's length differs from the length its algorithm has produced before."""
+
+
+def _check_embedding_dimensions(algorithm: Algorithm, lengths: set[int]) -> None:
+    """Refuse vectors whose length differs from the algorithm's, recording it on first sight.
+
+    Vectors of different lengths can never be compared, so each algorithm keeps one length.
+    """
+    if algorithm.embedding_dimensions is None:
+        if len(lengths) > 1:
+            raise EmbeddingDimensionMismatch(
+                f"Algorithm {algorithm.key} sent vectors of several lengths in one batch: {sorted(lengths)}"
+            )
+        (length,) = lengths
+        # Conditional update: the first batch to record a length wins over a concurrent one.
+        Algorithm.objects.filter(pk=algorithm.pk, embedding_dimensions__isnull=True).update(
+            embedding_dimensions=length
+        )
+        algorithm.refresh_from_db(fields=["embedding_dimensions"])
+    wrong = lengths - {algorithm.embedding_dimensions}
+    if wrong:
+        raise EmbeddingDimensionMismatch(
+            f"Algorithm {algorithm.key} produces {algorithm.embedding_dimensions}-dimension vectors; "
+            f"refusing vectors of length {sorted(wrong)}."
+        )
 
 
 def create_detection_embeddings(
@@ -699,23 +839,26 @@ def create_detection_embeddings(
     changes nothing. Only ``DetectionEmbedding`` rows are written, never a classification,
     so no determination can change.
 
-    Responses are matched to detections by image and box, the key ``get_or_create_detection``
-    reuses detections by, because ``create_detections`` does not return them in response order.
-    An algorithm key the pipeline has not registered raises ``PipelineNotConfigured``, as it
-    does for classifications. ``job_id`` records the job whose results stored each vector.
+    Responses are matched to ``detections`` by image and box (see ``BOX_MATCH_DECIMALS``),
+    the key ``get_or_create_detection`` reuses detections by; a response with no match is
+    skipped. An algorithm key the pipeline has not registered raises ``PipelineNotConfigured``,
+    as it does for classifications, and a vector whose length differs from its algorithm's
+    raises ``EmbeddingDimensionMismatch``. ``job_id`` records the job whose results stored each vector.
     """
     by_box = {
-        (str(detection.source_image_id), tuple(detection.bbox)): detection
+        _box_key(detection.source_image_id, detection.bbox): detection
         for detection in detections
         if detection.bbox is not None
     }
     embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
+    lengths_by_algorithm: dict[str, set[int]] = collections.defaultdict(set)
+    unmatched = 0
     for detection_resp in detection_responses:
         if not detection_resp.embeddings or detection_resp.bbox is None:
             continue
-        detection = by_box.get((detection_resp.source_image_id, tuple(detection_resp.bbox.dict().values())))
+        detection = by_box.get(_box_key(detection_resp.source_image_id, detection_resp.bbox.dict().values()))
         if detection is None:
-            # Its source image was not found; create_detections has logged that.
+            unmatched += 1
             continue
         for embedding_resp in detection_resp.embeddings:
             try:
@@ -726,10 +869,16 @@ def create_detection_embeddings(
                     "The processing service must declare it in the /info endpoint. "
                     f"Known algorithms: {list(algorithms_known.keys())}"
                 ) from err
+            lengths_by_algorithm[algorithm.key].add(len(embedding_resp.features))
             embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
                 detection=detection, algorithm=algorithm, vector=embedding_resp.features, job_id=job_id
             )
 
+    for key, lengths in lengths_by_algorithm.items():
+        _check_embedding_dimensions(algorithms_known[key], lengths)
+
+    if unmatched:
+        logger.warning(f"Skipped the vectors of {unmatched} detections that match no stored detection.")
     DetectionEmbedding.objects.bulk_create(
         list(embeddings.values()),
         update_conflicts=True,
@@ -739,6 +888,34 @@ def create_detection_embeddings(
     )
     logger.info(f"Stored {len(embeddings)} detection embeddings for {len(detections)} detections.")
     return list(embeddings.values())
+
+
+def save_features_for_existing_detections(
+    results: PipelineResultsResponse,
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+    job_id: int | None = None,
+) -> list[DetectionEmbedding]:
+    """Store the vectors a feature-only pipeline returned for detections Antenna already has.
+
+    Writes ``DetectionEmbedding`` rows and nothing else: a box that matches no stored
+    detection is skipped rather than created, classifications in the response are ignored,
+    and no occurrence, determination or null marker is touched.
+    """
+    ignored = sum(len(detection.classifications) for detection in results.detections)
+    if ignored:
+        logger.warning(f"Ignored {ignored} classifications returned by a feature-only pipeline.")
+    image_ids = {int(detection.source_image_id) for detection in results.detections if detection.bbox is not None}
+    detections = list(
+        Detection.objects.valid().filter(source_image_id__in=image_ids).only("pk", "source_image_id", "bbox")
+    )
+    return create_detection_embeddings(
+        detections=detections,
+        detection_responses=results.detections,
+        algorithms_known=algorithms_known,
+        logger=logger,
+        job_id=job_id,
+    )
 
 
 def create_category_map_for_classification(
@@ -1121,6 +1298,26 @@ def save_results(
         )
 
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
+    if feature_extraction_only(list(algorithms_known.values())):
+        job_logger.info(f"Pipeline {pipeline} only extracts features; storing vectors for existing detections.")
+        embeddings = save_features_for_existing_detections(
+            results, algorithms_known, logger=job_logger, job_id=job.pk if job else None
+        )
+        total_time = time.time() - start_time
+        job_logger.info(
+            f"Saved {len(embeddings)} feature vectors from pipeline {pipeline} in {total_time:.2f} seconds"
+        )
+        if return_created:
+            return PipelineSaveResults(
+                pipeline=pipeline,
+                source_images=list(source_images),
+                detections=[],
+                classifications=[],
+                algorithms={},
+                total_time=total_time,
+            )
+        return None
+
     try:
         detection_algorithm = pipeline.algorithms.get(task_type__in=Algorithm.detection_task_types)
     except Algorithm.DoesNotExist:
@@ -1308,6 +1505,18 @@ class Pipeline(BaseModel):
 
     def __str__(self):
         return f'#{self.pk} "{self.name}" ({self.slug}) v{self.version}'
+
+    def feature_extraction_algorithms(self) -> list[Algorithm]:
+        """The pipeline's algorithms when every one of them extracts features, otherwise none.
+
+        Such a pipeline is run on existing detections and only stores their vectors: it
+        creates no detection, classification or occurrence.
+        """
+        algorithms = list(self.algorithms.all())
+        return algorithms if feature_extraction_only(algorithms) else []
+
+    def is_feature_only(self) -> bool:
+        return bool(self.feature_extraction_algorithms())
 
     def get_config(self, project_id: int | None = None) -> PipelineRequestConfigParameters:
         """
