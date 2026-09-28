@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import logging
 import math
 import typing
@@ -63,12 +64,61 @@ class TrackingConfig(pydantic.BaseModel):
     # when exactly one algorithm produced embeddings for the event.
     feature_extraction_algorithm_id: int | None = None
 
+    # Weight of each cost term. At 1.0 each the cost is the plain sum described above.
+    appearance_weight: float = pydantic.Field(1.0, ge=0)
+    iou_weight: float = pydantic.Field(1.0, ge=0)
+    size_weight: float = pydantic.Field(1.0, ge=0)
+    distance_weight: float = pydantic.Field(1.0, ge=0)
+
+    # Species gate: two detections whose top labels both score at least species_gate_min_score
+    # and name unrelated taxa (neither is an ancestor of the other) are either never linked
+    # ("forbid") or have species_gate_penalty added to their cost ("penalty").
+    species_gate: typing.Literal["off", "penalty", "forbid"] = "off"
+    species_gate_min_score: float = pydantic.Field(0.5, ge=0, le=1)
+    species_gate_penalty: float = pydantic.Field(1.0, ge=0)
+
+    # Activity scaling: the more detections a pair of captures holds, the more the distance
+    # term weighs, so a crowded sheet tolerates less movement. "log" multiplies it by
+    # log(1 + n) / log(1 + activity_reference_count) when that exceeds 1; "steps" uses the
+    # multiplier of the highest [count, multiplier] step in activity_steps that n reaches.
+    activity_scaling: typing.Literal["off", "log", "steps"] = "off"
+    activity_reference_count: int = pydantic.Field(5, ge=1)
+    activity_steps: list[tuple[int, float]] = []
+
+    # Stationary-first pass: pairs whose centre moved at most stationary_max_shift (share of
+    # the image diagonal), overlap by at least stationary_min_iou and cost less than
+    # stationary_cost_threshold are linked before any other pair, so a moving insect cannot
+    # take the place of one sitting still. With stationary_allow_missing_features, such a
+    # pair is linked on geometry alone even when require_features would skip it.
+    stationary_first: bool = False
+    stationary_max_shift: float = pydantic.Field(0.01, ge=0)
+    stationary_min_iou: float = pydantic.Field(0.7, ge=0, le=1)
+    stationary_cost_threshold: float = pydantic.Field(0.2, ge=0)
+    stationary_allow_missing_features: bool = False
+
+    @pydantic.validator("activity_steps")
+    def _steps_ascend(cls, steps: list[tuple[int, float]]) -> list[tuple[int, float]]:
+        counts = [count for count, _ in steps]
+        if counts != sorted(set(counts)):
+            raise ValueError("activity_steps counts must be strictly increasing")
+        if any(count < 0 or multiplier <= 0 for count, multiplier in steps):
+            raise ValueError("activity_steps need counts >= 0 and multipliers > 0")
+        return steps
+
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
         scopes = [values.get("source_image_collection_id"), values.get("event_ids") or None]
         if sum(s is not None for s in scopes) != 1:
             raise ValueError("Provide exactly one of source_image_collection_id or event_ids")
+        if values.get("activity_scaling") == "steps" and not values.get("activity_steps"):
+            raise ValueError("activity_scaling 'steps' needs activity_steps")
         return values
+
+    def link_options(self) -> "LinkOptions":
+        """The settings that decide which pairs link, apart from the threshold and feature requirement."""
+        values = {field.name: getattr(self, field.name) for field in dataclasses.fields(LinkOptions)}
+        values["activity_steps"] = tuple(tuple(step) for step in self.activity_steps)
+        return LinkOptions(**values)
 
     class Config:
         extra = "forbid"
@@ -123,6 +173,185 @@ def total_cost(f1, f2, bb1, bb2, diag) -> float:
     if f1 is None or f2 is None:
         return geometry
     return (1 - cosine_similarity(f1, f2)) + geometry
+
+
+@dataclasses.dataclass(frozen=True)
+class LinkOptions:
+    """The optional link rules of ``TrackingConfig``; the defaults leave linking as the plain cost sum."""
+
+    appearance_weight: float = 1.0
+    iou_weight: float = 1.0
+    size_weight: float = 1.0
+    distance_weight: float = 1.0
+    species_gate: str = "off"
+    species_gate_min_score: float = 0.5
+    species_gate_penalty: float = 1.0
+    activity_scaling: str = "off"
+    activity_reference_count: int = 5
+    activity_steps: tuple[tuple[int, float], ...] = ()
+    stationary_first: bool = False
+    stationary_max_shift: float = 0.01
+    stationary_min_iou: float = 0.7
+    stationary_cost_threshold: float = 0.2
+    stationary_allow_missing_features: bool = False
+
+
+DEFAULT_LINK_OPTIONS = LinkOptions()
+
+
+@dataclasses.dataclass(frozen=True)
+class PairTerms:
+    """The raw cost terms of one pair of detections. ``appearance`` is 1 - cosine similarity,
+    or None when either detection has no embedding."""
+
+    appearance: float | None
+    iou: float
+    size_ratio: float
+    distance: float
+
+
+@dataclasses.dataclass(frozen=True)
+class TopLabel:
+    """A detection's highest-scoring terminal label and the ids of that taxon's ancestors."""
+
+    taxon_id: int
+    score: float
+    ancestor_ids: frozenset[int] = frozenset()
+
+
+def pair_terms(f1, f2, bb1, bb2, diag: float) -> PairTerms:
+    appearance = None if f1 is None or f2 is None else 1 - cosine_similarity(f1, f2)
+    return PairTerms(appearance, iou(bb1, bb2), box_ratio(bb1, bb2), distance_ratio(bb1, bb2, diag))
+
+
+def weighted_cost(terms: PairTerms, options: LinkOptions = DEFAULT_LINK_OPTIONS, distance_multiplier=1.0) -> float:
+    """The matching cost from its terms. At the default weights it equals ``total_cost``
+    exactly: the terms are summed in the same order and multiplying by 1.0 changes nothing."""
+    geometry = (
+        options.iou_weight * (1 - terms.iou)
+        + options.size_weight * (1 - terms.size_ratio)
+        + options.distance_weight * distance_multiplier * terms.distance
+    )
+    if terms.appearance is None:
+        return geometry
+    return options.appearance_weight * terms.appearance + geometry
+
+
+def activity_multiplier(detection_count: int, options: LinkOptions) -> float:
+    """How much more the distance term weighs for a pair of captures holding this many detections."""
+    if options.activity_scaling == "log":
+        return max(1.0, math.log1p(detection_count) / math.log1p(options.activity_reference_count))
+    if options.activity_scaling == "steps":
+        multiplier = 1.0
+        for count, step_multiplier in options.activity_steps:
+            if detection_count >= count:
+                multiplier = step_multiplier
+        return multiplier
+    return 1.0
+
+
+def labels_conflict(a: TopLabel | None, b: TopLabel | None, min_score: float) -> bool:
+    """Do two confident labels name unrelated taxa? A genus and one of its species do not conflict."""
+    if a is None or b is None or a.score < min_score or b.score < min_score:
+        return False
+    if a.taxon_id == b.taxon_id:
+        return False
+    return a.taxon_id not in b.ancestor_ids and b.taxon_id not in a.ancestor_ids
+
+
+def is_stationary(terms: PairTerms, options: LinkOptions) -> bool:
+    return terms.distance <= options.stationary_max_shift and terms.iou >= options.stationary_min_iou
+
+
+def choose_links(
+    pairs: Iterable[tuple[typing.Any, typing.Any, PairTerms]],
+    cost_threshold: float,
+    require_features: bool = True,
+    options: LinkOptions = DEFAULT_LINK_OPTIONS,
+    detection_count: int = 0,
+    labels: typing.Mapping[typing.Any, TopLabel] | None = None,
+    key=lambda detection: detection,
+) -> list[tuple[typing.Any, typing.Any, float]]:
+    """Pick the links between two adjacent captures from the scored pairs, one link per detection a side.
+
+    With ``stationary_first``, pairs that sit still are taken first (lowest cost first), then
+    every other candidate below ``cost_threshold`` is. ``key`` gives the id that breaks ties
+    between equal costs, so the order is the same across runs.
+    """
+    labels = labels or {}
+    multiplier = activity_multiplier(detection_count, options)
+    stationary: list[tuple[typing.Any, typing.Any, float]] = []
+    candidates: list[tuple[typing.Any, typing.Any, float]] = []
+    for det, nxt, terms in pairs:
+        missing = terms.appearance is None
+        cost = weighted_cost(terms, options, multiplier)
+        if options.species_gate != "off" and labels_conflict(
+            labels.get(key(det)), labels.get(key(nxt)), options.species_gate_min_score
+        ):
+            if options.species_gate == "forbid":
+                continue
+            cost += options.species_gate_penalty
+        if (
+            options.stationary_first
+            and cost < options.stationary_cost_threshold
+            and (not missing or not require_features or options.stationary_allow_missing_features)
+            and is_stationary(terms, options)
+        ):
+            stationary.append((det, nxt, cost))
+        elif (not missing or not require_features) and cost < cost_threshold:
+            candidates.append((det, nxt, cost))
+
+    claimed_current: set = set()
+    claimed_next: set = set()
+    links: list[tuple[typing.Any, typing.Any, float]] = []
+    for group in (stationary, candidates):
+        # Secondary keys keep tied costs deterministic across runs.
+        group.sort(key=lambda x: (x[2], key(x[0]), key(x[1])))
+        for det, nxt, cost in group:
+            if key(det) in claimed_current or key(nxt) in claimed_next:
+                continue
+            claimed_current.add(key(det))
+            claimed_next.add(key(nxt))
+            links.append((det, nxt, cost))
+    return links
+
+
+def top_labels(detection_ids: Iterable[int]) -> dict[int, TopLabel]:
+    """Each detection's highest-scoring terminal label, in two queries for the whole batch.
+
+    Rows copied from another classification (``applied_to`` set, as tracking and class
+    masking leave) are left out, so the label is what a classifier said about this crop.
+    """
+    from ami.main.models import Taxon
+
+    best: dict[int, tuple[int, float]] = {}
+    rows = (
+        Classification.objects.filter(
+            detection_id__in=list(detection_ids),
+            terminal=True,
+            applied_to__isnull=True,
+            taxon_id__isnull=False,
+            score__isnull=False,
+        )
+        .order_by("detection_id", "-score", "-pk")
+        .values_list("detection_id", "taxon_id", "score")
+    )
+    for detection_id, taxon_id, score in rows:
+        best.setdefault(detection_id, (taxon_id, score))
+    ancestors: dict[int, frozenset[int]] = {}
+    for taxon_id, parents in Taxon.objects.filter(pk__in={t for t, _ in best.values()}).values_list(
+        "pk", "parents_json"
+    ):
+        ids = set()
+        for parent in parents or []:
+            parent_id = parent.get("id") if isinstance(parent, dict) else getattr(parent, "id", None)
+            if parent_id is not None:
+                ids.add(int(parent_id))
+        ancestors[taxon_id] = frozenset(ids)
+    return {
+        detection_id: TopLabel(taxon_id, score, ancestors.get(taxon_id, frozenset()))
+        for detection_id, (taxon_id, score) in best.items()
+    }
 
 
 def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | None, list[Algorithm]]:
@@ -445,40 +674,37 @@ def select_links(
     diag: float,
     cost_threshold: float,
     require_features: bool = True,
+    options: LinkOptions = DEFAULT_LINK_OPTIONS,
+    labels: typing.Mapping[int, TopLabel] | None = None,
 ) -> list[tuple[Detection, Detection, float]]:
     """The links tracking makes between two adjacent captures, lowest cost first, saving nothing.
 
     A pair is a candidate when its matching cost is below ``cost_threshold``; with
-    ``require_features``, a detection with no embedding in ``vectors`` never is. Candidates
-    are taken lowest cost first, and each detection is linked at most once on either side.
-    Tracking runs and the session view's link preview both call this, so they cannot differ.
+    ``require_features``, a detection with no embedding in ``vectors`` never is (unless the
+    stationary pass allows it). Each detection is linked at most once on either side; see
+    ``choose_links`` for the order. Tracking runs and the session view's link preview both
+    call this, so they cannot differ.
     """
-    candidates: list[tuple[Detection, Detection, float]] = []
+    skip_missing = require_features and not (options.stationary_first and options.stationary_allow_missing_features)
+    pairs = []
     for det in current_detections:
         det_vec = vectors.get(det.pk)
-        if det_vec is None and require_features:
+        if det_vec is None and skip_missing:
             continue
         for nxt in next_detections:
             nxt_vec = vectors.get(nxt.pk)
-            if nxt_vec is None and require_features:
+            if nxt_vec is None and skip_missing:
                 continue
-            cost = total_cost(det_vec, nxt_vec, det.bbox, nxt.bbox, diag)
-            if cost < cost_threshold:
-                candidates.append((det, nxt, cost))
-
-    # Secondary keys (det.pk, nxt.pk) keep tied costs deterministic across runs.
-    candidates.sort(key=lambda x: (x[2], x[0].pk, x[1].pk))
-
-    claimed_current: set[int] = set()
-    claimed_next: set[int] = set()
-    links: list[tuple[Detection, Detection, float]] = []
-    for det, nxt, cost in candidates:
-        if det.pk in claimed_current or nxt.pk in claimed_next:
-            continue
-        claimed_current.add(det.pk)
-        claimed_next.add(nxt.pk)
-        links.append((det, nxt, cost))
-    return links
+            pairs.append((det, nxt, pair_terms(det_vec, nxt_vec, det.bbox, nxt.bbox, diag)))
+    return choose_links(
+        pairs,
+        cost_threshold,
+        require_features,
+        options,
+        detection_count=max(len(current_detections), len(next_detections)),
+        labels=labels,
+        key=lambda detection: detection.pk,
+    )
 
 
 def select_transition_links(
@@ -489,11 +715,19 @@ def select_transition_links(
     cost_threshold: float,
     algorithm: Algorithm | None,
     require_features: bool = True,
+    options: LinkOptions = DEFAULT_LINK_OPTIONS,
+    labels: typing.Mapping[int, TopLabel] | None = None,
+    vectors: dict[int, typing.Any] | None = None,
 ) -> list[tuple[Detection, Detection, float]]:
-    """The links tracking makes between two adjacent captures, reading embeddings but saving nothing."""
-    vectors: dict[int, typing.Any] = {}
-    if algorithm is not None:
-        vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
+    """The links tracking makes between two adjacent captures, reading embeddings but saving nothing.
+
+    ``vectors`` replaces the embeddings read from ``algorithm``, for scoring embeddings that
+    are not stored as classifications.
+    """
+    if vectors is None:
+        vectors = {}
+        if algorithm is not None:
+            vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
     return select_links(
         current_detections,
         next_detections,
@@ -501,6 +735,8 @@ def select_transition_links(
         image_diagonal(image_width, image_height),
         cost_threshold,
         require_features,
+        options,
+        labels,
     )
 
 
@@ -558,6 +794,7 @@ def iter_transition_links(
     algorithm: Algorithm | None,
     config: TrackingConfig,
     logger: logging.Logger,
+    vectors: dict[int, typing.Any] | None = None,
 ) -> Iterator[list[tuple[Detection, Detection, float]] | None]:
     """Yield the proposed links for each pair of consecutive captures, in order, saving nothing.
 
@@ -565,6 +802,13 @@ def iter_transition_links(
     generator is lazy, so a caller that saves each transition's links before asking for the
     next one sees detections as they stand after its own writes.
     """
+    options = config.link_options()
+    labels = None
+    if options.species_gate != "off":
+        # One read for the session, so the gate costs no query per pair of captures.
+        labels = top_labels(
+            Detection.objects.valid().filter(source_image__in=source_images).values_list("pk", flat=True)
+        )
     transitions = len(source_images) - 1
     for i in range(transitions):
         cur = source_images[i]
@@ -584,6 +828,9 @@ def iter_transition_links(
             cost_threshold=config.cost_threshold,
             algorithm=algorithm,
             require_features=config.require_features,
+            options=options,
+            labels=labels,
+            vectors=vectors,
         )
 
 
@@ -592,17 +839,85 @@ def propose_event_links(
     algorithm: Algorithm | None,
     config: TrackingConfig,
     logger: logging.Logger,
+    vectors: dict[int, typing.Any] | None = None,
 ) -> list[tuple[int, int, float]]:
     """The ``(detection_id, next_detection_id, cost)`` links a tracking run would make in one
     event, treating every detection as unlinked and writing nothing.
 
     Tracking runs choose links the same way (``iter_transition_links``), so an evaluation
-    built on this scores what the task would do on the same detections.
+    built on this scores what the task would do on the same detections. ``vectors`` replaces
+    the stored embeddings, as in ``select_transition_links``.
     """
     source_images = list(event.captures.order_by("timestamp"))
     links: list[tuple[int, int, float]] = []
-    for transition in iter_transition_links(source_images, algorithm, config, logger):
+    for transition in iter_transition_links(source_images, algorithm, config, logger, vectors):
         links.extend((det.pk, nxt.pk, cost) for det, nxt, cost in transition or [])
+    return links
+
+
+@dataclasses.dataclass
+class TransitionPairs:
+    """Every pair of detections across two adjacent captures, with its cost terms, for re-scoring
+    under many settings without reading the database again."""
+
+    pairs: list[tuple[int, int, PairTerms]]
+    detection_count: int
+
+
+def event_transition_pairs(
+    event: Event, algorithm: Algorithm | None, vectors: dict[int, typing.Any] | None = None
+) -> tuple[list[TransitionPairs], list[int]]:
+    """The scored pairs of every transition in one event, and every valid detection id in it.
+
+    ``links_from_transition_pairs`` over the result gives the same links as
+    ``propose_event_links`` for any setting: the same terms feed ``choose_links``.
+    """
+    source_images = list(event.captures.order_by("timestamp"))
+    detections = list(
+        Detection.objects.valid().filter(source_image__in=source_images).only("pk", "bbox", "source_image_id")
+    )
+    by_capture: dict[int, list[Detection]] = collections.defaultdict(list)
+    for detection in sorted(detections, key=lambda d: d.pk):
+        by_capture[detection.source_image_id].append(detection)
+    if vectors is None:
+        vectors = latest_feature_vectors([d.pk for d in detections], algorithm.pk) if algorithm is not None else {}
+    # Convert once per detection rather than once per pair; the values are unchanged.
+    arrays = {pk: np.asarray(vector) for pk, vector in vectors.items()}
+
+    transitions: list[TransitionPairs] = []
+    for cur, nxt in zip(source_images, source_images[1:]):
+        if not cur.width or not cur.height:
+            continue
+        diag = image_diagonal(cur.width, cur.height)
+        current, following = by_capture.get(cur.pk, []), by_capture.get(nxt.pk, [])
+        pairs = [
+            (a.pk, b.pk, pair_terms(arrays.get(a.pk), arrays.get(b.pk), a.bbox, b.bbox, diag))
+            for a in current
+            for b in following
+        ]
+        transitions.append(TransitionPairs(pairs, max(len(current), len(following))))
+    return transitions, [d.pk for d in detections]
+
+
+def links_from_transition_pairs(
+    transitions: Iterable[TransitionPairs],
+    config: TrackingConfig,
+    labels: typing.Mapping[int, TopLabel] | None = None,
+) -> list[tuple[int, int, float]]:
+    """The links a run with ``config`` makes over pre-scored transitions (see ``event_transition_pairs``)."""
+    options = config.link_options()
+    links: list[tuple[int, int, float]] = []
+    for transition in transitions:
+        links.extend(
+            choose_links(
+                transition.pairs,
+                config.cost_threshold,
+                config.require_features,
+                options,
+                detection_count=transition.detection_count,
+                labels=labels if options.species_gate != "off" else None,
+            )
+        )
     return links
 
 
