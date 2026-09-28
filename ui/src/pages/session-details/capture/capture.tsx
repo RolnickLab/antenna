@@ -794,7 +794,7 @@ const CaptureDetections = ({
                 <Popover.Content
                   align="center"
                   className={classNames(
-                    'w-auto p-3 body-small',
+                    'w-auto p-3 body-small overflow-y-auto max-h-[var(--radix-popover-content-available-height)]',
                     PANEL_LAYER,
                     styles.panel
                   )}
