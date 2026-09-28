@@ -184,7 +184,8 @@ class TestSweepReporting(SimpleTestCase):
         summary = summarise_session(predictions, labels)
         self.assertEqual((summary["occurrences_before"], summary["occurrences_after"]), (4, 3))
         self.assertEqual((summary["unique_determinations_before"], summary["unique_determinations_after"]), (2, 2))
-        self.assertEqual((summary["track_length_median"], summary["track_length_max"]), (1, 2))
+        self.assertEqual((summary["track_length_median"], summary["track_length_max"]), (2, 2))
+        self.assertEqual(summary["multi_detection_tracks"], 1)
         merged = summarise_session({1: 1, 2: 1, 3: 1, 4: 4}, labels)
         self.assertEqual(merged["unique_determinations_after"], 1, "The track takes its best label, moth-a")
 
@@ -224,7 +225,10 @@ class TestSweepReporting(SimpleTestCase):
         self.assertLess(markdown.index("## Session 7"), markdown.index("## Overall"))
         self.assertIn("| run | cost_threshold | links |", markdown)
         self.assertNotIn("require_features", markdown)
-        self.assertIn("| 2 | 0.4 | 1 | 1 | 1 | 1 |", markdown)
+        self.assertIn("| 2 | 0.4 | 1 | 1.000 | 1.000 | 1.000 |", markdown)
+        # A near-perfect score must not print as perfect.
+        rows[0]["link_precision"] = 0.9996
+        self.assertIn("| 1 | 0.2 | 1 | 0.999 |", format_sweep_markdown(rows))
 
 
 def _reference_links(event: Event, algorithm, cost_threshold: float, require_features: bool) -> set:

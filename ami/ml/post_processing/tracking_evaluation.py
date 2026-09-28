@@ -17,6 +17,7 @@ import csv
 import dataclasses
 import datetime
 import json
+import math
 import statistics
 import sys
 import typing
@@ -333,11 +334,14 @@ def summarise_session(
     gives a detection's top label as ``(taxon, score)``. Before tracking every detection is
     its own occurrence; after, each track is one, determined by its highest-scoring label
     (the way an occurrence takes its best prediction). Unlabelled detections add no species.
+    The median track length is over tracks of two or more detections, since most detections
+    in a busy session stay alone and would pin the median at one.
     """
     members: dict[TrackId, list[DetectionId]] = collections.defaultdict(list)
     for detection_id, track_id in predictions.items():
         members[track_id].append(detection_id)
     lengths = sorted(len(m) for m in members.values())
+    multi_lengths = [n for n in lengths if n > 1]
 
     def determination(detection_ids: list[DetectionId]) -> typing.Any:
         scored = [(labels[d][1], d) for d in detection_ids if d in labels]
@@ -352,8 +356,8 @@ def summarise_session(
         "detections": len(predictions),
         "occurrences_before": len(predictions),
         "occurrences_after": len(members),
-        "multi_detection_tracks": sum(1 for n in lengths if n > 1),
-        "track_length_median": statistics.median(lengths) if lengths else None,
+        "multi_detection_tracks": len(multi_lengths),
+        "track_length_median": statistics.median(multi_lengths) if multi_lengths else None,
         "track_length_max": lengths[-1] if lengths else None,
         "unique_determinations_before": len(before),
         "unique_determinations_after": len(after),
@@ -387,6 +391,7 @@ def sweep_row(
         "fragmented_tracks": evaluation.fragmented_tracks,
         "cross_individual_merges": evaluation.merges,
         "cross_species_merges": evaluation.cross_species_merges,
+        "multi_detection_tracks_predicted": session.get("multi_detection_tracks"),
         "track_length_median": session.get("track_length_median"),
         "track_length_max": session.get("track_length_max"),
         "occurrences_before": session.get("occurrences_before"),
@@ -403,11 +408,15 @@ def format_sweep_markdown(rows: list[Mapping[str, typing.Any]]) -> str:
     """
 
     def fmt(value: typing.Any) -> str:
+        # Scores are cut, not rounded, to three places, so only a perfect score reads 1.000.
         if value is None:
             return "n/a"
         if isinstance(value, float):
-            return f"{value:.3f}".rstrip("0").rstrip(".") if value != int(value) else str(int(value))
+            return f"{math.floor(value * 1000) / 1000:.3f}"
         return str(value)
+
+    def setting(value: typing.Any) -> str:
+        return "n/a" if value is None else str(value)
 
     all_settings = [row["settings"] for row in rows]
     keys = sorted({key for settings in all_settings for key in settings})
@@ -425,6 +434,7 @@ def format_sweep_markdown(rows: list[Mapping[str, typing.Any]]) -> str:
         ("fragmented", lambda r: fmt(r["fragmented_tracks"])),
         ("x-indiv merges", lambda r: fmt(r["cross_individual_merges"])),
         ("x-species merges", lambda r: fmt(r["cross_species_merges"])),
+        ("tracks >1 det", lambda r: fmt(r["multi_detection_tracks_predicted"])),
         ("track len med/max", lambda r: f"{fmt(r['track_length_median'])}/{fmt(r['track_length_max'])}"),
         ("occurrences", lambda r: f"{fmt(r['occurrences_before'])} -> {fmt(r['occurrences_after'])}"),
         (
@@ -448,7 +458,7 @@ def format_sweep_markdown(rows: list[Mapping[str, typing.Any]]) -> str:
         for row in rows:
             if row["scope"] != scope:
                 continue
-            cells = [str(row["run"]), *(fmt(row["settings"].get(key)) for key in varying)]
+            cells = [str(row["run"]), *(setting(row["settings"].get(key)) for key in varying)]
             cells.extend(render(row) for _, render in columns)
             lines.append("| " + " | ".join(cells) + " |")
         lines.append("")
