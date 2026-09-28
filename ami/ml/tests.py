@@ -2379,10 +2379,14 @@ class TestEmbeddingSchema(SimpleTestCase):
         )
         self.assertIsNone(DetectionResponse.parse_obj(self._detection()).embeddings)
 
-    def test_a_vector_of_another_length_is_refused(self):
-        """The column holds 2048 floats, so a shorter vector must fail validation rather than the insert."""
+    def test_an_empty_vector_is_refused(self):
+        """Any length parses (extractors differ; each algorithm's length is checked on save), but not none."""
+        self.assertEqual(
+            len(DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([0.5] * 512))).embeddings),
+            1,
+        )
         with self.assertRaises(pydantic.ValidationError):
-            DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([0.5] * 512)))
+            DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([])))
 
 
 class TestDetectionEmbeddings(TestCase):
