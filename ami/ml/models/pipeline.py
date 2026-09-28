@@ -239,8 +239,17 @@ def feature_extraction_only(algorithms: list[Algorithm]) -> bool:
     return bool(algorithms) and all(algorithm.task_type in feature_types for algorithm in algorithms)
 
 
+def embeddable_detections(detections: models.QuerySet) -> models.QuerySet:
+    """The detections a feature-only pipeline can be sent: real boxes whose detector is known.
+
+    Choosing images and building the request both go through this, so an image is never
+    queued with no boxes to embed (a worker would then run its own detector on it).
+    """
+    return detections.valid().filter(detection_algorithm__isnull=False)
+
+
 def detections_missing_features(detections: models.QuerySet, algorithm_ids: list[int]) -> models.QuerySet:
-    """Real detections without a stored vector from at least one of the algorithms.
+    """Embeddable detections without a stored vector from at least one of the algorithms.
 
     Only ``DetectionEmbedding`` rows count: they are what a feature-only pipeline writes.
     """
@@ -249,7 +258,7 @@ def detections_missing_features(detections: models.QuerySet, algorithm_ids: list
         missing |= ~models.Exists(
             DetectionEmbedding.objects.filter(detection_id=models.OuterRef("pk"), algorithm_id=algorithm_id)
         )
-    return detections.valid().filter(missing)
+    return embeddable_detections(detections).filter(missing)
 
 
 def filter_images_missing_features(
@@ -293,7 +302,9 @@ def collect_detections_for_features(
     request_by_image_id = {int(request.id): request for request in source_image_requests}
     detections = Detection.objects.filter(source_image_id__in=list(request_by_image_id))
     detections = (
-        detections.valid() if include_existing_vectors else detections_missing_features(detections, algorithm_ids)
+        embeddable_detections(detections)
+        if include_existing_vectors
+        else detections_missing_features(detections, algorithm_ids)
     )
     detection_requests: list[DetectionRequest] = []
     for detection in detections.select_related("detection_algorithm").order_by("source_image_id", "pk"):

@@ -81,8 +81,12 @@ def cleanup_async_job_resources(job_id: int) -> bool:
     return redis_success and nats_success
 
 
-def _attach_detections_for_feature_pipeline(job: "Job", tasks: list[PipelineProcessingTask]) -> None:
-    """Give each task the existing boxes a feature-only pipeline should embed, in batches of images."""
+def _attach_detections_for_feature_pipeline(job: "Job", tasks: list[PipelineProcessingTask]) -> set[str]:
+    """Give each task the existing boxes a feature-only pipeline should embed, in batches of images.
+
+    Returns the image ids left with no boxes. Those must not be queued: a worker given an
+    empty list runs its own detector, and boxes that match nothing are discarded.
+    """
     from ami.ml.models.pipeline import FILTER_PROCESSED_BATCH_SIZE, collect_detections_for_features
     from ami.ml.schemas import SourceImageRequest
 
@@ -90,7 +94,7 @@ def _attach_detections_for_feature_pipeline(job: "Job", tasks: list[PipelineProc
         [algorithm.pk for algorithm in job.pipeline.feature_extraction_algorithms()] if job.pipeline else []
     )
     if not algorithm_ids:
-        return
+        return set()
     include_existing = job.project.feature_flags.reprocess_all_images
     for start in range(0, len(tasks), FILTER_PROCESSED_BATCH_SIZE):
         batch = tasks[start : start + FILTER_PROCESSED_BATCH_SIZE]  # noqa: E203
@@ -100,6 +104,7 @@ def _attach_detections_for_feature_pipeline(job: "Job", tasks: list[PipelineProc
             by_image[detection_request.source_image.id].append(detection_request)
         for task in batch:
             task.detections = by_image[task.image_id]
+    return {task.image_id for task in tasks if not task.detections}
 
 
 def queue_images_to_nats(job: "Job", images: list[SourceImage]):
@@ -138,7 +143,11 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         )
         tasks.append((image.pk, task))
 
-    _attach_detections_for_feature_pipeline(job, [task for _, task in tasks])
+    nothing_to_embed = _attach_detections_for_feature_pipeline(job, [task for _, task in tasks])
+    if nothing_to_embed:
+        job.logger.info(f"Not queuing {len(nothing_to_embed)} images that have no detections to embed")
+        tasks = [(pk, task) for pk, task in tasks if task.image_id not in nothing_to_embed]
+        image_ids = [image_id for image_id in image_ids if image_id not in nothing_to_embed]
 
     # Store all image IDs in Redis for progress tracking
     state_manager = AsyncJobStateManager(job.pk)
