@@ -535,6 +535,8 @@ export enum STRING {
   TRACK_SORT_BY,
   TRACK_SORT_CUMULATIVE,
   TRACK_SORT_LABEL,
+  TRACK_SORT_THEN,
+  TRACK_SORT_TIE_BREAK,
   TRACK_SPLIT_HERE,
   TRACK_SPLIT_RESULT,
   TRACK_STAT_DISTINCT_TAXA,
@@ -1216,6 +1218,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_SORT_BY]: 'Sort by {{column}}',
   [STRING.TRACK_SORT_CUMULATIVE]: 'Time, then distance, then similarity',
   [STRING.TRACK_SORT_LABEL]: 'Order candidates',
+  [STRING.TRACK_SORT_THEN]: '{{first}}, then {{next}}',
+  [STRING.TRACK_SORT_TIE_BREAK]:
+    'Sort key {{rank}}: breaks ties left by the keys before it',
   [STRING.TRACK_SPLIT_HERE]: 'Split here',
   [STRING.TRACK_SPLIT_RESULT]:
     'Split. {{count}} frames moved to occurrence #{{id}}.',
