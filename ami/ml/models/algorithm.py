@@ -205,6 +205,7 @@ class AlgorithmTaskType(str, enum.Enum):
     SEGMENTATION = "segmentation"
     CLASSIFICATION = "classification"
     EMBEDDING = "embedding"
+    FEATURE_EXTRACTION = "feature_extraction"
     TRACKING = "tracking"
     TAGGING = "tagging"
     REGRESSION = "regression"
@@ -249,6 +250,15 @@ class Algorithm(BaseModel):
         help_text=("A URI to the weights or model details. Could be a public web URL or object store path."),
     )
 
+    embedding_dimensions = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "For a feature extractor, the length of every vector it produces. Set from the processing "
+            "service's /info or from the first vector stored; vectors of any other length are refused."
+        ),
+    )
+
     category_map = models.ForeignKey(
         AlgorithmCategoryMap,
         on_delete=models.CASCADE,
@@ -274,6 +284,11 @@ class Algorithm(BaseModel):
     classification_task_types = [
         AlgorithmTaskType.CLASSIFICATION,
         AlgorithmTaskType.TAGGING,
+    ]
+    # A pipeline made only of these returns vectors for existing detections and nothing else.
+    feature_extraction_task_types = [
+        AlgorithmTaskType.EMBEDDING,
+        AlgorithmTaskType.FEATURE_EXTRACTION,
     ]
 
     def __str__(self):

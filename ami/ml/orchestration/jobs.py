@@ -81,6 +81,27 @@ def cleanup_async_job_resources(job_id: int) -> bool:
     return redis_success and nats_success
 
 
+def _attach_detections_for_feature_pipeline(job: "Job", tasks: list[PipelineProcessingTask]) -> None:
+    """Give each task the existing boxes a feature-only pipeline should embed, in batches of images."""
+    from ami.ml.models.pipeline import FILTER_PROCESSED_BATCH_SIZE, collect_detections_for_features
+    from ami.ml.schemas import SourceImageRequest
+
+    algorithm_ids = (
+        [algorithm.pk for algorithm in job.pipeline.feature_extraction_algorithms()] if job.pipeline else []
+    )
+    if not algorithm_ids:
+        return
+    include_existing = job.project.feature_flags.reprocess_all_images
+    for start in range(0, len(tasks), FILTER_PROCESSED_BATCH_SIZE):
+        batch = tasks[start : start + FILTER_PROCESSED_BATCH_SIZE]  # noqa: E203
+        requests = [SourceImageRequest(id=task.image_id, url=task.image_url) for task in batch]
+        by_image: dict[str, list] = {task.image_id: [] for task in batch}
+        for detection_request in collect_detections_for_features(requests, algorithm_ids, include_existing):
+            by_image[detection_request.source_image.id].append(detection_request)
+        for task in batch:
+            task.detections = by_image[task.image_id]
+
+
 def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     """
     Queue all images for a job to a NATS JetStream stream for the job.
@@ -116,6 +137,8 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
             image_url=image_url,
         )
         tasks.append((image.pk, task))
+
+    _attach_detections_for_feature_pipeline(job, [task for _, task in tasks])
 
     # Store all image IDs in Redis for progress tracking
     state_manager = AsyncJobStateManager(job.pk)
