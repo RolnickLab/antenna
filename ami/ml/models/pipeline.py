@@ -70,6 +70,33 @@ COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS = 5.0
 COLLECT_PROGRESS_MAX_FRACTION = 0.99
 
 
+class _CollectHeartbeat:
+    """Throttled ``collect`` progress saves, so the reaper sees a long Collect stage moving.
+
+    Silent unless both ``job`` and a non-zero ``total`` are given. Capped at
+    COLLECT_PROGRESS_MAX_FRACTION so the caller's final SUCCESS flip owns the terminal value.
+    ``updated_at`` is saved explicitly: auto_now only fires for fields in update_fields,
+    and the reaper keys off it (see ``ami/jobs/tasks.py``).
+    """
+
+    def __init__(self, job: Job | None, total: int | None) -> None:
+        self.job, self.total = job, total
+        self.processed = 0
+        self.last_save = time.monotonic()
+
+    def tick(self, batch_size: int) -> None:
+        self.processed += batch_size
+        if self.job is None or not self.total:
+            return
+        now = time.monotonic()
+        if now - self.last_save >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
+            self.job.progress.update_stage(
+                "collect", progress=min(self.processed / self.total, COLLECT_PROGRESS_MAX_FRACTION)
+            )
+            self.job.save(update_fields=["progress", "updated_at"])
+            self.last_save = now
+
+
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
     pipeline: Pipeline,
@@ -108,7 +135,9 @@ def filter_processed_images(
     pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
 
     if feature_extraction_only(pipeline_algorithms):
-        yield from filter_images_missing_features(images, pipeline_algorithm_ids, batch_size=batch_size)
+        yield from filter_images_missing_features(
+            images, pipeline_algorithm_ids, batch_size=batch_size, heartbeat=_CollectHeartbeat(job, total)
+        )
         return
 
     detection_type_keys = set(Algorithm.detection_task_types)
@@ -125,11 +154,7 @@ def filter_processed_images(
         return
 
     image_iter = iter(images)
-    # Track how many of the input images we've inspected so far so we can emit
-    # a fractional `collect` progress to the Job row. Only used when both
-    # `job` and `total` are passed by the caller; legacy callers stay silent.
-    processed_count = 0
-    last_progress_save_monotonic = time.monotonic()
+    heartbeat = _CollectHeartbeat(job, total)
     while True:
         batch = list(itertools.islice(image_iter, batch_size))
         if not batch:
@@ -205,25 +230,7 @@ def filter_processed_images(
                     f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
                 )
 
-        # Throttled progress emit. Save only when both `job` and `total` are
-        # provided, the total is non-zero, and at least
-        # COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time have passed since
-        # the last save. Capped at COLLECT_PROGRESS_MAX_FRACTION so the caller's
-        # final status=SUCCESS, progress=1 flip still owns the terminal value.
-        #
-        # `updated_at` is included in update_fields explicitly: Django only fires
-        # auto_now's pre_save hook for fields listed in update_fields, so without
-        # it the reaper's `Job.updated_at < cutoff` heuristic
-        # (`ami/jobs/tasks.py:929-944`) would not see this heartbeat and could
-        # still revoke the job mid-Collect.
-        processed_count += len(batch)
-        if job is not None and total:
-            now_monotonic = time.monotonic()
-            if now_monotonic - last_progress_save_monotonic >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
-                fraction = min(processed_count / total, COLLECT_PROGRESS_MAX_FRACTION)
-                job.progress.update_stage("collect", progress=fraction)
-                job.save(update_fields=["progress", "updated_at"])
-                last_progress_save_monotonic = now_monotonic
+        heartbeat.tick(len(batch))
 
 
 def feature_extraction_only(algorithms: list[Algorithm]) -> bool:
@@ -249,6 +256,7 @@ def filter_images_missing_features(
     images: typing.Iterable[SourceImage],
     algorithm_ids: list[int],
     batch_size: int = FILTER_PROCESSED_BATCH_SIZE,
+    heartbeat: _CollectHeartbeat | None = None,
 ) -> typing.Iterable[SourceImage]:
     """The images with at least one real detection that lacks a vector from the algorithms.
 
@@ -268,6 +276,8 @@ def filter_images_missing_features(
             .distinct()
         )
         yield from (image for image in batch if image.pk in needing)
+        if heartbeat is not None:
+            heartbeat.tick(len(batch))
 
 
 def collect_detections_for_features(
