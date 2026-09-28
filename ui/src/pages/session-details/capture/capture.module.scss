@@ -128,3 +128,9 @@
     outline-offset: 1px;
   }
 }
+
+// Radix fades a panel out when its box is panned out of view; a faded panel must not
+// keep catching clicks meant for the capture under it.
+.panel[style*='opacity: 0'] {
+  pointer-events: none;
+}

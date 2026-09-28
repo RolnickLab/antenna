@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { getOffsetLabel } from 'data-services/models/merge-candidate'
 import { Tooltip } from 'nova-ui-kit'
 import { useState } from 'react'
@@ -5,6 +6,7 @@ import { STRING, translate } from 'utils/language'
 import styles from './capture.module.scss'
 import { getGhostFrame } from './ghost-frame'
 import { Ghost, GHOST_COLOR, MAX_GHOST_BOXES, Trail } from './ghost-trail'
+import { PANEL_LAYER } from './panel-layer'
 
 // A hovered frame comes forward of the other path frames and is drawn in full, which
 // is how one is picked out of a stack. It stays under the live boxes all the same.
@@ -132,18 +134,24 @@ export const CaptureGhostTrail = ({
                     ) : null}
                   </button>
                 </Tooltip.Trigger>
-                <Tooltip.Content
-                  className="z-[1] p-3 pointer-events-none"
-                  collisionPadding={8}
-                  side="bottom"
-                >
-                  <GhostReading
-                    cropMissing={cropMissing}
-                    ghost={ghost}
-                    time={frame.time}
-                    total={trail.total}
-                  />
-                </Tooltip.Content>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    className={classNames(
+                      'p-3 pointer-events-none',
+                      PANEL_LAYER
+                    )}
+                    collisionPadding={8}
+                    hideWhenDetached
+                    side="bottom"
+                  >
+                    <GhostReading
+                      cropMissing={cropMissing}
+                      ghost={ghost}
+                      time={frame.time}
+                      total={trail.total}
+                    />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
               </Tooltip.Root>
               {gap ? (
                 <span
