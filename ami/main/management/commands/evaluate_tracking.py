@@ -29,11 +29,13 @@ from ami.ml.post_processing.tracking_evaluation import (
     tracks_from_links,
 )
 from ami.ml.post_processing.tracking_task import (
+    AmbiguousSpeciesLabels,
     TrackingConfig,
     event_transition_pairs,
     labels_conflict,
     links_from_transition_pairs,
     resolve_feature_algorithm,
+    resolve_label_algorithm,
     top_labels,
 )
 
@@ -244,7 +246,7 @@ class Command(BaseCommand):
         # Reading and scoring the pairs is the slow part, and it is the same for every setting
         # that compares the same embeddings, so it is done once per session and extractor.
         pairs_cache: dict[tuple, tuple] = {}
-        labels_cache: dict[int, dict] = {}
+        labels_cache: dict[tuple, dict] = {}
         reports = []
         for index, config in enumerate(configs):
             if len(configs) > 1:
@@ -276,9 +278,16 @@ class Command(BaseCommand):
             if key not in pairs_cache:
                 pairs_cache[key] = event_transition_pairs(event, algorithm, vectors)
             transitions, event_detection_ids = pairs_cache[key]
-            if event.pk not in labels_cache:
-                labels_cache[event.pk] = top_labels(event_detection_ids)
-            labels = labels_cache[event.pk]
+            # Labels come from one classifier per session, as in a tracking run, so scores
+            # compared against one threshold share a scale.
+            try:
+                label_algorithm_id = resolve_label_algorithm(event_detection_ids, config.species_label_algorithm_id)
+            except AmbiguousSpeciesLabels as error:
+                raise CommandError(f"Session {event.pk}: {error} Pass it with --config.") from error
+            label_key = (event.pk, label_algorithm_id)
+            if label_key not in labels_cache:
+                labels_cache[label_key] = top_labels(event_detection_ids, label_algorithm_id)
+            labels = labels_cache[label_key]
 
             links = links_from_transition_pairs(transitions, config, labels)
             event_predictions = tracks_from_links(event_detection_ids, [(a, b) for a, b, _ in links])

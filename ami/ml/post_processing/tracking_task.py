@@ -76,6 +76,10 @@ class TrackingConfig(pydantic.BaseModel):
     species_gate: typing.Literal["off", "penalty", "forbid"] = "off"
     species_gate_min_score: float = pydantic.Field(0.5, ge=0, le=1)
     species_gate_penalty: float = pydantic.Field(1.0, ge=0)
+    # Which classifier's labels the gate compares. Scores from different models are not on
+    # one scale, so left unset the gate uses the only classifier that labelled the session
+    # and skips a session labelled by several.
+    species_label_algorithm_id: int | None = None
 
     # Activity scaling: the more detections a pair of captures holds, the more the distance
     # term weighs, so a crowded sheet tolerates less movement. "log" multiplies it by
@@ -316,23 +320,56 @@ def choose_links(
     return links
 
 
-def top_labels(detection_ids: Iterable[int]) -> dict[int, TopLabel]:
-    """Each detection's highest-scoring terminal label, in two queries for the whole batch.
+def _own_terminal_labels(detection_ids: Iterable[int]):
+    # Rows copied from another classification (``applied_to`` set, as tracking and class
+    # masking leave) are left out, so a label is what a classifier said about this crop.
+    return Classification.objects.filter(
+        detection_id__in=list(detection_ids),
+        terminal=True,
+        applied_to__isnull=True,
+        taxon_id__isnull=False,
+        score__isnull=False,
+    )
 
-    Rows copied from another classification (``applied_to`` set, as tracking and class
-    masking leave) are left out, so the label is what a classifier said about this crop.
+
+class AmbiguousSpeciesLabels(ValueError):
+    """A session is labelled by several classifiers and none was chosen for species comparisons."""
+
+
+def resolve_label_algorithm(detection_ids: Iterable[int], configured_id: int | None) -> int | None:
+    """The one classifier whose labels a session's species comparisons use.
+
+    A configured id is used as given. Otherwise it is the only classifier with terminal
+    labels on these detections, or None when there are none. Several classifiers raise
+    ``AmbiguousSpeciesLabels``: their scores are not on one scale, so mixing them is noise.
+    """
+    if configured_id is not None:
+        return configured_id
+    candidates = sorted(
+        _own_terminal_labels(detection_ids).order_by().values_list("algorithm_id", flat=True).distinct()
+    )
+    if len(candidates) > 1:
+        raise AmbiguousSpeciesLabels(
+            f"Detections are labelled by {len(candidates)} classifiers ({candidates}); "
+            "set species_label_algorithm_id to pick one."
+        )
+    return candidates[0] if candidates else None
+
+
+def top_labels(detection_ids: Iterable[int], algorithm_id: int | None) -> dict[int, TopLabel]:
+    """Each detection's highest-scoring terminal label from one classifier, in two queries.
+
+    ``algorithm_id`` None returns no labels, so the caller must resolve the classifier first
+    (``resolve_label_algorithm``) rather than mix labels from several.
     """
     from ami.main.models import Taxon
 
+    if algorithm_id is None:
+        return {}
     best: dict[int, tuple[int, float]] = {}
     rows = (
-        Classification.objects.filter(
-            detection_id__in=list(detection_ids),
-            terminal=True,
-            applied_to__isnull=True,
-            taxon_id__isnull=False,
-            score__isnull=False,
-        )
+        _own_terminal_labels(detection_ids)
+        .filter(algorithm_id=algorithm_id)
         .order_by("detection_id", "-score", "-pk")
         .values_list("detection_id", "taxon_id", "score")
     )
@@ -806,9 +843,11 @@ def iter_transition_links(
     labels = None
     if options.species_gate != "off":
         # One read for the session, so the gate costs no query per pair of captures.
-        labels = top_labels(
+        detection_ids = list(
             Detection.objects.valid().filter(source_image__in=source_images).values_list("pk", flat=True)
         )
+        label_algorithm_id = resolve_label_algorithm(detection_ids, config.species_label_algorithm_id)
+        labels = top_labels(detection_ids, label_algorithm_id)
     transitions = len(source_images) - 1
     for i in range(transitions):
         cur = source_images[i]
@@ -1080,14 +1119,21 @@ class TrackingTask(BasePostProcessingTask):
                 overall = ((_idx - 1) + p) / _total
                 self.update_progress(overall)
 
-            counters = assign_occurrences_by_tracking_images(
-                event=event,
-                logger=self.logger,
-                algorithm=algorithm,
-                config=self.config,
-                record_as=self.algorithm,
-                progress_cb=_stage_progress,
-            )
+            try:
+                counters = assign_occurrences_by_tracking_images(
+                    event=event,
+                    logger=self.logger,
+                    algorithm=algorithm,
+                    config=self.config,
+                    record_as=self.algorithm,
+                    progress_cb=_stage_progress,
+                )
+            except AmbiguousSpeciesLabels as error:
+                # Raised before the first link is saved, so the session is left as it was.
+                self.logger.warning(f"Skipping event {event.pk}: {error}")
+                totals["events_skipped"] += 1
+                skip_reasons["its species gate cannot tell which classifier's labels to compare"] += 1
+                continue
             totals["events_tracked"] += 1
             tracked_event_ids.append(event.pk)
             totals["links_created"] += counters.get("links_created", 0)

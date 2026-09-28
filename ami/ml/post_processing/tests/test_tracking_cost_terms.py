@@ -12,11 +12,13 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from ami.main.management.commands.evaluate_tracking import expand_sweep
-from ami.main.models import Classification, Detection, Event, Occurrence
+from ami.main.models import Classification, Detection, Event, Occurrence, Taxon
+from ami.ml.models.algorithm import Algorithm
 from ami.ml.post_processing.registry import staff_only_config_fields
 from ami.ml.post_processing.tracking_evaluation import evaluate_tracks, format_sweep_markdown, summarise_session
 from ami.ml.post_processing.tracking_task import (
     DEFAULT_LINK_OPTIONS,
+    AmbiguousSpeciesLabels,
     LinkOptions,
     PairTerms,
     TopLabel,
@@ -32,6 +34,7 @@ from ami.ml.post_processing.tracking_task import (
     pair_terms,
     propose_event_links,
     resolve_feature_algorithm,
+    resolve_label_algorithm,
     top_labels,
     total_cost,
     weighted_cost,
@@ -300,7 +303,8 @@ class TestCostTermsOnATrackingSession(TestCase):
     def test_precomputed_pairs_give_the_same_links_as_a_run_for_any_setting(self):
         algorithm = self._algorithm()
         transitions, _ = event_transition_pairs(self.event, algorithm)
-        labels = top_labels(Detection.objects.filter(source_image__event=self.event).values_list("pk", flat=True))
+        detection_ids = list(Detection.objects.filter(source_image__event=self.event).values_list("pk", flat=True))
+        labels = top_labels(detection_ids, resolve_label_algorithm(detection_ids, None))
         for extra in (
             {},
             {"species_gate": "forbid", "species_gate_min_score": 0.0},
@@ -323,6 +327,34 @@ class TestCostTermsOnATrackingSession(TestCase):
         self.assertTrue(blocked <= plain)
         truth = {d: insect.identifier for insect in self.ground_truth.insects for d in insect.detection_ids}
         self.assertTrue(all(truth[a] == truth[b] for a, b, _ in blocked))
+
+    def test_species_labels_come_from_one_classifier(self):
+        # A second classifier's more confident label on the same crop must not replace the
+        # first one's, and with no classifier chosen the gate refuses to mix the two.
+        detection_ids = list(Detection.objects.filter(source_image__event=self.event).values_list("pk", flat=True))
+        first_id = resolve_label_algorithm(detection_ids, None)
+        other = Algorithm.objects.create(name="Second classifier", key="second-classifier-test")
+        own = Classification.objects.filter(detection_id=detection_ids[0], algorithm_id=first_id).first()
+        Classification.objects.create(
+            detection_id=detection_ids[0],
+            algorithm=other,
+            taxon=Taxon.objects.exclude(pk=own.taxon_id).first(),
+            score=0.99,
+            terminal=True,
+            timestamp=timezone.now(),
+        )
+        self.assertEqual(top_labels(detection_ids, first_id)[detection_ids[0]].taxon_id, own.taxon_id)
+        self.assertEqual(top_labels(detection_ids, other.pk)[detection_ids[0]].score, 0.99)
+        with self.assertRaises(AmbiguousSpeciesLabels):
+            resolve_label_algorithm(detection_ids, None)
+        self.assertEqual(resolve_label_algorithm(detection_ids, first_id), first_id)
+
+        gated = {"species_gate": "forbid", "species_label_algorithm_id": None}
+        config = TrackingConfig(event_ids=[self.event.pk], require_features=False, **gated)
+        with self.assertRaises(AmbiguousSpeciesLabels):
+            propose_event_links(self.event, None, config, logger)
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, **gated).run()
+        self.assertEqual(Occurrence.objects.filter(event=self.event).count(), len(detection_ids))
 
     def _confirm_tracks(self) -> None:
         TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.8).run()
