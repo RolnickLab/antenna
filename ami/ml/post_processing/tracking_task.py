@@ -21,7 +21,11 @@ from ami.main.models import (
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
-from ami.main.models_future.embeddings import algorithm_ids_with_vectors, vectors_for_detections
+from ami.main.models_future.embeddings import (
+    algorithm_ids_with_vectors,
+    default_feature_algorithm_id,
+    vectors_for_detections,
+)
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.main.models_future.tracks import lock_sessions
 from ami.ml.models import Algorithm
@@ -61,8 +65,8 @@ class TrackingConfig(pydantic.BaseModel):
     # data is a v2 concern (see #1272 for the incremental append/prepend plan).
     require_fresh_event: bool = True
 
-    # Which feature extractor's embeddings to compare. Left unset, the task infers it
-    # when exactly one algorithm produced embeddings for the event.
+    # Which feature extractor's embeddings to compare. Left unset: the event's only one,
+    # or the project's default among several (see resolve_feature_algorithm).
     feature_extraction_algorithm_id: int | None = None
 
     @pydantic.root_validator(skip_on_failure=True)
@@ -79,6 +83,9 @@ class TrackingConfig(pydantic.BaseModel):
 def cosine_similarity(v1: Iterable[float], v2: Iterable[float]) -> float:
     a = np.array(v1)
     b = np.array(v2)
+    if a.shape != b.shape:
+        # Vectors of different lengths come from different extractors and are not comparable.
+        raise ValueError(f"Cannot compare vectors of shapes {a.shape} and {b.shape}")
     sim = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     return float(np.clip(sim, 0.0, 1.0))
 
@@ -133,9 +140,8 @@ def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | No
 
     If exactly one feature-extraction algorithm stored vectors (embeddings or
     classification ``features_2048``) for this event, returns that algorithm and a
-    single-element list. Otherwise returns ``(None, candidates)`` so the caller can
-    either skip with a warning or require the operator to pass an explicit
-    ``feature_extraction_algorithm_id``.
+    single-element list. Otherwise returns ``(None, candidates)`` and the caller picks
+    one (``resolve_feature_algorithm``).
     """
     algo_ids = algorithm_ids_with_vectors(source_image__event=event)
     candidates = list(Algorithm.objects.filter(pk__in=algo_ids))
@@ -150,9 +156,11 @@ def resolve_feature_algorithm(
     """The feature extractor a tracking run compares embeddings from, and whether it tracks the event.
 
     Returns ``(algorithm, should_track, note)``. ``algorithm`` is None when the run falls
-    back to geometry alone, and ``note`` says why a run falls back or skips; it is empty
-    when one extractor was configured or found. ``candidates`` are the extractors that
-    produced embeddings: every one in the event unless the caller passes a narrower set.
+    back to geometry alone. With vectors from several extractors and none configured, the
+    project's default is taken (see ``default_feature_algorithm_id``). ``note`` says which
+    extractor was picked among several, or why a run falls back or skips; it is empty when
+    one extractor was configured or found. ``candidates`` are the extractors that produced
+    embeddings: every one in the event unless the caller passes a narrower set.
     """
     if config.feature_extraction_algorithm_id is not None:
         algorithm = Algorithm.objects.filter(pk=config.feature_extraction_algorithm_id).first()
@@ -171,14 +179,20 @@ def resolve_feature_algorithm(
         return candidates[0], True, ""
 
     if candidates:
-        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
-        message = (
-            f"Session {event.pk}: detections classified by {len(candidates)} different "
-            f"feature-extraction algorithms ({candidate_names}). Pass "
-            "feature_extraction_algorithm_id in the job config to disambiguate."
+        # Vectors from several extractors: compare the project's default one, never a mix.
+        default_id = default_feature_algorithm_id(
+            event.project_id, [a.pk for a in candidates], source_image__event=event
         )
-    else:
-        message = f"Session {event.pk}: no detections carry feature embeddings."
+        algorithm = next(a for a in candidates if a.pk == default_id)
+        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
+        return (
+            algorithm,
+            True,
+            f"Session {event.pk}: vectors from {len(candidates)} feature extractors ({candidate_names}); "
+            f"comparing #{algorithm.pk} {algorithm.name}. Pass feature_extraction_algorithm_id to choose another.",
+        )
+
+    message = f"Session {event.pk}: no detections carry feature embeddings."
 
     if config.require_features:
         return None, False, f"{message} Skipping."

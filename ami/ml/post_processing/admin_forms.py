@@ -77,9 +77,9 @@ class TrackingActionForm(forms.Form):
         required=False,
         help_text=(
             "Override the algorithm whose embeddings are used for matching. Leave "
-            "blank to auto-detect (works when only one feature-extracting algorithm "
-            "ran on the event). Required when multiple algorithms have produced "
-            "embeddings on the same event."
+            "blank to use the only one with vectors on the event, or, when several "
+            "have them, the project's default: one it runs as a feature extractor, "
+            "else the one stored most recently."
         ),
     )
 

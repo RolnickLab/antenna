@@ -2504,3 +2504,20 @@ class CaptureMatchesResponseSerializer(serializers.Serializer):
         "and then every score is null.",
     )
     detections = CaptureMatchSerializer(many=True)
+
+
+class SessionFeatureExtractorSerializer(serializers.Serializer):
+    """A feature extractor with vectors stored for a session's detections."""
+
+    id = serializers.IntegerField(source="algorithm.pk")
+    name = serializers.CharField(source="algorithm.name")
+    key = serializers.CharField(source="algorithm.key")
+    task_type = serializers.CharField(source="algorithm.task_type", allow_null=True)
+    embedding_dimensions = serializers.IntegerField(source="algorithm.embedding_dimensions", allow_null=True)
+    embeddings_count = serializers.IntegerField(help_text="Detections with a stored embedding from it.")
+    classification_vectors_count = serializers.IntegerField(
+        help_text="Classifications from it that carry a vector (data processed before embeddings were stored)."
+    )
+    is_default = serializers.BooleanField(
+        help_text="Whether tracking compares this extractor's vectors when none is chosen."
+    )

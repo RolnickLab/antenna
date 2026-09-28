@@ -36,6 +36,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.embeddings import feature_extractors_with_vectors
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.merge_candidates import (
     DEFAULT_ADJACENT_CAPTURES,
@@ -124,6 +125,7 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SessionFeatureExtractorSerializer,
     SiteSerializer,
     SourceImageCollectionNestedSerializer,
     SourceImageCollectionSerializer,
@@ -544,6 +546,17 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
             qs = qs.with_taxa_count(project=project, request=self.request)  # type: ignore
 
         return qs
+
+    @extend_schema(parameters=[project_id_doc_param], responses=SessionFeatureExtractorSerializer(many=True))
+    @action(detail=True, methods=["get"], name="feature-extractors", url_path="feature-extractors")
+    def feature_extractors(self, request, pk=None):
+        """The feature extractors with vectors for this session's detections, the default one marked.
+
+        Tracking compares vectors from one extractor only; this lists the choices.
+        """
+        event = self.get_object()
+        rows = feature_extractors_with_vectors(event.project_id, source_image__event=event)
+        return Response(SessionFeatureExtractorSerializer(rows, many=True).data)
 
     @action(detail=True, methods=["get"], name="timeline")
     def timeline(self, request, pk=None):
