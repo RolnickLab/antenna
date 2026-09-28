@@ -13,6 +13,7 @@ import pydantic
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
+from ami.jobs.models import Job, JobDispatchMode, MLJob
 from ami.main.models import (
     Classification,
     Deployment,
@@ -32,13 +33,17 @@ from ami.main.models_future.embeddings import (
 )
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import (
+    COLLECT_PROGRESS_MAX_FRACTION,
+    COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS,
     EmbeddingDimensionMismatch,
     collect_detections_for_features,
     collect_images,
+    filter_processed_images,
     process_images,
     save_results,
 )
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.ml.post_processing.tracking_task import TrackingConfig, cosine_similarity, resolve_feature_algorithm
 from ami.ml.schemas import EmbeddingResponse, PipelineResultsResponse, SourceImageRequest
 from ami.users.models import User
@@ -227,6 +232,64 @@ class TestExtractFeaturesScope(FeatureOnlyFixture, TestCase):
 
         self.assertEqual(sorted(int(i["id"]) for i in sent["source_images"]), [self.images[1].pk, self.images[2].pk])
         self.assertEqual(len(sent["detections"]), 3)
+
+
+class TestExtractFeaturesQueue(FeatureOnlyFixture, TestCase):
+    """The async path: each queued task carries its missing boxes, and no task is queued empty."""
+
+    def setUp(self) -> None:
+        self._set_up_project()
+        self._embed(self.images[0].detections.valid(), self.extractor)
+        self._embed(self.images[1].detections.valid().filter(bbox=_box(0.0)), self.extractor)
+        # A box whose detector is unknown cannot be sent, so it must not make its image count as pending.
+        Detection.objects.create(source_image=self.images[0], bbox=_box(40.0), detection_algorithm=None)
+        self.job = Job.objects.create(
+            name="Extract features",
+            job_type_key=MLJob.key,
+            project=self.project,
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+
+    @mock.patch("ami.ml.orchestration.jobs.AsyncJobStateManager")
+    @mock.patch("ami.ml.orchestration.jobs.TaskQueueManager")
+    def test_each_task_carries_its_missing_boxes_and_images_with_none_are_not_queued(self, manager_cls, state_cls):
+        manager = manager_cls.return_value
+        manager.__aenter__ = mock.AsyncMock(return_value=manager)
+        manager.__aexit__ = mock.AsyncMock(return_value=False)
+        manager.ensure_job_resources = mock.AsyncMock()
+        manager.publish_task = mock.AsyncMock(return_value=True)
+
+        with mock.patch.object(SourceImage, "url", return_value="http://example.org/i.jpg"):
+            self.assertTrue(queue_images_to_nats(self.job, self.images))
+
+        published = {
+            int(call.kwargs["data"].image_id): sorted(d.bbox.x1 for d in call.kwargs["data"].detections)
+            for call in manager.publish_task.await_args_list
+        }
+        self.assertEqual(published, {self.images[1].pk: [20.0], self.images[2].pk: [0.0, 20.0]})
+        state_cls.return_value.initialize_job.assert_called_once_with([str(self.images[1].pk), str(self.images[2].pk)])
+
+    def test_images_whose_only_pending_box_has_no_detector_are_skipped(self):
+        collected = collect_images(collection=self.collection, pipeline=self.pipeline)
+        self.assertEqual([image.pk for image in collected], [self.images[1].pk, self.images[2].pk])
+
+    def test_the_collect_stage_reports_progress_while_filtering(self):
+        clock = {"t": 0.0}
+
+        def fake_monotonic() -> float:
+            clock["t"] += COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS
+            return clock["t"]
+
+        with mock.patch("ami.ml.models.pipeline.time.monotonic", side_effect=fake_monotonic), mock.patch.object(
+            Job, "save", autospec=True
+        ) as save:
+            list(filter_processed_images(self.images, self.pipeline, batch_size=1, job=self.job, total=3))
+
+        self.assertEqual(save.call_count, 3)
+        self.assertEqual(save.call_args.kwargs["update_fields"], ["progress", "updated_at"])
+        self.assertEqual(self.job.progress.get_stage("collect").progress, COLLECT_PROGRESS_MAX_FRACTION)
 
 
 class TestReadersNeverMixLengths(FeatureOnlyFixture, TestCase):
