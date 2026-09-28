@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+from unittest import mock
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -613,6 +614,29 @@ class TracksExportTest(TestCase):
         default_storage.delete(file_path)
         data_export.refresh_from_db()
         return content, data_export
+
+    def _request_export(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        with mock.patch("ami.jobs.models.Job.enqueue"):
+            return client.post(
+                f"/api/v2/exports/?project_id={self.project.pk}",
+                {"project": self.project.pk, "format": "tracks_csv"},
+                format="json",
+            )
+
+    def test_tracks_export_is_refused_while_tracking_is_off(self):
+        self.assertFalse(self.project.feature_flags.tracking)
+        response = self._request_export()
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("format", response.data)
+        self.assertFalse(DataExport.objects.filter(project=self.project, format="tracks_csv").exists())
+
+    def test_tracks_export_is_accepted_once_tracking_is_on(self):
+        self.project.feature_flags.tracking = True
+        self.project.save(update_fields=["feature_flags"])
+        response = self._request_export()
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_format_export_header_is_the_contract(self):
         content, data_export = self._run_format_export()

@@ -269,6 +269,7 @@ class TracksCSVExporter(BaseExporter):
     """One row per detection of every occurrence in scope; see ami/exports/tracks.py for the columns."""
 
     file_format = "csv"
+    required_feature_flag = "tracking"
 
     def get_queryset(self):
         return Occurrence.objects.valid().filter(project=self.project)  # type: ignore[union-attr]

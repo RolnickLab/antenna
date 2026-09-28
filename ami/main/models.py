@@ -429,6 +429,20 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
 
+    def get_custom_user_permissions(self, user) -> list[str]:
+        # Reads the permissions once for both the project actions and the tracking check.
+        perms = set(get_perms(user, self))
+        custom_perms = {
+            perm.split("_", 1)[0]
+            for perm in perms
+            if perm.endswith("_project") and perm.split("_", 1)[0] not in ("view", "create", "update", "delete")
+        }
+        # Mirrors what creating and then running a tracking job checks, so the UI can offer it.
+        tracking_job_perms = {Project.Permissions.CREATE_JOB, Project.Permissions.RUN_POST_PROCESSING_JOB}
+        if self.feature_flags.tracking and tracking_job_perms <= perms:
+            custom_perms.add(Project.Permissions.RUN_TRACKING)
+        return list(custom_perms)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
@@ -454,6 +468,8 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
+        # Not a stored permission: reported to the UI when the tracking job permissions and flag all hold.
+        RUN_TRACKING = "run_tracking"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -1441,6 +1457,29 @@ def update_calculated_fields_for_events(
         if updated_count != len(to_update):
             logging.error(f"Failed to update {len(to_update) - updated_count} events")
     return to_update
+
+
+def update_calculated_fields_for_sessions_and_stations(
+    event_ids: typing.Iterable[int | None], stations_async: bool = True
+) -> None:
+    """Refresh the cached counts of these sessions and of the stations they belong to.
+
+    Call once after occurrences are created, merged or split, which neither the
+    occurrence nor the detection saves do. The project's counts are live and need nothing.
+    The station refresh scans the whole station, so by default it runs in a background
+    task after the transaction commits, keeping it and the station row lock out of the request.
+    """
+    from ami.main.tasks import refresh_deployment_cached_counts
+
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if not pks:
+        return
+    update_calculated_fields_for_events(pks=pks)
+    deployment_ids = list(Deployment.objects.filter(events__pk__in=pks).values_list("pk", flat=True).distinct())
+    if stations_async:
+        transaction.on_commit(lambda: refresh_deployment_cached_counts.delay(deployment_ids))
+    else:
+        refresh_deployment_cached_counts(deployment_ids)
 
 
 def audit_event_lengths(deployment: Deployment):

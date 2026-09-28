@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections import defaultdict
 
 import numpy as np
@@ -7,7 +8,16 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, Event, Identification, Occurrence, SourceImageCollection, Taxon
+from ami.main.models import (
+    Classification,
+    Detection,
+    Event,
+    Identification,
+    Occurrence,
+    SourceImageCollection,
+    Taxon,
+    update_calculated_fields_for_events,
+)
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
@@ -134,6 +144,30 @@ class TestTracking(TestCase):
         self.assertEqual(keeper.detections.count(), 2)
         self.assertFalse(Classification.objects.filter(algorithm=tracking_algorithm).exists())
 
+    def test_a_merge_clears_verification_only_where_frames_changed(self):
+        """A keeper that gains frames loses its "complete and accurate" mark, as after a
+        manual edit, while an occurrence tracking leaves unchanged keeps its mark."""
+        det_a, det_b, _, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
+        user = UserFactory()
+        untouched = (
+            Occurrence.objects.filter(detections__source_image__in=self.source_images[:2])
+            .exclude(pk__in=[det_a.occurrence_id, det_b.occurrence_id])
+            .first()
+        )
+        assert untouched is not None
+        Occurrence.objects.filter(pk__in=[det_a.occurrence_id, det_b.occurrence_id, untouched.pk]).update(
+            grouping_verified_at=timezone.now(), grouping_verified_by=user
+        )
+
+        assign_occurrences_from_detection_chains(self.source_images[:2], logger)
+
+        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
+        self.assertEqual(keeper.detections.count(), 2)
+        self.assertEqual((keeper.grouping_verified_at, keeper.grouping_verified_by), (None, None))
+        untouched.refresh_from_db()
+        self.assertIsNotNone(untouched.grouping_verified_at)
+        self.assertEqual(untouched.grouping_verified_by, user)
+
     def test_null_marker_sentinels_are_ignored(self):
         """A capture marked "processed, nothing found" carries a bbox-less sentinel detection;
         tracking must neither score it nor give it an occurrence."""
@@ -257,6 +291,22 @@ class TestTrackingWithoutFeatures(TestCase):
             0,
             "Every detection should still belong to an occurrence after tracking",
         )
+
+    def test_session_and_station_counts_are_refreshed_after_tracking(self):
+        """The cached counts the session and station lists show follow the merged occurrences."""
+        update_calculated_fields_for_events(pks=[self.event.pk])
+        self.deployment.update_calculated_fields(save=True)
+        self.event.refresh_from_db()
+        before = self.event.occurrences_count
+
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+
+        self.event.refresh_from_db()
+        self.deployment.refresh_from_db()
+        live = self.event.get_occurrences_count()
+        self.assertLess(live, before, "Tracking must merge occurrences for this test to mean anything")
+        self.assertEqual(self.event.occurrences_count, live)
+        self.assertEqual(self.deployment.occurrences_count, live)
 
     def test_requiring_features_leaves_data_untouched(self):
         before = Occurrence.objects.filter(event=self.event).count()
@@ -493,3 +543,51 @@ class TestIdentificationsSurviveMerging(TestCase):
             <= set(surviving),
             "Every identification must point at an occurrence that still exists",
         )
+
+    def _tracking_job(self) -> Job:
+        job = Job.objects.create(
+            name="Tracking summary test",
+            project=self.project,
+            job_type_key="post_processing",
+            params={"task": "tracking", "config": {"event_ids": [self.event.pk]}},
+        )
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        return job
+
+    def _stage_params(self, job: Job) -> dict[str, typing.Any]:
+        job.refresh_from_db()
+        return {param.name: param.value for param in job.progress.get_stage("post_processing").params}
+
+    def test_a_run_that_skips_every_session_says_why_in_the_job(self):
+        """A run whose sessions were all skipped still succeeds, so the job details must say
+        that nothing was tracked and why, instead of looking like a run that did the work."""
+        job = self._tracking_job()
+        TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+
+        params = self._stage_params(job)
+        self.assertEqual(params["Events tracked"], 0)
+        self.assertEqual(
+            params["Result"], "Nothing was tracked: 1 session(s) skipped (1 because it has human identifications)."
+        )
+
+    def test_a_retried_run_that_tracks_replaces_the_nothing_tracked_line(self):
+        """A retry keeps text stage params, so a run that tracks must overwrite the earlier
+        "Nothing was tracked" line rather than leave it beside a non-zero count."""
+        job = self._tracking_job()
+        TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+        self.assertTrue(self._stage_params(job)["Result"].startswith("Nothing was tracked"))
+
+        job.progress.reset()
+        job.save()
+        TrackingTask(
+            job=job,
+            event_ids=[self.event.pk],
+            require_features=False,
+            cost_threshold=0.5,
+            skip_if_human_identifications=False,
+        ).run()
+
+        params = self._stage_params(job)
+        self.assertEqual(params["Events tracked"], 1)
+        self.assertEqual(params["Result"], "Tracked 1 session(s).")

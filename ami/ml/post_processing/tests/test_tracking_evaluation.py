@@ -90,6 +90,16 @@ class TestEvaluateTracks(SimpleTestCase):
         self.assertEqual(payload["merges"], 1)
         self.assertNotIn("ground_truth_track_scores", result.to_dict(include_tracks=False))
 
+    def test_predicted_tracks_are_named_by_their_first_detection_not_a_track_id(self):
+        """Confirmed tracks are keyed by occurrence id under ``track_id``; predicted tracks must
+        use a key of their own, or a detection id reads as an occurrence id in the output."""
+        # Detection 4 is left out of the predictions, so it is a predicted track of its own.
+        result = _evaluate({1: "x", 2: "x", 3: "x", 5: "y", 6: "y", 7: "z"})
+        predicted = result.to_dict()["predicted_track_scores"]
+        self.assertEqual([p["first_detection_id"] for p in predicted], [1, 4, 5, 7])
+        self.assertFalse(any("track_id" in p for p in predicted))
+        self.assertEqual([g["track_id"] for g in result.to_dict()["ground_truth_track_scores"]], ["A", "B", "C"])
+
 
 class TestTracksFromLinks(SimpleTestCase):
     def test_chains_take_the_id_of_their_first_detection(self):

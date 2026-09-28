@@ -1,3 +1,4 @@
+import collections
 import logging
 import math
 import typing
@@ -17,8 +18,10 @@ from ami.main.models import (
     Occurrence,
     SourceImage,
     SourceImageCollection,
+    update_calculated_fields_for_sessions_and_stations,
 )
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
+from ami.main.models_future.tracks import clear_grouping_verification
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -267,6 +270,8 @@ def assign_occurrences_from_detection_chains(
     - If no detection in the chain has an occurrence yet, create one.
     - With ``record_as`` set, a merge that changes the keeper's determination leaves a
       classification attributed to that algorithm (see ``record_tracking_determination``).
+    - Clear grouping verification from every occurrence whose detection set changed;
+      an occurrence the chains leave as it was keeps its mark.
     - Store the track statistics of every occurrence the chains settle on, so the list
       can sort by them (see ``track_stats.refresh_track_stats_for_ids``).
 
@@ -342,10 +347,12 @@ def assign_occurrences_from_detection_chains(
                 created += 1
 
             # Reassign chain detections to keeper.
+            keeper_gained_frames = False
             for d in chain:
                 if d.occurrence_id != keeper.pk:
                     d.occurrence = keeper
                     d.save()
+                    keeper_gained_frames = True
 
             # Move identifications onto the keeper before deleting the occurrences that
             # held them. Identification.occurrence CASCADEs, so deleting first destroys a
@@ -357,12 +364,21 @@ def assign_occurrences_from_detection_chains(
                 identifications_moved += Identification.objects.filter(occurrence_id__in=doomed).update(
                     occurrence=keeper
                 )
+            undeleted: list[int] = []
             for occ_id in doomed:
                 try:
                     Occurrence.objects.filter(id=occ_id).delete()
                     merged += 1
                 except Exception as e:
                     logger.error(f"Failed to delete occurrence {occ_id}: {e}")
+                    undeleted.append(occ_id)
+
+            # A confirmation covers the frames a person looked at, so an occurrence whose
+            # frames tracking changes loses it, the same as after a manual edit.
+            if keeper_gained_frames:
+                clear_grouping_verification(keeper)
+            if undeleted:
+                clear_grouping_verification(*Occurrence.objects.filter(pk__in=undeleted))
 
             keeper.save()
             if record_as is not None and keeper.determination_id != previous_determination_id:
@@ -395,6 +411,13 @@ def assign_occurrences_from_detection_chains(
         "identifications_moved": identifications_moved,
         "determinations_recorded": determinations_recorded,
     }
+
+
+def nothing_tracked_summary(skip_reasons: collections.Counter[str]) -> str:
+    """The line a job shows when every session in scope was skipped, with the count per reason."""
+    total = sum(skip_reasons.values())
+    reasons = "; ".join(f"{count} because {reason}" for reason, count in skip_reasons.most_common())
+    return f"Nothing was tracked: {total} session(s) skipped ({reasons})."
 
 
 def latest_feature_vectors(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, typing.Any]:
@@ -693,6 +716,9 @@ class TrackingTask(BasePostProcessingTask):
         self.logger.info(f"Tracking: {total} event(s) in scope")
 
         totals = {"events_tracked": 0, "events_skipped": 0, "links_created": 0, "occurrences_merged": 0}
+        tracked_event_ids: list[int] = []
+        # Why each session was skipped, so a run that tracks nothing can say so.
+        skip_reasons: collections.Counter[str] = collections.Counter()
 
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
@@ -706,11 +732,13 @@ class TrackingTask(BasePostProcessingTask):
                         "Re-tracking previously-tracked data lands in v2 (incremental)."
                     )
                     totals["events_skipped"] += 1
+                    skip_reasons["it was already tracked or edited"] += 1
                     continue
 
             algorithm, should_track = self._resolve_algorithm(event)
             if not should_track:
                 totals["events_skipped"] += 1
+                skip_reasons["it has no embeddings from a single feature extractor to compare"] += 1
                 continue
 
             if (
@@ -719,6 +747,7 @@ class TrackingTask(BasePostProcessingTask):
             ):
                 self.logger.info(f"Skipping event {event.pk}: has human identifications.")
                 totals["events_skipped"] += 1
+                skip_reasons["it has human identifications"] += 1
                 continue
 
             if (
@@ -728,6 +757,7 @@ class TrackingTask(BasePostProcessingTask):
             ):
                 self.logger.info(f"Skipping event {event.pk}: not fully processed.")
                 totals["events_skipped"] += 1
+                skip_reasons["it is not fully processed"] += 1
                 continue
 
             def _stage_progress(p: float, _idx=idx, _total=total) -> None:
@@ -744,16 +774,30 @@ class TrackingTask(BasePostProcessingTask):
                 progress_cb=_stage_progress,
             )
             totals["events_tracked"] += 1
+            tracked_event_ids.append(event.pk)
             totals["links_created"] += counters.get("links_created", 0)
             totals["occurrences_merged"] += counters.get("occurrences_merged", 0)
 
-        self.report_stage_metrics(
-            {
-                "Events tracked": totals["events_tracked"],
-                "Events skipped": totals["events_skipped"],
-                "Detection links created": totals["links_created"],
-                "Occurrences merged": totals["occurrences_merged"],
-            }
-        )
+        # Merging occurrences changes the session and station counts, which no save refreshes.
+        # This already runs in a background job, so the station refresh stays inline.
+        update_calculated_fields_for_sessions_and_stations(tracked_event_ids, stations_async=False)
+
+        metrics: dict[str, typing.Any] = {
+            "Events tracked": totals["events_tracked"],
+            "Events skipped": totals["events_skipped"],
+            "Detection links created": totals["links_created"],
+            "Occurrences merged": totals["occurrences_merged"],
+        }
+        # The job still succeeds, so without this line a run that skipped every session
+        # looks the same in the job details as one that did the work. It is written on every
+        # run because a retry keeps text params, and a stale line would contradict the counts.
+        if totals["events_tracked"]:
+            metrics["Result"] = f"Tracked {totals['events_tracked']} session(s)."
+        elif skip_reasons:
+            metrics["Result"] = nothing_tracked_summary(skip_reasons)
+            self.logger.warning(metrics["Result"])
+        else:
+            metrics["Result"] = "Nothing was tracked: no sessions in scope."
+        self.report_stage_metrics(metrics)
         self.update_progress(1.0)
         self.logger.info(f"Tracking finished: {totals}")

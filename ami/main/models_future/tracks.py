@@ -9,13 +9,15 @@ two animals into one, because a wrong merge destroys a record that no later
 step recovers. These operations are the repair for the merges it still gets
 wrong: cut a track in two, or pull a single detection out of it.
 
-All operations work on the occurrence's detections in timestamp order, which is
-what the occurrence view shows, and repair the chain links to match. That means
-they behave sensibly on occurrences that were never tracked and so carry no
-links at all.
+All operations work on the occurrence's detections in capture order, which is
+what the occurrence view shows. That means they behave sensibly on occurrences
+that were never tracked and so carry no links at all.
 
-Three invariants hold after every operation here:
+Five invariants hold after every operation here:
 
+- Every occurrence the edit touched is linked frame to frame in capture order within
+  each session (``relink_occurrence_chains``), so a confirmed track exports as one
+  unbroken chain.
 - A chain link never crosses an occurrence boundary within one session. Otherwise
   a later tracking pass would walk the chain, decide both occurrences are one, and
   undo the edit. Tracking stops at session boundaries, so the link a regroup keeps
@@ -25,20 +27,41 @@ Three invariants hold after every operation here:
 - The stored track statistics of every surviving occurrence the edit touched are
   recomputed, so the list sorts on current numbers. This costs three queries per
   edit however many occurrences it touched (see ``track_stats.refresh_track_stats``).
+- The cached counts of the sessions and stations the edit touched are refreshed once,
+  since an edit adds or removes occurrences.
 """
 
 from __future__ import annotations
 
 import datetime
+import itertools
 from collections import Counter
 from collections.abc import Iterable
 
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import F
 from django.utils import timezone
 
-from ami.main.models import Detection, Identification, Occurrence, SourceImage, User, update_occurrence_determination
+from ami.main.models import (
+    Detection,
+    Identification,
+    Occurrence,
+    SourceImage,
+    User,
+    update_calculated_fields_for_sessions_and_stations,
+    update_occurrence_determination,
+)
 from ami.main.models_future.track_stats import refresh_track_stats
+
+# Frame order within a track: capture time, then capture, then detection. The edits,
+# the chain links and the tracks export all use it, so they agree on what "next" is.
+CAPTURE_ORDER = (F("source_image__timestamp").asc(nulls_last=True), "source_image_id", "pk")
+
+
+def _capture_order_key(row: dict) -> tuple:
+    """``CAPTURE_ORDER`` for a detection row read with ``.values()``."""
+    timestamp = row["source_image__timestamp"]
+    return (timestamp is None, timestamp or datetime.datetime.min, row["source_image_id"], row["pk"])
 
 
 class TrackEditError(ValueError):
@@ -46,7 +69,7 @@ class TrackEditError(ValueError):
 
 
 def _ordered_detections(occurrence: Occurrence) -> list[Detection]:
-    return list(occurrence.detections.select_related("source_image").order_by("timestamp", "pk"))
+    return list(occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER))
 
 
 def _move_to_new_occurrence(occurrence: Occurrence, detections: list[Detection]) -> Occurrence:
@@ -74,7 +97,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     "After" means later in time. Note that the occurrence detail endpoint
     serves detections newest-first (prefetch_detections_for_detail), so an
     interface that splits at the frame the operator clicked must map the
-    displayed position back to timestamp order, or it will keep the wrong half.
+    displayed position back to capture order, or it will keep the wrong half.
     """
     ordered = _ordered_detections(occurrence)
     index = next((i for i, d in enumerate(ordered) if d.pk == detection.pk), None)
@@ -86,20 +109,14 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
             "there is nothing before it to split from."
         )
 
-    head, tail = ordered[:index], ordered[index:]
+    new_occurrence = _move_to_new_occurrence(occurrence, ordered[index:])
+    relink_occurrence_chains([occurrence, new_occurrence])
 
-    # Cut the link across the split so the two tracks stop referring to each other.
-    boundary = head[-1]
-    if boundary.next_detection_id is not None:
-        boundary.next_detection = None
-        boundary.save(update_fields=["next_detection"])
-
-    new_occurrence = _move_to_new_occurrence(occurrence, tail)
-
-    _clear_verification(occurrence, new_occurrence)
+    clear_grouping_verification(occurrence, new_occurrence)
     occurrence.save()
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
+    update_calculated_fields_for_sessions_and_stations([occurrence.event_id, new_occurrence.event_id])
     return new_occurrence
 
 
@@ -120,31 +137,14 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     if index is None:
         raise TrackEditError(f"Detection {detection.pk} does not belong to occurrence {occurrence.pk}.")
 
-    detection = ordered[index]
-    successor_id = detection.next_detection_id
+    new_occurrence = _move_to_new_occurrence(occurrence, [ordered[index]])
+    relink_occurrence_chains([occurrence, new_occurrence], moved_from={detection.pk: occurrence.pk})
 
-    # Stitch the chain across the removed detection before moving it, so the
-    # remaining detections stay one track rather than two.
-    if index > 0:
-        predecessor = ordered[index - 1]
-        if predecessor.next_detection_id == detection.pk:
-            # Clear the outbound link first: next_detection is unique, so writing
-            # the successor onto the predecessor while the detection still points
-            # at it would violate the constraint.
-            detection.next_detection = None
-            detection.save(update_fields=["next_detection"])
-            predecessor.next_detection_id = successor_id
-            predecessor.save(update_fields=["next_detection"])
-    if detection.next_detection_id is not None:
-        detection.next_detection = None
-        detection.save(update_fields=["next_detection"])
-
-    new_occurrence = _move_to_new_occurrence(occurrence, [detection])
-
-    _clear_verification(occurrence, new_occurrence)
+    clear_grouping_verification(occurrence, new_occurrence)
     occurrence.save()
     new_occurrence.save()
     refresh_track_stats(occurrence, new_occurrence)
+    update_calculated_fields_for_sessions_and_stations([occurrence.event_id, new_occurrence.event_id])
     return new_occurrence
 
 
@@ -160,9 +160,7 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     whole track within its session and the link records that they are one animal.
     Returns the new occurrences in time order, or an empty list when nothing was split.
     """
-    detections = occurrence.detections.select_related("source_image").order_by(
-        "source_image__timestamp", "source_image_id", "pk"
-    )
+    detections = occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER)
     by_session: dict[int, list[Detection]] = {}
     for detection in detections:
         # A capture with no session stays with the earliest piece.
@@ -223,37 +221,158 @@ def _copy_identifications(source: Occurrence, targets: list[Occurrence]) -> None
     Identification.objects.bulk_update(copies, ["created_at"])
 
 
-def _cut_links_leaving(occurrence: Occurrence) -> None:
-    """Clear every chain link that would cross this occurrence's boundary.
+def _in_different_sessions(a: int | None, b: int | None) -> bool:
+    return a is not None and b is not None and a != b
 
-    A link between detections in different occurrences would let a later tracking
-    pass walk the chain and fold the two back together, silently undoing a human
-    edit. Called after any operation that moves detections.
 
-    A link into another session is kept: it records one animal across a session
-    boundary, and tracking never walks a chain past one.
+def relink_occurrence_chains(occurrences: Iterable[Occurrence], moved_from: dict[int, int] | None = None) -> None:
+    """Rewrite the chain links of ``occurrences`` to match the detections they now hold.
+
+    The detections of each occurrence are linked one after another in capture-time
+    order, so after a manual edit the chain agrees with the membership a reviewer
+    confirmed and the tracks export can follow it frame by frame. Within an occurrence,
+    two consecutive detections from different sessions are not linked, and only one
+    box on a capture joins the chain: the one already linked, else the lowest pk.
+    Links from these detections to detections outside them, and into them from
+    outside, are cut, since a later tracking pass would walk such a link and fold the
+    occurrences back together.
+
+    A link into another session that some other occurrence holds records one animal
+    across a session boundary (see ``split_at_session_boundaries``) and tracking never
+    walks it, so it is kept, moved to the last frame of that session's run or to the
+    first frame of the run it points into. ``moved_from`` maps a detection the edit
+    pulled out of a track to the occurrence it left: such a link stays with that
+    track rather than following the rejected frame. Costs two reads and at most two
+    writes however many occurrences and detections are involved.
     """
-    members = set(occurrence.detections.values_list("pk", flat=True))
-    if not members:
+    occurrence_pks = {o.pk for o in occurrences if o.pk is not None}
+    if not occurrence_pks:
         return
-
-    cross_session = Q(
-        source_image__event_id__isnull=False,
-        next_detection__source_image__event_id__isnull=False,
-    ) & ~Q(source_image__event_id=F("next_detection__source_image__event_id"))
-
-    outbound = (
-        Detection.objects.filter(pk__in=members, next_detection__isnull=False)
-        .exclude(next_detection_id__in=members)
-        .exclude(cross_session)
+    members = list(
+        Detection.objects.valid()
+        .filter(occurrence_id__in=occurrence_pks)
+        .order_by()
+        .values(
+            "pk",
+            "occurrence_id",
+            "source_image_id",
+            "source_image__timestamp",
+            "source_image__event_id",
+            "next_detection_id",
+            "next_detection__occurrence_id",
+            "next_detection__source_image__event_id",
+        )
     )
-    outbound.update(next_detection=None)
+    member_pks = [m["pk"] for m in members]
+    if not member_pks:
+        return
+    inbound = list(
+        Detection.objects.filter(next_detection_id__in=member_pks)
+        .exclude(pk__in=member_pks)
+        .order_by()
+        .values("pk", "occurrence_id", "source_image__event_id", "next_detection_id")
+    )
 
-    inbound = Detection.objects.filter(next_detection_id__in=members).exclude(pk__in=members).exclude(cross_session)
-    inbound.update(next_detection=None)
+    by_pk = {m["pk"]: m for m in members}
+    current: dict[int, int | None] = {m["pk"]: m["next_detection_id"] for m in members}
+    current.update({row["pk"]: row["next_detection_id"] for row in inbound})
+    linked = {pk for pk, target in current.items() if target is not None}
+    linked |= {target for target in current.values() if target is not None}
+    desired: dict[int, int | None] = {pk: None for pk in current}
+    # Each chained member maps to the first and last frame of its session's run, and
+    # each (occurrence, session) to the first and last frame of its runs there.
+    run_head: dict[int, int] = {}
+    run_tail: dict[int, int] = {}
+    session_ends: dict[tuple[int, int | None], tuple[int, int]] = {}
+
+    by_occurrence: dict[int, list[dict]] = {}
+    for member in members:
+        by_occurrence.setdefault(member["occurrence_id"], []).append(member)
+    for occurrence_id, rows in by_occurrence.items():
+        rows.sort(key=_capture_order_key)
+        chain: list[dict] = []
+        for _, same_capture in itertools.groupby(rows, key=lambda m: m["source_image_id"]):
+            # A second box on a capture is a second animal. Keep the box the chain
+            # already runs through, so an edit elsewhere does not move the track.
+            boxes = list(same_capture)
+            chain.append(next((box for box in boxes if box["pk"] in linked), boxes[0]))
+        runs: list[list[dict]] = []
+        for row in chain:
+            if runs and not _in_different_sessions(
+                runs[-1][-1]["source_image__event_id"], row["source_image__event_id"]
+            ):
+                runs[-1].append(row)
+            else:
+                runs.append([row])
+        for run in runs:
+            for earlier, later in zip(run, run[1:]):
+                desired[earlier["pk"]] = later["pk"]
+            for row in run:
+                run_head[row["pk"]], run_tail[row["pk"]] = run[0]["pk"], run[-1]["pk"]
+            key = (occurrence_id, run[0]["source_image__event_id"])
+            session_ends[key] = (session_ends.get(key, (run[0]["pk"],))[0], run[-1]["pk"])
+
+    moved_from = moved_from or {}
+
+    def owner(pk: int, occurrence_id: int | None) -> int | None:
+        return moved_from.get(pk, occurrence_id) if pk in by_pk else occurrence_id
+
+    def endpoint(pk: int, event_id: int | None, ends: dict[int, int], end: int) -> int | None:
+        """Where a carried link attaches: ``pk`` itself unless it is in the edit."""
+        if pk not in by_pk:
+            return pk
+        if pk in moved_from and (moved_from[pk], event_id) in session_ends:
+            return session_ends[(moved_from[pk], event_id)][end]
+        return ends.get(pk)
+
+    # Carry over the links into another session that some other occurrence holds.
+    carried: list[tuple[int, int, int | None, int | None, int | None, int | None]] = [
+        (
+            m["pk"],
+            m["next_detection_id"],
+            owner(m["pk"], m["occurrence_id"]),
+            owner(m["next_detection_id"], m["next_detection__occurrence_id"]),
+            m["source_image__event_id"],
+            m["next_detection__source_image__event_id"],
+        )
+        for m in members
+        if m["next_detection_id"] is not None
+    ]
+    carried += [
+        (
+            row["pk"],
+            row["next_detection_id"],
+            row["occurrence_id"],
+            owner(row["next_detection_id"], by_pk[row["next_detection_id"]]["occurrence_id"]),
+            row["source_image__event_id"],
+            by_pk[row["next_detection_id"]]["source_image__event_id"],
+        )
+        for row in inbound
+    ]
+    taken = {target for target in desired.values() if target is not None}
+    for source, target, source_occurrence, target_occurrence, source_event, target_event in sorted(carried):
+        if source_occurrence == target_occurrence or not _in_different_sessions(source_event, target_event):
+            continue
+        new_source = endpoint(source, source_event, run_tail, -1)
+        new_target = endpoint(target, target_event, run_head, 0)
+        if new_source is None or new_target is None:
+            continue
+        if desired.get(new_source) is None and new_target not in taken:
+            desired[new_source] = new_target
+            taken.add(new_target)
+
+    changed = [pk for pk, target in desired.items() if current[pk] != target]
+    if not changed:
+        return
+    # next_detection is unique and Postgres checks it row by row, so clear every
+    # changed link before writing the new ones.
+    Detection.objects.filter(pk__in=changed).update(next_detection=None)
+    relinked = [Detection(pk=pk, next_detection_id=desired[pk]) for pk in changed if desired[pk] is not None]
+    if relinked:
+        Detection.objects.bulk_update(relinked, ["next_detection"])
 
 
-def _clear_verification(*occurrences: Occurrence) -> None:
+def clear_grouping_verification(*occurrences: Occurrence) -> None:
     """Drop grouping verification from occurrences whose detection set just changed.
 
     Clears the loaded instances as well as the rows: a caller that saves the instance
@@ -344,10 +463,11 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     )
 
     _absorb(target, sources)
-    _cut_links_leaving(target)
-    _clear_verification(target)
+    relink_occurrence_chains([target])
+    clear_grouping_verification(target)
     target.save()
     refresh_track_stats(target)
+    update_calculated_fields_for_sessions_and_stations([target.event_id])
     return target
 
 
@@ -398,15 +518,18 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     emptied = [o for o in donors if not o.detections.exists()]
     _absorb(target, emptied)
 
-    _cut_links_leaving(target)
     remaining = [o for o in donors if o.pk not in {e.pk for e in emptied}]
+    relink_occurrence_chains(
+        [target, *remaining],
+        moved_from={d.pk: d.occurrence_id for d in detections if d.occurrence_id in {o.pk for o in remaining}},
+    )
     for donor in remaining:
-        _cut_links_leaving(donor)
         donor.save()
 
-    _clear_verification(target, *remaining)
+    clear_grouping_verification(target, *remaining)
     target.save()
     refresh_track_stats(target, *remaining)
+    update_calculated_fields_for_sessions_and_stations([target.event_id, *(donor.event_id for donor in donors)])
     return target
 
 

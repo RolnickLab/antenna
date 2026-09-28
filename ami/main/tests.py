@@ -46,6 +46,14 @@ from ami.main.models import (
     get_media_url,
     group_images_into_events,
 )
+from ami.main.models_future.tracks import (
+    add_detections,
+    detach_detection,
+    merge_occurrences,
+    relink_occurrence_chains,
+    split_track,
+    verify_grouping,
+)
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
@@ -1443,17 +1451,59 @@ class TestRegroupSplitsTracks(TestCase):
             height=480,
         )
         loose = Occurrence.objects.create(event=first, deployment=self.deployment, project=self.project)
-        Detection.objects.create(
+        extra = Detection.objects.create(
             source_image=extra_capture, timestamp=extra_capture.timestamp, bbox=[10, 10, 40, 40], occurrence=loose
         )
 
         merge_occurrences(occurrence, [loose])
 
+        self.assertEqual(Detection.objects.get(pk=detections[2].pk).next_detection_id, extra.pk)
         self.assertEqual(
-            Detection.objects.get(pk=detections[2].pk).next_detection_id,
+            Detection.objects.get(pk=extra.pk).next_detection_id,
             detections[3].pk,
-            "A merge into one piece keeps its link into the next session",
+            "A merge into one piece keeps its link into the next session, now from the piece's last frame",
         )
+
+    def test_detaching_the_last_frame_of_the_earlier_piece_hands_its_link_to_the_new_last_frame(self):
+        from ami.main.models_future.tracks import detach_detection
+
+        occurrence, _, detections, _ = self._split_one_track()
+
+        detach_detection(occurrence, detections[2])
+
+        self.assertIsNone(Detection.objects.get(pk=detections[2].pk).next_detection_id, "The rejected frame")
+        self.assertEqual(Detection.objects.get(pk=detections[1].pk).next_detection_id, detections[3].pk)
+
+    def test_detaching_the_first_frame_of_the_later_piece_relinks_to_its_new_first_frame(self):
+        from ami.main.models_future.tracks import detach_detection
+
+        _, piece, detections, _ = self._split_one_track()
+
+        detach_detection(piece, detections[3])
+
+        self.assertIsNone(Detection.objects.get(pk=detections[3].pk).next_detection_id)
+        self.assertEqual(Detection.objects.get(pk=detections[2].pk).next_detection_id, detections[4].pk)
+
+    def test_moving_the_last_frame_of_the_earlier_piece_elsewhere_leaves_the_link_with_that_piece(self):
+        from ami.main.models_future.tracks import add_detections
+
+        _, _, detections, (first, _) = self._split_one_track()
+        other_capture = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=first,
+            timestamp=self.captures[2].timestamp + datetime.timedelta(seconds=30),
+            path="test/regroup-split-other.jpg",
+            width=640,
+            height=480,
+        )
+        other = Occurrence.objects.create(event=first, deployment=self.deployment, project=self.project)
+        Detection.objects.create(
+            source_image=other_capture, timestamp=other_capture.timestamp, bbox=[10, 10, 40, 40], occurrence=other
+        )
+
+        add_detections(other, [Detection.objects.get(pk=detections[2].pk)])
+
+        self.assertEqual(Detection.objects.get(pk=detections[1].pk).next_detection_id, detections[3].pk)
 
     def test_merging_sessions_leaves_tracks_untouched(self):
         self._group(gap_hours=2)
@@ -3629,6 +3679,41 @@ class TestFineGrainedJobRunPermission(APITestCase):
         self.assertNotIn("run", response.data.get("user_permissions", []))
 
 
+class TestRunTrackingProjectPermission(APITestCase):
+    """The project detail reports ``run_tracking`` only when a tracking job could be created and run."""
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Tracking Permission Project")
+        self.ml_data_manager = User.objects.create_user(email="mldm@insectai.org")
+        self.basic_member = User.objects.create_user(email="basic@insectai.org")
+        self.superuser = User.objects.create_superuser(email="super@insectai.org", password="password123")
+        MLDataManager.assign_user(self.ml_data_manager, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+
+    def _set_tracking(self, enabled: bool):
+        self.project.feature_flags.tracking = enabled
+        self.project.save(update_fields=["feature_flags"])
+
+    def _may_run_tracking(self, user) -> bool:
+        self.client.force_authenticate(user)
+        response = self.client.get(f"/api/v2/projects/{self.project.pk}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return Project.Permissions.RUN_TRACKING in response.data["user_permissions"]
+
+    def test_flag_on(self):
+        self._set_tracking(True)
+        self.assertTrue(self._may_run_tracking(self.ml_data_manager))
+        self.assertTrue(self._may_run_tracking(self.superuser))
+        self.assertFalse(self._may_run_tracking(self.basic_member))
+        self.assertFalse(self._may_run_tracking(None))
+
+    def test_flag_off(self):
+        self._set_tracking(False)
+        for user in (self.ml_data_manager, self.superuser, self.basic_member, None):
+            self.assertFalse(self._may_run_tracking(user))
+
+
 class TestRunSingleImageJobPermission(APITestCase):
     def setUp(self):
         super().setUp()
@@ -3696,12 +3781,15 @@ class TestRunSingleImageJobPermission(APITestCase):
         )
 
         # Should not be able to run job now
+        jobs_before = Job.objects.filter(project=self.project).count()
         response = self.client.post(run_url, payload, format="json")
         self.assertEqual(
             response.status_code,
             403,
             f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )
+        # The refusal comes before the save, so no job is left behind.
+        self.assertEqual(Job.objects.filter(project=self.project).count(), jobs_before)
 
 
 class TestMLDataManagerCanRunBatchMLJob(APITestCase):
@@ -8975,6 +9063,34 @@ class TrackEditTestCase(TrackFixtureTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.occurrence.detections.count(), 1)
 
+    def test_every_track_edit_refreshes_the_session_and_station_counts(self):
+        """Each edit adds or removes an occurrence, and the session and station lists show cached counts.
+
+        The station refresh is queued after commit, so the test runs the queued task inline.
+        """
+        from ami.main.tasks import refresh_deployment_cached_counts
+
+        self.client.force_authenticate(user=self.curator)
+        url = f"/api/v2/occurrences/{self.occurrence.pk}"
+        edits = [
+            ("split-track", lambda: {"detection_id": self.detections[2].pk}, 2),
+            ("merge", lambda: {"occurrence_ids": [Detection.objects.get(pk=self.detections[2].pk).occurrence_id]}, 1),
+            ("remove-detection", lambda: {"detection_id": self.detections[1].pk}, 2),
+            ("add-detections", lambda: {"detection_ids": [self.detections[1].pk]}, 1),
+        ]
+        for action, body, expected in edits:
+            with mock.patch.object(
+                refresh_deployment_cached_counts, "delay", side_effect=refresh_deployment_cached_counts
+            ) as queued, self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(f"{url}/{action}/", body(), format="json")
+            self.assertEqual(response.status_code, 200, (action, response.data))
+            queued.assert_called_once_with([self.deployment.pk])
+            self.event.refresh_from_db()
+            self.deployment.refresh_from_db()
+            self.assertEqual(Occurrence.objects.filter(event=self.event).count(), expected, action)
+            self.assertEqual(self.event.occurrences_count, self.event.get_occurrences_count(), action)
+            self.assertEqual(self.deployment.occurrences_count, self.event.get_occurrences_count(), action)
+
     def test_a_member_without_curation_rights_cannot_edit_a_track(self):
         response = self.post("split-track", self.detections[2], user=self.reader)
         self.assertEqual(response.status_code, 403)
@@ -9579,6 +9695,151 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertNotIn("email", after.data["grouping_verified_by"])
 
 
+class TrackChainAfterEditTestCase(TrackFixtureTestCase):
+    """Every manual edit leaves each occurrence it touched linked frame to frame.
+
+    A confirmed occurrence is the ground truth a tracking benchmark is scored against,
+    and the tracks export carries its chain as ``next_detection_id``. An edit that
+    changes the membership without relinking leaves gaps in that chain.
+    """
+
+    def _chain(self, occurrence: Occurrence) -> list[tuple[int, int | None]]:
+        return list(
+            occurrence.detections.order_by("source_image__timestamp", "pk").values_list("pk", "next_detection_id")
+        )
+
+    def assertFullyLinked(self, occurrence: Occurrence) -> None:
+        chain = self._chain(occurrence)
+        expected = [(pk, next_pk) for (pk, _), (next_pk, _) in zip(chain, chain[1:])] + [(chain[-1][0], None)]
+        self.assertEqual(chain, expected)
+
+    def test_split_leaves_both_pieces_linked(self):
+        new_occurrence = split_track(self.occurrence, self.detections[2])
+        self.assertFullyLinked(self.occurrence)
+        self.assertFullyLinked(new_occurrence)
+
+    def test_detaching_a_middle_frame_leaves_the_rest_linked(self):
+        new_occurrence = detach_detection(self.occurrence, self.detections[1])
+        self.assertFullyLinked(self.occurrence)
+        self.assertFullyLinked(new_occurrence)
+
+    def test_merge_links_the_merged_frames_in_capture_order(self):
+        after = self._make_captures_after(3)
+        other, _ = self._make_track(2, captures=[after[0], after[2]])
+        loose, _ = self._make_track(1, captures=[after[1]])
+
+        merge_occurrences(self.occurrence, [other, loose])
+
+        self.assertEqual(len(self._chain(self.occurrence)), 7)
+        self.assertFullyLinked(self.occurrence)
+
+    def test_adding_a_frame_links_it_in_and_stitches_the_donor(self):
+        donor, donor_detections = self._make_track(3, captures=self._make_captures_after(3))
+
+        add_detections(self.occurrence, [donor_detections[1]])
+
+        self.assertFullyLinked(self.occurrence)
+        self.assertFullyLinked(donor)
+        self.assertEqual(Detection.objects.get(pk=donor_detections[0].pk).next_detection_id, donor_detections[2].pk)
+
+    def test_an_edit_keeps_the_box_the_chain_already_runs_through_on_a_shared_capture(self):
+        """Older tracker output can hold two boxes on one capture; relinking must not swap them."""
+        second_box = Detection.objects.create(
+            source_image=self.captures[1],
+            timestamp=self.captures[1].timestamp,
+            bbox=[100, 100, 140, 140],
+            occurrence=self.occurrence,
+        )
+        Detection.objects.filter(pk=self.detections[1].pk).update(next_detection=None)
+        Detection.objects.filter(pk=self.detections[0].pk).update(next_detection=second_box)
+        Detection.objects.filter(pk=second_box.pk).update(next_detection=self.detections[2])
+
+        split_track(self.occurrence, self.detections[3])
+
+        self.assertEqual(Detection.objects.get(pk=self.detections[0].pk).next_detection_id, second_box.pk)
+        self.assertEqual(Detection.objects.get(pk=second_box.pk).next_detection_id, self.detections[2].pk)
+        self.assertIsNone(Detection.objects.get(pk=self.detections[1].pk).next_detection_id)
+
+    def test_a_merge_spanning_two_sessions_links_nothing_across_them(self):
+        later_session = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="later-session",
+            start=self.captures[-1].timestamp + datetime.timedelta(days=1),
+        )
+        captures = [
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                event=later_session,
+                timestamp=later_session.start + datetime.timedelta(minutes=i),
+                path=f"test/later-session-{i}.jpg",
+            )
+            for i in range(2)
+        ]
+        # Filed under this session although its captures are in the next one.
+        other, other_detections = self._make_track(2, captures=captures)
+
+        merge_occurrences(self.occurrence, [other])
+
+        self.assertIsNone(Detection.objects.get(pk=self.detections[-1].pk).next_detection_id)
+        self.assertEqual(Detection.objects.get(pk=other_detections[0].pk).next_detection_id, other_detections[1].pk)
+
+    def test_an_edited_and_confirmed_track_exports_an_unbroken_chain(self):
+        from ami.exports.tracks import iter_track_rows
+
+        after = self._make_captures_after(3)
+        other, _ = self._make_track(1, captures=[after[0]])
+        donor, donor_detections = self._make_track(2, captures=after[1:])
+        merge_occurrences(self.occurrence, [other])
+        add_detections(self.occurrence, [donor_detections[0]])
+        detach_detection(self.occurrence, self.detections[1])
+        add_detections(self.occurrence, [Detection.objects.get(pk=self.detections[1].pk)])
+        verify_grouping(self.occurrence, self.curator)
+
+        rows = list(iter_track_rows(Occurrence.objects.filter(pk=self.occurrence.pk)))
+
+        self.assertEqual(len(rows), 6)
+        self.assertEqual([row["next_detection_id"] for row in rows], [row["detection_id"] for row in rows[1:]] + [""])
+
+    def test_the_export_lists_frames_in_chain_order_when_two_captures_share_a_timestamp(self):
+        from ami.exports.tracks import iter_track_rows
+
+        timestamp = self.captures[-1].timestamp + datetime.timedelta(minutes=1)
+        earlier, later = (
+            SourceImage.objects.create(
+                deployment=self.deployment, event=self.event, timestamp=timestamp, path=f"test/same-time-{i}.jpg"
+            )
+            for i in range(2)
+        )
+        # The detection on the later capture gets the lower pk.
+        other, _ = self._make_track(1, captures=[later])
+        loose, _ = self._make_track(1, captures=[earlier])
+        merge_occurrences(self.occurrence, [other, loose])
+
+        rows = list(iter_track_rows(Occurrence.objects.filter(pk=self.occurrence.pk)))
+
+        self.assertEqual([row["next_detection_id"] for row in rows], [row["detection_id"] for row in rows[1:]] + [""])
+
+    def test_relinking_a_merge_costs_the_same_queries_however_many_frames_moved(self):
+        """Two reads and two writes, with no read or write per detection."""
+        other, _ = self._make_track(3, captures=self._make_captures_after(3))
+        Detection.objects.filter(occurrence__in=[self.occurrence, other]).update(occurrence=self.occurrence)
+        self.assertGreater(len(self._chain(self.occurrence)), 2, "A two-frame fixture cannot catch a per-row query")
+
+        with self.assertNumQueries(4):
+            relink_occurrence_chains([self.occurrence])
+
+        self.assertFullyLinked(self.occurrence)
+
+    def test_a_multi_frame_merge_does_not_query_per_frame(self):
+        other, _ = self._make_track(3, captures=self._make_captures_after(3))
+
+        with self.assertNumQueries(29):
+            merge_occurrences(self.occurrence, [other])
+
+        self.assertFullyLinked(self.occurrence)
+
+
 class OccurrenceGroupingVerifiedFilterTestCase(APITestCase):
     """Finding the tracks nobody has signed off on yet.
 
@@ -10003,6 +10264,61 @@ class MergeCandidatesTestCase(TrackEditTestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data["candidates"]), 3)
+
+    def _stray_frame(self) -> Detection:
+        """The track's second frame, moved across the image so it reads as another animal's box."""
+        stray = self.detections[1]
+        stray.bbox = [300, 300, 330, 330]
+        stray.save(update_fields=["bbox"])
+        return stray
+
+    def test_a_detection_is_ranked_against_other_occurrences_from_its_own_box(self):
+        """Destinations for one frame are scored from that frame alone, so an occurrence on the
+        track's other captures is offered, and one on the frame's own capture is not."""
+        stray = self._stray_frame()
+        near = self._make_occurrence([self.captures[0], self.captures[2]], bbox=[302, 302, 332, 332])
+        far = self._make_occurrence([self.captures[2]], bbox=[700, 700, 730, 730])
+        same_capture = self._make_occurrence([self.captures[1]], bbox=[304, 304, 334, 334])
+
+        response = self.get_candidates(f"&detection={stray.pk}")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        rows = response.data["candidates"]
+        self.assertEqual([row["id"] for row in rows], [near.pk, far.pk])
+        self.assertNotIn(same_capture.pk, [row["id"] for row in rows])
+        self.assertEqual((rows[0]["relation"], rows[0]["time_offset_seconds"]), ("gap", 0.0))
+        self.assertEqual((rows[1]["relation"], rows[1]["time_offset_seconds"]), ("after", 60.0))
+        self.assertEqual({row["edge_timestamp"] for row in rows}, {stray.timestamp.isoformat()})
+        whole_track = [row["id"] for row in self.get_candidates().data["candidates"]]
+        self.assertNotIn(near.pk, whole_track, "The whole track shares a capture with it")
+
+    def test_the_detection_must_be_one_of_the_occurrences_frames(self):
+        other = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+        foreign = other.detections.get()
+        for junk in ("abc", "0", str(foreign.pk)):
+            response = self.get_candidates(f"&detection={junk}")
+            self.assertEqual(response.status_code, 400, junk)
+            self.assertIn("detection", response.data)
+
+    def test_a_detection_ranking_has_a_fixed_query_count(self):
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+        stray = self._stray_frame()
+        for offset in range(3):
+            self._make_occurrence(
+                [self.captures[2]], bbox=[300 + offset, 300, 330 + offset, 330], vector=vector, algorithm=extractor
+            )
+
+        # Uncached: the savepoint pair, the object lookup with its identifications and
+        # permission checks, then the same seven ranking queries as for the whole track,
+        # the frame lookup doubling as the check that the detection is the occurrence's.
+        with cachalot_disabled(), self.assertNumQueries(15):
+            response = self.get_candidates(f"&detection={stray.pk}")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["candidates"]), 3)
+        self.assertTrue(all(row["similarity"] == 1.0 for row in response.data["candidates"]))
 
 
 class CaptureMatchesTestCase(APITestCase):

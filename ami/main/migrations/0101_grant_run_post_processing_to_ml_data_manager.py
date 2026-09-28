@@ -1,6 +1,6 @@
 """
-Grant ``run_post_processing_job`` to ``ProjectManager`` role groups on existing projects,
-so project managers can start tracking runs they create through the jobs API.
+Grant ``run_post_processing_job`` to ``MLDataManager`` and ``ProjectManager`` role groups on
+existing projects, so the roles that run ML jobs can also start tracking runs through the jobs API.
 
 The grant is a guardian object-level permission per project, which is what
 ``user.has_perm(codename, project)`` reads; see 0095 for the same pattern. The
@@ -8,8 +8,15 @@ The grant is a guardian object-level permission per project, which is what
 """
 
 from django.db import migrations
+from django.db.models import Q
 
 CODENAME = "run_post_processing_job"
+# ProjectManager inherits MLDataManager's permissions, so both groups hold the grant.
+ROLE_SUFFIXES = ("_MLDataManager", "_ProjectManager")
+
+
+def _role_groups() -> Q:
+    return Q(name__endswith=ROLE_SUFFIXES[0]) | Q(name__endswith=ROLE_SUFFIXES[1])
 
 
 def _permission(apps):
@@ -40,7 +47,7 @@ def grant(apps, schema_editor):
     perm, project_ct = _permission(apps)
     if perm is None:
         return
-    for group in Group.objects.filter(name__endswith="_ProjectManager"):
+    for group in Group.objects.filter(_role_groups()):
         project_pk = _project_pk_from_group(group)
         if project_pk is None:
             continue
@@ -57,7 +64,7 @@ def revoke(apps, schema_editor):
     perm, project_ct = _permission(apps)
     if perm is None:
         return
-    for group in Group.objects.filter(name__endswith="_ProjectManager"):
+    for group in Group.objects.filter(_role_groups()):
         project_pk = _project_pk_from_group(group)
         if project_pk is None:
             continue

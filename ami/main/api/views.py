@@ -39,6 +39,7 @@ from ami.main.models_future.merge_candidates import (
     DEFAULT_ADJACENT_CAPTURES,
     MAX_ADJACENT_CAPTURES,
     MAX_WINDOW_MINUTES,
+    DetectionNotInOccurrence,
     match_capture_detections,
     rank_merge_candidates,
     tracking_config_for,
@@ -1857,6 +1858,13 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 required=False,
                 type=OpenApiTypes.INT,
             ),
+            OpenApiParameter(
+                name="detection",
+                description="Rank other occurrences as destinations for this one detection of the occurrence, "
+                "scored from that detection alone, instead of as merges for the whole occurrence.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
         ],
         responses=MergeCandidatesResponseSerializer,
     )
@@ -1872,6 +1880,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         Occurrences with a frame on one of its captures are other animals and are left
         out. Drawn from the same queryset the merge action resolves its sources from,
         so everything offered here can be merged.
+
+        With `detection`, ranks the destinations for moving that one detection instead,
+        searching and scoring from it alone.
         """
         occurrence = self.get_object()
         if "captures" in request.query_params and "minutes" in request.query_params:
@@ -1890,12 +1901,21 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             field=serializers.IntegerField(required=False, min_value=1, max_value=MAX_WINDOW_MINUTES),
             data=request.query_params,
         )
-        candidates = rank_merge_candidates(
-            occurrence,
-            self.get_queryset().prefetch_related(None),
-            minutes=minutes,
-            captures=captures,
+        detection_id = SingleParamSerializer[int].clean(
+            param_name="detection",
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=request.query_params,
         )
+        try:
+            candidates = rank_merge_candidates(
+                occurrence,
+                self.get_queryset().prefetch_related(None),
+                minutes=minutes,
+                captures=captures,
+                detection_id=detection_id,
+            )
+        except DetectionNotInOccurrence:
+            raise api_exceptions.ValidationError({"detection": "Not a detection of this occurrence."})
         config = tracking_config_for(occurrence)
         return Response(
             MergeCandidatesResponseSerializer(
