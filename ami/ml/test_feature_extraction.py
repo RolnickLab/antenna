@@ -249,48 +249,49 @@ class TestReadersNeverMixLengths(FeatureOnlyFixture, TestCase):
 
 
 class TestDefaultFeatureExtractor(FeatureOnlyFixture, TestCase):
-    """With vectors from several extractors and none chosen, tracking compares the default one."""
+    """With vectors from several extractors and none chosen, tracking compares the one covering most boxes."""
 
     def setUp(self) -> None:
         self._set_up_project(images=2, boxes_per_image=2)
         self.event = Event.objects.get(pk=self.images[0].event_id)
-        self.older = Algorithm.objects.create(name="Older backbone", key="older-backbone", task_type="embedding")
-        detections = Detection.objects.valid()
-        self._embed(detections, self.older, length=2048)
-        self._embed(detections, self.extractor)  # stored last
+        self.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
+        self.detections = list(Detection.objects.valid().filter(source_image__event=self.event).order_by("pk"))
+        self._embed(self.detections, self.other, length=2048)
+        self._embed(self.detections[:1], self.extractor)  # stored last, on one box only
 
-    def test_the_most_recently_stored_extractor_is_the_default(self):
+    def test_the_extractor_covering_most_detections_wins_over_a_more_recent_one(self):
         algorithm, should_track, note = resolve_feature_algorithm(
             self.event, TrackingConfig(event_ids=[self.event.pk], require_features=True)
         )
-        self.assertEqual((algorithm, should_track), (self.extractor, True))
+        self.assertEqual((algorithm, should_track), (self.other, True))
         self.assertIn("2 feature extractors", note)
 
-    def test_an_extractor_the_project_runs_wins_over_a_more_recent_one(self):
+    def test_an_extractor_the_project_runs_wins_only_once_it_covers_nearly_as_many(self):
         service = ProcessingService.objects.create(name="Service", endpoint_url=None)
         service.projects.add(self.project)
-        older_pipeline = Pipeline.objects.create(name="Older features", slug="older-features")
-        older_pipeline.algorithms.set([self.older])
-        service.pipelines.add(older_pipeline)
-        ProjectPipelineConfig.objects.create(project=self.project, pipeline=older_pipeline, enabled=True)
+        service.pipelines.add(self.pipeline)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=self.pipeline, enabled=True)
+        algorithm_ids = [self.other.pk, self.extractor.pk]
 
-        algorithm_ids = [self.older.pk, self.extractor.pk]
-        self.assertEqual(
-            default_feature_algorithm_id(self.project.pk, algorithm_ids, source_image__event=self.event), self.older.pk
-        )
+        def default() -> int | None:
+            return default_feature_algorithm_id(self.project.pk, algorithm_ids, source_image__event=self.event)
+
+        self.assertEqual(default(), self.other.pk)  # 1 of 4 boxes: a run still in progress
+        self._embed(self.detections[1:], self.extractor)
+        self.assertEqual(default(), self.extractor.pk)
 
     def test_a_chosen_extractor_is_kept(self):
         config = TrackingConfig(
-            event_ids=[self.event.pk], require_features=True, feature_extraction_algorithm_id=self.older.pk
+            event_ids=[self.event.pk], require_features=True, feature_extraction_algorithm_id=self.extractor.pk
         )
-        self.assertEqual(resolve_feature_algorithm(self.event, config)[0], self.older)
+        self.assertEqual(resolve_feature_algorithm(self.event, config)[0], self.extractor)
 
     def test_listing_a_sessions_extractors_takes_a_fixed_number_of_queries(self):
         with self.assertNumQueries(5):
             rows = feature_extractors_with_vectors(self.project.pk, source_image__event=self.event)
         self.assertEqual(
             [(row["algorithm"].pk, row["embeddings_count"], row["is_default"]) for row in rows],
-            [(self.older.pk, 4, False), (self.extractor.pk, 4, True)],  # newest algorithm first
+            [(self.other.pk, 4, True), (self.extractor.pk, 1, False)],  # newest algorithm first
         )
 
 
