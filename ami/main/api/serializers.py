@@ -1182,7 +1182,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
     has_features = serializers.BooleanField(
         read_only=True,
         allow_null=True,
-        help_text="Whether a feature embedding was stored for this classification.",
+        help_text="Whether this classification's algorithm stored a feature vector for its detection.",
     )
 
     def get_permissions(self, instance, instance_data):
@@ -1392,7 +1392,7 @@ class SourceImageSerializer(SourceImageListSerializer):
     )
     detections_with_features = serializers.IntegerField(
         read_only=True,
-        help_text="Valid detections with at least one classification that stored a feature embedding.",
+        help_text="Valid detections with a stored feature vector, as an embedding or on a classification.",
     )
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 

@@ -7,7 +7,7 @@ from collections.abc import Collection, Iterable, Iterator, Sequence
 import numpy as np
 import pydantic
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef
 from django.utils import timezone
 
 from ami.main.models import (
@@ -21,6 +21,7 @@ from ami.main.models import (
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
+from ami.main.models_future.embeddings import algorithm_ids_with_vectors, vectors_for_detections
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.main.models_future.tracks import lock_sessions
 from ami.ml.models import Algorithm
@@ -130,21 +131,14 @@ def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | No
     """
     Return ``(unique_algorithm, all_candidates)``.
 
-    If exactly one feature-extraction algorithm produced ``features_2048`` for this
-    event, returns that algorithm and a single-element list. Otherwise returns
-    ``(None, candidates)`` so the caller can either skip with a warning or require
-    the operator to pass an explicit ``feature_extraction_algorithm_id``.
+    If exactly one feature-extraction algorithm stored vectors (embeddings or
+    classification ``features_2048``) for this event, returns that algorithm and a
+    single-element list. Otherwise returns ``(None, candidates)`` so the caller can
+    either skip with a warning or require the operator to pass an explicit
+    ``feature_extraction_algorithm_id``.
     """
-    algo_ids = (
-        Classification.objects.filter(
-            detection__source_image__event=event,
-            features_2048__isnull=False,
-            algorithm_id__isnull=False,
-        )
-        .values_list("algorithm_id", flat=True)
-        .distinct()
-    )
-    candidates = list(Algorithm.objects.filter(pk__in=list(algo_ids)))
+    algo_ids = algorithm_ids_with_vectors(source_image__event=event)
+    candidates = list(Algorithm.objects.filter(pk__in=algo_ids))
     if len(candidates) == 1:
         return candidates[0], candidates
     return None, candidates
@@ -219,14 +213,9 @@ def event_is_fresh(event: Event) -> tuple[bool, str]:
 
 def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algorithm) -> bool:
     total = event.captures.count()
-    processed = (
-        event.captures.filter(
-            detections__classifications__features_2048__isnull=False,
-            detections__classifications__algorithm=algorithm,
-        )
-        .distinct()
-        .count()
-    )
+    processed = event.captures.filter(
+        Exists(Detection.objects.has_vector(algorithm).filter(source_image_id=OuterRef("pk")))
+    ).count()
     if processed < total:
         logger.info(f"Session {event.pk} not fully processed: {processed}/{total} captures")
         return False
@@ -425,24 +414,6 @@ def nothing_tracked_summary(skip_reasons: collections.Counter[str]) -> str:
     return f"Nothing was tracked: {total} session(s) skipped ({reasons})."
 
 
-def latest_feature_vectors(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, typing.Any]:
-    """The most recent embedding from one algorithm for each detection given, by detection id.
-
-    Detections without one are left out. One query for the whole batch.
-    """
-    vectors: dict[int, typing.Any] = {}
-    rows = (
-        Classification.objects.filter(
-            detection_id__in=list(detection_ids), algorithm_id=algorithm_id, features_2048__isnull=False
-        )
-        .order_by("-timestamp", "-pk")
-        .values_list("detection_id", "features_2048")
-    )
-    for detection_id, vector in rows:
-        vectors.setdefault(detection_id, vector)
-    return vectors
-
-
 def select_links(
     current_detections: Sequence[Detection],
     next_detections: Sequence[Detection],
@@ -498,7 +469,7 @@ def select_transition_links(
     """The links tracking makes between two adjacent captures, reading embeddings but saving nothing."""
     vectors: dict[int, typing.Any] = {}
     if algorithm is not None:
-        vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
+        vectors = vectors_for_detections([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
     return select_links(
         current_detections,
         next_detections,

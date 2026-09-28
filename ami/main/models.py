@@ -2202,16 +2202,16 @@ class SourceImageQuerySet(BaseQuerySet):
 
     def with_detections_with_features(self):
         """Annotate ``detections_with_features`` and the ``detections_valid`` it is out of:
-        valid detections on the capture, and how many of them have a classification that
-        stored a feature embedding. Counted in SQL so the vectors themselves are never
-        loaded. Both come from the same population, so a caller can show one as a share of
-        the other; the cached ``detections_count`` is a different, default-filtered count.
+        valid detections on the capture, and how many of them carry a stored feature vector
+        from any algorithm (see ``DetectionQuerySet.has_vector``). Counted in SQL so the
+        vectors themselves are never loaded. Both come from the same population, so a caller
+        can show one as a share of the other; the cached ``detections_count`` is a different,
+        default-filtered count.
         """
 
-        def count_valid(**extra):
+        def count_valid(detections):
             return models.Subquery(
-                Detection.objects.valid()
-                .filter(source_image_id=models.OuterRef("pk"), **extra)
+                detections.filter(source_image_id=models.OuterRef("pk"))
                 .order_by()
                 .values("source_image_id")
                 .annotate(count=models.Count("id", distinct=True))
@@ -2220,8 +2220,8 @@ class SourceImageQuerySet(BaseQuerySet):
             )
 
         return self.annotate(
-            detections_valid=Coalesce(count_valid(), 0),
-            detections_with_features=Coalesce(count_valid(classifications__features_2048__isnull=False), 0),
+            detections_valid=Coalesce(count_valid(Detection.objects.valid()), 0),
+            detections_with_features=Coalesce(count_valid(Detection.objects.valid().has_vector()), 0),
         )
 
     def with_thumbnails(self):
@@ -3061,12 +3061,21 @@ class ClassificationQuerySet(BaseQuerySet):
     def with_has_features(self):
         """Annotate ``has_features`` and defer the embedding itself.
 
-        Read paths only need to know whether a feature vector was stored; deferring the
-        2048-float column keeps it out of the row's SELECT. A select_related self-join
-        (``applied_to``) needs its own ``defer("applied_to__features_2048")``.
+        ``has_features`` is true when the classification's algorithm stored a vector for
+        its detection, on the classification or as a ``DetectionEmbedding``. Read paths
+        only need to know that; deferring the 2048-float column keeps it out of the row's
+        SELECT. A select_related self-join (``applied_to``) needs its own
+        ``defer("applied_to__features_2048")``.
         """
+        embedded = Exists(
+            DetectionEmbedding.objects.filter(
+                detection_id=OuterRef("detection_id"), algorithm_id=OuterRef("algorithm_id")
+            )
+        )
         return self.defer("features_2048").annotate(
-            has_features=models.ExpressionWrapper(Q(features_2048__isnull=False), output_field=models.BooleanField())
+            has_features=models.ExpressionWrapper(
+                Q(features_2048__isnull=False) | Q(embedded), output_field=models.BooleanField()
+            )
         )
 
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
@@ -3259,6 +3268,18 @@ class DetectionQuerySet(BaseQuerySet):
         questions. Detection consumers should use .valid() instead.
         """
         return self.filter(NULL_DETECTIONS_FILTER)
+
+    def has_vector(self, algorithm=None):
+        """Detections with a stored feature vector: a ``DetectionEmbedding``, or a
+        classification's ``features_2048``. Pass ``algorithm`` to count only that
+        algorithm's vectors. Tested with EXISTS, so no vector is ever loaded.
+        """
+        embeddings = DetectionEmbedding.objects.filter(detection_id=OuterRef("pk"))
+        classifications = Classification.objects.filter(detection_id=OuterRef("pk"), features_2048__isnull=False)
+        if algorithm is not None:
+            embeddings = embeddings.filter(algorithm=algorithm)
+            classifications = classifications.filter(algorithm=algorithm)
+        return self.filter(Exists(embeddings) | Exists(classifications))
 
 
 class DetectionManager(models.Manager.from_queryset(DetectionQuerySet)):
@@ -3548,15 +3569,16 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
     def with_frames_with_vectors(self):
-        """Annotate ``frames_with_vectors``: detections in the occurrence with at least one
-        classification that stored a feature embedding. Counted in SQL so the vectors
-        themselves are never loaded.
+        """Annotate ``frames_with_vectors``: detections in the occurrence with a stored
+        feature vector from any algorithm (see ``DetectionQuerySet.has_vector``). Counted
+        in SQL so the vectors themselves are never loaded.
         """
         subquery = (
-            Detection.objects.filter(occurrence_id=OuterRef("pk"), classifications__features_2048__isnull=False)
+            Detection.objects.has_vector()
+            .filter(occurrence_id=OuterRef("pk"))
             .order_by()
             .values("occurrence_id")
-            .annotate(count=models.Count("id", distinct=True))
+            .annotate(count=models.Count("id"))
             .values("count")
         )
         return self.annotate(
