@@ -17,12 +17,19 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - minio-init
-      - ml_backend
-      - rabbitmq
-      - nats
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      # Wait for bucket setup to succeed so a failure stops the job here, not in later tests.
+      minio-init:
+        condition: service_completed_successfully
+      ml_backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      nats:
+        condition: service_started
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
