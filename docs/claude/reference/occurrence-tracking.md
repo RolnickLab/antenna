@@ -68,6 +68,19 @@ now-empty siblings.
 | `skip_if_human_identifications` | True | Protect reviewed sessions. |
 | `feature_extraction_algorithm_id` | None | Disambiguate when several classifiers ran. |
 | `require_completely_processed_session` | False | Off deliberately; see below. |
+| `appearance_weight`, `iou_weight`, `size_weight`, `distance_weight` | 1.0 | Weight of each cost term. At 1.0 the cost is the plain sum above, bit for bit. |
+| `species_gate` (`off`/`penalty`/`forbid`), `species_gate_min_score`, `species_gate_penalty` | off, 0.5, 1.0 | Forbid or penalise a link whose two top labels are both confident and name unrelated taxa (ancestor/descendant is not a conflict). Labels: highest-score terminal classification per detection, rows with `applied_to` excluded; read once per session (`top_labels`). |
+| `activity_scaling` (`off`/`log`/`steps`), `activity_reference_count`, `activity_steps` | off, 5, [] | Multiply the distance term by `log(1+n)/log(1+ref)` (at least 1) or by a step table, where n is the larger detection count of the two captures. Crowded sheets tolerate less movement. |
+| `stationary_first`, `stationary_max_shift`, `stationary_min_iou`, `stationary_cost_threshold`, `stationary_allow_missing_features` | False, 0.01, 0.7, 0.2, False | Link pairs that barely moved before any other pair; optionally even without embeddings. |
+
+Everything after `require_completely_processed_session` is staff-only (not in
+`MEMBER_POST_PROCESSING_TASKS` in `registry.py`). The matcher is `choose_links()`; the pure
+helpers are `pair_terms`, `weighted_cost`, `activity_multiplier`, `labels_conflict`,
+`is_stationary`. Structural fact worth knowing when tuning: `(1 - IoU)` is 1 for boxes that do
+not overlap, so at `cost_threshold <= 1.0` with `iou_weight=1` only overlapping boxes can link,
+whatever the other terms say. Linking a moth that moved further needs a threshold above 1 or a
+lower `iou_weight`, and that is where the activity scaling earns its keep (see
+`tracking-evaluation.md`).
 
 ## The trap that matters most
 
