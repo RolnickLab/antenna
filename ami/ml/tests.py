@@ -2489,7 +2489,7 @@ class TestDetectionEmbeddings(TestCase):
         rows = DetectionEmbedding.objects.filter(detection__source_image=image).select_related(
             "detection", "algorithm"
         )
-        return {(row.detection.bbox[0], row.algorithm.key): row.vector.tolist() for row in rows}
+        return {(row.detection.bbox[0], row.algorithm.key): list(row.vector) for row in rows}
 
     def test_every_detection_stores_one_vector_per_algorithm(self):
         """Including the rejected crop, which has no species classification that could carry one."""
@@ -2540,7 +2540,7 @@ class TestDetectionEmbeddings(TestCase):
         second.delete()
         embedding = DetectionEmbedding.objects.get(detection__source_image=image)
         self.assertIsNone(embedding.job_id)
-        self.assertEqual(embedding.vector.tolist(), self.HIGH)
+        self.assertEqual(list(embedding.vector), self.HIGH)
 
     def test_a_vector_lands_on_its_own_detection_when_some_detections_already_exist(self):
         """Detection creation returns existing detections ahead of new ones, so pairing responses
