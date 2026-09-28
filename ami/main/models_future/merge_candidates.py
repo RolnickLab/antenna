@@ -398,11 +398,7 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     """
     from ami.main.models import Detection, SourceImage
     from ami.ml.models import Algorithm
-    from ami.ml.post_processing.tracking_task import (
-        image_diagonal,
-        resolve_feature_algorithm,
-        select_links,
-    )
+    from ami.ml.post_processing.tracking_task import image_diagonal, resolve_feature_algorithm, select_links
 
     config = tracking_config_for(occurrence)
     reference, relation = _reference_frame(occurrence.pk, capture) if capture.timestamp else (None, None)
