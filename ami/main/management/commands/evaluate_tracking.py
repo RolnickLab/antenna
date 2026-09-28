@@ -31,6 +31,7 @@ from ami.ml.post_processing.tracking_evaluation import (
 from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
     event_transition_pairs,
+    labels_conflict,
     links_from_transition_pairs,
     resolve_feature_algorithm,
     top_labels,
@@ -40,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 # Fields that name the sessions to track; the command sets them itself.
 SCOPE_FIELDS = {"event_ids", "source_image_collection_id"}
+# A link between two detections whose labels both score at least this and name unrelated
+# taxa is counted as a likely wrong link, over the whole session, confirmed or not.
+CONFLICT_MIN_SCORE = 0.5
 # Guards that decide whether a run writes, not how it links; scoring ignores them.
 WRITE_GUARD_FIELDS = {"skip_if_human_identifications", "require_completely_processed_session", "require_fresh_event"}
 
@@ -279,6 +283,10 @@ class Command(BaseCommand):
             links = links_from_transition_pairs(transitions, config, labels)
             event_predictions = tracks_from_links(event_detection_ids, [(a, b) for a, b, _ in links])
             session_labels = {pk: (label.taxon_id, label.score) for pk, label in labels.items()}
+            session = summarise_session(event_predictions, session_labels)
+            session["links_with_conflicting_labels"] = sum(
+                labels_conflict(labels.get(a), labels.get(b), CONFLICT_MIN_SCORE) for a, b, _ in links
+            )
 
             ground_truth.update(truth["truth"])
             timestamps.update(truth["times"])
@@ -292,13 +300,19 @@ class Command(BaseCommand):
                     "note": note,
                     "links_proposed": len(links),
                     "evaluation": evaluate_tracks(truth["truth"], event_predictions, truth["times"], truth["taxa"]),
-                    "session": summarise_session(event_predictions, session_labels),
+                    "session": session,
                 }
             )
 
         overall: TrackingEvaluation | None = None
         if ground_truth:
             overall = evaluate_tracks(ground_truth, predictions, timestamps, taxa)
+        overall_session = None
+        if predictions:
+            overall_session = summarise_session(predictions, all_labels)
+            overall_session["links_with_conflicting_labels"] = sum(
+                entry["session"]["links_with_conflicting_labels"] for entry in per_event
+            )
         return {
             "project_id": project.pk,
             "config": {
@@ -309,7 +323,7 @@ class Command(BaseCommand):
             "events": per_event,
             "skipped_events": skipped,
             "overall": overall,
-            "overall_session": summarise_session(predictions, all_labels) if predictions else None,
+            "overall_session": overall_session,
             "links_proposed": sum(entry["links_proposed"] for entry in per_event),
         }
 

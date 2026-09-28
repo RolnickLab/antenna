@@ -372,6 +372,8 @@ class TestCostTermsOnATrackingSession(TestCase):
         self.assertEqual(everything["link_precision"], 1.0)
         self.assertEqual(everything["cross_individual_merges"], 0)
         self.assertEqual(everything["cross_species_merges"], 0)
+        # Each simulated insect has its own species, so only the ungated run can join two labels.
+        self.assertEqual(document["rows"][7]["links_with_conflicting_labels"], 0)
         self.assertLess(everything["occurrences_after"], everything["occurrences_before"])
         self.assertIn(f"## Session {self.event.pk}", markdown)
         self.assertIn("species_gate", markdown)
