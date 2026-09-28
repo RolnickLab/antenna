@@ -125,6 +125,7 @@ export const OccurrenceDetails = ({
                 item
               ): item is BlueprintItem & {
                 captureId: string
+                captureUrl: string | undefined
                 frameLabel: FrameLabel
                 hasVector: boolean | undefined
               } => !!item
@@ -461,6 +462,7 @@ export const OccurrenceDetails = ({
                   caption={
                     trackingEnabled ? (
                       <FrameCaption
+                        captureUrl={item.captureUrl}
                         detectionId={item.id}
                         hasVector={item.hasVector}
                         label={item.frameLabel}

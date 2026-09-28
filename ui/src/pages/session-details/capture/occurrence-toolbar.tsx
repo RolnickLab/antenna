@@ -11,6 +11,7 @@ import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { buildDetectionLink } from '../hooks/useActiveDetection'
+import { getPathEnds } from './track-navigation'
 
 export interface ToolbarOccurrence {
   frameCount: number
@@ -64,6 +65,7 @@ export const OccurrenceToolbar = ({
   onHidePath,
   onMerge,
   onOpenOccurrence,
+  onSelectCapture,
   onShowPath,
   onSplit,
   onTogglePathCrops,
@@ -85,6 +87,8 @@ export const OccurrenceToolbar = ({
   onHidePath: () => void
   onMerge: () => void
   onOpenOccurrence: () => void
+  /** Steps the viewer to another capture, keeping this track selected. */
+  onSelectCapture?: (captureId: string) => void
   onShowPath: () => void
   onSplit: () => void
   /** Switch the path's boxes between the moth's own pixels and an outline. */
@@ -128,6 +132,10 @@ export const OccurrenceToolbar = ({
         })
       : undefined
 
+  const ends = pathShown ? getPathEnds(path) : undefined
+  const currentCaptureId =
+    frameIndex !== -1 ? path?.[frameIndex].captureId : undefined
+
   const subtitle = () => {
     if (!pathShown) {
       return singleFrame
@@ -169,6 +177,24 @@ export const OccurrenceToolbar = ({
             : translate(STRING.SHOW_PATH_CROPS)}
         </span>
       </Button>
+    ) : null,
+    ends && onSelectCapture && path && path.length > 1 ? (
+      <div className="flex items-center gap-1" key="ends">
+        {[
+          { frame: ends.first, label: STRING.TRACK_GO_FIRST_FRAME },
+          { frame: ends.last, label: STRING.TRACK_GO_LAST_FRAME },
+        ].map(({ frame, label }) => (
+          <Button
+            disabled={frame.captureId === currentCaptureId}
+            key={label}
+            onClick={() => onSelectCapture(frame.captureId)}
+            size="small"
+            variant="ghost"
+          >
+            <span>{translate(label)}</span>
+          </Button>
+        ))}
+      </div>
     ) : null,
     // A single frame has no path to draw, and the subtitle says so.
     !pathShown && !singleFrame ? (

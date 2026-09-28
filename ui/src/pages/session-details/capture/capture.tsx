@@ -351,6 +351,7 @@ export const Capture = ({
               isLoadingPath={isLoadingPath}
               matches={matches}
               onHidePath={() => setPathOccurrenceId(undefined)}
+              onSelectCapture={setActiveCaptureId}
               onShowPath={(occurrenceId) =>
                 occurrenceId === shownPathId
                   ? refetchPath()
@@ -498,6 +499,7 @@ const CaptureDetections = ({
   isLoadingPath,
   matches,
   onHidePath,
+  onSelectCapture,
   onShowPath,
   onTogglePathCrops,
   path,
@@ -515,6 +517,7 @@ const CaptureDetections = ({
   isLoadingPath?: boolean
   matches?: Record<string, CaptureMatch>
   onHidePath: () => void
+  onSelectCapture: (captureId: string) => void
   onShowPath: (occurrenceId: string) => void
   /** Switch the path's boxes between the moth's own pixels and an outline. */
   onTogglePathCrops?: () => void
@@ -850,6 +853,7 @@ const CaptureDetections = ({
                     onOpenOccurrence={() =>
                       setActiveOccurrence(detection.occurrenceId)
                     }
+                    onSelectCapture={onSelectCapture}
                     onShowPath={() =>
                       showPath(detection.occurrenceId as string)
                     }

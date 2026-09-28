@@ -2,6 +2,7 @@ import { TrackFrame } from 'data-services/models/occurrence-details'
 import {
   getMergedTrackExtent,
   getNearestPathFrame,
+  getPathEnds,
   getTrackNavigation,
 } from './track-navigation'
 
@@ -130,5 +131,35 @@ describe('getNearestPathFrame', () => {
     expect(
       getNearestPathFrame([pathFrame('undated', null)], new Date())?.captureId
     ).toBe('undated')
+  })
+})
+
+describe('getPathEnds', () => {
+  const pathFrame = (captureId: string, timestamp: Date | null) => ({
+    bbox: [0, 0, 1, 1],
+    captureHeight: null,
+    captureId,
+    captureWidth: null,
+    detectionId: `d-${captureId}`,
+    timestamp,
+  })
+
+  test('the ends go by time, whatever order the path arrives in', () => {
+    const { first, last } = getPathEnds([
+      pathFrame('middle', at(20)),
+      pathFrame('latest', at(30)),
+      pathFrame('earliest', at(10)),
+    ])
+
+    expect([first?.captureId, last?.captureId]).toEqual(['earliest', 'latest'])
+  })
+
+  test('an undated frame never becomes the first frame', () => {
+    const { first } = getPathEnds([
+      pathFrame('undated', null),
+      pathFrame('dated', at(10)),
+    ])
+
+    expect(first?.captureId).toBe('dated')
   })
 })

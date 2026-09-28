@@ -143,3 +143,11 @@ export const getNearestPathFrame = (frames: PathFrame[], date?: Date) => {
     distance(frame) < distance(nearest) ? frame : nearest
   )
 }
+
+/** A path's earliest and latest frames; frames without a timestamp count as latest. */
+export const getPathEnds = (frames: PathFrame[]) => {
+  const time = (frame: PathFrame) => frame.timestamp?.getTime() ?? Infinity
+  const ordered = [...frames].sort((f1, f2) => time(f1) - time(f2))
+
+  return { first: ordered[0], last: ordered[ordered.length - 1] }
+}

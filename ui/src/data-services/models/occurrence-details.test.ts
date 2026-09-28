@@ -139,7 +139,13 @@ describe('frame names', () => {
 describe('occurrence details', () => {
   const detection = (id: number, classifications: unknown[]) => ({
     bbox: [0, 0, 10, 10],
-    capture: { height: 100, id: id + 100, width: 100 },
+    capture: {
+      height: 100,
+      id: id + 100,
+      // Only the first frame's capture has an image stored.
+      url: id === 1 ? 'https://example.com/capture-101.jpg' : null,
+      width: 100,
+    },
     classifications,
     height: null,
     id,
@@ -179,6 +185,13 @@ describe('occurrence details', () => {
       'Noctua pronuba',
       undefined,
     ])
+  })
+
+  test('each frame links to the full capture it was cropped from, when there is one', () => {
+    expect(occurrence.getDetectionInfo('1').captureUrl).toBe(
+      'https://example.com/capture-101.jpg'
+    )
+    expect(occurrence.getDetectionInfo('2').captureUrl).toBeUndefined()
   })
 
   test('each frame reports whether the payload stored a vector for it', () => {

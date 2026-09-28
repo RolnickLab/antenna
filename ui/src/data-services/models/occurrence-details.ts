@@ -401,6 +401,7 @@ export class OccurrenceDetails extends Occurrence {
         detection.capture?.id !== undefined
           ? `${detection.capture.id}`
           : undefined,
+      captureUrl: (detection.capture?.url as string | undefined) || undefined,
       // The bounding box gives the crop's proportions when the crop itself is missing.
       image: {
         src: detection.url,
