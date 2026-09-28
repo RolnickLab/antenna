@@ -10,10 +10,14 @@ reader here is keyed by algorithm. See #1417.
 
 from __future__ import annotations
 
+import collections
+import logging
 from collections.abc import Iterable
 from typing import Any
 
-from django.db.models import F, IntegerField, QuerySet, Value
+from django.db.models import Count, F, IntegerField, QuerySet, Value
+
+logger = logging.getLogger(__name__)
 
 _PREFER_EMBEDDING = 0
 _PREFER_CLASSIFICATION = 1
@@ -63,10 +67,21 @@ def latest_vectors(
 
 
 def vectors_for_detections(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, Any]:
-    """Each detection's vector from one algorithm, in one query. Detections without one are absent."""
-    return {
+    """Each detection's vector from one algorithm, in one query. Detections without one are absent.
+
+    All the vectors returned have one length. Should an algorithm have stored two lengths
+    (an embedding and an older classification vector), only the more common length is
+    kept, so no caller can compare vectors of different sizes.
+    """
+    vectors = {
         detection_id: vector for (detection_id, _), vector in latest_vectors(detection_ids, [algorithm_id]).items()
     }
+    lengths = collections.Counter(len(vector) for vector in vectors.values())
+    if len(lengths) > 1:
+        keep = max(lengths, key=lambda length: (lengths[length], length))
+        logger.warning(f"Algorithm {algorithm_id} has vectors of lengths {dict(lengths)}; using only length {keep}.")
+        vectors = {detection_id: vector for detection_id, vector in vectors.items() if len(vector) == keep}
+    return vectors
 
 
 def algorithm_ids_with_vectors(**detection_lookups: Any) -> set[int]:
@@ -84,3 +99,79 @@ def algorithm_ids_with_vectors(**detection_lookups: Any) -> set[int]:
         .values_list("algorithm_id", flat=True)
     )
     return set(embedded.union(classified))
+
+
+def default_feature_algorithm_id(project: Any, algorithm_ids: Iterable[int], **detection_lookups: Any) -> int | None:
+    """The extractor to compare when the caller chose none, among ``algorithm_ids``.
+
+    One the project runs (a feature-extraction algorithm in a pipeline enabled for it) wins;
+    among several, or when there is none, the one whose vector was stored most recently for
+    the detections matching the lookups; failing that, the newest algorithm. At most 2 queries.
+    """
+    from ami.main.models import DetectionEmbedding
+    from ami.ml.models import Algorithm, Pipeline
+
+    algorithm_ids = sorted(set(algorithm_ids))
+    if len(algorithm_ids) <= 1:
+        return algorithm_ids[0] if algorithm_ids else None
+    configured = sorted(
+        Algorithm.objects.filter(
+            pk__in=algorithm_ids,
+            task_type__in=Algorithm.feature_extraction_task_types,
+            pipelines__in=Pipeline.objects.all().enabled(project).values("pk"),
+        )
+        .order_by()
+        .values_list("pk", flat=True)
+        .distinct()
+    )
+    if len(configured) == 1:
+        return configured[0]
+    choices = configured or algorithm_ids
+    lookups = {f"detection__{key}": value for key, value in detection_lookups.items()}
+    latest = (
+        DetectionEmbedding.objects.filter(algorithm_id__in=choices, **lookups)
+        .order_by("-updated_at", "-pk")
+        .values_list("algorithm_id", flat=True)
+        .first()
+    )
+    return latest if latest is not None else max(choices)
+
+
+def feature_extractors_with_vectors(project: Any, **detection_lookups: Any) -> list[dict[str, Any]]:
+    """The algorithms with vectors for the detections matching the lookups, and how many each has.
+
+    Each row: the algorithm, ``embeddings_count`` (``DetectionEmbedding`` rows),
+    ``classification_vectors_count`` (classifications carrying a vector) and ``is_default``,
+    the one tracking compares when no extractor is chosen. Newest algorithm first. At most 5 queries.
+    """
+    from ami.main.models import Classification, DetectionEmbedding
+    from ami.ml.models import Algorithm
+
+    lookups = {f"detection__{key}": value for key, value in detection_lookups.items()}
+    embedded = dict(
+        DetectionEmbedding.objects.filter(**lookups)
+        .order_by()
+        .values("algorithm_id")
+        .annotate(n=Count("pk"))
+        .values_list("algorithm_id", "n")
+    )
+    classified = dict(
+        Classification.objects.filter(**lookups, features_2048__isnull=False, algorithm_id__isnull=False)
+        .order_by()
+        .values("algorithm_id")
+        .annotate(n=Count("pk"))
+        .values_list("algorithm_id", "n")
+    )
+    algorithm_ids = set(embedded) | set(classified)
+    if not algorithm_ids:
+        return []
+    default_id = default_feature_algorithm_id(project, algorithm_ids, **detection_lookups)
+    return [
+        {
+            "algorithm": algorithm,
+            "embeddings_count": embedded.get(algorithm.pk, 0),
+            "classification_vectors_count": classified.get(algorithm.pk, 0),
+            "is_default": algorithm.pk == default_id,
+        }
+        for algorithm in Algorithm.objects.filter(pk__in=sorted(algorithm_ids)).order_by("-pk")
+    ]

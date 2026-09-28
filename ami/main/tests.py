@@ -10601,19 +10601,17 @@ class CaptureMatchesTestCase(APITestCase):
         self.assertEqual((row["skipped_reason"], row["would_link"]), ("no_vector", False))
         self.assertIsNotNone(row["cost"], "The geometry is still scored")
 
-    def test_two_feature_extractors_link_nothing(self):
-        """Embeddings from two extractors leave tracking no single one to compare, so it skips the
-        captures while it requires features, as it does a session with none."""
+    def test_two_feature_extractors_are_never_compared_with_each_other(self):
+        """With embeddings from two extractors, tracking compares the default one only (here the
+        one stored most recently), so a box whose track frame has no vector from it does not link."""
         other_extractor = Algorithm.objects.create(name="Other extractor", key="other-extractor")
         track = self._track(self.captures[1:3], vector=self.VECTOR)
         self._box(self.captures[3], self.NEAR_BOX, vector=self.VECTOR, algorithm=other_extractor)
 
         data = self.get_matches(track, self.captures[3].pk).data
 
-        self.assertIsNone(data["feature_algorithm_id"])
-        self.assertEqual(
-            (data["detections"][0]["skipped_reason"], data["detections"][0]["would_link"]), ("no_vector", False)
-        )
+        self.assertEqual(data["feature_algorithm_id"], other_extractor.pk)
+        self.assertFalse(data["detections"][0]["would_link"])
 
     def test_the_reference_is_the_nearest_track_frame_on_another_capture(self):
         """A track on the second and fifth of six captures a minute apart. Each capture is

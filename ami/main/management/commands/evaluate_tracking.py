@@ -41,7 +41,7 @@ class Command(BaseCommand):
             "--feature-extraction-algorithm",
             type=int,
             default=None,
-            help="Algorithm ID whose embeddings to compare. Default: the only one in the session.",
+            help="Algorithm ID whose embeddings to compare. Default: as tracking picks it.",
         )
         parser.add_argument("--format", choices=["text", "json"], default="text")
         parser.add_argument("--per-track", action="store_true", help="Include per-track scores in JSON output.")
