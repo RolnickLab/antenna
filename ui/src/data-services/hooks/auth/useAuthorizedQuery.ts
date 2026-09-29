@@ -1,4 +1,4 @@
-import { QueryKey, useQuery } from '@tanstack/react-query'
+import { QueryKey, useQuery, UseQueryOptions } from '@tanstack/react-query'
 import axios from 'axios'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
@@ -16,12 +16,12 @@ export const useAuthorizedQuery = <T>({
   onError?: (error: unknown) => void
   queryKey?: QueryKey
   refetchInterval?: number
-  retry?: number
+  retry?: UseQueryOptions<T>['retry']
   staleTime?: number
   url: string
 }) => {
   const { user } = useUser()
-  const { data, isLoading, isFetching, isSuccess, error } = useQuery({
+  const { data, isLoading, isFetching, isSuccess, error, refetch } = useQuery({
     enabled,
     onError,
     queryKey,
@@ -36,5 +36,5 @@ export const useAuthorizedQuery = <T>({
     staleTime,
   })
 
-  return { data, isLoading, isFetching, isSuccess, error }
+  return { data, isLoading, isFetching, isSuccess, error, refetch }
 }

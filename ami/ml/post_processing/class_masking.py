@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections.abc import Callable
 
 import numpy as np
@@ -7,9 +8,13 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.main.models import Classification, Occurrence, OccurrenceHistoryRecord, SourceImageCollection, TaxaList
+from ami.main.schemas import ClassMaskingResultPayload
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,7 @@ def make_classifications_filtered_by_taxa_list(
     task_logger: logging.Logger = logger,
     on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
@@ -73,6 +79,9 @@ def make_classifications_filtered_by_taxa_list(
 
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
+
+    Every occurrence with a re-scored classification gets one history record, written
+    once the run is done so an occurrence spanning batches is recorded once.
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
@@ -113,6 +122,9 @@ def make_classifications_filtered_by_taxa_list(
     occurrences_to_update: set[Occurrence] = set()
     # Tracks occurrences whose determination actually changed across all batches.
     changed_occurrence_ids: set[int] = set()
+    # Occurrence id -> (determination before the run, re-scored detection ids).
+    history: dict[int, tuple[int | None, set[int]]] = {}
+    determinations_after: dict[int, int | None] = {}
 
     timestamp = timezone.now()
     masked_count = 0
@@ -189,7 +201,10 @@ def make_classifications_filtered_by_taxa_list(
 
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
-                    occurrences_to_update.add(detection.occurrence)
+                    occurrence = detection.occurrence
+                    occurrences_to_update.add(occurrence)
+                    _, rescored = history.setdefault(occurrence.pk, (occurrence.determination_id, set()))
+                    rescored.add(detection.pk)
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
@@ -209,6 +224,7 @@ def make_classifications_filtered_by_taxa_list(
                     occurrence.save(update_determination=True)
                     if occurrence.pk is not None and occurrence.determination_id != prev:
                         changed_occurrence_ids.add(occurrence.pk)
+                    determinations_after[occurrence.pk] = occurrence.determination_id
 
             classifications_to_demote.clear()
             classifications_to_add.clear()
@@ -224,6 +240,24 @@ def make_classifications_filtered_by_taxa_list(
                     }
                 )
 
+    OccurrenceHistoryRecord.objects.bulk_create(
+        OccurrenceHistoryRecord.build(
+            occurrence_id=occurrence_id,
+            kind=OccurrenceHistoryRecord.Kind.ALGORITHM_RESULT,
+            subtype="class_masking",
+            payload=ClassMaskingResultPayload(
+                taxa_list_id=taxa_list.pk,
+                source_algorithm_id=algorithm.pk,
+                detection_ids=sorted(detection_ids),
+                taxon_before_id=taxon_before_id,
+                taxon_after_id=determinations_after.get(occurrence_id),
+            ),
+            timestamp=timestamp,
+            job=job,
+            algorithm=new_algorithm,
+        )
+        for occurrence_id, (taxon_before_id, detection_ids) in history.items()
+    )
     task_logger.info(
         f"Re-scored {masked_count} of {total} classifications; updated {len(changed_occurrence_ids)} occurrences."
     )
@@ -368,6 +402,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             task_logger=self.logger,
             on_setup=_on_setup,
             on_batch=_on_batch,
+            job=self.job,
         )
         self.report_stage_metrics(metrics)
         self.logger.info(f"=== Completed {self.name} ===")

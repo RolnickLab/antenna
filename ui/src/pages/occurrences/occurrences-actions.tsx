@@ -16,8 +16,16 @@ export const OccurrencesActions = ({
   occurrences?: Occurrence[]
 }) => {
   const { userInfo } = useUserInfo()
+  const determined = occurrences.filter(
+    (occurrence) => !!occurrence.determinationTaxon
+  )
+  const taxa = occurrences.flatMap((occurrence) =>
+    occurrence.determinationTaxon ? [occurrence.determinationTaxon] : []
+  )
+  // An unidentified occurrence shares no rank with the others, so no common ID applies.
+  const commonTaxa = taxa.length === occurrences.length ? taxa : []
 
-  const allAgreed = !occurrences.some((occurrence) => {
+  const allAgreed = !determined.some((occurrence) => {
     const agreed = userInfo ? occurrence.userAgreed(userInfo.id) : false
 
     return !agreed
@@ -33,15 +41,15 @@ export const OccurrencesActions = ({
 
   return (
     <div className="flex items-center justify-center gap-2">
-      <Agree allAgreed={allAgreed} occurrences={occurrences} />
+      {determined.length ? (
+        <Agree allAgreed={allAgreed} occurrences={determined} />
+      ) : null}
       <SuggestIdPopover
         occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
       />
       <IdQuickActions
         occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-        occurrenceTaxa={occurrences.map(
-          (occurrence) => occurrence.determinationTaxon
-        )}
+        occurrenceTaxa={commonTaxa}
       />
     </div>
   )
@@ -60,22 +68,26 @@ const Agree = ({
 
   const agreeParams: IdentificationFieldValues[] = useMemo(
     () =>
-      occurrences
-        .filter((occurrences) => {
-          const agreed = userInfo?.id
-            ? userInfo.id === occurrences.determinationVerifiedBy?.id
-            : false
+      occurrences.flatMap((occurrence) => {
+        const agreed = userInfo?.id
+          ? userInfo.id === occurrence.determinationVerifiedBy?.id
+          : false
 
-          return !agreed
-        })
-        .map((occurrence) => ({
-          agreeWith: {
-            identificationId: occurrence.determinationIdentificationId,
-            predictionId: occurrence.determinationPredictionId,
+        if (agreed || !occurrence.determinationTaxon) {
+          return []
+        }
+
+        return [
+          {
+            agreeWith: {
+              identificationId: occurrence.determinationIdentificationId,
+              predictionId: occurrence.determinationPredictionId,
+            },
+            occurrenceId: occurrence.id,
+            taxonId: occurrence.determinationTaxon.id,
           },
-          occurrenceId: occurrence.id,
-          taxonId: occurrence.determinationTaxon.id,
-        })),
+        ]
+      }),
     [occurrences, userInfo?.id]
   )
 

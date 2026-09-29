@@ -28,10 +28,12 @@ export const MachinePrediction = ({
   currentUser,
   identification,
   occurrence,
+  onConfirmed,
 }: {
   currentUser?: UserInfo
   identification: Identification
   occurrence: Occurrence
+  onConfirmed?: (occurrenceId: string) => void
 }) => {
   const [open, setOpen] = useState(false)
   const { classification, error, isLoading } = useClassificationDetails(
@@ -47,6 +49,7 @@ export const MachinePrediction = ({
     date: new Date(identification.createdAt),
   })
   const showAgree = occurrence.userPermissions.includes(UserPermission.Update)
+  const { algorithm } = identification
 
   return (
     <div>
@@ -66,16 +69,14 @@ export const MachinePrediction = ({
             ? translate(STRING.TERMINAL_CLASSIFICATION)
             : translate(STRING.INTERMEDIATE_CLASSIFICATION)
         }
-        title={
-          identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
-        }
+        title={algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)}
         onTitleClick={
-          identification.algorithm
+          algorithm
             ? () =>
                 navigate(
                   APP_ROUTES.ALGORITHM_DETAILS({
                     projectId: projectId as string,
-                    algorithmId: identification.algorithm?.id,
+                    algorithmId: algorithm.id,
                   })
                 )
             : undefined
@@ -99,6 +100,7 @@ export const MachinePrediction = ({
               agreeWith={{ predictionId: identification.id }}
               applied={identification.applied}
               occurrenceId={occurrence.id}
+              onSuccess={identification.applied ? onConfirmed : undefined}
               taxonId={identification.taxon.id}
             />
           )}
@@ -111,7 +113,7 @@ export const MachinePrediction = ({
               isLoading={isLoading}
             />
             {topN?.map(({ score, taxon }) => {
-              const applied = taxon.id === occurrence.determinationTaxon.id
+              const applied = taxon.id === occurrence.determinationTaxon?.id
 
               return (
                 <MachinePredictionDetails
@@ -130,6 +132,7 @@ export const MachinePrediction = ({
                       agreeWith={{ predictionId: identification.id }}
                       applied={applied}
                       occurrenceId={occurrence.id}
+                      onSuccess={applied ? onConfirmed : undefined}
                       taxonId={taxon.id}
                     />
                   )}

@@ -34,6 +34,8 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.embeddings import feature_extractors_with_vectors
+from ami.main.models_future.history import occurrence_timeline
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.merge_candidates import (
     DEFAULT_ADJACENT_CAPTURES,
@@ -109,6 +111,7 @@ from .serializers import (
     ModelAgreementSerializer,
     OccurrenceAddDetectionsSerializer,
     OccurrenceGroupingSerializer,
+    OccurrenceHistoryEntrySerializer,
     OccurrenceListSerializer,
     OccurrenceMergeSerializer,
     OccurrencePathFrameSerializer,
@@ -117,6 +120,7 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SessionFeatureExtractorSerializer,
     SiteSerializer,
     SourceImageCollectionNestedSerializer,
     SourceImageCollectionSerializer,
@@ -537,6 +541,17 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
             qs = qs.with_taxa_count(project=project, request=self.request)  # type: ignore
 
         return qs
+
+    @extend_schema(parameters=[project_id_doc_param], responses=SessionFeatureExtractorSerializer(many=True))
+    @action(detail=True, methods=["get"], name="feature-extractors", url_path="feature-extractors")
+    def feature_extractors(self, request, pk=None):
+        """The feature extractors with vectors for this session's detections, the default one marked.
+
+        Tracking compares vectors from one extractor only; this lists the choices.
+        """
+        event = self.get_object()
+        rows = feature_extractors_with_vectors(event.project_id, source_image__event=event)
+        return Response(SessionFeatureExtractorSerializer(rows, many=True).data)
 
     @action(detail=True, methods=["get"], name="timeline")
     def timeline(self, request, pk=None):
@@ -1630,10 +1645,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     # Actions that open one occurrence. They drop the determination requirement; see
     # get_queryset.
-    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path")
+    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path", "history")
     # Actions the project's default filters never hide an occurrence from. The session
-    # view selects occurrences with those filters off and draws their paths.
-    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path")
+    # view selects occurrences with those filters off, then draws their paths and histories.
+    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path", "history")
 
     def get_queryset(self) -> QuerySet["Occurrence"]:
         """Occurrences this request may see, which is wider outside the list.
@@ -1658,15 +1673,17 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             "event",
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
-        qs = qs.with_identifications()  # type: ignore
+        if self.action != "history":
+            # The history reads identifications itself, with the fields its entries need.
+            qs = qs.with_identifications()  # type: ignore
         if self.action not in self.UNFILTERED_ACTIONS:
             qs = qs.apply_default_filters(  # type: ignore
                 project, self.request, include_undetermined=allow_undetermined
             )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        elif self.action not in ("path", "merge_candidates", "capture_matches"):
-            # `path` and the track-edit pickers build their own values() queries and never
+        elif self.action not in ("path", "merge_candidates", "capture_matches", "history"):
+            # `path`, `history` and the track-edit pickers build their own queries and never
             # serialize the occurrence, so the detail prefetch would only be waste:
             # measured at 249ms/4 queries against 6ms/2 for the same object without
             # it, on a 37-detection occurrence.
@@ -1727,6 +1744,18 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         """
         occurrence = self.get_object()
         return Response(OccurrencePathFrameSerializer(occurrence_path(occurrence), many=True).data)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=OccurrenceHistoryEntrySerializer(many=True))
+    @action(detail=True, methods=["get"], name="history", pagination_class=None)
+    def history(self, request: Request, pk=None) -> Response:
+        """Everything that happened to this occurrence, newest first.
+
+        Merges algorithm results, reviews of its grouping, identifications and predictions
+        into one list. Visible to whoever can open the occurrence itself.
+        """
+        occurrence = self.get_object()
+        entries = occurrence_timeline(occurrence)
+        return Response(OccurrenceHistoryEntrySerializer(entries, many=True, context={"request": request}).data)
 
     def get_permissions(self):
         # The viewset as a whole is staff-only for writes. Track edits are the

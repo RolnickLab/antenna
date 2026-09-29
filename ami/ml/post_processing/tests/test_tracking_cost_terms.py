@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from ami.main.management.commands.evaluate_tracking import expand_sweep
 from ami.main.models import Classification, Detection, Event, Occurrence, Taxon
+from ami.main.models_future.embeddings import vectors_for_detections
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.post_processing.registry import staff_only_config_fields
 from ami.ml.post_processing.tracking_evaluation import evaluate_tracks, format_sweep_markdown, summarise_session
@@ -30,7 +31,6 @@ from ami.ml.post_processing.tracking_task import (
     event_transition_pairs,
     image_diagonal,
     labels_conflict,
-    latest_feature_vectors,
     links_from_transition_pairs,
     pair_terms,
     propose_event_links,
@@ -303,7 +303,7 @@ def _reference_links(event: Event, algorithm, cost_threshold: float, require_fea
         if not cur.width or not cur.height:
             continue
         current, following = list(cur.detections.valid()), list(nxt.detections.valid())
-        vectors = latest_feature_vectors([d.pk for d in current + following], algorithm.pk) if algorithm else {}
+        vectors = vectors_for_detections([d.pk for d in current + following], algorithm.pk) if algorithm else {}
         diag = image_diagonal(cur.width, cur.height)
         candidates = []
         for det in current:

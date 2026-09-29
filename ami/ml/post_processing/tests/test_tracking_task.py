@@ -11,6 +11,7 @@ from ami.jobs.models import Job
 from ami.main.models import (
     Classification,
     Detection,
+    DetectionEmbedding,
     Event,
     Identification,
     Occurrence,
@@ -25,6 +26,7 @@ from ami.ml.post_processing.tracking_task import (
     assign_occurrences_by_tracking_images,
     assign_occurrences_from_detection_chains,
     event_is_fresh,
+    pair_detections,
 )
 from ami.tests.fixtures.images import generate_moth_series
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
@@ -318,6 +320,80 @@ class TestTrackingWithoutFeatures(TestCase):
         self.assertEqual(
             Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).count(), 0
         )
+
+
+class TestTrackingWithEmbeddings(TestCase):
+    """Tracking reads a detection's vector from its embedding when it has one.
+
+    Every detection can carry an embedding, including those the moth/non-moth filter
+    rejected, which have no classification vector. What these pin is that tracking finds
+    and uses those vectors, that it still pairs them with the classification vectors older
+    data has, and that it never compares vectors from two algorithms.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=5, interval_minutes=1)
+        create_taxa(self.project)
+        # One detection per capture, all with the same box, so geometry never separates them.
+        create_occurrences(deployment=self.deployment, num=5)
+
+        self.event = self.project.events.first()
+        assert self.event is not None
+        self.source_images = list(self.event.captures.order_by("timestamp"))
+        _give_captures_dimensions(self.source_images)
+        self.extractor = Algorithm.objects.create(name="Embedding model", key="embedding-model")
+        self.vector = [1.0] + [0.0] * 2047
+
+    def _detections(self, index: int) -> list[Detection]:
+        return list(self.source_images[index].detections.valid())
+
+    def _embed(self, detections, algorithm: Algorithm) -> None:
+        DetectionEmbedding.objects.bulk_create(
+            [DetectionEmbedding(detection=d, algorithm=algorithm, vector=self.vector) for d in detections]
+        )
+
+    def _pair(self, current: list[Detection], following: list[Detection]) -> int:
+        """Links made between two captures when both sides need a vector from the extractor."""
+        return pair_detections(
+            current,
+            following,
+            4096,
+            2160,
+            cost_threshold=0.5,
+            algorithm=self.extractor,
+            logger=logger,
+            require_features=True,
+        )
+
+    def test_detections_whose_only_vector_is_an_embedding_are_tracked(self):
+        """The run finds the embedding model by itself and, requiring vectors, links a detection
+        only when it read one for it."""
+        self._embed(Detection.objects.valid().filter(source_image__event=self.event), self.extractor)
+
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=True, cost_threshold=0.5).run()
+
+        linked = Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).count()
+        self.assertEqual(linked, len(self.source_images) - 1)
+
+    def test_vectors_from_another_algorithm_are_never_compared(self):
+        other = Algorithm.objects.create(name="Other embedding model", key="other-embedding-model")
+        current, following = self._detections(0), self._detections(1)
+        self._embed(current, self.extractor)
+        self._embed(following, other)
+        self.assertEqual(self._pair(current, following), 0)
+
+        self._embed(following, self.extractor)
+        self.assertEqual(self._pair(current, following), 1)
+
+    def test_an_embedding_is_compared_with_a_classification_vector_from_the_same_algorithm(self):
+        """A session processed partly before embeddings existed still links across the boundary."""
+        current, following = self._detections(0), self._detections(1)
+        Classification.objects.filter(detection__in=current).update(
+            algorithm=self.extractor, features_2048=self.vector
+        )
+        self._embed(following, self.extractor)
+        self.assertEqual(self._pair(current, following), 1)
 
 
 class TestFreshEventGuard(TestCase):

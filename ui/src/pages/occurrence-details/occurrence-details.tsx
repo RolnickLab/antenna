@@ -2,8 +2,13 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
-import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import { useOccurrenceHistory } from 'data-services/hooks/occurrences/useOccurrenceHistory'
+import {
+  FrameLabel,
+  OccurrenceDetails as Occurrence,
+} from 'data-services/models/occurrence-details'
 import { SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
@@ -14,23 +19,33 @@ import {
   InfoBlockField,
   InfoBlockFieldValue,
   Tabs,
+  buttonVariants,
 } from 'nova-ui-kit'
+import { cn } from 'nova-ui-kit/utils'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
+import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
-import { HumanIdentification } from './identification-card/human-identification'
-import { MachinePrediction } from './identification-card/machine-prediction'
+import { GroupingSummary } from './identification-card/grouping-summary'
+import { OccurrenceTimeline } from './identification-card/occurrence-timeline'
 import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
+import { FrameActionDialogs } from './track/frame-action-dialogs'
+import { FrameCaption } from './track/frame-caption'
+import { FrameMenu } from './track/frame-menu'
+import { GroupingActions } from './track/grouping-actions'
+import { getTrackEditRights } from './track/track-edit-rights'
+import { PendingFrameAction } from './track/types'
 
 export const TABS = {
   FIELDS: 'fields',
@@ -38,12 +53,40 @@ export const TABS = {
   RAW: 'raw',
 }
 
+const JumpToFrame = ({
+  label,
+  onClick,
+  to,
+}: {
+  label: string
+  onClick?: () => void
+  to?: string
+}) =>
+  to ? (
+    <Link
+      className={cn(
+        buttonVariants({ size: 'small', variant: 'ghost' }),
+        'px-2'
+      )}
+      onClick={onClick}
+      to={to}
+    >
+      <span>{label}</span>
+    </Link>
+  ) : null
+
 export const OccurrenceDetails = ({
   occurrence,
+  onConfirmed,
+  onNavigate,
   selectedTab,
   setSelectedTab,
 }: {
   occurrence: Occurrence
+  /** Called with the occurrence id after the header Confirm button confirms the determination. */
+  onConfirmed?: (occurrenceId: string) => void
+  /** Called when a frame's link is followed, so a dialog around these details can close. */
+  onNavigate?: () => void
   selectedTab?: string
   setSelectedTab: (selectedTab?: string) => void
 }) => {
@@ -52,12 +95,29 @@ export const OccurrenceDetails = ({
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
   const [suggestIdOpen, setSuggestIdOpen] = useState(false)
+  const [pendingFrameAction, setPendingFrameAction] =
+    useState<PendingFrameAction>()
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
+  const { canRestructure, canVerify: canVerifyGrouping } = getTrackEditRights(
+    occurrence.userPermissions
+  )
+  const trackingEnabled = useProjectFeature('tracking')
+  const history = useOccurrenceHistory({
+    occurrenceId: occurrence.id,
+    projectId,
+  })
+
+  const sessionRoute = occurrence.sessionId
+    ? APP_ROUTES.SESSION_DETAILS({
+        projectId: projectId as string,
+        sessionId: occurrence.sessionId,
+      })
+    : undefined
 
   const blueprintItems = useMemo(
     () =>
@@ -65,30 +125,49 @@ export const OccurrenceDetails = ({
         ? occurrence.detections
             .map((id) => occurrence.getDetectionInfo(id))
             .filter(
-              (item): item is BlueprintItem & { captureId: string } => !!item
+              (
+                item
+              ): item is BlueprintItem & {
+                captureId: string
+                frameLabel: FrameLabel
+                hasVector: boolean | undefined
+              } => !!item
             )
-            .map((item) => ({
-              ...item,
-              to:
-                !occurrence.sessionId ||
-                pathname.includes(
-                  APP_ROUTES.SESSIONS({ projectId: projectId as string })
-                )
-                  ? undefined
-                  : getAppRoute({
-                      to: APP_ROUTES.SESSION_DETAILS({
-                        projectId: projectId as string,
-                        sessionId: occurrence.sessionId,
-                      }),
-                      filters: {
-                        occurrence: occurrence.id,
-                        capture: item.captureId,
-                      },
-                    }),
-            }))
+            .map((item) => {
+              if (!sessionRoute) {
+                return { ...item, to: undefined }
+              }
+
+              // On the session page itself, keep the other selected occurrences and
+              // only move the capture.
+              if (pathname === sessionRoute) {
+                const params = new URLSearchParams(search)
+                if (!params.getAll('occurrence').includes(occurrence.id)) {
+                  params.append('occurrence', occurrence.id)
+                }
+                params.set('capture', item.captureId)
+
+                return { ...item, to: `${sessionRoute}?${params}` }
+              }
+
+              return {
+                ...item,
+                to: getAppRoute({
+                  to: sessionRoute,
+                  filters: {
+                    occurrence: occurrence.id,
+                    capture: item.captureId,
+                  },
+                }),
+              }
+            })
         : [],
-    [occurrence]
+    [occurrence, pathname, search, sessionRoute]
   )
+
+  // The strip runs newest first, so the track's earliest frame is its last row.
+  const newestFrame = blueprintItems[0]
+  const earliestFrame = blueprintItems[blueprintItems.length - 1]
 
   const fields = [
     {
@@ -154,7 +233,10 @@ export const OccurrenceDetails = ({
               content={
                 occurrence.determinationVerified
                   ? translate(STRING.VERIFIED_BY, {
-                      name: occurrence.determinationVerifiedBy?.name,
+                      name: getUserLabel(
+                        occurrence.determinationVerifiedBy,
+                        userInfo
+                      ),
                     })
                   : translate(STRING.MACHINE_PREDICTION_SCORE, {
                       score: `${occurrence.determinationScore}`,
@@ -169,16 +251,21 @@ export const OccurrenceDetails = ({
           ) : null}
           {canUpdate && (
             <>
-              <Agree
-                agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
-                agreeWith={{
-                  identificationId: occurrence.determinationIdentificationId,
-                  predictionId: occurrence.determinationPredictionId,
-                }}
-                applied
-                occurrenceId={occurrence.id}
-                taxonId={occurrence.determinationTaxon.id}
-              />
+              {occurrence.determinationTaxon ? (
+                <Agree
+                  // Keyed so a confirmed state does not carry over to the next occurrence.
+                  key={occurrence.id}
+                  agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
+                  agreeWith={{
+                    identificationId: occurrence.determinationIdentificationId,
+                    predictionId: occurrence.determinationPredictionId,
+                  }}
+                  applied
+                  occurrenceId={occurrence.id}
+                  onSuccess={onConfirmed}
+                  taxonId={occurrence.determinationTaxon.id}
+                />
+              ) : null}
               <Button
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
@@ -192,7 +279,11 @@ export const OccurrenceDetails = ({
               </Button>
               <IdQuickActions
                 occurrenceIds={[occurrence.id]}
-                occurrenceTaxa={[occurrence.determinationTaxon]}
+                occurrenceTaxa={
+                  occurrence.determinationTaxon
+                    ? [occurrence.determinationTaxon]
+                    : []
+                }
               />
             </>
           )}
@@ -242,6 +333,14 @@ export const OccurrenceDetails = ({
                         />
                       </InfoBlockField>
                     ))}
+                    <InfoBlockField
+                      label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER)}
+                    >
+                      <div className="flex items-center gap-1">
+                        <InfoBlockFieldValue value={occurrence.id} />
+                        <CopyLinkButton value={window.location.href} />
+                      </div>
+                    </InfoBlockField>
                   </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
@@ -256,24 +355,21 @@ export const OccurrenceDetails = ({
                       </Box>
                     )}
 
-                    {occurrence.humanIdentifications.map((i) => (
-                      <HumanIdentification
-                        key={i.id}
-                        identification={i}
-                        occurrence={occurrence}
-                        user={i.user}
-                        currentUser={userInfo}
+                    {trackingEnabled && occurrence.groupingSummary ? (
+                      <GroupingSummary
+                        frameNames={occurrence.frameNames}
+                        summary={occurrence.groupingSummary}
                       />
-                    ))}
+                    ) : null}
 
-                    {occurrence.machinePredictions.map((p) => (
-                      <MachinePrediction
-                        key={p.id}
-                        identification={p}
-                        occurrence={occurrence}
-                        currentUser={userInfo}
-                      />
-                    ))}
+                    <OccurrenceTimeline
+                      currentUser={userInfo}
+                      entries={history.entries}
+                      error={history.error}
+                      isLoading={history.isLoading}
+                      occurrence={occurrence}
+                      onConfirmed={onConfirmed}
+                    />
                   </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.RAW}>
@@ -292,11 +388,91 @@ export const OccurrenceDetails = ({
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection showLicenseInfo={blueprintItems.length > 0}>
-              {blueprintItems.map((item) => (
-                <BlueprintItem key={item.id} item={item} />
+            {trackingEnabled && (canRestructure || canVerifyGrouping) && (
+              <GroupingActions
+                canRestructure={canRestructure}
+                canVerify={canVerifyGrouping}
+                editedSinceComplete={occurrence.groupingEditedSinceVerified}
+                occurrence={occurrence}
+              />
+            )}
+            <BlueprintCollection
+              filmStrip={trackingEnabled}
+              showLicenseInfo={blueprintItems.length > 0}
+            >
+              {trackingEnabled && blueprintItems.length ? (
+                <div className="flex flex-wrap items-center justify-between gap-1 pb-2">
+                  <span className="body-small text-muted-foreground">
+                    {blueprintItems.length === 1
+                      ? translate(STRING.TRACK_FRAMES_ONE)
+                      : translate(STRING.TRACK_FRAMES_COUNT, {
+                          count: blueprintItems.length,
+                        })}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {blueprintItems.length === 1 ? (
+                      <JumpToFrame
+                        label={translate(STRING.TRACK_JUMP_ONLY_FRAME)}
+                        onClick={onNavigate}
+                        to={newestFrame.to}
+                      />
+                    ) : (
+                      <>
+                        <JumpToFrame
+                          label={translate(STRING.TRACK_JUMP_FIRST_FRAME)}
+                          onClick={onNavigate}
+                          to={earliestFrame.to}
+                        />
+                        <JumpToFrame
+                          label={translate(STRING.TRACK_JUMP_LAST_FRAME)}
+                          onClick={onNavigate}
+                          to={newestFrame.to}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              {blueprintItems.map((item, index) => (
+                <BlueprintItem
+                  actions={
+                    trackingEnabled && canRestructure ? (
+                      <FrameMenu
+                        isFirstInTime={index === blueprintItems.length - 1}
+                        isOnlyFrame={blueprintItems.length < 2}
+                        onAction={(action) =>
+                          setPendingFrameAction({
+                            action,
+                            detectionId: item.id,
+                            movedBySplit: index + 1,
+                            timeLabel: item.timeLabel,
+                            total: blueprintItems.length,
+                          })
+                        }
+                      />
+                    ) : undefined
+                  }
+                  caption={
+                    trackingEnabled ? (
+                      <FrameCaption
+                        detectionId={item.id}
+                        hasVector={item.hasVector}
+                        label={item.frameLabel}
+                        timeLabel={item.timeLabel}
+                      />
+                    ) : undefined
+                  }
+                  key={item.id}
+                  item={item}
+                  onLinkClick={onNavigate}
+                />
               ))}
             </BlueprintCollection>
+            <FrameActionDialogs
+              occurrence={occurrence}
+              onClose={() => setPendingFrameAction(undefined)}
+              pending={pendingFrameAction}
+            />
           </div>
         </div>
       </div>

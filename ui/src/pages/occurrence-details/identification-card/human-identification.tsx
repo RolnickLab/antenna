@@ -18,6 +18,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 
@@ -25,11 +26,13 @@ export const HumanIdentification = ({
   currentUser,
   identification,
   occurrence,
+  onConfirmed,
   user,
 }: {
   currentUser?: UserInfo
   identification: Identification
   occurrence: Occurrence
+  onConfirmed?: (occurrenceId: string) => void
   user: {
     id?: string
     image?: string
@@ -68,31 +71,33 @@ export const HumanIdentification = ({
               <UserIcon className="w-4 h-4 text-generic-white" />
             )
           }
-          title={user.name}
+          title={getUserLabel(user, currentUser)}
         >
           <IdentificationDetails
             applied={identification.applied}
             className="border-border border-t"
           >
             <div className="w-full flex flex-col items-end gap-4">
-              <Link
-                className="w-full"
-                to={getAppRoute({
-                  to: APP_ROUTES.TAXON_DETAILS({
-                    projectId: projectId as string,
-                    taxonId: identification.taxon.id,
-                  }),
-                })}
-              >
-                <TaxonDetails compact taxon={identification.taxon} />
-              </Link>
+              {identification.taxon ? (
+                <Link
+                  className="w-full"
+                  to={getAppRoute({
+                    to: APP_ROUTES.TAXON_DETAILS({
+                      projectId: projectId as string,
+                      taxonId: identification.taxon.id,
+                    }),
+                  })}
+                >
+                  <TaxonDetails compact taxon={identification.taxon} />
+                </Link>
+              ) : null}
               {identification.comment ? (
                 <p className="w-full body-small italic text-muted-foreground">
                   "{identification.comment}"
                 </p>
               ) : null}
               <div className="flex items-center gap-2">
-                {showAgree && (
+                {showAgree && identification.taxon && (
                   <Agree
                     agreed={
                       currentUser
@@ -105,6 +110,7 @@ export const HumanIdentification = ({
                     agreeWith={{ identificationId: identification.id }}
                     applied={identification.applied}
                     occurrenceId={occurrence.id}
+                    onSuccess={identification.applied ? onConfirmed : undefined}
                     taxonId={identification.taxon.id}
                   />
                 )}

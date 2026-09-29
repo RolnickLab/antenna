@@ -421,6 +421,70 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         self.assertEqual(process_progress.processed, 1)
         self.assertEqual(results_progress.processed, 0)
 
+    def _feature_only_result(self, image: SourceImage, boxes: list[list[float]]) -> dict:
+        """A feature-only result: the given boxes echoed back on one image, each with a vector."""
+        return PipelineResultsResponse(
+            pipeline="test-pipeline",
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(image.pk), url="http://example.com/x.jpg")],
+            detections=[
+                {
+                    "source_image_id": str(image.pk),
+                    "bbox": dict(zip(["x1", "y1", "x2", "y2"], box)),
+                    "algorithm": {"name": self.detector.name, "key": self.detector.key},
+                    "timestamp": datetime.datetime.now(),
+                    "embeddings": [
+                        {"algorithm": {"name": self.extractor.name, "key": self.extractor.key}, "features": [0.1] * 8}
+                    ],
+                }
+                for box in boxes
+            ],
+        ).dict()
+
+    def _make_feature_only(self) -> None:
+        self.detector = Algorithm.objects.create(
+            name="feature-detector", key="feature-detector", task_type=AlgorithmTaskType.LOCALIZATION
+        )
+        self.extractor = Algorithm.objects.create(
+            name="feature-backbone", key="feature-backbone", task_type=AlgorithmTaskType.EMBEDDING
+        )
+        self.pipeline.algorithms.set([self.detector, self.extractor])
+        for image in self.images:
+            Detection.objects.create(source_image=image, bbox=[0, 0, 10, 10], detection_algorithm=self.detector)
+
+    def _results_param(self, key: str):
+        self.job.refresh_from_db()
+        stage = self.job.progress.get_stage("results")
+        return next((param.value for param in stage.params if param.key == key), None)
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_feature_only_results_count_boxes_that_match_no_detection(self, mock_manager_class):
+        self._setup_mock_nats(mock_manager_class)
+        self._make_feature_only()
+        for image in self.images[:2]:
+            process_nats_pipeline_result(
+                job_id=self.job.pk,
+                result_data=self._feature_only_result(image, [[0, 0, 10, 10], [50, 50, 60, 60]]),
+                reply_subject=f"reply.features.{image.pk}",
+            )
+        self.assertEqual(self._results_param("unmatched"), 2)
+        self.assertNotEqual(self.job.status, JobState.FAILURE.value)
+
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_feature_only_batch_matching_no_detection_fails_the_job_and_acks(self, mock_manager_class, mock_ack):
+        """Redelivering it would return the same boxes, so the message is acked and the job fails."""
+        self._setup_mock_nats(mock_manager_class)
+        self._make_feature_only()
+        process_nats_pipeline_result(
+            job_id=self.job.pk,
+            result_data=self._feature_only_result(self.images[0], [[50, 50, 60, 60], [70, 70, 80, 80]]),
+            reply_subject="reply.features.none",
+        )
+        mock_ack.assert_called_once()
+        self.assertEqual(self._results_param("unmatched"), 2)
+        self.assertEqual(self.job.status, JobState.FAILURE.value)
+
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_results_counter_does_not_inflate_on_replay(self, mock_manager_class):
         """
