@@ -92,6 +92,24 @@ python manage.py evaluate_tracking --project <id> --sweep grid.json --output-dir
 - For a hard guarantee against writes on a copied database, also run with
   `PGOPTIONS="-c default_transaction_read_only=on"` in the container environment.
 
+### Calibrating the appearance term for a feature extractor
+
+Each extractor has its own cosine similarity range, so the appearance settings are chosen per extractor from
+confirmed tracks. On a partner's evaluation project (three one-hour sessions, 40 multi-detection tracks), measured:
+
+| | classifier backbone (2048-d) | BioCLIP (1024-d) |
+|---|---|---|
+| true consecutive pairs, similarity p1 / p25 / p50 | 0.958 / 0.988 / 0.992 | 0.47 / 0.89 / 0.95 |
+| different insects in adjacent captures within 3 box sizes, p50 / p95 | 0.957 / 0.979 | 0.39 / 0.78 |
+| AUC, true pairs vs those near negatives | 0.980 | 0.979 |
+| true pairs that moved clear of their box, p50 | 0.981 | 0.74 |
+
+Both rank pairs about equally well; the backbone squeezes them into 0.87–1, so its plain `1 - similarity`
+term barely changes the cost. A rule of thumb used there (not optimised): ceiling = p25 of true pairs,
+floor = p50 of the near negatives, gate (`appearance_min_similarity`) = p1 of true pairs. Only 29 of 1,212
+true links were moves; the move rule recovered a few of them at threshold 1.0 without merges but added
+about one doubtful link per correct move, so it stays an experiment.
+
 ### 2. Outside Antenna, from exported CSVs
 
 ```bash
