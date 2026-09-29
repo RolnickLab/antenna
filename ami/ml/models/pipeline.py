@@ -242,12 +242,13 @@ def filter_processed_images(
 def feature_extractors_if_feature_only(algorithms: list[Algorithm]) -> list[Algorithm]:
     """The feature extractors of a pipeline that only extracts features, otherwise none.
 
-    Such a pipeline has a feature extractor and no classifier. A detector may be listed too:
-    the service names the detector of the boxes it echoes back, but detects nothing new.
+    Such a pipeline has a feature extractor and otherwise only detectors: the service names the
+    detector of the boxes it echoes back, but detects nothing new. Any other task type, including
+    a blank or unknown one, rules it out, because a feature-only save drops new detections.
     """
     feature_types = set(Algorithm.feature_extraction_task_types)
-    classification_types = set(Algorithm.classification_task_types)
-    if any(algorithm.task_type in classification_types for algorithm in algorithms):
+    allowed_types = feature_types | set(Algorithm.detection_task_types)
+    if any(algorithm.task_type not in allowed_types for algorithm in algorithms):
         return []
     return [algorithm for algorithm in algorithms if algorithm.task_type in feature_types]
 

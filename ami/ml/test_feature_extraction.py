@@ -163,6 +163,16 @@ class TestFeatureOnlySave(FeatureOnlyFixture, TestCase):
         self.pipeline.algorithms.set([self.detector])
         self.assertFalse(self.pipeline.is_feature_only())
 
+    def test_an_algorithm_of_unknown_task_type_rules_out_feature_only(self):
+        """A classifier registered without a task type must not turn its pipeline feature-only,
+        or saving its results would drop every new detection and classification."""
+        for task_type in ("", "unknown"):
+            untyped = Algorithm.objects.create(
+                name=f"Untyped {task_type!r}", key=f"untyped-{task_type}", task_type=task_type
+            )
+            self.pipeline.algorithms.set([self.detector, self.extractor, untyped])
+            self.assertFalse(self.pipeline.is_feature_only(), task_type)
+
     def test_an_embeddings_only_response_writes_only_vectors(self):
         """No detection, classification or occurrence is created and no determination moves, even
         for a box Antenna does not have or classifications the service sent anyway."""
