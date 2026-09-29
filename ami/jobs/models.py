@@ -455,6 +455,11 @@ class JobType:
     # a data sync, an export, a regroup. Nothing should offer those as a choice.
     user_creatable: bool = False
 
+    # How long a job of this type may go untouched before the stale-job check treats it as
+    # dead. A type that hands work to an external service and waits to be called back is
+    # silent on purpose, so silence is not evidence that it died; those override this.
+    stalled_after_minutes: int = 10
+
     # @TODO Consider adding custom vocabulary for job types to be used in the UI
     # verb: str = "Sync"
     # present_participle: str = "syncing"
@@ -1152,6 +1157,12 @@ class TrainClassifierJob(JobType):
     required_params = ("algorithm_key",)
     user_creatable = True
 
+    # This job dispatches and then waits for the service to report back, writing nothing to
+    # its own row in between, so the default threshold reads a healthy run as a dead one.
+    # Matched to the life of the callback token: once that expires Antenna refuses the
+    # callback anyway, so a job still waiting past it can never finish.
+    stalled_after_minutes = 24 * 60
+
     STAGE_PREPARE = "prepare"
     STAGE_DISPATCH = "dispatch"
     STAGE_TRAIN = "train"
@@ -1546,7 +1557,8 @@ class Job(BaseModel):
     # Redis SREM-driven progress save, so this is effectively "no progress for
     # N minutes". 10 is conservative; raise if legitimate long-running jobs get
     # reaped.
-    STALLED_JOBS_MAX_MINUTES = 10
+    # The default deadline, owned by JobType so a job type can set its own.
+    STALLED_JOBS_MAX_MINUTES = JobType.stalled_after_minutes
     # Zombie-stream reaper: age threshold above which a NATS stream for a job
     # in a terminal state (or missing from Django) is considered safe to drop.
     # Kept well above :attr:`STALLED_JOBS_MAX_MINUTES` so newly-dispatched jobs

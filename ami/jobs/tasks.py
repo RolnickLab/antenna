@@ -988,7 +988,7 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
     from celery.result import AsyncResult
     from django.db import transaction
 
-    from ami.jobs.models import Job, JobDispatchMode, JobState
+    from ami.jobs.models import Job, JobDispatchMode, JobState, get_job_type_by_key
 
     if minutes is None:
         minutes = Job.STALLED_JOBS_MAX_MINUTES
@@ -1012,6 +1012,17 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
                 )
             except Job.DoesNotExist:
                 # Another concurrent run already handled this job.
+                continue
+
+            # Each job type says how long one of its jobs may go untouched. A type that
+            # hands work to an external service and waits to be called back writes nothing
+            # to its own row meanwhile, so silence is not evidence that it died. Candidates
+            # are gathered above at the default, then each is judged by its own deadline.
+            # Looked up rather than read off the job so an unrecognised job_type_key leaves
+            # that one job alone instead of raising and stopping the whole sweep.
+            job_type = get_job_type_by_key(job.job_type_key)
+            limit = job_type.stalled_after_minutes if job_type else minutes
+            if job.updated_at > datetime.datetime.now() - datetime.timedelta(minutes=limit):
                 continue
 
             celery_state = None

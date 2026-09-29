@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
-from ami.jobs.models import Job, JobDispatchMode, JobState
+from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob, TrainClassifierJob
 from ami.jobs.tasks import check_stale_jobs
 from ami.main.models import Project
 
@@ -13,11 +13,12 @@ class CheckStaleJobsTest(TestCase):
     def setUp(self):
         self.project = Project.objects.create(name="Stale jobs test project")
 
-    def _create_job(self, status=JobState.STARTED, minutes_ago=120, task_id=None):
+    def _create_job(self, status=JobState.STARTED, minutes_ago=120, task_id=None, job_type=None):
         job = Job.objects.create(
             project=self.project,
             name=f"Test job {status}",
             status=status,
+            job_type_key=(job_type or MLJob).key,
         )
         Job.objects.filter(pk=job.pk).update(
             updated_at=timezone.now() - timedelta(minutes=minutes_ago),
@@ -139,3 +140,62 @@ class CheckStaleJobsTest(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.CREATED.value)
         mock_cleanup.assert_not_called()
+
+
+class JobTypesThatWaitForACallbackTest(TestCase):
+    """
+    A training job goes quiet on purpose.
+
+    It hands the work to a processing service and waits to be called back, so nothing
+    touches it in the meantime: its progress messages go to the log table, not to the job
+    row. The stale-job check reads that silence as a dead job and finishes it with no head
+    registered, and the real callback is then refused because the job is already in a final
+    state. Any run longer than the ordinary threshold died this way.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Callback waiting project")
+
+    def _job(self, job_type, minutes_ago):
+        job = Job.objects.create(
+            project=self.project,
+            name="Waiting",
+            status=JobState.STARTED,
+            job_type_key=job_type.key,
+        )
+        Job.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(minutes=minutes_ago))
+        job.refresh_from_db()
+        return job
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_a_training_job_is_left_alone_while_its_callback_can_still_arrive(self, mock_cleanup):
+        job = self._job(TrainClassifierJob, minutes_ago=120)
+
+        results = check_stale_jobs()
+
+        self.assertEqual(results, [])
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.STARTED.value)
+        mock_cleanup.assert_not_called()
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_a_training_job_is_revoked_once_its_callback_can_no_longer_arrive(self, mock_cleanup):
+        """The token authorising the callback expires, so past that the job cannot finish."""
+        job = self._job(TrainClassifierJob, minutes_ago=TrainClassifierJob.stalled_after_minutes + 60)
+
+        results = check_stale_jobs()
+
+        self.assertEqual([r["action"] for r in results], ["revoked"])
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED.value)
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_an_ordinary_job_still_goes_at_the_usual_threshold(self, mock_cleanup):
+        """The longer wait is only for job types that say they wait for a callback."""
+        job = self._job(MLJob, minutes_ago=120)
+
+        results = check_stale_jobs()
+
+        self.assertEqual([r["action"] for r in results], ["revoked"])
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED.value)
