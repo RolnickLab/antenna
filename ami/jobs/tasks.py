@@ -13,7 +13,7 @@ from django.db import transaction
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
-from ami.ml.exceptions import FeatureResultsMatchNoDetections
+from ami.ml.exceptions import FeatureResultsStoredNothing
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
@@ -324,16 +324,20 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     try:
         # Save to database (this is the slow operation)
         detections_count, classifications_count, captures_count = 0, 0, 0
-        unmatched_count: int | None = None
+        feature_counts: dict[str, int] = {}
         if pipeline_result:
             # should never happen since otherwise we could not be processing results here
             assert job.pipeline is not None, "Job pipeline is None"
-            # Only a feature-only save reports boxes that matched no detection; asking the
-            # full save for its created rows would load every detection's algorithm.
+            # Only a feature-only save reports boxes that matched no detection and detections
+            # left without a vector; asking the full save for its created rows would load
+            # every detection's algorithm.
             feature_only = job.pipeline.is_feature_only()
             saved = job.pipeline.save_results(results=pipeline_result, job_id=job.pk, return_created=feature_only)
             if feature_only and saved:
-                unmatched_count = saved.unmatched_detections
+                feature_counts = {
+                    "unmatched": saved.unmatched_detections or 0,
+                    "without_vector": saved.detections_without_vector or 0,
+                }
             job.logger.info(f"Successfully saved results for job {job_id}")
 
             _, t = t(
@@ -392,9 +396,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         counts_to_apply = (
             (detections_count, classifications_count, captures_count) if is_first_processing else (0, 0, 0)
         )
-        extra_counts = {}
-        if unmatched_count is not None:
-            extra_counts["unmatched"] = unmatched_count if is_first_processing else 0
+        extra_counts = {key: count if is_first_processing else 0 for key, count in feature_counts.items()}
         _update_job_progress(
             job_id,
             "results",
@@ -419,10 +421,17 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         # Celery's autoretry_for handles the transient rather than this broad
         # except swallowing it.
         raise
-    except FeatureResultsMatchNoDetections as e:
-        # Redelivering would return the same boxes, and a later job would send the same
-        # detections again, so record the count and fail the job instead of retrying.
-        _update_job_progress(job_id, "results", 0, complete_state=JobState.FAILURE, unmatched=e.unmatched)
+    except FeatureResultsStoredNothing as e:
+        # Redelivering would return the same response, and a later job would send the same
+        # detections again, so record the counts and fail the job instead of retrying.
+        _update_job_progress(
+            job_id,
+            "results",
+            0,
+            complete_state=JobState.FAILURE,
+            unmatched=e.unmatched,
+            without_vector=e.without_vector,
+        )
         _ack_task_via_nats(reply_subject, job.logger)
         _fail_job(job_id, str(e))
     except Exception as e:
@@ -654,8 +663,9 @@ def _update_job_progress(
             state_params["detections"] = current_detections + new_detections
             state_params["classifications"] = current_classifications + new_classifications
             state_params["captures"] = current_captures + new_captures
-            if "unmatched" in state_params:
-                state_params["unmatched"] = _get_stage_param(job, stage, "unmatched") + state_params["unmatched"]
+            for key in ("unmatched", "without_vector"):
+                if key in state_params:
+                    state_params[key] = _get_stage_param(job, stage, key) + state_params[key]
 
         # Don't overwrite a stage with a stale progress value.
         # This guards against the race where a slower worker calls _update_job_progress
