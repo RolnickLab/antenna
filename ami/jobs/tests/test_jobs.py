@@ -1624,6 +1624,24 @@ class TestJobEnqueue(TestCase):
         self.assertEqual(job.status, JobState.PENDING.value)
         self.assertIsNotNone(job.task_id)
 
+    def test_enqueue_saves_pending_before_the_task_is_sent(self):
+        """The task must be sent only after PENDING is saved, or a fast worker's STARTED
+        state could be overwritten by the enqueue save."""
+        project = Project.objects.create(name="Enqueue Project")
+        job = Job.objects.create(name="Enqueue test", project=project, job_type_key=RegroupEventsJob.key)
+        status_at_dispatch = []
+
+        def record_status(*args, **kwargs):
+            status_at_dispatch.append(Job.objects.get(pk=job.pk).status)
+
+        # Outside a transaction on_commit runs the callback at once; simulate that here.
+        with patch("ami.jobs.models.run_job.apply_async", side_effect=record_status), patch(
+            "ami.jobs.models.transaction.on_commit", side_effect=lambda fn: fn()
+        ):
+            job.enqueue()
+
+        self.assertEqual(status_at_dispatch, [JobState.PENDING.value])
+
 
 class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
     """
