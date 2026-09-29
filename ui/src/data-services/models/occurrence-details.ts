@@ -18,9 +18,9 @@ export interface ServerGroupingSummary {
   id_agreement: number | null
   linked_detections: number
   motion: number
-  score_max: number
-  score_mean: number
-  score_min: number
+  score_max: number | null
+  score_mean: number | null
+  score_min: number | null
   size_ratio: number
 }
 
@@ -31,9 +31,9 @@ export interface GroupingSummary extends TrackStats {
   /** Frames with a classification that stored a feature embedding. */
   framesWithVectors?: number
   linkedDetections: number
-  scoreMax: number
-  scoreMean: number
-  scoreMin: number
+  scoreMax: number | null
+  scoreMean: number | null
+  scoreMin: number | null
 }
 
 export interface Identification {
