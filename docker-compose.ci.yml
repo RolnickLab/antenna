@@ -70,10 +70,8 @@ services:
       - ./.envs/.ci/.django
 
   minio:
-    # MinIO no longer publishes pullable images (Docker Hub and quay.io both require a login).
-    # This image bundles the server, mc and a shell, so minio-init reuses it. Pinned by digest;
-    # to bump: docker pull cgr.dev/chainguard/minio:latest, then copy RepoDigests from docker image inspect.
-    image: cgr.dev/chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
+    # Our own MinIO + mc build, from github.com/RolnickLab/minio-image (bump procedure there). See #1445.
+    image: insectai/minio:RELEASE.2026-09-16T00-00-00Z@sha256:1dca54196431cf11e745ebf743e1ceaa69f6d5a3070a6d8b068c7f5b0c981fa1
     command: server --console-address ":9001" /data
     volumes:
       - "minio_ci_data:/data"
@@ -86,7 +84,7 @@ services:
       retries: 5
 
   minio-init:
-    image: cgr.dev/chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
+    image: insectai/minio:RELEASE.2026-09-16T00-00-00Z@sha256:1dca54196431cf11e745ebf743e1ceaa69f6d5a3070a6d8b068c7f5b0c981fa1
     env_file:
       - ./.envs/.ci/.django
     depends_on:
