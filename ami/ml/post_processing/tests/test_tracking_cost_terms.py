@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from ami.main.management.commands.evaluate_tracking import expand_sweep
 from ami.main.models import Classification, Detection, Event, Occurrence, Taxon
+from ami.main.models_future.embeddings import vectors_for_detections
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.post_processing.registry import staff_only_config_fields
 from ami.ml.post_processing.tracking_evaluation import evaluate_tracks, format_sweep_markdown, summarise_session
@@ -30,7 +31,6 @@ from ami.ml.post_processing.tracking_task import (
     event_transition_pairs,
     image_diagonal,
     labels_conflict,
-    latest_feature_vectors,
     links_from_transition_pairs,
     pair_terms,
     propose_event_links,
@@ -180,6 +180,16 @@ class TestAppearanceAndMoveRules(SimpleTestCase):
         self.assertAlmostEqual(shift_in_box_sizes(_box(0, 0, 9), _box(0, 30, 9)), 3.0)
         self.assertEqual(pair_terms(None, None, _box(0, 0), _box(0, 0), 800).shift, 0.0)
 
+    def test_a_malformed_box_does_not_stop_scoring(self):
+        """Pairs are scored with the shift whether or not the move rule is on, so a box with no
+        area, or corners the wrong way round, must score as before instead of raising."""
+        for malformed in ([10, 10, 9, 20], [10, 10, 5, 20]):
+            terms = pair_terms(None, None, malformed, [10, 10, 20, 20], 800)
+            self.assertEqual(terms.shift, float("inf"))
+            self.assertEqual(
+                weighted_cost(terms), total_cost(None, None, malformed, [10, 10, 20, 20], 800), msg=malformed
+            )
+
 
 class TestTrackingConfigTerms(SimpleTestCase):
     def test_defaults_leave_every_new_rule_off(self):
@@ -293,7 +303,7 @@ def _reference_links(event: Event, algorithm, cost_threshold: float, require_fea
         if not cur.width or not cur.height:
             continue
         current, following = list(cur.detections.valid()), list(nxt.detections.valid())
-        vectors = latest_feature_vectors([d.pk for d in current + following], algorithm.pk) if algorithm else {}
+        vectors = vectors_for_detections([d.pk for d in current + following], algorithm.pk) if algorithm else {}
         diag = image_diagonal(cur.width, cur.height)
         candidates = []
         for det in current:

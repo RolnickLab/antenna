@@ -18,7 +18,12 @@ export const parseServerError = (error: any) => {
         if (key === 'non_field_errors' || key === 'detail') {
           message = details as string
         } else {
-          fieldErrors.push({ key, message: `${(details as string[])[0]}` })
+          // DRF sends a field error as a list of strings, or as a bare string when a
+          // view raises ValidationError({field: "message"}); take the whole message either way.
+          fieldErrors.push({
+            key,
+            message: `${Array.isArray(details) ? details[0] : details}`,
+          })
         }
       }
     })

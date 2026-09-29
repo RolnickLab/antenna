@@ -8,7 +8,7 @@ from collections.abc import Iterable, Iterator, Sequence
 import numpy as np
 import pydantic
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef
 from django.utils import timezone
 
 from ami.main.models import (
@@ -17,14 +17,24 @@ from ami.main.models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceHistoryRecord,
     SourceImage,
     SourceImageCollection,
     update_calculated_fields_for_sessions_and_stations,
 )
+from ami.main.models_future.embeddings import (
+    algorithm_ids_with_vectors,
+    default_feature_algorithm_id,
+    vectors_for_detections,
+)
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.main.models_future.tracks import clear_grouping_verification
+from ami.main.schemas import TrackingResultPayload
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 
 class TrackingConfig(pydantic.BaseModel):
@@ -60,8 +70,8 @@ class TrackingConfig(pydantic.BaseModel):
     # data is a v2 concern (see #1272 for the incremental append/prepend plan).
     require_fresh_event: bool = True
 
-    # Which feature extractor's embeddings to compare. Left unset, the task infers it
-    # when exactly one algorithm produced embeddings for the event.
+    # Which feature extractor's embeddings to compare. Left unset: the event's only one,
+    # or the project's default among several (see resolve_feature_algorithm).
     feature_extraction_algorithm_id: int | None = None
 
     # Weight of each cost term. At 1.0 each the cost is the plain sum described above.
@@ -147,6 +157,9 @@ class TrackingConfig(pydantic.BaseModel):
 def cosine_similarity(v1: Iterable[float], v2: Iterable[float]) -> float:
     a = np.array(v1)
     b = np.array(v2)
+    if a.shape != b.shape:
+        # Vectors of different lengths come from different extractors and are not comparable.
+        raise ValueError(f"Cannot compare vectors of shapes {a.shape} and {b.shape}")
     sim = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     return float(np.clip(sim, 0.0, 1.0))
 
@@ -249,6 +262,10 @@ class TopLabel:
 def shift_in_box_sizes(bb1, bb2) -> float:
     area1 = (bb1[2] - bb1[0] + 1) * (bb1[3] - bb1[1] + 1)
     area2 = (bb2[2] - bb2[0] + 1) * (bb2[3] - bb2[1] + 1)
+    # Every pair is scored with this, move rule or not, so a malformed box must not raise.
+    # An infinite shift leaves the overlap term as it is.
+    if area1 <= 0 or area2 <= 0:
+        return math.inf
     shift = math.dist(((bb1[0] + bb1[2]) / 2, (bb1[1] + bb1[3]) / 2), ((bb2[0] + bb2[2]) / 2, (bb2[1] + bb2[3]) / 2))
     return shift / math.sqrt(math.sqrt(area1 * area2))
 
@@ -455,21 +472,13 @@ def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | No
     """
     Return ``(unique_algorithm, all_candidates)``.
 
-    If exactly one feature-extraction algorithm produced ``features_2048`` for this
-    event, returns that algorithm and a single-element list. Otherwise returns
-    ``(None, candidates)`` so the caller can either skip with a warning or require
-    the operator to pass an explicit ``feature_extraction_algorithm_id``.
+    If exactly one feature-extraction algorithm stored vectors (embeddings or
+    classification ``features_2048``) for this event, returns that algorithm and a
+    single-element list. Otherwise returns ``(None, candidates)`` and the caller picks
+    one (``resolve_feature_algorithm``).
     """
-    algo_ids = (
-        Classification.objects.filter(
-            detection__source_image__event=event,
-            features_2048__isnull=False,
-            algorithm_id__isnull=False,
-        )
-        .values_list("algorithm_id", flat=True)
-        .distinct()
-    )
-    candidates = list(Algorithm.objects.filter(pk__in=list(algo_ids)))
+    algo_ids = algorithm_ids_with_vectors(source_image__event=event)
+    candidates = list(Algorithm.objects.filter(pk__in=algo_ids))
     if len(candidates) == 1:
         return candidates[0], candidates
     return None, candidates
@@ -481,9 +490,11 @@ def resolve_feature_algorithm(
     """The feature extractor a tracking run compares embeddings from, and whether it tracks the event.
 
     Returns ``(algorithm, should_track, note)``. ``algorithm`` is None when the run falls
-    back to geometry alone, and ``note`` says why a run falls back or skips; it is empty
-    when one extractor was configured or found. ``candidates`` are the extractors that
-    produced embeddings: every one in the event unless the caller passes a narrower set.
+    back to geometry alone. With vectors from several extractors and none configured, the
+    project's default is taken (see ``default_feature_algorithm_id``). ``note`` says which
+    extractor was picked among several, or why a run falls back or skips; it is empty when
+    one extractor was configured or found. ``candidates`` are the extractors that produced
+    embeddings: every one in the event unless the caller passes a narrower set.
     """
     if config.feature_extraction_algorithm_id is not None:
         algorithm = Algorithm.objects.filter(pk=config.feature_extraction_algorithm_id).first()
@@ -502,14 +513,20 @@ def resolve_feature_algorithm(
         return candidates[0], True, ""
 
     if candidates:
-        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
-        message = (
-            f"Event {event.pk}: detections classified by {len(candidates)} different "
-            f"feature-extraction algorithms ({candidate_names}). Pass "
-            "feature_extraction_algorithm_id in the job config to disambiguate."
+        # Vectors from several extractors: compare the project's default one, never a mix.
+        default_id = default_feature_algorithm_id(
+            event.project_id, [a.pk for a in candidates], source_image__event=event
         )
-    else:
-        message = f"Event {event.pk}: no detections carry feature embeddings."
+        algorithm = next(a for a in candidates if a.pk == default_id)
+        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
+        return (
+            algorithm,
+            True,
+            f"Event {event.pk}: vectors from {len(candidates)} feature extractors ({candidate_names}); "
+            f"comparing #{algorithm.pk} {algorithm.name}. Pass feature_extraction_algorithm_id to choose another.",
+        )
+
+    message = f"Event {event.pk}: no detections carry feature embeddings."
 
     if config.require_features:
         return None, False, f"{message} Skipping."
@@ -544,14 +561,9 @@ def event_is_fresh(event: Event) -> tuple[bool, str]:
 
 def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algorithm) -> bool:
     total = event.captures.count()
-    processed = (
-        event.captures.filter(
-            detections__classifications__features_2048__isnull=False,
-            detections__classifications__algorithm=algorithm,
-        )
-        .distinct()
-        .count()
-    )
+    processed = event.captures.filter(
+        Exists(Detection.objects.has_vector(algorithm).filter(source_image_id=OuterRef("pk")))
+    ).count()
     if processed < total:
         logger.info(f"Event {event.pk} not fully processed: {processed}/{total} captures")
         return False
@@ -581,8 +593,47 @@ def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) 
     )
 
 
+@dataclasses.dataclass
+class TrackingHistory:
+    """What a tracking run records in the history of each occurrence it changes."""
+
+    settings: dict
+    feature_algorithm_id: int | None = None
+    job: "Job | None" = None
+    algorithm: Algorithm | None = None
+    # Detection id -> cost of the link this run made from it to its next detection.
+    link_costs: dict[int, float] = dataclasses.field(default_factory=dict)
+
+    def record(
+        self, occurrence: Occurrence, chain: list[Detection], merged: Iterable[int], taxon_before_id: int | None
+    ) -> OccurrenceHistoryRecord:
+        costs = [self.link_costs[d.pk] for d in chain[:-1] if d.pk in self.link_costs]
+        payload = TrackingResultPayload(
+            settings=self.settings,
+            feature_algorithm_id=self.feature_algorithm_id,
+            detections_count=len(chain),
+            frames_linked=len(costs),
+            occurrences_merged=sorted(merged),
+            cost_mean=sum(costs) / len(costs) if costs else None,
+            cost_max=max(costs, default=None),
+            taxon_before_id=taxon_before_id,
+            taxon_after_id=occurrence.determination_id,
+        )
+        return OccurrenceHistoryRecord.build(
+            occurrence_id=occurrence.pk,
+            kind=OccurrenceHistoryRecord.Kind.ALGORITHM_RESULT,
+            subtype="tracking",
+            payload=payload,
+            job=self.job,
+            algorithm=self.algorithm,
+        )
+
+
 def assign_occurrences_from_detection_chains(
-    source_images: list[SourceImage], logger: logging.Logger, record_as: Algorithm | None = None
+    source_images: list[SourceImage],
+    logger: logging.Logger,
+    record_as: Algorithm | None = None,
+    history: TrackingHistory | None = None,
 ) -> dict[str, int]:
     """
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
@@ -600,6 +651,8 @@ def assign_occurrences_from_detection_chains(
       an occurrence the chains leave as it was keeps its mark.
     - Store the track statistics of every occurrence the chains settle on, so the list
       can sort by them (see ``track_stats.refresh_track_stats_for_ids``).
+    - With ``history`` set, leave one history record on each occurrence a chain changed;
+      a chain that was already one occurrence gets none.
 
     Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
     can reuse this primitive for prepend/append: keeper survives, new detections fold in.
@@ -612,6 +665,7 @@ def assign_occurrences_from_detection_chains(
     merged = 0
     identifications_moved = 0
     determinations_recorded = 0
+    history_records: list[OccurrenceHistoryRecord] = []
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     # A chain ends at a session boundary. A regroup that splits a track keeps the link
@@ -690,6 +744,7 @@ def assign_occurrences_from_detection_chains(
                 identifications_moved += Identification.objects.filter(occurrence_id__in=doomed).update(
                     occurrence=keeper
                 )
+                OccurrenceHistoryRecord.objects.filter(occurrence_id__in=doomed).update(occurrence=keeper)
             undeleted: list[int] = []
             for occ_id in doomed:
                 try:
@@ -710,7 +765,11 @@ def assign_occurrences_from_detection_chains(
             if record_as is not None and keeper.determination_id != previous_determination_id:
                 if record_tracking_determination(keeper, record_as) is not None:
                     determinations_recorded += 1
+            if history is not None:
+                history_records.append(history.record(keeper, chain, doomed, previous_determination_id))
             settled.add(keeper.pk)
+
+    OccurrenceHistoryRecord.objects.bulk_create(history_records)
 
     # Stored once every determination is settled, since id_agreement is measured against
     # it, and in batches for the whole event rather than three queries per chain.
@@ -744,24 +803,6 @@ def nothing_tracked_summary(skip_reasons: collections.Counter[str]) -> str:
     total = sum(skip_reasons.values())
     reasons = "; ".join(f"{count} because {reason}" for reason, count in skip_reasons.most_common())
     return f"Nothing was tracked: {total} session(s) skipped ({reasons})."
-
-
-def latest_feature_vectors(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, typing.Any]:
-    """The most recent embedding from one algorithm for each detection given, by detection id.
-
-    Detections without one are left out. One query for the whole batch.
-    """
-    vectors: dict[int, typing.Any] = {}
-    rows = (
-        Classification.objects.filter(
-            detection_id__in=list(detection_ids), algorithm_id=algorithm_id, features_2048__isnull=False
-        )
-        .order_by("-timestamp", "-pk")
-        .values_list("detection_id", "features_2048")
-    )
-    for detection_id, vector in rows:
-        vectors.setdefault(detection_id, vector)
-    return vectors
 
 
 def select_links(
@@ -818,13 +859,13 @@ def select_transition_links(
 ) -> list[tuple[Detection, Detection, float]]:
     """The links tracking makes between two adjacent captures, reading embeddings but saving nothing.
 
-    ``vectors`` replaces the embeddings read from ``algorithm``, for scoring embeddings that
-    are not stored as classifications.
+    ``vectors`` replaces the embeddings read from ``algorithm``, for scoring embeddings supplied
+    by the caller.
     """
     if vectors is None:
         vectors = {}
         if algorithm is not None:
-            vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
+            vectors = vectors_for_detections([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
     return select_links(
         current_detections,
         next_detections,
@@ -979,7 +1020,7 @@ def event_transition_pairs(
     for detection in sorted(detections, key=lambda d: d.pk):
         by_capture[detection.source_image_id].append(detection)
     if vectors is None:
-        vectors = latest_feature_vectors([d.pk for d in detections], algorithm.pk) if algorithm is not None else {}
+        vectors = vectors_for_detections([d.pk for d in detections], algorithm.pk) if algorithm is not None else {}
     # Convert once per detection rather than once per pair; the values are unchanged.
     arrays = {pk: np.asarray(vector) for pk, vector in vectors.items()}
 
@@ -1027,6 +1068,7 @@ def assign_occurrences_by_tracking_images(
     config: TrackingConfig,
     progress_cb: typing.Callable[[float], None] | None = None,
     record_as: Algorithm | None = None,
+    history: TrackingHistory | None = None,
 ) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
@@ -1046,6 +1088,8 @@ def assign_occurrences_by_tracking_images(
             else:
                 save_links(proposed, logger)
                 links += len(proposed)
+                if history is not None:
+                    history.link_costs.update((det.pk, cost) for det, _, cost in proposed)
             if progress_cb:
                 progress_cb((i + 1) / transitions)
 
@@ -1055,7 +1099,9 @@ def assign_occurrences_by_tracking_images(
                 "due to missing image dimensions."
             )
 
-        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as)
+        counters = assign_occurrences_from_detection_chains(
+            source_images, logger, record_as=record_as, history=history
+        )
 
     counters["links_created"] = links
     return counters
@@ -1187,6 +1233,12 @@ class TrackingTask(BasePostProcessingTask):
                     config=self.config,
                     record_as=self.algorithm,
                     progress_cb=_stage_progress,
+                    history=TrackingHistory(
+                        settings=self.config.dict(exclude={"source_image_collection_id", "event_ids"}),
+                        feature_algorithm_id=algorithm.pk if algorithm is not None else None,
+                        job=self.job,
+                        algorithm=self.algorithm,
+                    ),
                 )
             except AmbiguousSpeciesLabels as error:
                 # Raised before the first link is saved, so the session is left as it was.

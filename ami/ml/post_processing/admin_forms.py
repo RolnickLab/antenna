@@ -13,29 +13,21 @@ from __future__ import annotations
 from django import forms
 from django.db.models import QuerySet
 
-from ami.main.models import Classification, Event
+from ami.main.models import Event
+from ami.main.models_future.embeddings import algorithm_ids_with_vectors
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import DEFAULT_TRACKING_PARAMS
 
 
 def _feature_algorithm_choices_for_events(events: QuerySet[Event]) -> list[tuple[int, str]]:
-    """Algorithms that produced ``features_2048`` on the given events.
+    """Algorithms that stored a feature vector, as an embedding or on a classification,
+    for detections in the given events.
 
     Scoped to the operator's selection so the dropdown stays bounded on
     production-sized DBs and never reveals algorithms from other projects.
     """
-    algorithm_ids = (
-        Classification.objects.filter(
-            detection__source_image__event__in=events,
-            features_2048__isnull=False,
-            algorithm_id__isnull=False,
-        )
-        .values_list("algorithm_id", flat=True)
-        .distinct()
-    )
-    return [
-        (a.pk, f"{a.name} (#{a.pk})") for a in Algorithm.objects.filter(pk__in=list(algorithm_ids)).order_by("name")
-    ]
+    algorithm_ids = algorithm_ids_with_vectors(source_image__event__in=events)
+    return [(a.pk, f"{a.name} (#{a.pk})") for a in Algorithm.objects.filter(pk__in=algorithm_ids).order_by("name")]
 
 
 class TrackingActionForm(forms.Form):
@@ -85,9 +77,9 @@ class TrackingActionForm(forms.Form):
         required=False,
         help_text=(
             "Override the algorithm whose embeddings are used for matching. Leave "
-            "blank to auto-detect (works when only one feature-extracting algorithm "
-            "ran on the event). Required when multiple algorithms have produced "
-            "embeddings on the same event."
+            "blank to use the only one with vectors on the event, or, when several "
+            "have them, the project's default: one it runs as a feature extractor, "
+            "else the one stored most recently."
         ),
     )
 

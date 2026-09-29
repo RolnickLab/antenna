@@ -22,6 +22,8 @@ const Root = ({
 
 const Trigger = Dialog.Trigger
 
+const Description = Dialog.Description
+
 const Content = ({
   ariaCloselabel,
   children,
@@ -94,4 +96,4 @@ const Header = ({
   </div>
 )
 
-export { Content, Header, Root, Trigger }
+export { Content, Description, Header, Root, Trigger }

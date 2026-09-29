@@ -12,9 +12,9 @@ import typing
 from collections.abc import Callable, Iterator
 
 from django.db import models
-from django.db.models import Exists, OuterRef, Subquery
+from django.db.models import Exists, ExpressionWrapper, OuterRef, Subquery
 
-from ami.main.models import BEST_MACHINE_PREDICTION_ORDER, Classification, Detection, Occurrence
+from ami.main.models import BEST_MACHINE_PREDICTION_ORDER, Classification, Detection, DetectionEmbedding, Occurrence
 from ami.main.models_future.tracks import CAPTURE_ORDER
 
 TRACKS_CSV_COLUMNS: typing.Final = (
@@ -67,9 +67,11 @@ def _detections_for(occurrence_ids: list[int]) -> models.QuerySet:
         .annotate(
             label=Subquery(best_classification.values("taxon__name")[:1]),
             label_score=Subquery(best_classification.values("score")[:1]),
-            # Same notion as ClassificationQuerySet.with_has_features(), per detection.
-            has_feature_vector=Exists(
-                Classification.objects.filter(detection=OuterRef("pk"), features_2048__isnull=False)
+            # Same notion as DetectionQuerySet.has_vector(): an embedding or a classification vector.
+            has_feature_vector=ExpressionWrapper(
+                Exists(DetectionEmbedding.objects.filter(detection=OuterRef("pk")))
+                | Exists(Classification.objects.filter(detection=OuterRef("pk"), features_2048__isnull=False)),
+                output_field=models.BooleanField(),
             ),
         )
         .order_by("occurrence_id", *CAPTURE_ORDER)

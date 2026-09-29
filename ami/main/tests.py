@@ -29,6 +29,7 @@ from ami.main.models import (
     Classification,
     Deployment,
     Detection,
+    DetectionEmbedding,
     Device,
     Event,
     Identification,
@@ -64,7 +65,9 @@ from ami.ml.post_processing.tracking_task import (
     image_diagonal,
     iou,
     pair_detections,
+    pair_terms,
     total_cost,
+    weighted_cost,
 )
 from ami.tests.fixtures.main import (
     create_captures,
@@ -1535,6 +1538,26 @@ class TestRegroupSplitsTracks(TestCase):
         for piece in pieces:
             self.assertEqual(piece.grouping_verified_at, verified_at)
             self.assertEqual(piece.grouping_verified_by_id, self.user.pk)
+
+    def test_each_piece_gets_a_review_of_its_own_detections(self):
+        from ami.main.models_future.history import latest_track_complete_review
+        from ami.main.models_future.tracks import verify_grouping
+
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_track(self.captures)
+        verify_grouping(occurrence, self.user)
+        verified_at = Occurrence.objects.get(pk=occurrence.pk).grouping_verified_at
+
+        self._group(gap_hours=2)
+
+        for piece in Occurrence.objects.filter(deployment=self.deployment):
+            review = latest_track_complete_review(piece)
+            self.assertEqual(review.payload["detection_ids"], sorted(self._detection_ids(piece)))
+            self.assertEqual((review.user_id, review.timestamp), (self.user.pk, verified_at))
+            self.assertEqual(review.payload["split_from_occurrence_id"], occurrence.pk)
+            # Re-confirming the piece as it stands changes nothing, so it records nothing.
+            verify_grouping(piece, self.user)
+            self.assertEqual(latest_track_complete_review(piece).pk, review.pk)
 
     def test_identifications_are_copied_to_every_piece(self):
         self._group(gap_hours=6)
@@ -9834,7 +9857,8 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
     def test_a_multi_frame_merge_does_not_query_per_frame(self):
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
 
-        with self.assertNumQueries(29):
+        # Two of these move and cascade-delete the merged track's history records, once per merge.
+        with self.assertNumQueries(31):
             merge_occurrences(self.occurrence, [other])
 
         self.assertFullyLinked(self.occurrence)
@@ -10064,6 +10088,39 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertLess(by_id[far.pk]["likelihood"], by_id[same_box.pk]["likelihood"])
         self.assertFalse(by_id[far.pk]["would_link"])
 
+    def test_candidates_are_scored_with_the_configured_link_options(self):
+        """The picker's cost is the tracker's scored cost under the settings from
+        ``tracking_config_for`` (mocked here, since only defaults exist today), so an
+        appearance calibration changes the cost and the appearance gate stops a pair from
+        linking here as it does in a run."""
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector, unlike_vector = [1.0] + [0.0] * 2047, [0.6, 0.8] + [0.0] * 2046
+        self._give_target_vectors(vector, extractor)
+        track_box = [10, 10, 40, 40]
+        alike = self._make_occurrence([self.after_capture], bbox=track_box, vector=vector, algorithm=extractor)
+        unlike = self._make_occurrence([self.after_capture], bbox=track_box, vector=unlike_vector, algorithm=extractor)
+        config = TrackingConfig(
+            event_ids=[self.event.pk],
+            appearance_similarity_floor=0.5,
+            appearance_similarity_ceiling=0.9,
+            appearance_min_similarity=0.8,
+        )
+
+        with mock.patch("ami.main.models_future.merge_candidates.tracking_config_for", return_value=config):
+            rows = self.get_candidates().data["candidates"]
+
+        by_id = {row["id"]: row for row in rows}
+        diagonal = image_diagonal(self.FRAME_SIZE, self.FRAME_SIZE)
+        expected = weighted_cost(
+            pair_terms(vector, unlike_vector, track_box, track_box, diagonal), config.link_options()
+        )
+        self.assertAlmostEqual(by_id[unlike.pk]["cost"], expected, places=4)
+        self.assertAlmostEqual(expected, 0.75, places=4, msg="Similarity 0.6 maps to 0.75 between 0.5 and 0.9")
+        self.assertNotAlmostEqual(expected, total_cost(vector, unlike_vector, track_box, track_box, diagonal))
+        self.assertEqual([row["id"] for row in rows], [alike.pk, unlike.pk])
+        self.assertTrue(by_id[alike.pk]["would_link"])
+        self.assertFalse(by_id[unlike.pk]["would_link"], "The appearance gate forbids this pair")
+
     def test_adjacent_captures_are_searched_by_default(self):
         """The default search is the one capture on either side of the track, since that is
         where the frame continuing it sits; `captures` widens it by count and `minutes` by time."""
@@ -10247,18 +10304,56 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(merged.data["detections_count"], len(self.detections) + 2)
         self.assertFalse(Occurrence.objects.filter(pk__in=[low_score.pk, undetermined.pk]).exists())
 
+    def test_a_candidate_whose_only_vector_is_an_embedding_is_compared_by_appearance(self):
+        """A crop the moth/non-moth filter rejected has no classification vector, only an embedding."""
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+        candidate = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42])
+        DetectionEmbedding.objects.create(detection=candidate.detections.get(), algorithm=extractor, vector=vector)
+
+        response = self.get_candidates()
+        self.assertEqual(response.status_code, 200, response.data)
+        similarity = {row["id"]: row["similarity"] for row in response.data["candidates"]}
+        self.assertEqual(similarity[candidate.pk], 1.0)
+
+    def test_similarity_is_never_taken_between_two_algorithms(self):
+        """Vectors from two models are not comparable, however alike their numbers."""
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        other = Algorithm.objects.create(name="Other feature extractor", key="other-feature-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+        same = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42])
+        different = self._make_occurrence([self.after_capture], bbox=[500, 500, 530, 530])
+        DetectionEmbedding.objects.create(detection=same.detections.get(), algorithm=extractor, vector=vector)
+        DetectionEmbedding.objects.create(detection=different.detections.get(), algorithm=other, vector=vector)
+
+        response = self.get_candidates()
+        self.assertEqual(response.status_code, 200, response.data)
+        similarity = {row["id"]: row["similarity"] for row in response.data["candidates"]}
+        self.assertEqual(similarity, {same.pk: 1.0, different.pk: None})
+
     def test_the_candidate_count_does_not_change_the_query_count(self):
         extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
         vector = [1.0] + [0.0] * 2047
         self._give_target_vectors(vector, extractor)
         for offset in range(3):
-            self._make_occurrence(
-                [self.after_capture], bbox=[10 + offset, 10, 40 + offset, 40], vector=vector, algorithm=extractor
+            # Alternate the two places a vector is stored.
+            candidate = self._make_occurrence(
+                [self.after_capture],
+                bbox=[10 + offset, 10, 40 + offset, 40],
+                vector=vector if offset % 2 else None,
+                algorithm=extractor,
             )
+            if not offset % 2:
+                DetectionEmbedding.objects.create(
+                    detection=candidate.detections.get(), algorithm=extractor, vector=vector
+                )
 
         # The savepoint pair, the object lookup with its permission checks, then the
         # seven ranking queries: the track's frames, the capture ids before and after
-        # it, the frames in those captures, the candidates, and the two vector sides.
+        # it, the frames in those captures, the candidates, and the two vector sides,
+        # each reading embeddings and classification vectors together.
         with self.assertNumQueries(13):
             response = self.get_candidates()
 
@@ -10339,6 +10434,8 @@ class CaptureMatchesTestCase(APITestCase):
     NEAR_BOX = [11, 11, 41, 41]
     OFFSET_BOX = [12, 12, 42, 42]
     FAR_BOX = [500, 500, 530, 530]
+    # Cosine similarity 0.6 with VECTOR.
+    UNLIKE_VECTOR = [0.6, 0.8] + [0.0] * 2046
 
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project(reuse=False)
@@ -10472,6 +10569,37 @@ class CaptureMatchesTestCase(APITestCase):
         self.assertFalse(row["would_link"])
         self.assertGreater(row["likelihood"], 0.5)
 
+    def test_the_preview_uses_the_configured_link_options(self):
+        """The preview runs the matcher and scores each box with the settings from
+        ``tracking_config_for`` (mocked here, since only defaults exist today): a box
+        that would link by default is not linked when the appearance gate forbids it, and its
+        cost is the calibrated one."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        capture = self.captures[3]
+        unlike = self._box(capture, self.NEAR_BOX, vector=self.UNLIKE_VECTOR)
+        config = TrackingConfig(
+            event_ids=[self.event.pk],
+            cost_threshold=1.0,
+            appearance_similarity_floor=0.5,
+            appearance_similarity_ceiling=0.9,
+            appearance_min_similarity=0.8,
+        )
+
+        with mock.patch("ami.main.models_future.merge_candidates.tracking_config_for", return_value=config):
+            row = self.get_matches(track, capture.pk).data["detections"][0]
+        without_gate = config.copy(update={"appearance_min_similarity": None})
+        with mock.patch("ami.main.models_future.merge_candidates.tracking_config_for", return_value=without_gate):
+            ungated = self.get_matches(track, capture.pk).data["detections"][0]
+
+        expected = weighted_cost(
+            pair_terms(self.VECTOR, self.UNLIKE_VECTOR, self.TRACK_BOX, self.NEAR_BOX, self.diagonal),
+            config.link_options(),
+        )
+        self.assertEqual(row["detection_id"], unlike.pk)
+        self.assertAlmostEqual(row["cost"], expected, places=4)
+        self.assertFalse(row["would_link"], "The appearance gate forbids this pair")
+        self.assertTrue(ungated["would_link"], "Without the gate the same box links under the threshold")
+
     def test_the_preview_links_what_a_tracking_pass_saves(self):
         """The preview and a tracking pass share one matcher, so on the same two captures the box
         marked as linked is the one pair_detections links the reference frame to."""
@@ -10513,6 +10641,20 @@ class CaptureMatchesTestCase(APITestCase):
         self.assertAlmostEqual(row["cost"], geometry, places=4)
         self.assertAlmostEqual(row["likelihood"], 1 - geometry / 3, places=4)
 
+    def test_a_box_whose_only_vector_is_an_embedding_is_compared_and_linked(self):
+        """A processing service can store a vector for a box that received no classification
+        vector. The preview reads the embedding store too, so such a box is compared by
+        appearance and linked like one whose vector came with a classification."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        box = self._box(self.captures[3], self.NEAR_BOX)
+        DetectionEmbedding.objects.create(detection=box, algorithm=self.extractor, vector=self.VECTOR)
+
+        data = self.get_matches(track, self.captures[3].pk).data
+
+        self.assertEqual(data["feature_algorithm_id"], self.extractor.pk)
+        row = data["detections"][0]
+        self.assertEqual((row["skipped_reason"], row["would_link"], row["similarity"]), (None, True, 1.0))
+
     def test_a_detector_only_session_links_nothing(self):
         """With no embeddings at all, tracking has no extractor to compare and skips the captures
         while it requires features, so every box and the reference frame are marked skipped."""
@@ -10527,19 +10669,17 @@ class CaptureMatchesTestCase(APITestCase):
         self.assertEqual((row["skipped_reason"], row["would_link"]), ("no_vector", False))
         self.assertIsNotNone(row["cost"], "The geometry is still scored")
 
-    def test_two_feature_extractors_link_nothing(self):
-        """Embeddings from two extractors leave tracking no single one to compare, so it skips the
-        captures while it requires features, as it does a session with none."""
+    def test_two_feature_extractors_are_never_compared_with_each_other(self):
+        """With embeddings from two extractors, tracking compares the default one only (the one
+        covering the most boxes), so a box whose only vector is from the other does not link."""
         other_extractor = Algorithm.objects.create(name="Other extractor", key="other-extractor")
         track = self._track(self.captures[1:3], vector=self.VECTOR)
         self._box(self.captures[3], self.NEAR_BOX, vector=self.VECTOR, algorithm=other_extractor)
 
         data = self.get_matches(track, self.captures[3].pk).data
 
-        self.assertIsNone(data["feature_algorithm_id"])
-        self.assertEqual(
-            (data["detections"][0]["skipped_reason"], data["detections"][0]["would_link"]), ("no_vector", False)
-        )
+        self.assertEqual(data["feature_algorithm_id"], self.extractor.pk)
+        self.assertFalse(data["detections"][0]["would_link"])
 
     def test_the_reference_is_the_nearest_track_frame_on_another_capture(self):
         """A track on the second and fifth of six captures a minute apart. Each capture is
@@ -11108,6 +11248,40 @@ class FeatureVectorPresenceTestCase(APITestCase):
         listed, _ = self._get(f"/api/v2/captures/?project_id={self.project.pk}")
         self.assertNotIn("detections_with_features", listed.data["results"][0], "Counted on the detail only")
 
+    def test_a_frame_whose_only_vector_is_an_embedding_counts_as_having_one(self):
+        """A crop the moth/non-moth filter rejected carries an embedding and no classification vector."""
+        extractor = Algorithm.objects.create(name="Embedding model", key="embedding-model")
+        occurrence = self._make_occurrence([True, False, False])
+        embedded = occurrence.detections.get(source_image=self.captures[1])
+        DetectionEmbedding.objects.create(detection=embedded, algorithm=extractor, vector=self.vector)
+
+        response, queries = self._get(self._occurrence_url(occurrence))
+        self.assertEqual(response.data["grouping_summary"]["frames_with_vectors"], 2)
+        self.assertFalse(self._reads_the_vector(queries))
+
+        capture, queries = self._get(f"/api/v2/captures/{self.captures[1].pk}/?project_id={self.project.pk}")
+        self.assertEqual(capture.data["detections_with_features"], 1)
+        self.assertFalse(self._reads_the_vector(queries))
+
+    def test_has_features_counts_an_embedding_only_for_the_classifications_own_algorithm(self):
+        """A vector from one model says nothing about another model's classification of the crop."""
+        embedder = Algorithm.objects.create(name="Species classifier", key="species-classifier")
+        moth_filter = Algorithm.objects.create(name="Moth filter", key="moth-filter")
+        capture = self.captures[0]
+        detection = Detection.objects.create(source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40])
+        for algorithm in (embedder, moth_filter):
+            detection.classifications.create(
+                taxon=self.taxon, score=0.9, timestamp=capture.timestamp, algorithm=algorithm
+            )
+        DetectionEmbedding.objects.create(detection=detection, algorithm=embedder, vector=self.vector)
+
+        flags = dict(
+            Classification.objects.filter(detection=detection)
+            .with_has_features()
+            .values_list("algorithm_id", "has_features")
+        )
+        self.assertEqual(flags, {embedder.pk: True, moth_filter.pk: False})
+
     def test_the_capture_counts_ride_on_the_capture_row(self):
         """Both counts are subqueries on the capture's own SELECT: five detections, one query."""
         from cachalot.api import cachalot_disabled
@@ -11129,3 +11303,80 @@ class FeatureVectorPresenceTestCase(APITestCase):
             annotated = SourceImage.objects.filter(pk=capture.pk).with_detections_with_features().get()
             self.assertEqual(annotated.detections_valid, 5)  # type: ignore[attr-defined]
             self.assertEqual(annotated.detections_with_features, 3)  # type: ignore[attr-defined]
+
+
+class DetectionVectorReadTestCase(TestCase):
+    """Reading a detection's feature vector from whichever of the two stores holds it.
+
+    A vector is a detection embedding or, on data processed before embeddings existed, a
+    classification's ``features_2048``. What these pin is that a reader returns only the
+    requested algorithm's vectors, takes the embedding when both exist, and reads any
+    number of detections in one query.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.capture = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            timestamp=datetime.datetime(2024, 1, 1, 22, 0),
+            path="test/vectors.jpg",
+        )
+        self.extractor = Algorithm.objects.create(name="Embedding model", key="embedding-model")
+        self.other = Algorithm.objects.create(name="Other embedding model", key="other-embedding-model")
+
+    def _detection(self, x: int) -> Detection:
+        return Detection.objects.create(
+            source_image=self.capture, timestamp=self.capture.timestamp, bbox=[x, 10, x + 30, 40]
+        )
+
+    def _classification_vector(self, detection: Detection, algorithm: Algorithm, value: float) -> None:
+        detection.classifications.create(
+            score=0.9, timestamp=self.capture.timestamp, algorithm=algorithm, features_2048=[value] * 2048
+        )
+
+    def _embedding(self, detection: Detection, algorithm: Algorithm, value: float) -> None:
+        DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, vector=[value] * 2048)
+
+    @staticmethod
+    def _read(detections: list[Detection], algorithm: Algorithm) -> dict[int, float]:
+        """{detection id: first component of its vector}; the test vectors are constant."""
+        from ami.main.models_future.embeddings import vectors_for_detections
+
+        vectors = vectors_for_detections([d.pk for d in detections], algorithm.pk)
+        return {detection_id: float(vector[0]) for detection_id, vector in vectors.items()}
+
+    def test_each_store_supplies_the_vectors_it_holds(self):
+        """Older detections have only a classification vector and newer ones an embedding."""
+        old, new = self._detection(0), self._detection(100)
+        self._classification_vector(old, self.extractor, 0.25)
+        self._embedding(new, self.extractor, 0.75)
+        self.assertEqual(self._read([old, new], self.extractor), {old.pk: 0.25, new.pk: 0.75})
+
+    def test_an_embedding_is_preferred_to_a_classification_vector(self):
+        detection = self._detection(0)
+        self._classification_vector(detection, self.extractor, 0.25)
+        self._embedding(detection, self.extractor, 0.75)
+        self.assertEqual(self._read([detection], self.extractor), {detection.pk: 0.75})
+
+    def test_another_algorithms_vector_is_never_returned(self):
+        first, second = self._detection(0), self._detection(100)
+        self._embedding(first, self.extractor, 0.25)
+        self._embedding(second, self.other, 0.75)
+        self._classification_vector(second, self.other, 0.5)
+        self.assertEqual(self._read([first, second], self.extractor), {first.pk: 0.25})
+        self.assertEqual(self._read([first, second], self.other), {second.pk: 0.75})
+
+    def test_any_number_of_detections_is_read_in_one_query(self):
+        from cachalot.api import cachalot_disabled
+
+        from ami.main.models_future.embeddings import vectors_for_detections
+
+        detections = [self._detection(x) for x in range(0, 500, 100)]
+        for index, detection in enumerate(detections):
+            store = self._embedding if index % 2 else self._classification_vector
+            store(detection, self.extractor, 0.5)
+
+        with cachalot_disabled(), self.assertNumQueries(1):
+            vectors = vectors_for_detections([d.pk for d in detections], self.extractor.pk)
+        self.assertEqual(len(vectors), len(detections))

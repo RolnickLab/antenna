@@ -6,9 +6,18 @@ import { JobDetails } from './job-details'
 export const SERVER_EXPORT_TYPES = [
   'occurrences_simple_csv',
   'occurrences_api_json',
+  'tracks_csv',
 ] as const
 
 export type ServerExportType = (typeof SERVER_EXPORT_TYPES)[number]
+
+/** The formats a project can export; tracks need the tracking feature. */
+export const getExportTypes = ({
+  trackingEnabled,
+}: {
+  trackingEnabled: boolean
+}): ServerExportType[] =>
+  SERVER_EXPORT_TYPES.filter((key) => key !== 'tracks_csv' || trackingEnabled)
 
 export type ServerExport = any // TODO: Update this type
 
@@ -27,6 +36,7 @@ export class Export extends Entity {
     const label = {
       occurrences_simple_csv: 'Occurrences (simple CSV)',
       occurrences_api_json: 'Occurrences (API JSON)',
+      tracks_csv: 'Tracks (CSV, one row per detection)',
     }[key]
 
     return {

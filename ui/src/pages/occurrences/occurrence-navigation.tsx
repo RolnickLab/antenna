@@ -5,13 +5,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { getAdjacentIds } from './adjacent-occurrences'
 
 // Ordered items the modal can page through. Only the id is needed: on the occurrences
 // list these are Occurrence models; on the taxa list they are the per-row example
 // occurrences, so paging steps to the next taxon's example.
 type NavItem = { id: string }
 
-const useOccurrenceNavigation = (
+export type OccurrenceNavigationState = ReturnType<
+  typeof useOccurrenceNavigation
+>
+
+export const useOccurrenceNavigation = (
   items?: NavItem[],
   currentId?: string,
   onNavigate?: (id: string) => void
@@ -19,10 +24,7 @@ const useOccurrenceNavigation = (
   const { projectId, id: routeId } = useParams()
   const navigate = useNavigate()
   const activeId = currentId ?? routeId
-  const currentIndex = items?.findIndex((o) => o.id === activeId)
-  const hasCurrent = currentIndex !== undefined && currentIndex >= 0
-  const prevId = hasCurrent ? items?.[currentIndex - 1]?.id : undefined
-  const nextId = hasCurrent ? items?.[currentIndex + 1]?.id : undefined
+  const { prevId, nextId } = getAdjacentIds(items, activeId)
 
   const goTo = useCallback(
     (targetId?: string) => {
@@ -54,26 +56,17 @@ const useOccurrenceNavigation = (
   return {
     prevId,
     nextId,
+    goTo,
     goToPrev,
     goToNext,
   }
 }
 
 export const OccurrenceNavigation = ({
-  occurrences,
-  currentId,
-  onNavigate,
+  navigation: { prevId, nextId, goToPrev, goToNext },
 }: {
-  occurrences?: NavItem[]
-  currentId?: string
-  onNavigate?: (id: string) => void
+  navigation: OccurrenceNavigationState
 }) => {
-  const { prevId, nextId, goToPrev, goToNext } = useOccurrenceNavigation(
-    occurrences,
-    currentId,
-    onNavigate
-  )
-
   // Listen to key down events
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

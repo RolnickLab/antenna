@@ -1,5 +1,6 @@
+import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { SessionDetails } from 'data-services/models/session-details'
-import { InfoBlock } from 'nova-ui-kit'
+import { InfoBlock, InfoBlockField, InfoBlockFieldValue } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -8,11 +9,8 @@ import { STRING, translate } from 'utils/language'
 export const SessionInfo = ({ session }: { session: SessionDetails }) => {
   const { projectId } = useParams()
 
+  // The id is the last row, beside the copy-link button.
   const fields = [
-    {
-      label: translate(STRING.FIELD_LABEL_ID),
-      value: session.id,
-    },
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: session.deploymentLabel,
@@ -59,5 +57,15 @@ export const SessionInfo = ({ session }: { session: SessionDetails }) => {
       : []),
   ]
 
-  return <InfoBlock fields={fields} />
+  return (
+    <div className="grid gap-6">
+      <InfoBlock fields={fields} />
+      <InfoBlockField label={translate(STRING.FIELD_LABEL_SESSION_NUMBER)}>
+        <div className="flex items-center gap-1">
+          <InfoBlockFieldValue value={session.id} />
+          <CopyLinkButton value={window.location.href} />
+        </div>
+      </InfoBlockField>
+    </div>
+  )
 }
