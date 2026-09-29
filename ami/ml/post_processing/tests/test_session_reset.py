@@ -59,6 +59,8 @@ class TestResetSessionTracking(TestCase):
 
     def test_splits_every_track_and_clears_links_verification_and_tracking_records(self):
         project, event = self._build_tracked_session(images=4)
+        unscored_keeper = Occurrence.objects.filter(event=event).order_by("pk").first()
+        Classification.objects.filter(detection=unscored_keeper.detections.order_by("timestamp", "pk").first()).delete()
         tracked = session_tracking_counts(event)
         self.assertEqual((tracked.occurrences, tracked.multi_detection_occurrences), (2, 2))
         self.assertEqual((tracked.links, tracked.grouping_verified), (6, 1))
@@ -73,9 +75,10 @@ class TestResetSessionTracking(TestCase):
         self.assertFalse(Classification.objects.filter(algorithm__key="tracking").exists())
         for occurrence in Occurrence.objects.filter(detections__source_image__event=event):
             best = occurrence.best_prediction
-            self.assertEqual(
-                (occurrence.determination_id, occurrence.determination_score), (best.taxon_id, best.score)
-            )
+            expected = (best.taxon_id, best.score) if best else (None, None)
+            self.assertEqual((occurrence.determination_id, occurrence.determination_score), expected)
+        unscored_keeper.refresh_from_db()
+        self.assertIsNone(unscored_keeper.determination_id)
 
     def test_refuses_a_session_with_identifications_unless_forced(self):
         project, event = self._build_tracked_session(images=3)

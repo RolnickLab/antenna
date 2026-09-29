@@ -13,7 +13,8 @@ After a reset, for every detection of the session that shared an occurrence:
   also holds detections of another session stays with those detections, untouched
   there, and every detection of this session leaves it.
 - Every occurrence the split touched takes its determination from its own
-  detections' best prediction, the rule ``Occurrence.best_prediction`` applies. An
+  detections' best prediction, the rule ``Occurrence.best_prediction`` applies, or
+  none if they have no scored prediction. An
   occurrence with a human identification keeps the determination it has.
 - Chain links between two detections of the session are cleared. A link that crosses
   into another session records one animal across a regroup boundary, which tracking
@@ -154,7 +155,8 @@ def _refresh_determinations(occurrence_ids: Iterable[int]) -> int:
     """Set each occurrence's determination to its best prediction, in batches; returns how many changed.
 
     The batched form of ``update_occurrence_determination`` for occurrences with no
-    identifications, using the same choice as ``Occurrence.best_prediction``.
+    identifications, using the same choice as ``Occurrence.best_prediction``. Unlike it,
+    an occurrence with no scored prediction gets no determination.
     """
     ids = list(occurrence_ids)
     classifications = Classification.objects.select_related(None).only(
@@ -174,11 +176,11 @@ def _refresh_determinations(occurrence_ids: Iterable[int]) -> int:
         )
         for occurrence in batch.prefetch_related(Prefetch("detections", queryset=detections)):
             best = best_prediction_from_prefetch(occurrence)
-            if best is None or best.taxon_id is None:
-                continue
-            if (occurrence.determination_id, occurrence.determination_score) != (best.taxon_id, best.score):
-                occurrence.determination_id = best.taxon_id
-                occurrence.determination_score = best.score
+            # With no scored prediction left, a determination inherited from the merged
+            # track would describe detections that have moved away, so it is cleared.
+            wanted = (best.taxon_id, best.score) if best is not None and best.taxon_id else (None, None)
+            if (occurrence.determination_id, occurrence.determination_score) != wanted:
+                occurrence.determination_id, occurrence.determination_score = wanted
                 changed.append(occurrence)
     Occurrence.objects.bulk_update(changed, ["determination", "determination_score"], batch_size=1000)
     return len(changed)
