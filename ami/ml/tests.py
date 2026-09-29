@@ -2580,4 +2580,4 @@ class TestDetectionEmbeddings(TestCase):
 
         with self.assertNumQueries(1):
             stored = create_detection_embeddings(detections, parsed, algorithms_known)
-        self.assertEqual(len(stored), 5)
+        self.assertEqual(len(stored.embeddings), 5)

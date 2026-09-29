@@ -31,6 +31,7 @@ from ami.main.models_future.embeddings import (
     feature_extractors_with_vectors,
     vectors_for_detections,
 )
+from ami.ml.exceptions import FeatureResultsMatchNoDetections
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import (
     COLLECT_PROGRESS_MAX_FRACTION,
@@ -199,6 +200,20 @@ class TestFeatureOnlySave(FeatureOnlyFixture, TestCase):
         )
         self.extractor.refresh_from_db()
         self.assertEqual(self.extractor.embedding_dimensions, BIOCLIP_DIMENSIONS)
+
+    def test_boxes_that_match_no_detection_are_counted(self):
+        known = [(image, _box(0.0)) for image in self.images]
+        unknown = [(self.images[0], _box(500.0)), (self.images[1], _box(600.0))]
+        saved = save_results(self._response(known + unknown), return_created=True)
+        self.assertEqual(saved.unmatched_detections, 2)
+        self.assertEqual(DetectionEmbedding.objects.count(), len(self.images))
+
+    def test_a_batch_whose_boxes_all_match_nothing_fails_and_stores_nothing(self):
+        """Skipping it would leave the same detections without vectors, to be sent again on every run."""
+        with self.assertRaises(FeatureResultsMatchNoDetections) as raised:
+            save_results(self._response([(self.images[0], _box(500.0)), (self.images[1], _box(600.0))]))
+        self.assertEqual(raised.exception.unmatched, 2)
+        self.assertFalse(DetectionEmbedding.objects.exists())
 
     def test_a_vector_of_another_length_is_refused_and_nothing_is_stored(self):
         save_results(self._response([(self.images[0], _box(0.0))]))
