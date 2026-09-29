@@ -40,7 +40,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
-from ami.ml.exceptions import PipelineNotConfigured
+from ami.ml.exceptions import FeatureResultsMatchNoDetections, PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -865,13 +865,32 @@ def _check_embedding_dimensions(algorithm: Algorithm, lengths: set[int]) -> None
         )
 
 
+# How many boxes that match no stored detection are named in the job log per batch.
+UNMATCHED_BOXES_TO_LOG = 5
+
+
+@dataclasses.dataclass
+class StoredEmbeddings:
+    """The vectors stored from one batch, and the returned boxes that matched no detection."""
+
+    embeddings: list[DetectionEmbedding]
+    unmatched: list[DetectionResponse]
+
+
+def _describe_boxes(detection_responses: list[DetectionResponse]) -> str:
+    return "; ".join(
+        f"image {response.source_image_id} box {tuple(response.bbox.dict().values()) if response.bbox else None}"
+        for response in detection_responses[:UNMATCHED_BOXES_TO_LOG]
+    )
+
+
 def create_detection_embeddings(
     detections: list[Detection],
     detection_responses: list[DetectionResponse],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     job_id: int | None = None,
-) -> list[DetectionEmbedding]:
+) -> StoredEmbeddings:
     """
     Store the feature vectors sent with each detection, one row per (detection, algorithm).
 
@@ -880,10 +899,11 @@ def create_detection_embeddings(
     so no determination can change.
 
     Responses are matched to ``detections`` by image and box (see ``BOX_MATCH_DECIMALS``),
-    the key ``get_or_create_detection`` reuses detections by; a response with no match is
-    skipped. An algorithm key the pipeline has not registered raises ``PipelineNotConfigured``,
-    as it does for classifications, and a vector whose length differs from its algorithm's
-    raises ``EmbeddingDimensionMismatch``. ``job_id`` records the job whose results stored each vector.
+    the key ``get_or_create_detection`` reuses detections by. A returned box with no match is
+    skipped and listed in the result's ``unmatched``. An algorithm key the pipeline has not
+    registered raises ``PipelineNotConfigured``, as it does for classifications, and a vector
+    whose length differs from its algorithm's raises ``EmbeddingDimensionMismatch``.
+    ``job_id`` records the job whose results stored each vector.
     """
     by_box = {
         _box_key(detection.source_image_id, detection.bbox): detection
@@ -892,15 +912,15 @@ def create_detection_embeddings(
     }
     embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
     lengths_by_algorithm: dict[str, set[int]] = collections.defaultdict(set)
-    unmatched = 0
+    unmatched: list[DetectionResponse] = []
     for detection_resp in detection_responses:
-        if not detection_resp.embeddings or detection_resp.bbox is None:
+        if detection_resp.bbox is None:
             continue
         detection = by_box.get(_box_key(detection_resp.source_image_id, detection_resp.bbox.dict().values()))
         if detection is None:
-            unmatched += 1
+            unmatched.append(detection_resp)
             continue
-        for embedding_resp in detection_resp.embeddings:
+        for embedding_resp in detection_resp.embeddings or []:
             try:
                 algorithm = algorithms_known[embedding_resp.algorithm.key]
             except KeyError as err:
@@ -918,7 +938,10 @@ def create_detection_embeddings(
         _check_embedding_dimensions(algorithms_known[key], lengths)
 
     if unmatched:
-        logger.warning(f"Skipped the vectors of {unmatched} detections that match no stored detection.")
+        logger.warning(
+            f"Skipped {len(unmatched)} returned boxes that match no stored detection, "
+            f"for example: {_describe_boxes(unmatched)}"
+        )
     DetectionEmbedding.objects.bulk_create(
         list(embeddings.values()),
         update_conflicts=True,
@@ -927,7 +950,7 @@ def create_detection_embeddings(
         batch_size=EMBEDDING_BATCH_SIZE,
     )
     logger.info(f"Stored {len(embeddings)} detection embeddings for {len(detections)} detections.")
-    return list(embeddings.values())
+    return StoredEmbeddings(embeddings=list(embeddings.values()), unmatched=unmatched)
 
 
 def save_features_for_existing_detections(
@@ -935,27 +958,37 @@ def save_features_for_existing_detections(
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     job_id: int | None = None,
-) -> list[DetectionEmbedding]:
+) -> StoredEmbeddings:
     """Store the vectors a feature-only pipeline returned for detections Antenna already has.
 
     Writes ``DetectionEmbedding`` rows and nothing else: a box that matches no stored
     detection is skipped rather than created, classifications in the response are ignored,
-    and no occurrence, determination or null marker is touched.
+    and no occurrence, determination or null marker is touched. A batch whose boxes all
+    match nothing raises ``FeatureResultsMatchNoDetections``, because its detections would
+    otherwise be sent again on every run.
     """
     ignored = sum(len(detection.classifications) for detection in results.detections)
     if ignored:
         logger.warning(f"Ignored {ignored} classifications returned by a feature-only pipeline.")
-    image_ids = {int(detection.source_image_id) for detection in results.detections if detection.bbox is not None}
+    returned_boxes = [detection for detection in results.detections if detection.bbox is not None]
+    image_ids = {int(detection.source_image_id) for detection in returned_boxes}
     detections = list(
         Detection.objects.valid().filter(source_image_id__in=image_ids).only("pk", "source_image_id", "bbox")
     )
-    return create_detection_embeddings(
+    stored = create_detection_embeddings(
         detections=detections,
         detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=logger,
         job_id=job_id,
     )
+    if returned_boxes and len(stored.unmatched) == len(returned_boxes):
+        raise FeatureResultsMatchNoDetections(
+            f"None of the {len(returned_boxes)} boxes returned by the feature-only pipeline matches a "
+            f"stored detection, so no vectors were saved. First boxes: {_describe_boxes(returned_boxes)}",
+            unmatched=len(returned_boxes),
+        )
+    return stored
 
 
 def create_category_map_for_classification(
@@ -1258,6 +1291,8 @@ class PipelineSaveResults:
     classifications: list[Classification]
     algorithms: dict[str, Algorithm]
     total_time: float
+    # Returned boxes that matched no stored detection; only a feature-only save reports it.
+    unmatched_detections: int | None = None
 
 
 def create_null_detections_for_undetected_images(
@@ -1340,12 +1375,12 @@ def save_results(
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
     if feature_extraction_only(list(algorithms_known.values())):
         job_logger.info(f"Pipeline {pipeline} only extracts features; storing vectors for existing detections.")
-        embeddings = save_features_for_existing_detections(
+        stored = save_features_for_existing_detections(
             results, algorithms_known, logger=job_logger, job_id=job.pk if job else None
         )
         total_time = time.time() - start_time
         job_logger.info(
-            f"Saved {len(embeddings)} feature vectors from pipeline {pipeline} in {total_time:.2f} seconds"
+            f"Saved {len(stored.embeddings)} feature vectors from pipeline {pipeline} in {total_time:.2f} seconds"
         )
         if return_created:
             return PipelineSaveResults(
@@ -1355,6 +1390,7 @@ def save_results(
                 classifications=[],
                 algorithms={},
                 total_time=total_time,
+                unmatched_detections=len(stored.unmatched),
             )
         return None
 
@@ -1669,8 +1705,8 @@ class Pipeline(BaseModel):
             reprocess_all_images=reprocess_all_images,
         )
 
-    def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):
-        return save_results(results=results, job_id=job_id)
+    def save_results(self, results: PipelineResultsResponse, job_id: int | None = None, return_created=False):
+        return save_results(results=results, job_id=job_id, return_created=return_created)
 
     def save_results_async(self, results: PipelineResultsResponse, job_id: int | None = None):
         # Returns an AsyncResult
