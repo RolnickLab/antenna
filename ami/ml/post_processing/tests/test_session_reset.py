@@ -83,7 +83,10 @@ class TestResetSessionTracking(TestCase):
     def test_refuses_a_session_with_identifications_unless_forced(self):
         project, event = self._build_tracked_session(images=3)
         occurrence = Occurrence.objects.filter(event=event).order_by("pk").first()
-        Identification.objects.create(occurrence=occurrence, user=UserFactory(), taxon=occurrence.determination)
+        kept_detection = occurrence.detections.order_by("timestamp", "pk").first()
+        own_prediction = kept_detection.classifications.order_by("-score").first().taxon
+        identified_taxon = Taxon.objects.filter(projects=project).exclude(pk=own_prediction.pk).first()
+        Identification.objects.create(occurrence=occurrence, user=UserFactory(), taxon=identified_taxon)
 
         with self.assertRaises(SessionResetRefused):
             reset_session_tracking(event)
@@ -92,6 +95,12 @@ class TestResetSessionTracking(TestCase):
         result = reset_session_tracking(event, force=True)
         self.assertEqual(result.after.multi_detection_occurrences, 0)
         self.assertEqual(Identification.objects.filter(occurrence=occurrence).count(), 1)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination_id, identified_taxon.pk)
+        split_off = Occurrence.objects.filter(detections__source_image__event=event).exclude(pk=occurrence.pk)
+        for other in split_off:
+            best = other.best_prediction
+            self.assertEqual((other.determination_id, other.determination_score), (best.taxon_id, best.score))
 
     def test_dry_run_reports_the_plan_and_writes_nothing(self):
         project, event = self._build_tracked_session(images=3)
@@ -144,6 +153,21 @@ class TestResetSessionTracking(TestCase):
         self.assertEqual(spanning.event_id, later_event.pk)
         best = spanning.best_prediction
         self.assertEqual((spanning.determination_id, spanning.determination_score), (best.taxon_id, best.score))
+
+    def test_keeps_a_link_into_another_session(self):
+        """A link that crosses a session boundary records one animal across a regroup, so it survives."""
+        project, event = self._build_tracked_session(images=3, nights=2)
+        later_event = project.events.exclude(pk=event.pk).get()
+        last = Detection.objects.filter(source_image__event=event).order_by("-timestamp", "pk").first()
+        later_first = Detection.objects.filter(source_image__event=later_event).order_by("timestamp", "pk").first()
+        last.next_detection = later_first
+        last.save(update_fields=["next_detection"])
+
+        reset_session_tracking(event)
+
+        last.refresh_from_db()
+        self.assertEqual(last.next_detection_id, later_first.pk)
+        self.assertEqual(session_tracking_counts(event).links, 0)
 
     def test_query_count_does_not_grow_with_the_session(self):
         """Doubling the detections must not add queries: every write is a bulk statement."""
