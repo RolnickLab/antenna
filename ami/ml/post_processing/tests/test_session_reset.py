@@ -60,7 +60,9 @@ class TestResetSessionTracking(TestCase):
     def test_splits_every_track_and_clears_links_verification_and_tracking_records(self):
         project, event = self._build_tracked_session(images=4)
         unscored_keeper = Occurrence.objects.filter(event=event).order_by("pk").first()
-        Classification.objects.filter(detection=unscored_keeper.detections.order_by("timestamp", "pk").first()).delete()
+        Classification.objects.filter(
+            detection=unscored_keeper.detections.order_by("timestamp", "pk").first()
+        ).delete()
         tracked = session_tracking_counts(event)
         self.assertEqual((tracked.occurrences, tracked.multi_detection_occurrences), (2, 2))
         self.assertEqual((tracked.links, tracked.grouping_verified), (6, 1))

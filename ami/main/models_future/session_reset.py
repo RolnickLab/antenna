@@ -292,9 +292,7 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
         determinations_updated = _refresh_determinations(pk for pk in touched if pk not in plan.identified)
         refresh_track_stats_for_ids(touched)
 
-    update_calculated_fields_for_sessions_and_stations(
-        [event.pk, *set(new_sessions.values())], stations_async=False
-    )
+    update_calculated_fields_for_sessions_and_stations([event.pk, *set(new_sessions.values())], stations_async=False)
     return SessionResetResult(
         event_id=event.pk,
         dry_run=False,
