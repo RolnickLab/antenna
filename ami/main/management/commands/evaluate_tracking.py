@@ -410,6 +410,8 @@ class Command(BaseCommand):
             "ground_truth_tracks",
             "purity",
         ]
+        # Written before the sweep files, so the folder may not exist yet.
+        pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader()
