@@ -186,19 +186,23 @@ def _refresh_determinations(occurrence_ids: Iterable[int]) -> int:
     return len(changed)
 
 
-def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool = False) -> SessionResetResult:
-    """Return ``event`` to one occurrence per detection, with no links and no confirmations.
+@dataclasses.dataclass
+class _ResetPlan:
+    before: SessionTrackingCounts
+    identified: set[int]
+    identification_count: int
+    multi_ids: list[int]
+    movers: list[int]
+    new_sessions: dict[int, int]
 
-    Raises ``SessionResetRefused`` when the session's occurrences carry human
-    identifications, unless ``force`` is set; forced, each identification stays on the
-    occurrence that keeps the first detection. With ``dry_run`` the counts are those a
-    reset would produce and nothing is written. The query count depends on the number of
-    occurrences only through the determination batches, not per row.
-    """
+
+def _plan_reset(event: Event, force: bool) -> _ResetPlan:
+    """Read the session's state and decide what the reset changes; raises ``SessionResetRefused``."""
     before = session_tracking_counts(event)
-    occurrence_ids = _session_occurrence_ids(event)
     identified = set(
-        Identification.objects.filter(occurrence_id__in=occurrence_ids).values_list("occurrence_id", flat=True)
+        Identification.objects.filter(occurrence_id__in=_session_occurrence_ids(event)).values_list(
+            "occurrence_id", flat=True
+        )
     )
     identification_count = Identification.objects.filter(occurrence_id__in=identified).count() if identified else 0
     if identification_count and not force:
@@ -206,30 +210,62 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
             f"Session {event.pk} has {identification_count} identification(s) on {len(identified)} occurrence(s). "
             "Resetting would split occurrences a person identified; pass force to reset anyway."
         )
-
     multi_ids, movers, new_sessions = _plan_split(event)
+    return _ResetPlan(before, identified, identification_count, multi_ids, movers, new_sessions)
+
+
+def _lock_session_occurrences(event: Event) -> None:
+    """Lock the session's occurrence rows until the transaction ends.
+
+    A tracking run, a track edit or a new identification on these occurrences waits for
+    the reset instead of changing them between the plan and the writes.
+    """
+    list(
+        Occurrence.objects.select_related(None)
+        .select_for_update(of=("self",))
+        .filter(pk__in=_session_occurrence_ids(event))
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+
+
+def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool = False) -> SessionResetResult:
+    """Return ``event`` to one occurrence per detection, with no links and no confirmations.
+
+    Raises ``SessionResetRefused`` when the session's occurrences carry human
+    identifications, unless ``force`` is set; forced, each identification stays on the
+    occurrence it was made on, which keeps its first detection in the session (or its
+    detections in another session). The plan and the writes run in one transaction that
+    holds the session's occurrences locked. With ``dry_run`` the counts are those a reset
+    would produce and nothing is written or locked. The query count depends on the number
+    of occurrences only through the determination batches, not per row.
+    """
     links = _session_detections(event).filter(next_detection__source_image__event=event)
     tracking_classifications = Classification.objects.filter(
         detection__source_image__event=event, algorithm__key=TRACKING_ALGORITHM_KEY
     )
-    verified = Occurrence.objects.filter(pk__in=occurrence_ids, grouping_verified_at__isnull=False)
+    verified = Occurrence.objects.filter(pk__in=_session_occurrence_ids(event), grouping_verified_at__isnull=False)
 
     if dry_run:
+        plan = _plan_reset(event, force)
         return SessionResetResult(
             event_id=event.pk,
             dry_run=True,
-            identifications=identification_count,
-            occurrences_split=len(multi_ids),
-            occurrences_created=len(movers),
-            links_cleared=before.links,
-            verifications_cleared=before.grouping_verified,
+            identifications=plan.identification_count,
+            occurrences_split=len(plan.multi_ids),
+            occurrences_created=len(plan.movers),
+            links_cleared=plan.before.links,
+            verifications_cleared=plan.before.grouping_verified,
             tracking_classifications_deleted=tracking_classifications.count(),
             determinations_updated=0,
-            before=before,
+            before=plan.before,
             after=None,
         )
 
     with transaction.atomic():
+        _lock_session_occurrences(event)
+        plan = _plan_reset(event, force)
+        movers, new_sessions = plan.movers, plan.new_sessions
         links_cleared = links.update(next_detection=None)
         verifications_cleared = verified.update(grouping_verified_at=None, grouping_verified_by=None)
         _, deleted_by_model = tracking_classifications.delete()
@@ -252,8 +288,8 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
             [Occurrence(pk=pk, event_id=session_id) for pk, session_id in new_sessions.items()], ["event"]
         )
 
-        touched = [*multi_ids, *(o.pk for o in new_occurrences)]
-        determinations_updated = _refresh_determinations(pk for pk in touched if pk not in identified)
+        touched = [*plan.multi_ids, *(o.pk for o in new_occurrences)]
+        determinations_updated = _refresh_determinations(pk for pk in touched if pk not in plan.identified)
         refresh_track_stats_for_ids(touched)
 
     update_calculated_fields_for_sessions_and_stations(
@@ -262,13 +298,13 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
     return SessionResetResult(
         event_id=event.pk,
         dry_run=False,
-        identifications=identification_count,
-        occurrences_split=len(multi_ids),
+        identifications=plan.identification_count,
+        occurrences_split=len(plan.multi_ids),
         occurrences_created=len(new_occurrences),
         links_cleared=links_cleared,
         verifications_cleared=verifications_cleared,
         tracking_classifications_deleted=tracking_deleted,
         determinations_updated=determinations_updated,
-        before=before,
+        before=plan.before,
         after=session_tracking_counts(event),
     )
