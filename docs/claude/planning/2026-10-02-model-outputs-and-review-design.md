@@ -1,21 +1,24 @@
 # Model outputs and human reviews: one home for vectors, logits and post-processing decisions
 
-Status: design exploration, not decided. Date: 2026-10-02. Supersedes the storage parts of
-`docs/claude/planning/2026-09-16-algorithm-outputs-design.md` and refines #1431 (option C
-chosen there; the reasoning below reopens the parts of option D that a real producer now needs).
+Status: design exploration, not decided. Date: 2026-10-02 (revised the same day after external
+research). Supersedes the storage parts of
+`docs/claude/planning/2026-09-16-algorithm-outputs-design.md` and refines #1431 (option C chosen
+there; the reasoning below reopens the parts of option D that a real producer now needs).
 
-The owner's steer for this round: design first for the **outputs of post-processing tasks**
-(tracking, class masking, the size filter, future registered tasks): what each run decided per
-detection or per occurrence, with its settings and provenance. Give **embeddings and logits one
-home** (per detection, per algorithm, any dimension) with a migration path from
-`Classification.logits/scores` and from #1439's `DetectionEmbedding`. Reconsider a **dedicated
-Review model** so "what the model said" can always be joined to "what a person verified" per
-target and aspect. Explore several approaches; judge them by how they will be used in practice.
+The owner's steer: design first for the **outputs of post-processing tasks** (tracking, class
+masking, the size filter, future registered tasks): what each run decided per detection or per
+occurrence, with its settings and provenance. Give **embeddings and logits one home** (per
+detection, per algorithm, any dimension) with a migration path from `Classification.logits/scores`
+and from #1439's `DetectionEmbedding`. Reconsider a **dedicated review model** so "what the model
+said" can always be joined to "what a person verified" per target and aspect. Treat #1407 as a
+first-class input: there must be one embeddings model. Explore several approaches, judge them by
+how they will be used in practice, and check them against how external systems do it rather than
+against our own earlier drafts.
 
-Sections: 1 what we measured · 2 how outputs are used in practice · 3 design dimensions, each
-with options and a recommendation · 4 three assembled bundles · 5 recommended schema · 6 the
-six questions answered · 7 migration path · 8 how #1439 splits · 9 decisions for the owner ·
-10 what to verify before building.
+Sections: 1 what we measured · 2 how outputs are used in practice · 3 what comparable systems do ·
+4 design dimensions with options · 5 three assembled bundles · 6 recommended schema · 7 the six
+questions answered · 8 migration path · 9 how #1439 splits and converges with #1407 · 10 export
+mapping · 11 decisions for the owner · 12 what to verify before building.
 
 ## 1. What we measured
 
@@ -45,29 +48,35 @@ Where the TOAST goes, by classifier:
 | everything else (188k rows are the 2-class moth/non-moth filter) | ~190,000 | ≤ 1,060 | < 0.1 GB |
 
 Is `scores` derivable from `logits`? On 20 recent rows per algorithm, `softmax(logits)` equals
-`scores` to within 1e-4 for **every algorithm but one** (a 79-class model, 84 rows, which is
-calibrated differently: max difference 0.95). Class masking rows are the other exception by
-design: masking keeps the logits and records the mask only in `scores` (dropped classes set to
-0), so for those rows the scores are the information. So `scores` is redundant for > 99.9 % of
-rows and essential for a few hundred.
+`scores` to within 1e-4 for **every algorithm but one** (a 79-class model, 84 rows, calibrated
+differently: max difference 0.95). Class masking rows are the other exception by design: masking
+keeps the logits and records the mask only in `scores` (dropped classes set to 0), so for those
+rows the scores are the information. So `scores` is redundant for > 99.9 % of rows and essential
+for a few hundred.
 
-Two facts about pgvector that constrain the column type (from the upstream README, v0.8.6):
+The 1,416 scores-only rows all date from one day and belong to two algorithms: 920 rows of the
+2-class filter (negligible bytes) and 496 rows of the 2,497-class classifier (5.9 MB). They need
+no reprocessing: reprocessing would create *new* classification rows (the duplicate groups
+above), not restore logits on the old ones. The plan keeps their scores as they are (6 MB) and
+assumes nothing about re-running those images.
+
+Two facts about pgvector that constrain the column type (upstream README, v0.8.6):
 
 - `vector` and `halfvec` store at most **16,000 dimensions** and reject NaN and ±inf. The
   29,176-class classifier's logits cannot go in either.
-- A `real[]` column casts to `vector`/`halfvec` and can carry an expression + partial HNSW
-  index (`USING hnsw ((values::halfvec(1024)) halfvec_cosine_ops) WHERE algorithm_id = X`), so
-  approximate nearest-neighbour search stays available without a pgvector column.
+- A `real[]` column casts to `vector`/`halfvec` and can carry an expression + partial HNSW index
+  (`USING hnsw ((values::halfvec(1024)) halfvec_cosine_ops) WHERE algorithm_id = X`), which the
+  README documents as the way to store arrays or mixed widths and still index per model.
 - Index limits are separate from storage limits: HNSW indexes `vector` up to 2,000 dimensions
   and `halfvec` up to 4,000. A 2,048-d backbone vector needs `halfvec` (pgvector ≥ 0.7) to be
-  indexed at all; a 1,024-d BioCLIP vector indexes as plain `vector`.
+  indexed; a 1,024-d BioCLIP vector indexes as plain `vector`.
 
 Other facts that matter:
 
-- Nothing on the hot path reads the arrays. Determinations read `Classification.taxon`,
-  `score`, `terminal` (`ami/main/models.py:2965`); the API exposes `scores` and `logits` only on
-  the classification endpoint (`ami/main/api/serializers.py:1060`); `top_n()` reads `scores`
-  for one classification at a time (`ami/main/models.py:3088`).
+- Nothing on the hot path reads the arrays. Determinations read `Classification.taxon`, `score`,
+  `terminal` (`ami/main/models.py:2965`); the API exposes `scores` and `logits` only on the
+  classification endpoint (`ami/main/api/serializers.py:1060`); `top_n()` reads `scores` for one
+  classification at a time (`ami/main/models.py:3088`).
 - Tracking, merge ranking and #1407's head retraining all pull vectors into numpy and compare
   there. No similarity query runs in SQL today.
 - `Detection.next_detection` (main migration 0098 on the tracking branches) is the per-detection
@@ -80,16 +89,16 @@ Other facts that matter:
   #1439's `main.DetectionEmbedding` (unsized `vector`, keyed to the *extractor*, box-matched,
   last write wins, `job` recorded) and with #1439's `ml/0029`. Both stacks load the same frozen
   backbone with the same preprocessing and L2 normalisation, so one row per detection and
-  backbone serves retraining and tracking. Section 8.1 says how they converge; whatever is
-  chosen here is the table both PRs use. #1407 also brings `AlgorithmEvaluation`,
-  `TaxonEvaluation`, `OccurrenceSet` (a fixed list of verified occurrences to score against),
-  `TrainingSetMembership`, and `Algorithm.training_info` with a `parent_algorithm_key`: the
-  evaluation half of the review join in section 2.4, and a lineage field this design generalises.
+  backbone serves retraining and tracking. Section 9.1 says how they converge. #1407 also brings
+  `AlgorithmEvaluation`, `TaxonEvaluation`, `OccurrenceSet` (a fixed list of verified
+  occurrences to score against), `TrainingSetMembership`, and `Algorithm.training_info` with a
+  `parent_algorithm_key`: the evaluation half of the review join in section 2.4, and a lineage
+  field this design generalises.
 
 ## 2. How the outputs are used in practice
 
 The schema has to serve these access patterns. Each one names who reads or writes, the query
-shape, and the volume, because those are what decide the key, the index and the column type.
+shape, and the volume, because those decide the key, the index and the column type.
 
 ### 2.1 Feature vectors
 
@@ -153,56 +162,184 @@ The join in R5 is the reason for a review table: today it means three different 
 (`Identification`, `grouping_verified_*`, history rows of kind `review`) that each new aspect
 would add to.
 
-## 3. Design dimensions
+## 3. What comparable systems do
 
-Each dimension lists the options considered, judged against section 2, with a recommendation.
-They are mostly independent, which is why they are separated: the owner can pick per dimension.
+Four research passes (September 2026) over MLOps stores, provenance standards, Postgres vector
+storage, biodiversity platforms and annotation tools. Each claim carries its source; things the
+research could not confirm are listed at the end of the section and are not relied on below.
+
+### 3.1 Prediction stores: row key, and what they keep per input
+
+- The common row key is **(input id, model id, model version)**; a run id is layered on top for
+  provenance, not part of the identity. Arize requires a caller-supplied `prediction_id` plus
+  `model_id`/`model_version`, and stores embeddings beside the prediction as *named*
+  embedding features (https://docs.arize.com/arize/machine-learning/concepts-ml/model-schema-reference).
+  SageMaker Data Capture writes one record per request with an inference id for joining ground
+  truth later (https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-capture.html).
+- None of the surveyed stores documents keeping full logits by default: they keep a label and a
+  score, and embeddings as a separate named field. Wildlife Insights keeps only the most recent
+  identification per image with a `cv_confidence` (https://wildlifeinsights.org/node/3079);
+  MegaDetector's batch format keeps `[class_id, confidence]` pairs sorted descending, i.e. top-k
+  (https://github.com/agentmorris/MegaDetector/blob/main/megadetector-output-format.md).
+- The counter-example is instructive: iNaturalist does **not** store its computer-vision
+  suggestions, generating them on demand, and therefore cannot evaluate a past model against
+  what people later decided (https://forum.inaturalist.org/t/downloading-ai-suggested-ids-for-observations/49559/6).
+- On truncation: caching only top-k probabilities gives biased, over-confident estimates because
+  the tail mass is lost; unbiased estimates need either the full vector or a sampled tail
+  (https://arxiv.org/abs/2503.16870, a knowledge-distillation result on LLM vocabularies, not
+  vision classifiers). Calibration methods such as temperature scaling operate on logits.
+
+### 3.2 Run provenance: one execution row, outputs point at it
+
+Every provenance system surveyed normalises parameters onto **one run/execution row** and has
+outputs reference it; none copies settings onto each output.
+
+- MLflow: a Run holds params, tags, metrics, artifacts (https://www.mlflow.org/docs/latest/ml/tracking/).
+- OpenLineage: Job (definition) → Run (an execution, UUID) → Datasets consumed and produced;
+  parameters travel as facets on the Run (https://openlineage.io/docs/spec/object-model/).
+- Vertex ML Metadata / MLMD: Artifact, Execution (one step with runtime parameters), Context,
+  joined by Events (https://docs.cloud.google.com/vertex-ai/docs/ml-metadata/data-model).
+- SageMaker Lineage: Context, Action, Artifact and typed Associations
+  (https://docs.aws.amazon.com/sagemaker/latest/dg/lineage-tracking-entities.html).
+- W3C PROV: Entity, Activity, Agent; `wasGeneratedBy`, `used`, `wasDerivedFrom`,
+  `wasAttributedTo`; revision and invalidation are first-class (https://www.w3.org/TR/prov-o/).
+
+The vocabulary is consistent: the noun for an execution is **Run**; the noun for what it produces
+is named by **role** (Metric, Artifact, Prediction, Entity), never by the thing it is about.
+
+### 3.3 Lineage of derived models
+
+Derived-model lineage is a **parent pointer with a typed relation** plus a link to the producing
+run: Hugging Face model cards carry `base_model` and `base_model_relation` (adapter, merge,
+quantized, finetune) (https://huggingface.co/docs/hub/model-cards); MLflow model versions link
+to the run that produced them, and mutable aliases such as "champion" point at immutable
+versions (https://mlflow.org/docs/latest/ml/model-registry/); Vertex and SageMaker express
+derivation as graph edges (an execution consumed model X and produced model Y). No system has a
+first-class "PCA fitted on X" concept; it falls out as "a new model version whose producing run
+used X's outputs".
+
+### 3.4 Machine output versus human verification
+
+- **TRAPPER** (camera-trap platform) is the closest match to what we need: one classification
+  table with types AI, USER, FEEDBACK and FINAL; exactly one FINAL per resource, carrying
+  `is_approved` and a `source_classification` pointer to the AI or USER row that was approved;
+  the AI row is never overwritten
+  (https://trapper-project.readthedocs.io/en/docs-docs-refactor/explanation/classification-model/).
+- **Label Studio** keeps `predictions[]` (read-only, `model_version`, `score`) and
+  `annotations[]` as separate objects on a task; predictions can be copied into annotations
+  (https://labelstud.io/guide/predictions). **FiftyOne** keeps `ground_truth` and `predictions`
+  as separate label fields and writes per-object evaluation results under an `eval_key`
+  (https://docs.voxel51.com/user_guide/evaluation/detections.html).
+- **iNaturalist**: one active identification row per user per observation, withdrawn rows kept
+  and filterable (`current=true|false|any`); the community taxon is *derived* from the rows, not
+  stored as an input (https://help.inaturalist.org/en/support/solutions/articles/151000170241).
+  **Zooniverse** keeps raw per-volunteer classifications and derives consensus separately
+  (https://help.zooniverse.org/next-steps/data-exports).
+- **Camtrap DP**: one observation row is either machine or human (`classificationMethod`),
+  with `classifiedBy`, `classificationTimestamp`, `classificationProbability`, and
+  `observationLevel` media or event; machine and human rows coexist for the same media
+  (https://camtrap-dp.tdwg.org/data/). It has no place for vectors, logits or tracking decisions.
+- **Darwin Core**: Identification is its own class (`identifiedBy`, `dateIdentified`,
+  `identificationVerificationStatus`, `identificationRemarks`); `basisOfRecord =
+  MachineObservation` marks the whole record, not one identification (https://dwc.tdwg.org/terms/).
+- **W3C Web Annotation**: body, target, motivation (identifying, classifying, assessing); a
+  target may be another annotation, which is the cleanest general pattern for "a review that
+  points at the output it judged" (https://www.w3.org/TR/annotation-model/).
+
+The shared pattern: machine outputs are **append-only and never edited**; human verdicts are
+**separate rows** that reference the output or target they judge; the "current answer" is
+**derived** (or cached with a pointer to its source row, as TRAPPER's FINAL does).
+
+### 3.5 Postgres storage of wide float arrays
+
+- Arrays are variable-length and default to `EXTENDED` storage: compressed, then moved out of
+  line above ~2 KB (https://www.postgresql.org/docs/16/storage-toast.html). Float32 embeddings
+  compress losslessly by only ~1.2x because mantissa bits are near maximum entropy
+  (https://arxiv.org/html/2602.00079v4, a paper's claim), so compression costs CPU on every read
+  for little gain: `ALTER TABLE … ALTER COLUMN values SET STORAGE EXTERNAL`.
+- Updating vectors in place bloats TOAST: one measurement saw the TOAST table double (81 → 159
+  MB) after updating 20,000 768-d rows, and vacuum did not return the space
+  (https://dev.to/googleai/embedding-versions-management-toast-and-bloating-in-postgresql-2g2k).
+  The same post recommends a side table joined by primary key. So outputs should be
+  **insert-mostly**; a "replace" should be delete + insert, and re-runs that produce identical
+  vectors should skip the write.
+- `real[]` with a `vector_dims(values::vector) = N` check and an expression index per model is a
+  documented pgvector pattern (README, "Can I store vectors as arrays?"); a one-table
+  `(model_id, item_id, embedding)` shape with a partial HNSW index per model is what others do
+  (README FAQ; https://github.com/Aquilo-Solution-S/Proxima/pull/329).
+- Index cost: HNSW is roughly 1.5–2× the raw data (https://neon.com/blog/pgvector-30x-faster-index-build-for-your-vector-embeddings,
+  estimate); 1M × 1,536-d builds in ~9.5 min with parallel workers, ~87 min single-threaded
+  (https://supabase.com/blog/pgvector-fast-builds). Budget `maintenance_work_mem` and
+  `max_parallel_maintenance_workers` when V5 arrives.
+- Alternatives (pgvectorscale, Lantern, Qdrant, LanceDB) add a second system or an unsupported
+  width for our logits; pg_embedding is discontinued. Nothing in section 2 needs them now.
+
+### 3.6 Table topology: per-target tables versus one polymorphic table
+
+- The type-string-plus-id "polymorphic association" (Django `GenericForeignKey`) is an
+  antipattern: no real foreign key, no join, no automatic index, `None` on deleted targets
+  (Karwin, *SQL Antipatterns*; https://docs.djangoproject.com/en/5.1/ref/contrib/contenttypes/).
+- The **exclusive arc** (one nullable FK per target, `CHECK (num_nonnulls(a, b, c) = 1)`) keeps
+  referential integrity and costs a bit per null, with one partial unique index per target
+  (https://hashrocket.com/blog/posts/modeling-polymorphic-associations-in-a-relational-database).
+- Wagtail avoided generic relations for its audit log precisely because reporting needs a
+  permission filter with a concrete path, and gives page logs their own model
+  (https://docs.wagtail.org/en/latest/extending/audit_log.html.md). That is our
+  `project_accessor` rule stated by someone else.
+- Hot small rows and cold wide rows in one table share heap pages, indexes and autovacuum
+  scheduling; HOT updates need page headroom that wide rows remove
+  (https://www.postgresql.org/docs/16/storage-toast.html; general PostgreSQL guidance, no
+  PG16 benchmark found).
+
+### What the research could not verify
+
+Vendor storage policies for full logits; Kedro/DVC/Evidently internals; Karwin's exact chapter
+text; Sentry/Zulip precedents; a PG16 hot/cold benchmark; the compression ratio of Postgres
+float arrays specifically; FiftyOne field names beyond the docs summary; the Darwin Core term
+for a "current" identification; Timelapse, TrapTagger, Zamba, Camelot, eMammal, CVAT, Encord,
+Roboflow internals; whether Wildlife Insights keeps any history.
+
+## 4. Design dimensions
+
+Each dimension lists the options considered, judged against sections 2 and 3, with a
+recommendation. They are mostly independent, so the owner can pick per dimension.
 
 ### D1. Table topology for numeric outputs
 
 | Option | Shape | Serves | Fails |
 |---|---|---|---|
 | a. Two typed tables | `DetectionEmbedding` + `ClassificationScores` (1:1 side table) | V1–V6, L1–L3 | not one home; a third array kind (PCA output, per-detection cost) means a third table |
-| b. One per-detection table, `kind` column | `DetectionOutput(detection, algorithm, key, values, classification?)` | V1–V8, L1–L4, P5 | two uniqueness regimes (see D3) |
-| c. One table for every target | `AlgorithmOutput(detection?, source_image?, occurrence?, …)` | everything | no single `project_accessor`, so permission filtering breaks (#1431 option B, rejected there and still true) |
+| b. One table per target on a shared abstract base | `DetectionOutput(detection, algorithm, key, values, classification?)`, `OccurrenceOutput(occurrence, …)` | V1–V8, L1–L4, P1–P8 | two uniqueness regimes on the detection table (D3); one model per target |
+| c. One physical table for every target, exclusive arc + denormalised `project` FK | `AlgorithmOutput(project, detection?, occurrence?, source_image?, algorithm, run, key, values, data)` | everything, literally one home; `project_accessor = "project"` removes the permission objection from #1431 | millions of cold 4–8 KB rows share heap, indexes and vacuum with the few hot per-occurrence rows (3.5, 3.6); one partial index per target; a nullable FK per new target; taxon-level rows have no project |
 
-**Recommend b**, one table per *target*, with an abstract spine shared across targets
-(`DetectionOutput`, `OccurrenceOutput`, later `SourceImageOutput` and `TaxonOutput`). Same
-shape everywhere, one `project_accessor` per table.
+**Recommend b**, with the abstract base named `AlgorithmOutput` (the concept the owner named)
+and concrete tables named by target. Section 3.6 is why c is not the default: integrity is fine,
+the workload mix is not. c stays on the table as the literal reading of "one home" if the owner
+weighs a single reader above heap hygiene; it is a rename and a merge migration away from b, not
+a different design.
 
 ### D2. Column type for the array
 
 | Option | Bytes/dim | Max dims | Similarity in SQL | Notes |
 |---|---|---|---|---|
 | a. `float8[]` (today) | 8 | none | cast | the 4.3 GB |
-| b. `real[]` (`float4[]`) | 4 | none | cast to `vector`/`halfvec`; expression + partial HNSW index per extractor | models emit float32; halves storage; holds 29,176-wide logits |
+| b. `real[]` (`float4[]`), `STORAGE EXTERNAL` | 4 | none | cast to `vector`/`halfvec`; expression + partial HNSW index per extractor (3.5) | models emit float32; halves storage; holds 29,176-wide logits |
 | c. pgvector `vector` | 4 | 16,000 | native | rejects the 29,176-class logits; rejects NaN/inf (none stored today) |
-| d. pgvector `halfvec` | 2 | 16,000 | native | pgvector ≥ 0.7 on every deployment (local has 0.5.1, production unknown); float16 loses ~3 significant digits, fine for embeddings, questionable for raw logits |
-| e. `vector` for embeddings + `real[]` for logits (two columns, one non-null) | 4 | mixed | native for vectors | two read paths; "one home" only nominally |
+| d. pgvector `halfvec` | 2 | 16,000 | native | pgvector ≥ 0.7 on every deployment (local has 0.5.1, production unknown); float16 is fine for embeddings, questionable for raw logits |
+| e. `halfvec` for embeddings + `real[]` for logits (two columns, one non-null) | 2 / 4 | mixed | native for vectors | two read paths behind one accessor; "one home" holds at the table level |
 
 **Recommend b** for a single shared column. Every current reader pulls arrays into numpy (V1,
-V2, V4, L2, L3); none runs a distance in SQL, so a pgvector column buys nothing today. When V5
-arrives, a partial expression index per extractor (`(values::halfvec(1024))` where
-`algorithm_id = X AND key = 'embedding'`) gives ANN on the same column, which pgvector documents
-as a supported pattern. Storage policy per algorithm (D6) covers the two classifiers that
-dominate the TOAST. Option e is the fallback if the owner wants native operators from day one.
+V2, V4, L2, L3); none runs a distance in SQL, so a pgvector column buys nothing today, and the
+array-plus-cast pattern is documented upstream for exactly this case. Set `STORAGE EXTERNAL`
+(3.5). When V5 arrives, a partial expression index per extractor gives ANN on the same column.
+Option e is the right choice if 2 bytes per dimension on a table with a row per detection is
+worth a second column type and the pgvector ≥ 0.7 requirement; #1407 measured a 1,024-d
+`halfvec` row at about 5 KB including its share of an HNSW index at 20k rows.
 
 Django note: `ArrayField(FloatField())` produces `double precision[]`; a small
 `Float4Field(models.FloatField)` with `db_type = "real"` gives `real[]` with the same Python
-interface (a list of floats). The `-inf` concern from the earlier design is moot: no stored
-logits contain it, and `real[]` accepts it anyway.
-
-On `halfvec`: #1407 measured a 1,024-d `halfvec` row at about 5 KB including its share of an
-HNSW index at 20k rows, and float16 loses nothing a tracking cosine or a head fit can notice
-(estimate: ~1e-3 relative rounding against an appearance-term separation of 0.959 vs 0.889).
-Halving embedding storage is real money on a table that will hold a row per detection. The
-cost is a second column type (option e, `halfvec` for embeddings and `real[]` for logits) or a
-pgvector ≥ 0.7 requirement on every deployment before the foundation PR can migrate. If the
-owner wants the 2-byte storage, the cleanest form is **e with `halfvec`**: `vector halfvec NULL`
-for keys whose spec says `type = embedding`, `values real[] NULL` for everything else, one
-non-null per row, both behind one Python accessor. Verify first that pgvector-python's
-`HalfVectorField(dimensions=None)` yields an unsized column and that the tracking regression
-tests pass on float16 vectors.
+interface. Reject non-finite values on write regardless of column type, since any later cast to
+pgvector would fail on them (3.5).
 
 ### D3. Row key for logits and scores
 
@@ -210,135 +347,150 @@ tests pass on float16 vectors.
 |---|---|---|---|
 | a. `(detection, algorithm, key)` newest wins | like embeddings | V-uses | L1: attaches one row's logits to another row's taxon in 37,776 disagreeing duplicate groups; loses the `applied_to` lineage of masked rows |
 | b. `(classification, key)` | the classification row | L1–L4 exactly as today | none; the row still carries `detection` and `algorithm` for bulk reads |
-| c. both, as partial unique constraints in one table | `(classification, key) WHERE classification IS NOT NULL` and `(detection, algorithm, key) WHERE classification IS NULL` | all | slightly unusual; Django expresses it with `UniqueConstraint(condition=…)` |
+| c. both, as partial unique constraints in one table | `(classification, key) WHERE classification IS NOT NULL` and `(detection, algorithm, key) WHERE classification IS NULL` | all | Django expresses it with `UniqueConstraint(condition=…)`; two regimes to document |
 
-**Recommend c**: embeddings are keyed to the detection and extractor and overwritten on re-save
-(deterministic backbone); logits and scores are bound to the classification row that owns them.
-`classification` is `SET_NULL`? No: **`CASCADE`**, because logits without their prediction are
-meaningless, and the duplicate-cleanup task deletes classifications.
+**Recommend c**: embeddings are keyed to the detection and extractor (the external prediction-key
+pattern, 3.1: input id + model version); logits and scores are bound to the classification row
+that owns them. `classification` is `CASCADE`: logits without their prediction are meaningless,
+and the duplicate-cleanup task deletes classifications. Re-saves that would produce an identical
+embedding skip the write; a genuinely new vector is delete + insert (3.5).
 
 ### D4. Provenance: where do a run's settings live?
 
 | Option | Shape | Serves | Fails |
 |---|---|---|---|
 | a. `job` FK (SET_NULL) on every output row, settings read from `Job.params` | as #1439 | P1 | P2/P3 break when the job is deleted (users delete jobs); jobless runs (management commands, tests) have no provenance |
-| b. `job` FK + a copy of the settings on every occurrence row | as #1439's tracking payload | P1–P3 | settings duplicated once per occurrence touched (a tracking run over a large project writes them hundreds of thousands of times) |
-| c. `AlgorithmRun` row: `(algorithm, job?, project, config, started, finished, summary)`; outputs FK the run | one row per run | P1–P5 with one FK; jobless runs get a row; survives job deletion | one more table; every writer creates a run first |
+| b. `job` FK + a copy of the settings on every occurrence row | as #1439's tracking payload | P1–P3 | settings duplicated once per occurrence touched |
+| c. `AlgorithmRun` row: `(algorithm, job?, project, config, started, finished, summary)`; outputs FK the run | one row per run | P1–P5 with one FK; jobless runs get a row; survives job deletion | one more table; every writer creates a run first; the pipeline save path creates it once per job |
 
-**Recommend c.** It is the standard provenance shape (an *activity* that used a *model* with
-*parameters* and produced *outputs*), it is small (one row per run, not per output), and it is
-what P3 and P5 need: "all outputs of run 17" and "run 17 vs run 18 on the same session". For ML
-pipeline jobs the run's config is the pipeline config the job sent; for post-processing it is
-`config_schema` serialised. `job` stays on the run as `SET_NULL`. Outputs FK the run with
-`CASCADE`? No: **`SET_NULL`** on the output, so deleting a run's bookkeeping never deletes a
-stored vector that tracking still uses.
-
-Hmm, one honest caveat: a run row per ML job means the pipeline save path creates it once per
-job, not per batch, and async results arriving after the job row is gone need the run to exist
-independently. That is the point of the table, but it is a change to `save_results`.
+**Recommend c.** Every provenance system surveyed does exactly this (3.2). It is small (one row
+per run), and it is what P3 and P5 need. For ML pipeline jobs the run's config is the pipeline
+config the job sent; for post-processing it is `config_schema` serialised. `job` stays on the
+run as `SET_NULL`; outputs FK the run as `SET_NULL`, so deleting a run's bookkeeping never
+deletes a stored vector tracking still uses. Async results arriving after a job is gone attach
+to the run, which is the point.
 
 ### D5. Variants: PCA-reduced, softmaxed copies, different taps of one network
 
 The two inline questions on #1439 ("softmax-ed copy or PCA-reduced version", "penultimate vs
-projection head") are the same question: is a variant a new *algorithm* or a new *output* of
-the same algorithm?
+projection head") are one question: is a variant a new *algorithm* or a new *output* of the same
+algorithm?
 
 | Option | Rule | Serves | Fails |
 |---|---|---|---|
-| a. Always a new `Algorithm` | every variant gets a key, version, dimension | one-extractor rule stays `algorithm_id` | a service that returns raw + projection in one pass registers two algorithms for one model; `Algorithm.category_map` is meaningless for the second |
-| b. Always a `kind` enum on the row | `embedding`, `embedding_projection`, `logits`, … | simple | the enum grows per model family; dimension per (algorithm, kind) has no home; PCA fitted on project A is not the same transform as PCA fitted on project B, and an enum cannot say which |
-| c. Declared output keys + derived algorithms | An algorithm **declares its outputs** in `/info`: `[{key, type, dimensions, description}]`. Anything produced **in the same forward pass** is another key of that algorithm (raw and projection; logits and scores; CLS and pooled). Anything **computed later from stored outputs** (PCA, UMAP, an offline calibration, a softmaxed copy Antenna makes itself) is a **derived `Algorithm`** with `derived_from` → source algorithm and `uri`/`version` naming the fitted transform | V7 (BioCLIP: `image_embedding` and `text_embedding` keys, one joint space, one algorithm); V8 (a PCA is a fitted model with weights and a training set: exactly what `Algorithm` already records, and what #1407 already does for retrained heads with `training_info`) | needs `output_specs` on `Algorithm` (replaces `embedding_dimensions` from #1439) |
+| a. Always a new `Algorithm` | every variant gets a key, version, dimension | one-extractor rule stays `algorithm_id` | a service that returns raw + projection in one pass registers two algorithms for one model; `category_map` is meaningless for the second |
+| b. Always a `kind` enum on the row | `embedding`, `embedding_projection`, `logits`, … | simple | the enum grows per model family; dimension per (algorithm, kind) has no home; a PCA fitted on project A is not the transform fitted on project B, and an enum cannot say which |
+| c. Declared output keys + derived algorithms | An algorithm **declares its outputs** in `/info`: `[{key, type, dimensions, description, storage}]`. Anything produced **in the same forward pass** is another key of that algorithm (raw and projection; logits and scores; CLS and pooled). Anything **computed later from stored outputs** (PCA, UMAP, an offline calibration, a softmaxed copy Antenna makes itself) is a **derived `Algorithm`** with a typed parent link and a pointer to the run that produced it | V7 (BioCLIP: `image_embedding` and `text_embedding` keys, one joint space, one algorithm); V8 (a PCA is a fitted model with weights and a training set: what `Algorithm` already records, and what #1407 already does for retrained heads) | needs `output_specs` on `Algorithm` (replaces `embedding_dimensions` from #1439) |
 
-**Recommend c.** The rule is decidable by anyone: *did the same call produce it?* The
-description the owner asked for ("what does this vector represent") lives on the output spec,
-declared by the service, not typed by hand per row. "One feature extractor per similarity query"
-becomes "one `(algorithm, key)` per similarity query", enforced where `vectors_for_detections`
-already enforces the algorithm.
+**Recommend c.** The rule is decidable by anyone: *did the same call produce it?* The description
+the owner asked for ("what does this vector represent") lives on the output spec, declared by
+the service. "One feature extractor per similarity query" becomes "one `(algorithm, key)` per
+similarity query".
 
-Two relations on `Algorithm`, not one, because #1407 needs both:
+Three relations on `Algorithm`, following 3.3 and #1407's needs:
 
-- `derived_from` (FK to `Algorithm`, nullable): **lineage**. A retrained head's parent head
-  (#1407 stores this as `training_info.parent_algorithm_key`; the FK replaces the string), or
-  the source algorithm of a fitted PCA.
-- `feature_extractor` (FK to `Algorithm`, nullable): **input dependency**. The algorithm whose
-  `embedding` output this one consumes. A trainable head names its frozen backbone here, so
-  every retrained version reads the same `DetectionOutput(algorithm=backbone, key=embedding)`
-  rows and starts with full coverage instead of zero. This is the fix for #1407 keying vectors
-  to the head.
+- `derived_from` (FK, nullable) + `derived_relation` (`finetune | head_retrain | pca | quantized |
+  calibration | …`): **lineage**, the Hugging Face `base_model` + `base_model_relation` pair.
+  Replaces #1407's `training_info.parent_algorithm_key` string.
+- `produced_by_run` (FK to `AlgorithmRun`, nullable): the execution that fitted this model
+  (MLflow's version → run link). #1407's training job is the first writer.
+- `feature_extractor` (FK, nullable): **input dependency**. The algorithm whose `embedding` output
+  this one consumes. A trainable head names its frozen backbone here, so every retrained version
+  reads the same `DetectionOutput(algorithm=backbone, key=embedding)` rows and starts with full
+  coverage instead of zero. This is the fix for #1407 keying vectors to the head.
+
+A project's "current default extractor" should be a mutable alias (MLflow "champion" pattern):
+a pointer on the project or pipeline config, never a rewrite of which algorithm an output row
+names.
 
 ### D6. Storage policy for logits
 
 | Option | Serves | Cost |
 |---|---|---|
-| a. Store logits and scores for every row, as today | L1–L4 | 4.3 GB now, doubling with each large classifier deployment |
-| b. Store logits only; compute scores on read; store scores only when they are not `softmax(logits)` (masked rows, the calibrated 79-class model) | L1–L4 | about half of a: measured, scores are derivable for > 99.9 % of rows |
-| c. Per-algorithm policy declared in the output spec: `full`, `top_k(n)` (values + indices), or `none` | L1 always (top-k suffices), L2/L3 only for algorithms kept `full` | the 29,176-class classifier drops from 1.6 GB to a few MB at `top_k(50)`; calibration on that model needs a decision |
-| d. Compress: float4 (D2) | all | halves everything again |
+| a. Store logits and scores for every row, as today | L1–L4 | 4.3 GB now, growing with each large classifier |
+| b. Store logits only; compute scores on read; store scores only when they are not `softmax(logits)` (masked rows, the calibrated 79-class model, the 1,416 scores-only rows) | L1–L4 | about half of a: measured, scores are derivable for > 99.9 % of rows |
+| c. Per-algorithm policy declared in the output spec: `full`, `top_k(n)` (values + class indices + the log-sum-exp normaliser, so kept-class probabilities stay exact), or `none` | L1 always; L2/L3 only for algorithms kept `full` | the 29,176-class classifier drops from 1.6 GB to a few MB at `top_k(50)`; calibration on that model is then limited to the kept classes (3.1) |
+| d. float4 (D2) | all | halves everything again |
 
 **Recommend b + d now, c as a knob with default `full`.** Class masking derives everything from
 logits already (`ami/ml/post_processing/class_masking.py:134`), so scores-on-read changes no
-behaviour. The owner decides whether the 29,176-class model keeps full logits.
+behaviour. The label space must stay decodable: the row's `category_map` (via the
+classification) is the index → label mapping, and a top-k row stores indices into it. The owner
+decides whether the 29,176-class model keeps full logits.
 
 ### D7. Occurrence-level outputs and the history table
 
 | Option | Shape |
 |---|---|
 | a. Keep `OccurrenceHistoryRecord` as in #1439 (algorithm results and reviews in one table) | one timeline table, two kinds |
-| b. Split: `OccurrenceOutput` (algorithm results, on the spine) + `OccurrenceReview` (D8); the history endpoint merges them with identifications and predictions, as it already merges four sources | two tables, each about one thing; outputs carry `run`, reviews carry `user` |
+| b. Split: `OccurrenceOutput` (algorithm results, on the base) + `OccurrenceReview` (D8); the history endpoint merges them with identifications and predictions, as it already merges four sources | two tables, each about one thing; outputs carry `run`, reviews carry `user` |
 
-**Recommend b.** #1439's algorithm-result rows already have the spine's shape (occurrence,
-algorithm, job, timestamp, typed payload). Renaming them `OccurrenceOutput` and adding `run`
-makes them the occurrence-level member of the family with no data migration (the table is empty
-outside development stacks). P1 is unchanged: the endpoint reads outputs, reviews,
-identifications and predictions and sorts by time.
+**Recommend b.** Every system in 3.4 keeps machine output and human verdict as separate records.
+#1439's algorithm-result rows already have the base's shape; renaming them `OccurrenceOutput`
+and adding `run` costs no data migration (the table is empty outside development stacks). P1 is
+unchanged.
 
 ### D8. The review model
 
 | Option | Shape | Serves | Fails |
 |---|---|---|---|
 | a. Status quo | `Identification` + `grouping_verified_*` + history rows of kind `review` | R1, R2 | R5 is three joins and grows per aspect; R3/R4 have no home |
-| b. One `Review` table for every target | `Review(occurrence?, detection?, source_image?, aspect, …)` | R1–R5 | no single `project_accessor` (same reason as D1c) |
-| c. One review table per target, same spine as outputs | `OccurrenceReview(occurrence, user, timestamp, aspect, verdict, payload, identification?)`; later `DetectionReview`, `SourceImageReview` | R1–R6 | one more table now, one per target later |
+| b. One `Review` table for every target | `Review(occurrence?, detection?, source_image?, aspect, …)` | R1–R5 | no single `project_accessor` (same reason as D1c; exclusive arc possible but the volume argument does not apply, reviews are few) |
+| c. One review table per target, same base as outputs | `OccurrenceReview(occurrence, user, timestamp, aspect, verdict, payload, identification?, reviewed_output?)`; later `DetectionReview`, `SourceImageReview` | R1–R6 | one more table now, one per target later |
 
-**Recommend c**, with `Identification` kept as the taxon payload: it feeds the determination
-and has agreement links, so it stays. Every identification also writes an `OccurrenceReview`
-row (`aspect = identification`, `identification` FK), so R5 is one join per target:
-`<Target>Output` × `<Target>Review` on `(target, aspect)`. `grouping_verified_at/by` stay as the
-cache of the latest `aspect = grouping` review. `verdict` is `confirmed | rejected | corrected`;
-the payload is per aspect (for grouping: the detection ids at review time, as #1439's
-`TrackCompleteReviewPayload` already records).
+**Recommend c**, with `Identification` kept as the taxon payload (it feeds the determination and
+has agreement links). Every identification also writes an `OccurrenceReview` row
+(`aspect = identification`, `identification` FK), so R5 is one join per target on
+`(target, aspect)`. Two fields come straight from 3.4: `reviewed_output` (nullable FK to the
+`OccurrenceOutput` or `Classification` the person was responding to: Web Annotation's
+"target may be another annotation", TRAPPER's `source_classification`, our existing
+`agreed_with_prediction`), and `withdrawn` (iNaturalist keeps withdrawn rows and filters them).
+`verdict` is `confirmed | rejected | corrected`; the payload is per aspect (for grouping: the
+detection ids at review time, a frozen reference so a later re-tracking does not invalidate the
+review). `grouping_verified_at/by` stay as the cache of the latest `aspect = grouping` review,
+with the cache pointing at its source row as TRAPPER's FINAL does.
+
+Reviews are few (16,642 identifications today) and hot, so for them the exclusive-arc single
+table (b) is defensible on volume; c is chosen for consistency with the outputs family and the
+`project_accessor` rule, and because bounding-box reviews (R3) will carry a geometry payload
+that occurrence reviews never do.
 
 ### D9. Wire contract
 
 Keep `DetectionResponse.embeddings` (`{algorithm, features}`) exactly as #1439 and the
 processing-service PRs define it, mapped to `key = "embedding"`. A general
-`outputs: [{algorithm, key, values | data}]` field is cheap to add later and nothing produces it
-yet. `ami/ml/schemas.py` stays free of Antenna concepts either way.
+`outputs: [{algorithm, key, values | data}]` field is cheap to add later; nothing produces it
+yet. `ami/ml/schemas.py` stays free of Antenna concepts either way (so #1407's
+`training_info.job_id` moves out of it).
 
-## 4. Three assembled bundles
+## 5. Three assembled bundles
 
-| | Bundle A: one family (D1b, D2b, D3c, D4c, D5c, D6b+d, D7b, D8c) | Bundle B: same family, pgvector column (D2c or D2e) | Bundle C: minimal (D1a, D2 unchanged, D4a, D8a) |
+| | Bundle A: one family (D1b, D2b, D3c, D4c, D5c, D6b+d, D7b, D8c) | Bundle B: literal one table (D1c) with pgvector or `real[]` | Bundle C: minimal (D1a, D2 unchanged, D4a, D8a) |
 |---|---|---|---|
-| Meets "one home for embeddings and logits" | yes | yes, with a top-k or exclusion rule for logits wider than 16,000 | no |
+| Meets "one home for embeddings and logits" | yes, one detection table | yes, one table for everything | no |
 | Post-processing outputs per detection and occurrence, with run provenance | yes | yes | no (occurrence only, settings copied per row) |
 | Variants (PCA, taps, text side) | declared keys + derived algorithms | same | none |
 | Reviews joinable per target and aspect | yes | yes | no |
-| Similarity in SQL | by cast, partial index per extractor when needed | native | none |
-| Migration weight | logits/scores backfill (307k rows), table renames on unmerged branches | same | none beyond #1439 |
-| Risk | one more table (`AlgorithmRun`) and two partial unique constraints to get right | pgvector version per deployment; the 29,176-class model | the next output kind needs a fourth table |
+| Heap and vacuum hygiene (3.5, 3.6) | hot and cold rows separated | shared | shared as today |
+| Similarity in SQL | by cast, partial index per extractor when needed | same | none |
+| Migration weight | logits/scores backfill (307k rows), table renames on unmerged branches | same, plus a merge of the occurrence rows into the big table | none beyond #1439 |
+| Risk | `AlgorithmRun` and two partial unique constraints to get right | exclusive arc, per-target partial indexes, taxon rows without a project | the next output kind needs a fourth table |
 
-Bundle A is what section 5 draws. Bundle B differs only in the column and the logits policy.
-Bundle C is the fallback if the owner decides the logits move is out of scope this quarter, in
-which case #1439's `DetectionEmbedding` should still gain `run` and `key` so it can become
-`DetectionOutput` later without a rename.
+Bundle A is what section 6 draws. Bundle B is the literal reading of "one home"; it is A with the
+concrete tables merged, and can be reached from A later if the split proves unnecessary. Bundle C
+is the fallback if the logits move is out of scope this quarter, in which case #1439's
+`DetectionEmbedding` should still gain `run` and `key` so it can become `DetectionOutput`
+without a rename.
 
-## 5. Recommended schema (bundle A)
+## 6. Recommended schema (bundle A)
 
 ```mermaid
 erDiagram
     Algorithm ||--o{ AlgorithmRun : "ran as"
     Job |o--o{ AlgorithmRun : "started by"
-    Algorithm |o--o{ Algorithm : "derived_from"
+    Algorithm |o--o{ Algorithm : "derived_from (typed)"
+    Algorithm |o--o{ Algorithm : "feature_extractor"
+    AlgorithmRun |o--o{ Algorithm : "produced_by_run"
     AlgorithmRun |o--o{ DetectionOutput : "produced"
     AlgorithmRun |o--o{ OccurrenceOutput : "produced"
     Algorithm ||--o{ DetectionOutput : "output of"
@@ -349,6 +501,7 @@ erDiagram
     Occurrence ||--o{ OccurrenceReview : "reviewed"
     User ||--o{ OccurrenceReview : "by"
     Identification |o--o| OccurrenceReview : "taxon payload"
+    OccurrenceOutput |o--o{ OccurrenceReview : "reviewed_output"
     Detection ||--o{ Classification : "unchanged"
     Occurrence ||--o{ Identification : "unchanged"
 
@@ -357,7 +510,10 @@ erDiagram
         string key
         string task_type
         json output_specs "[{key, type, dimensions, description, storage}]"
-        int derived_from_id FK "nullable; source algorithm of a fitted transform"
+        int derived_from_id FK "nullable"
+        string derived_relation "finetune | head_retrain | pca | quantized | calibration"
+        int produced_by_run_id FK "nullable"
+        int feature_extractor_id FK "nullable; backbone whose embedding this consumes"
     }
     AlgorithmRun {
         int id PK
@@ -376,7 +532,7 @@ erDiagram
         int run_id FK "nullable, SET_NULL"
         bigint classification_id FK "nullable, CASCADE; set for logits and scores"
         string key "embedding | logits | scores | track_link_cost | any declared key"
-        real_array values "nullable; float4, any length"
+        real_array values "nullable; float4, any length, STORAGE EXTERNAL"
         json data "nullable; structured per-detection decision"
         datetime timestamp
     }
@@ -397,6 +553,7 @@ erDiagram
         string aspect "identification | grouping | ..."
         string verdict "confirmed | rejected | corrected"
         int identification_id FK "nullable; when aspect = identification"
+        bigint reviewed_output_id FK "nullable; the output this verdict answers"
         json payload "per aspect; grouping: detection ids at review time"
         datetime timestamp
         bool withdrawn
@@ -410,15 +567,16 @@ Constraints and indexes on `DetectionOutput`:
   with `detection_id` and serves V1–V3 and V5's filter; no separate detection index)
 - `CHECK ((values IS NULL) <> (data IS NULL))`: one payload per row
 - `INDEX (run_id)` for P2/P3/P5; `INDEX (algorithm_id, key)` only if V4/V6 measure a need
-  (they filter through the detection's occurrence and project first)
 - `project_accessor = "detection__source_image__project"`
+- `ALTER COLUMN values SET STORAGE EXTERNAL`
 
 `OccurrenceOutput`: `INDEX (occurrence_id, -timestamp)` (P1, as #1439), `INDEX (run_id)`.
 `OccurrenceReview`: `INDEX (occurrence_id, aspect, -timestamp)` (R5 wants "latest per aspect").
 
-The abstract spine (no table): `algorithm`, `run`, `timestamp`, `key`, `values`, `data`, and a
-`build()` that validates `data` against the registry for `(algorithm.task_type or key)` before
-`bulk_create`, as #1439's `OccurrenceHistoryRecord.build()` does.
+The abstract base `AlgorithmOutput` (no table): `algorithm`, `run`, `timestamp`, `key`,
+`values`, `data`, and a `build()` that validates `data` against a registry keyed by
+`(task_type or key)` before `bulk_create`, as #1439's `OccurrenceHistoryRecord.build()` does.
+Constraint names use `%(app_label)s_%(class)s` so each concrete table gets its own.
 
 What goes where, by producer:
 
@@ -429,116 +587,122 @@ What goes where, by producer:
 | Tracking | `Detection.next_detection` (unchanged), `DetectionOutput(key=track_link_cost, values=[cost], data={next_detection_id})` per link, `OccurrenceOutput(key=tracking)` per occurrence changed, `record_tracking_determination` classification when the name changed |
 | Class masking | new `Classification` + `DetectionOutput(classification, key=scores)` (the mask), `OccurrenceOutput(key=class_masking)` |
 | Size filter | new `Classification`, `OccurrenceOutput(key=size_filter)` |
-| Head retraining (#1407) | reads `DetectionOutput(key=embedding, algorithm=backbone)`; writes a derived `Algorithm` (already does) |
-| Offline PCA / UMAP | derived `Algorithm(derived_from=backbone)` + `DetectionOutput(key=embedding)` under it |
+| Head retraining (#1407) | reads `DetectionOutput(key=embedding, algorithm=head.feature_extractor)`; writes a derived `Algorithm` (`derived_relation=head_retrain`, `produced_by_run`) |
+| Offline PCA / UMAP | derived `Algorithm(derived_from=backbone, derived_relation=pca, produced_by_run)` + `DetectionOutput(key=embedding)` under it |
 | BioCLIP text side (future) | `TaxonOutput(taxon, algorithm=bioclip, key=text_embedding)`; query vectors are never stored |
 | LLM / decision model verdict (future) | `OccurrenceOutput(key=<registered>, data=…)`; per detection the same on `DetectionOutput.data` |
+| A person | `Identification` (unchanged) + `OccurrenceReview(aspect=identification)`; "mark complete" → `OccurrenceReview(aspect=grouping, reviewed_output=<tracking output>)` |
 
-## 6. The six questions, answered
+## 7. The six questions, answered
 
 1. **Logits.** Move `logits` and `scores` off `Classification` into `DetectionOutput` rows bound
    to the classification (`classification` FK, `key = logits | scores`), stored as `real[]`
-   (float4). Store `scores` only when it is not `softmax(logits)`; compute on read otherwise.
-   Per-algorithm policy `full | top_k | none` for the widest label spaces. Hot path never joins
-   the arrays; `top_n()` and the classification endpoint fetch them by classification id.
+   (float4, `STORAGE EXTERNAL`). Store `scores` only when it is not `softmax(logits)`; compute
+   on read otherwise. Per-algorithm policy `full | top_k(n) + normaliser | none` for the widest
+   label spaces. Hot path never joins the arrays; `top_n()` and the classification endpoint fetch
+   them by classification id. External stores keep only label + score (3.1); we keep more because
+   calibration and masking need it and because iNaturalist shows what not storing costs.
 2. **PCA and reduced versions.** A fitted transform is a model: a derived `Algorithm` with
-   `derived_from`, its own `key`, `version`, `output_specs` (dimensions) and `uri` naming the
-   stored transform (weights file in project storage or a model registry). Its outputs are
-   ordinary `DetectionOutput(key=embedding)` rows under that algorithm. Same treatment #1407
-   gives retrained heads.
+   `derived_from` + `derived_relation = pca`, `produced_by_run`, its own `key`, `version`,
+   `output_specs` and `uri`. Its outputs are ordinary `DetectionOutput(key=embedding)` rows under
+   that algorithm. Same treatment #1407 gives retrained heads, and the Hugging Face
+   `base_model_relation` shape (3.3).
 3. **Different embeddings from one algorithm.** Produced in the same forward pass, they are
    separate declared **output keys** of that algorithm (`embedding`, `projection`, `cls`), each
-   with its own dimension and description in `Algorithm.output_specs`; the rows share
-   `algorithm_id` and differ in `key`. Comparisons are always within one `(algorithm, key)`.
+   with its own dimension and description in `Algorithm.output_specs`; rows share `algorithm_id`
+   and differ in `key`. Comparisons are always within one `(algorithm, key)`.
 4. **Semantic and text embeddings.** Same algorithm (one joint space), two keys
-   (`image_embedding`, `text_embedding`). Image vectors are `DetectionOutput`; taxon text
-   vectors are a future `TaxonOutput` on the same spine; a free-text query vector is computed by
-   the service per request and never stored. Cross-modal similarity is then a normal
-   one-algorithm comparison.
-5. **LLM text or structured verdicts.** They justify the **per-target** JSON payload (the
-   `data` column on each `<Target>Output`), validated by a registered schema per key, not a
-   three-target generic table. `OccurrenceOutput` is that table for occurrences today; a
-   `SourceImageOutput` is added the day a capture-level producer exists.
+   (`image_embedding`, `text_embedding`). Image vectors are `DetectionOutput`; taxon text vectors
+   are a future `TaxonOutput` on the same base; a free-text query vector is computed by the
+   service per request and never stored. Cross-modal similarity is then a normal one-algorithm
+   comparison.
+5. **LLM text or structured verdicts.** They justify the **per-target** JSON payload (the `data`
+   column on each `<Target>Output`), validated by a registered schema per key, not a three-target
+   generic table. `OccurrenceOutput` is that table for occurrences today; a `SourceImageOutput`
+   is added the day a capture-level producer exists.
 6. **Review model.** `OccurrenceReview(user, timestamp, aspect, verdict, payload,
-   identification?)` on the same spine, one per target. `Identification` stays and gains a
-   review row on save; `grouping_verified_*` becomes the cache of the latest grouping review;
-   #1439's review history rows migrate into it. Evaluation is one join per target on
-   `(target, aspect)`.
+   identification?, reviewed_output?, withdrawn)` on the same base, one per target. This is the
+   Label Studio / TRAPPER / Web Annotation shape (3.4): machine rows append-only, human verdicts
+   separate and pointing at what they judged, current state derived or cached with a pointer.
+   `Identification` stays and gains a review row on save; `grouping_verified_*` becomes the cache
+   of the latest grouping review; #1439's review history rows migrate into it. Evaluation is one
+   join per target on `(target, aspect)`.
 
-## 7. Migration path
+## 8. Migration path
 
 Ordered so each step ships alone and nothing is rewritten twice.
 
 1. **Schema PR (empty tables).** `AlgorithmRun`, `DetectionOutput`, `OccurrenceOutput`,
-   `OccurrenceReview`, `Algorithm.output_specs`, `Algorithm.derived_from`. #1439's migrations
-   0102–0104 and `ml/0029` are rewritten rather than migrated: `DetectionEmbedding` has never
-   held production data (it exists empty on some development databases; the migration drops it
-   if present). #1407 drops its `ml.DetectionEmbedding` and reads `DetectionOutput`.
+   `OccurrenceReview`, `Algorithm.output_specs`, `derived_from` + `derived_relation`,
+   `produced_by_run`, `feature_extractor`. #1439's migrations 0102–0104 and `ml/0029` are
+   rewritten rather than migrated: `DetectionEmbedding` has never held production data (it
+   exists empty on some development databases; the migration drops it if present). #1407 drops
+   its `ml.DetectionEmbedding` and reads `DetectionOutput`.
 2. **Writers switch.** Pipeline save path writes embeddings and logits to `DetectionOutput`
    (both columns still written on `Classification` for one release: dual write, so a rollback
    loses nothing). Post-processing tasks create a run and write outputs. Reviews written on
    identification save and on "mark complete".
 3. **Backfill, in batches of a few thousand rows by classification id**, inside
    `cachalot_disabled()`, resumable by high-water mark: `logits` → `DetectionOutput(key=logits)`
-   as float4; `scores` only where `max|softmax(logits) − scores| > 1e-4` or logits are null
-   (the 1,416 scores-only rows keep their scores); `features_2048` (604 rows) → `key=embedding`
-   under the classifier's algorithm. Measured on the copy before running in production.
-   Estimated result: ~1.9 GB of `real[]` in place of 4.3 GB of `float8[]` (halved bytes, scores
-   mostly dropped); not measured until the backfill runs on the copy.
+   as float4; `scores` only where `max|softmax(logits) − scores| > 1e-4` or logits are null (the
+   1,416 scores-only rows keep their scores; no reprocessing); `features_2048` (604 rows) →
+   `key=embedding` under the classifier's algorithm. Measured on the copy before running in
+   production. Estimated result: ~1.9 GB of `real[]` in place of 4.3 GB of `float8[]` (halved
+   bytes, scores mostly dropped, no compression either way); not measured until the backfill
+   runs on the copy.
 4. **Readers switch.** `top_n()`, the classification serializer (`logits`/`scores` become
    opt-in fields), class masking, admin counts, `models_future/embeddings.py`.
 5. **Drop columns.** `Classification.logits`, `scores`, `features_2048`;
-   `Detection.similarity_vector` (0 of 642,729 rows carry a value). `VACUUM FULL` or
-   `pg_repack` on `main_classification` to return the TOAST space; an operations step.
+   `Detection.similarity_vector` (0 of 642,729 rows carry a value). `VACUUM FULL` or `pg_repack`
+   on `main_classification` to return the TOAST space; an operations step.
 6. **Reviews backfill.** One `OccurrenceReview` per `Identification` (16,642 rows), one per
    `grouping_verified_at` occurrence, one per #1439 review history row on the development stacks.
 
-## 8. How #1439 splits
+## 9. How #1439 splits
 
 #1439's commits, by destination. Hashes are on `feat/occurrence-history-and-embeddings`.
 
 | Destination | Commits | Note |
 |---|---|---|
-| **PR 1: outputs foundation** (base `main` or #1272, whichever lands first) | `eaa654af` store a vector for every detection, `4eae25ed` name the column and record the job, `f8b3eb8a` any length + fill in for existing detections, `d86a402c` length repair, `9831afec` `fac78717` `91b9f62e` `23b44ca8` `a122b897` `f5aae46d` `5b95f02b` `32da6cfb` feature-only job rules and fixes, `9b2ae7ce` `e2fc8067` tests, `33f4144b` tracks CSV counts an embedding, `2b802541` `a190dd70` `dee996e9` docs | Re-targeted at `DetectionOutput(key=embedding)`, `Algorithm.output_specs` in place of `embedding_dimensions`, `run` in place of `job`. This is also what #1407 needs first (its memory note and the parallel reconciliation review agree on landing it before #1407 rebases) |
+| **PR 1: outputs foundation** (base `main` or #1272, whichever lands first) | `eaa654af` store a vector for every detection, `4eae25ed` name the column and record the job, `f8b3eb8a` any length + fill in for existing detections, `d86a402c` length repair, `9831afec` `fac78717` `91b9f62e` `23b44ca8` `a122b897` `f5aae46d` `5b95f02b` `32da6cfb` feature-only job rules and fixes, `9b2ae7ce` `e2fc8067` tests, `33f4144b` tracks CSV counts an embedding, `2b802541` `a190dd70` `dee996e9` docs | Re-targeted at `DetectionOutput(key=embedding)`, `Algorithm.output_specs` in place of `embedding_dimensions`, `run` in place of `job`. This is also what #1407 needs first |
 | **PR 2: tracking reads the stored vectors** (base PR 1 + #1272) | `95e2bdb6` compare by stored embeddings, `0f644ae2` `001485cf` default extractor per session, `6f14d0c8` style | Unchanged in substance; `vectors_for_detections(ids, algorithm_id, key)` |
 | **PR 3: occurrence outputs + history endpoint** (base PR 1 + #1432) | `91dbe9a8` history table → `OccurrenceOutput` + `OccurrenceReview`, `4cd69425` writers, `dea7a5ea` endpoint, `f0d1f577`, `b52eb979`, `a3e31dcb` `dc5345cd` `d8c2b13c` review semantics, `1350b819` size-filter batch fix, `8c892444` `e33406be` tests, `ccf3f3ce` merge | Reviews move to the review table; `record_tracking_determination` stays |
 | **PR 4: timeline UI** (base PR 3) | `655a7c9b` `f01bfdfa` `cf02f55e` `6f2b642f` `271515ca` `370ab688` `dd92ce55` `94a68430` `8d672f2c` `1e35f58b` `847b839e` | Reads the endpoint; unchanged |
-| **PR 5: logits move** (base PR 1) | new | Dual write, backfill, reader switch, column drop (section 7 steps 2–5) |
+| **PR 5: logits move** (base PR 1) | new | Dual write, backfill, reader switch, column drop (section 8 steps 2–5) |
 
 #1442 (tracking cost terms) rebases onto PR 2 and gains the `track_link_cost` rows (P5) as its
 first consumer.
 
-### 8.1 One embeddings model: converging with #1407
+### 9.1 One embeddings model: converging with #1407
 
 The table shape is the decision; the carrier is whichever PR is ready first, and today that is
 the foundation PR carved out of #1439 (#1407's backend tests are red, it has no human review
-yet, and its own self-review lists three blockers). The reconciliation note (local, read-only)
-already argues the key identity, writer, wire and gating points; this design adopts them and
-adds the output family around them.
+yet, and its own self-review lists three blockers). The local reconciliation note already argues
+the key identity, writer, wire and gating points; this design adopts them and adds the output
+family around them.
 
 **The one model**, whatever its final name (`DetectionOutput` here; `DetectionEmbedding` if
 bundle C is chosen):
 
 | Aspect | Decision | Taken from |
 |---|---|---|
-| Identity of a vector | `(detection, algorithm = the feature extractor / backbone, key)` | #1439; #1407's head-keyed rows would restart at zero per retrain |
+| Identity of a vector | `(detection, algorithm = the feature extractor / backbone, key)` | #1439; external prediction-key pattern (3.1); #1407's head-keyed rows would restart at zero per retrain |
 | Width | unsized; per `(algorithm, key)` in `Algorithm.output_specs` | #1439's `embedding_dimensions`, generalised |
-| Column | `real[]` (D2b) or `halfvec` for embeddings (D2e) | #1407's halfvec measurement; #1439's unsized column |
-| Writer | box-matched, last write wins, run/job recorded, unmatched boxes reported | #1439; #1407's positional writer is dropped |
+| Column | `real[]` (D2b) or `halfvec` for embeddings (D2e) | #1407's halfvec measurement; #1439's unsized column; pgvector's documented array pattern |
+| Writer | box-matched, insert-mostly, run recorded, unmatched boxes reported | #1439; #1407's positional writer is dropped; 3.5 on TOAST bloat |
 | Wire | `DetectionResponse.embeddings[{algorithm, features}]` keyed by the extractor; `ClassificationResponse.features` accepted for legacy 2048-d classifiers with the #1272 validator relaxed to drop-and-warn | #1439 + reconciliation note |
 | Gate | the request decides (`include_features`, feature-only pipelines); no post-inference storage flag | reconciliation note; #1407's `store_classification_embeddings` is dropped |
 | Backfill for existing detections | the feature-only `ml` job, with "verified detections only" as a scope option | #1439; #1407's `generate_embeddings` job type (and `jobs/0025`) folds into it |
 | Head → backbone | `Algorithm.feature_extractor` FK | new (D5); replaces #1407's per-head storage |
-| Lineage | `Algorithm.derived_from` FK | replaces #1407's `training_info.parent_algorithm_key` string |
+| Lineage | `Algorithm.derived_from` + `derived_relation` + `produced_by_run` | replaces #1407's `training_info.parent_algorithm_key` string; Hugging Face / MLflow shape (3.3) |
 
 **What #1407 keeps unchanged:** `train_classifier` and `evaluate_algorithm` job types,
 `AlgorithmEvaluation` / `TaxonEvaluation`, `OccurrenceSet`, `TrainingSetMembership`,
 `Algorithm.trainable` / `training_config` / `training_info` (minus the parent key, and with
-`job_id` moved out of `ami/ml/schemas.py` since it is an Antenna concept), the `/train`
-dispatch, the training-data endpoint and npz export. They read
-`DetectionOutput.objects.filter(algorithm=head.feature_extractor, key="embedding", …)` instead
-of `DetectionEmbedding.objects.filter(algorithm=head)`, which is a one-line change in
-`training_data.py` and the training-data viewset.
+`job_id` moved out of `ami/ml/schemas.py`), the `/train` dispatch, the training-data endpoint
+and npz export. They read `DetectionOutput.objects.filter(algorithm=head.feature_extractor,
+key="embedding", …)` instead of `DetectionEmbedding.objects.filter(algorithm=head)`: a one-line
+change in `training_data.py` and the training-data viewset.
 
 **What #1407 drops:** `ami/ml/models/embedding.py`, `ml/0029_detectionembedding_and_more`,
 `create_detection_embeddings`, `EMBEDDING_DIMENSIONS`, the `store_classification_embeddings`
@@ -548,53 +712,70 @@ renumbers `main/0096–0099` and `ml/0030–0033` after the foundation PR's migr
 **How evaluation fits the review model:** `AlgorithmEvaluation` scores an algorithm's
 classifications against `Occurrence.determination` on a fixed `OccurrenceSet`. With
 `OccurrenceReview` in place, "verified" becomes "has a review with `aspect = identification`
-and `verdict != rejected`", and the same scorer can evaluate tracking against
-`aspect = grouping` reviews. `OccurrenceSet` stays as the fixture that keeps two evaluations
-comparable; nothing in this design replaces it.
+and `verdict != rejected` and not withdrawn", and the same scorer can evaluate tracking against
+`aspect = grouping` reviews (FiftyOne's `eval_key` pattern, 3.4). `OccurrenceSet` stays as the
+fixture that keeps two evaluations comparable.
 
 **Landing order** (unchanged from the reconciliation note): #1272 with the validator relaxed →
-foundation PR (section 8, PR 1) → #1407 rebased → #1432 → PR 2, PR 3, PR 4 → #1442; #1423
-(the UI half of #1407) after #1407; on the processing-service side, the features-for-all-
-detections PR before the BioCLIP classifier PR. If #1407 becomes ready first, it carries the
-agreed shape and the foundation PR drops its copy.
+foundation PR (section 9, PR 1) → #1407 rebased → #1432 → PR 2, PR 3, PR 4 → #1442; #1423 (the
+UI half of #1407) after #1407; on the processing-service side, the features-for-all-detections
+PR before the BioCLIP classifier PR. If #1407 becomes ready first, it carries the agreed shape
+and the foundation PR drops its copy.
 
-## 9. Decisions for the owner
+## 10. Export mapping
 
-1. Column type: `real[]` with pgvector by cast (D2b) or a pgvector column (D2c/e).
-2. `AlgorithmRun` now (D4c), or `job` FK only and settings copied per row for this round (D4a/b).
-3. Scores policy: drop where `softmax(logits)` matches (D6b) or keep every row (D6a).
-4. The 29,176-class classifier: keep full logits (1.6 GB float8 today, ~0.8 GB as float4) or
-   `top_k`.
-5. Rename `OccurrenceHistoryRecord` → `OccurrenceOutput` and split reviews out (D7b), or keep
-   one history table (D7a).
-6. Reviews: `OccurrenceReview` with a row per identification (D8c), or leave identifications
-   out and start with grouping only.
-7. Logits move in scope this quarter (PR 5), or the foundation only (PRs 1–4) with the columns
-   left in place.
-8. Landing order with #1407: foundation PR before #1407 rebases (recommended), or #1407 first
-   and its table renamed after.
-9. Embedding storage precision: `real[]` for everything (one column), or `halfvec` for
-   embeddings beside `real[]` for logits (two columns, pgvector ≥ 0.7 everywhere).
-10. `Algorithm.feature_extractor` and `derived_from` as FKs now, or keep #1407's
-    `parent_algorithm_key` string and add the FKs when the second derived model appears.
-11. `generate_embeddings` folds into the feature-only `ml` job with a "verified only" scope, or
+The review and output rows map onto the two standards Antenna already exports to (from 3.4):
+
+| Ours | Camtrap DP observation | Darwin Core |
+|---|---|---|
+| `Classification` (top label) | `classificationMethod=machine`, `classifiedBy=<algorithm key + version>`, `classificationProbability=score`, `classificationTimestamp`, `observationLevel=media`, `mediaID`, bbox in 0–1 | contributes to `basisOfRecord=MachineObservation` when no human identification exists |
+| `OccurrenceReview(aspect=identification)` / `Identification` | `classificationMethod=human`, `classifiedBy=<reviewer>`, `observationLevel=event`, `eventID` | Identification class: `identifiedBy`, `dateIdentified`, `identificationVerificationStatus` (from `verdict`), `identificationRemarks` |
+| `DetectionOutput` vectors and logits, `OccurrenceOutput` tracking decisions | no place; stay internal | no place; stay internal |
+
+## 11. Decisions for the owner
+
+1. Table topology: per-target tables on an abstract `AlgorithmOutput` base (D1b, recommended)
+   or one physical `AlgorithmOutput` with an exclusive arc and a denormalised `project` (D1c).
+2. Concrete names: `DetectionOutput` / `OccurrenceOutput` (what the naming research
+   recommends), or `DetectionAlgorithmOutput` / `OccurrenceAlgorithmOutput` if "detection output"
+   reads too much like "what the detector produced".
+3. Array column: `real[]` everywhere (D2b), or `halfvec` for embeddings beside `real[]` for
+   logits (D2e; pgvector ≥ 0.7 on production first).
+4. `AlgorithmRun` now (D4c), or `job` FK + settings copied per row for this round.
+5. Scores policy: drop where equal to softmax(logits) (D6b), keeping the 1,416 scores-only rows
+   as they are.
+6. The 29,176-class classifier: full logits (~0.8 GB as float4) or `top_k` + normaliser.
+7. Rename `OccurrenceHistoryRecord` → `OccurrenceOutput`, reviews split out (D7b).
+8. Reviews: `OccurrenceReview` with a row per identification and a `reviewed_output` pointer
+   (D8c), or grouping-only first.
+9. Logits migration in scope this quarter (PR 5), or foundation only (PRs 1–4).
+10. Landing order with #1407: foundation PR before #1407 rebases (recommended), or #1407 first
+    and its table renamed after.
+11. Lineage fields as FKs now (`derived_from` + `derived_relation`, `produced_by_run`,
+    `feature_extractor`), or keep #1407's `parent_algorithm_key` string until a second derived
+    model exists.
+12. `generate_embeddings` folds into the feature-only `ml` job with a "verified only" scope, or
     stays as its own job type.
 
-## 10. What to verify before building
+## 12. What to verify before building
 
-- `EXPLAIN (ANALYZE)` V1 and V3 on the largest project in the copy with the partial unique
-  index only, and P1 with `(occurrence_id, -timestamp)`.
-- The backfill on the copy: wall time, resulting size, and that `top_n()` returns identical
-  results before and after for a sample of classifications per algorithm.
+- `EXPLAIN (ANALYZE)` V1 and V3 on the largest project in the copy with the partial unique index
+  only, and P1 with `(occurrence_id, -timestamp)`.
+- The backfill on the copy: wall time, resulting size with `STORAGE EXTERNAL`, and that
+  `top_n()` returns identical results before and after for a sample per algorithm.
 - Class masking on a project after the move produces byte-identical new classifications.
 - pgvector: `real[]::halfvec(1024)` expression index builds on 0.8.x and the planner uses it
-  under `WHERE algorithm_id = X AND key = 'embedding'`; and the extension version on production
-  and staging (operations).
-- The `-inf`/NaN claim: re-check on the copy after the next processing-service release, since
-  the 0 count is a property of today's models, not of the contract.
-- `cachalot`: the new tables must be listed where `CACHALOT_UNCACHABLE_TABLES` or the
-  invalidation settings name array-heavy tables, if any, so a bulk backfill does not thrash the
-  cache.
+  under `WHERE algorithm_id = X AND key = 'embedding'`; the extension version on production and
+  staging (operations).
+- TOAST behaviour of insert-mostly `real[]` rows over a month on a development stack, against
+  the bloat measurement in 3.5, which was for in-place updates.
+- The `-inf`/NaN claim: re-check on the copy after the next processing-service release; the 0
+  count is a property of today's models, not of the contract. Reject non-finite on write.
+- `cachalot`: the new tables must be listed wherever array-heavy tables are excluded from
+  caching, so a bulk backfill does not thrash the cache.
+- That a head fitted on the feature-only extractor's vectors runs unchanged on the BioCLIP
+  classifier's backbone vectors (a cosine check on a few crops), which is what lets one row
+  serve #1407 and tracking.
 
 ## References
 
@@ -608,4 +789,4 @@ agreed shape and the foundation PR drops its copy.
 - `ami/ml/models/pipeline.py:858` `create_classifications`; `:1012` `save_results`.
 - `ami/ml/post_processing/base.py` `BasePostProcessingTask`; `class_masking.py:126–182`.
 - `ami/base/models.py:72` `get_project_accessor`.
-- pgvector README (v0.8.6): storage limits, arrays, expression and partial indexes.
+- External sources are cited inline in section 3.
