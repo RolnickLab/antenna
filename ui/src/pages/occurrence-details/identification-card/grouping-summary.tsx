@@ -23,7 +23,7 @@ export const GroupingSummary = ({
   summary: Summary
 }) => {
   const notAvailable = translate(STRING.VALUE_NOT_AVAILABLE)
-  const scores = [summary.scoreMin, summary.scoreMax, summary.scoreMean]
+  const { scoreMax, scoreMean, scoreMin } = summary
   const frames =
     summary.linkedDetections > 0
       ? `${summary.frames} · ${translate(STRING.TRACK_STAT_LINKED, {
@@ -69,13 +69,14 @@ export const GroupingSummary = ({
     },
     {
       label: translate(STRING.TRACK_SUMMARY_SCORE_RANGE),
-      value: scores.every((score) => typeof score === 'number')
-        ? translate(STRING.TRACK_STAT_SCORE_RANGE, {
-            max: summary.scoreMax.toFixed(2),
-            mean: summary.scoreMean.toFixed(2),
-            min: summary.scoreMin.toFixed(2),
-          })
-        : notAvailable,
+      value:
+        scoreMax !== null && scoreMean !== null && scoreMin !== null
+          ? translate(STRING.TRACK_STAT_SCORE_RANGE, {
+              max: scoreMax.toFixed(2),
+              mean: scoreMean.toFixed(2),
+              min: scoreMin.toFixed(2),
+            })
+          : notAvailable,
     },
   ]
 
