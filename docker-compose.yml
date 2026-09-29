@@ -146,8 +146,10 @@ services:
       - antenna_network
 
   minio:
-    image: reg.mini.dev/minio:latest
-    command: minio server --console-address ":9001" /data
+    image: cgr.dev/chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
+    command: server --console-address ":9001" /data
+    # Existing dev volumes were written by the old image as root; the new one defaults to a non-root user.
+    user: root
     volumes:
       - "minio_data:/data"
     env_file:
@@ -172,7 +174,7 @@ services:
       - minio
 
   minio-init:
-    image: reg.mini.dev/minio:latest
+    image: cgr.dev/chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
     env_file:
       - ./.envs/.local/.django
     depends_on:
@@ -182,7 +184,7 @@ services:
         condition: service_started
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
-    entrypoint: /etc/minio/init.sh
+    entrypoint: ["/bin/sh", "/etc/minio/init.sh"]
 
   ml_backend:
     build:
