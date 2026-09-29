@@ -585,9 +585,13 @@ class MLJob(JobType):
                 last_progress = time.monotonic()
             elif time.monotonic() - last_progress > SAVE_RESULTS_STALL_SECONDS:
                 batch_nums = [batch_num for batch_num, _ in still_pending]
-                raise TimeoutError(
+                message = (
                     f"No save sub-task finished in {SAVE_RESULTS_STALL_SECONDS}s; waiting on batches {batch_nums}"
                 )
+                job.logger.error(message)
+                job.progress.update_stage("results", status=JobState.FAILURE)
+                job.save()
+                raise TimeoutError(message)
             pending = still_pending
 
         failed = [(batch_num, task) for batch_num, task in save_tasks if not task.successful()]

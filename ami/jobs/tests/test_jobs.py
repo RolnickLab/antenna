@@ -1156,6 +1156,10 @@ class TestMLJobWaitsForSavedResults(TestCase):
         with patch("ami.jobs.models.SAVE_RESULTS_STALL_SECONDS", 0), self.assertRaises(TimeoutError):
             self._run([FakeSaveResultsTask(polls_until_ready=10**6), FakeSaveResultsTask()])
 
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.progress.get_stage("results").status, JobState.FAILURE)
+        self.assertIn("No save sub-task finished", joined_job_log_messages(self.job))
+
 
 class TestJobLogsLimitHTTPValidation(APITestCase):
     """``?logs_limit=`` validation runs at the view boundary, so a bad value
