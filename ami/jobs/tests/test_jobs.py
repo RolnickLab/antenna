@@ -1891,9 +1891,7 @@ class TestJobsScopeWhatTheyAreGiven(TestCase):
         self.their_list.projects.add(self.other_project)
 
     def _job(self, job_type, **params):
-        return Job.objects.create(
-            project=self.project, name="Scoping", job_type_key=job_type.key, params=params
-        )
+        return Job.objects.create(project=self.project, name="Scoping", job_type_key=job_type.key, params=params)
 
     def test_an_evaluate_job_refuses_another_projects_set(self):
         job = self._job(
@@ -1905,18 +1903,13 @@ class TestJobsScopeWhatTheyAreGiven(TestCase):
         with self.assertRaises(ValueError):
             EvaluateAlgorithmJob.run(job)
 
-
     def test_a_train_job_refuses_another_projects_taxa_list(self):
-        job = self._job(
-            TrainClassifierJob, algorithm_key=self.algorithm.key, taxa_list_id=self.their_list.pk
-        )
+        job = self._job(TrainClassifierJob, algorithm_key=self.algorithm.key, taxa_list_id=self.their_list.pk)
 
         with self.assertRaises(ValueError):
             TrainClassifierJob.target_taxa_list(job)
 
     def test_a_train_job_accepts_its_own_taxa_list(self):
-        job = self._job(
-            TrainClassifierJob, algorithm_key=self.algorithm.key, taxa_list_id=self.own_list.pk
-        )
+        job = self._job(TrainClassifierJob, algorithm_key=self.algorithm.key, taxa_list_id=self.own_list.pk)
 
         self.assertEqual(TrainClassifierJob.target_taxa_list(job), self.own_list)
