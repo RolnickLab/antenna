@@ -1075,6 +1075,88 @@ class TestJobLogPersistence(TestCase):
         self.assertGreaterEqual(JOB_LOGS_DEFAULT_LIMIT, 1)
 
 
+class FakeSaveResultsTask:
+    """Stands in for the AsyncResult of a save_results sub-task.
+
+    ``wait()`` fails the way it does when the rpc:// result backend's consumer
+    connection has been dropped by the broker, although the task itself finishes.
+    """
+
+    def __init__(self, polls_until_ready: int = 0, error: Exception | None = None):
+        self.id = f"fake-save-task-{id(self)}"
+        self.polls_until_ready = polls_until_ready
+        self.error = error
+        self.result = error
+
+    def ready(self) -> bool:
+        if self.polls_until_ready <= 0:
+            return True
+        self.polls_until_ready -= 1
+        return False
+
+    def successful(self) -> bool:
+        return self.ready() and self.error is None
+
+    def wait(self, *args, **kwargs):
+        raise ConnectionResetError(104, "Connection reset by peer")
+
+    def maybe_throw(self):
+        if self.error:
+            raise self.error
+
+
+class TestMLJobWaitsForSavedResults(TestCase):
+    """A synchronous ML job's outcome follows its save sub-tasks, not the result-backend connection."""
+
+    def setUp(self):
+        from types import SimpleNamespace
+
+        self.project = Project.objects.create(name="Save wait project")
+        self.pipeline = Pipeline.objects.create(name="Save wait pipeline", slug="save-wait-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key, project=self.project, name="Save wait job", pipeline=self.pipeline
+        )
+        self.job.progress.add_stage("process")
+        self.job.progress.add_stage("results")
+        self.job.save()
+        self.images = [SimpleNamespace(pk=1), SimpleNamespace(pk=2)]
+        self.results = SimpleNamespace(source_images=[object()], detections=[])
+
+    def _run(self, save_tasks: list[FakeSaveResultsTask]):
+        from unittest.mock import patch
+
+        with (
+            patch.object(Pipeline, "process_images", return_value=self.results),
+            patch.object(Pipeline, "save_results_async", side_effect=save_tasks),
+            patch("ami.jobs.models.SAVE_RESULTS_POLL_SECONDS", 0),
+        ):
+            MLJob.process_images(self.job, self.images)
+        self.job.refresh_from_db()
+
+    def test_job_succeeds_when_saves_finish_after_processing(self):
+        # The last batch is still saving when processing ends, and wait() would fail.
+        self._run([FakeSaveResultsTask(), FakeSaveResultsTask(polls_until_ready=5)])
+
+        self.assertEqual(self.job.status, JobState.SUCCESS)
+        self.assertEqual(self.job.progress.get_stage("results").status, JobState.SUCCESS)
+
+    def test_failed_save_still_fails_the_job(self):
+        error = RuntimeError("save failed")
+        with self.assertRaises(RuntimeError):
+            self._run([FakeSaveResultsTask(), FakeSaveResultsTask(polls_until_ready=3, error=error)])
+
+        self.assertNotEqual(self.job.status, JobState.SUCCESS)
+        self.assertEqual(self.job.progress.get_stage("results").status, JobState.FAILURE)
+        self.assertIn("Failed to save results from batch 2", joined_job_log_messages(self.job))
+
+    def test_save_that_never_finishes_fails_the_job(self):
+        from unittest.mock import patch
+
+        with patch("ami.jobs.models.SAVE_RESULTS_STALL_SECONDS", 0), self.assertRaises(TimeoutError):
+            self._run([FakeSaveResultsTask(polls_until_ready=10**6), FakeSaveResultsTask()])
+
+
 class TestJobLogsLimitHTTPValidation(APITestCase):
     """``?logs_limit=`` validation runs at the view boundary, so a bad value
     must produce HTTP 400 (not 500). Validated via the actual API path rather
