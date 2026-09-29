@@ -347,8 +347,8 @@ SKIPPED_REASONS = (SKIPPED_NO_VECTOR,)
 
 
 def tracking_config_for(occurrence: Occurrence) -> TrackingConfig:
-    """The settings tracking runs with on the occurrence's session: the threshold and the
-    feature requirement the previews here judge pairs by."""
+    """The tracking settings the previews here judge pairs by: the threshold, link options and
+    feature requirement. Only the defaults exist today; no per-session settings are stored."""
     from ami.ml.post_processing.tracking_task import TrackingConfig
 
     return TrackingConfig(event_ids=[occurrence.event_id])
@@ -373,8 +373,9 @@ def _pair_scores(
 ) -> dict[str, float | None]:
     """The tracking cost between two boxes, each of its raw terms, and the likelihood.
 
-    The cost is the tracker's own ``weighted_cost`` under the session's link options, so the
-    weights, appearance calibration and move rule change it here exactly as they do in a run.
+    The cost is the tracker's own ``weighted_cost`` under the given link options (from
+    ``tracking_config_for``, the defaults today), so non-default weights, appearance
+    calibration or move rule would change it here as they do in a run.
     """
     from ami.ml.post_processing.tracking_task import DEFAULT_LINK_OPTIONS, pair_terms, weighted_cost
 
@@ -416,9 +417,10 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
 
     The reference is the track frame nearest in time on another capture. The tracker's own
     matcher runs between every box on the reference frame's capture and every box on
-    ``capture``, with the session's tracking settings, feature algorithm and image diagonal,
-    and ``would_link`` marks the box it links the reference frame to. Tracking only pairs
-    adjacent captures, so across a longer gap this previews its pairing rule, not a run.
+    ``capture``, with the settings ``tracking_config_for`` returns (the defaults today), the
+    session's feature algorithm and the image diagonal, and ``would_link`` marks the box it
+    links the reference frame to. Tracking only pairs adjacent captures, so across a longer
+    gap this previews its pairing rule, not a run.
 
     The track's own box is returned unscored. So is every box when the track has no other
     frame, or when the earlier of the two captures has no dimensions, since tracking skips

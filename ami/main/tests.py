@@ -10066,8 +10066,9 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertLess(by_id[far.pk]["likelihood"], by_id[same_box.pk]["likelihood"])
         self.assertFalse(by_id[far.pk]["would_link"])
 
-    def test_candidates_are_scored_with_the_sessions_link_options(self):
-        """The picker's cost is the tracker's scored cost under the session's settings, so an
+    def test_candidates_are_scored_with_the_configured_link_options(self):
+        """The picker's cost is the tracker's scored cost under the settings from
+        ``tracking_config_for`` (mocked here, since only defaults exist today), so an
         appearance calibration changes the cost and the appearance gate stops a pair from
         linking here as it does in a run."""
         extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
@@ -10508,8 +10509,9 @@ class CaptureMatchesTestCase(APITestCase):
         self.assertFalse(row["would_link"])
         self.assertGreater(row["likelihood"], 0.5)
 
-    def test_the_preview_uses_the_sessions_link_options(self):
-        """The preview runs the matcher and scores each box with the session's settings: a box
+    def test_the_preview_uses_the_configured_link_options(self):
+        """The preview runs the matcher and scores each box with the settings from
+        ``tracking_config_for`` (mocked here, since only defaults exist today): a box
         that would link by default is not linked when the appearance gate forbids it, and its
         cost is the calibrated one."""
         track = self._track(self.captures[1:3], vector=self.VECTOR)
