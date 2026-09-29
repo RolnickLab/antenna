@@ -31,7 +31,7 @@ from ami.main.models_future.embeddings import (
     feature_extractors_with_vectors,
     vectors_for_detections,
 )
-from ami.ml.exceptions import FeatureResultsMatchNoDetections
+from ami.ml.exceptions import FeatureResultsStoredNothing
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import (
     COLLECT_PROGRESS_MAX_FRACTION,
@@ -210,10 +210,30 @@ class TestFeatureOnlySave(FeatureOnlyFixture, TestCase):
 
     def test_a_batch_whose_boxes_all_match_nothing_fails_and_stores_nothing(self):
         """Skipping it would leave the same detections without vectors, to be sent again on every run."""
-        with self.assertRaises(FeatureResultsMatchNoDetections) as raised:
+        with self.assertRaises(FeatureResultsStoredNothing) as raised:
             save_results(self._response([(self.images[0], _box(500.0)), (self.images[1], _box(600.0))]))
         self.assertEqual(raised.exception.unmatched, 2)
         self.assertFalse(DetectionEmbedding.objects.exists())
+
+    def test_boxes_returned_without_vectors_fail_the_batch(self):
+        """Matching boxes that carry no vector store nothing, so the batch must not pass as a success."""
+        image = self.images[0]
+        with self.assertRaises(FeatureResultsStoredNothing) as raised:
+            save_results(self._response([(image, _box(0.0)), (image, _box(20.0))], embeddings=[]))
+        self.assertEqual((raised.exception.unmatched, raised.exception.without_vector), (0, 2))
+        self.assertFalse(DetectionEmbedding.objects.exists())
+
+    def test_a_response_with_no_boxes_fails_the_batch(self):
+        response = self._response([])
+        response.source_images = [{"id": str(self.images[0].pk), "url": "x"}]
+        with self.assertRaises(FeatureResultsStoredNothing) as raised:
+            save_results(PipelineResultsResponse.parse_obj(response.dict()))
+        self.assertEqual(raised.exception.without_vector, 2)
+
+    def test_detections_the_service_did_not_return_are_counted(self):
+        saved = save_results(self._response([(self.images[0], _box(0.0))]), return_created=True)
+        self.assertEqual(saved.detections_without_vector, 1)
+        self.assertEqual(DetectionEmbedding.objects.count(), 1)
 
     def test_a_vector_of_another_length_is_refused_and_nothing_is_stored(self):
         save_results(self._response([(self.images[0], _box(0.0))]))
