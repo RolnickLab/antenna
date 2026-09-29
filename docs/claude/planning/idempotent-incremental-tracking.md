@@ -57,6 +57,16 @@ the same signal `filter_processed_images` already uses to decide an image needs 
 therefore takes part in the sequence and, having no detections to match, ends the chains that
 reach it. That is the behaviour the batch pass already has, and this design does not change it.
 
+A transition also has a **maximum gap**. Once pairs form between processed captures, the interval
+between two consecutive ones is unbounded, and the cost function has no elapsed-time term, so a
+different insect settling in the same spot much later would score like a stationary one
+(`docs/claude/reference/occurrence-tracking.md`, the sequence-defect section). `TrackingConfig`
+gains a configurable maximum gap in seconds. A consecutive pair further apart than that is still
+recorded as evaluated (its successor marker is written, as for any transition) but no links are
+proposed across it, so chains end at the gap and a re-run does not revisit it. Tests must cover a
+capture inserted inside a gap, which splits it into two transitions that may each fall under the
+limit, and a re-run over a session whose gaps have not changed, which must write nothing.
+
 ### The marker is a recorded successor on the capture
 
 Each capture records the capture it was last evaluated *forward* against:
