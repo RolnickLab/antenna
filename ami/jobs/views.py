@@ -569,6 +569,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if job.job_type_key != TrainClassifierJob.key:
             raise ValidationError(f"Job #{job.pk} is not a training job.")
 
+        if job.status in JobState.final_states():
+            # The token stays valid for 24 hours and the head is stored at a path fixed by
+            # the job, so without this the weights a registered version points at could be
+            # replaced for a day after the run ended. A service uploads before it reports
+            # its result, so a run that is still going is unaffected.
+            raise ValidationError(f"Job #{job.pk} has already finished; its head can no longer be replaced.")
+
         if not request.FILES:
             raise ValidationError("No head files were uploaded.")
 

@@ -3666,6 +3666,31 @@ class TestTrainingHeadUpload(APITestCase):
     def test_an_upload_with_no_files_is_refused(self):
         self.assertEqual(self._post(self._token(), files={}).status_code, 400)
 
+    def test_a_head_cannot_be_uploaded_once_the_job_has_finished(self):
+        """
+        The callback token stays valid for 24 hours and the head is stored at a path fixed
+        by the job, so without this the weights a registered version points at could be
+        replaced for a day after the run ended. The result callback beside it already
+        refuses a finished job; this is the same guard.
+        """
+        from ami.jobs.models import JobState
+
+        self.job.status = JobState.SUCCESS.value
+        self.job.save()
+
+        response = self._post(self._token())
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_head_is_still_accepted_while_the_job_is_running(self):
+        """A service uploads before it reports, so a normal run is unaffected."""
+        from ami.jobs.models import JobState
+
+        self.job.status = JobState.STARTED.value
+        self.job.save()
+
+        self.assertEqual(self._post(self._token()).status_code, 200)
+
     def test_an_oversized_head_is_refused(self):
         """The cap is well clear of a real head; it stops a wrong upload filling the bucket."""
         from ami.ml.trained_head import MAX_HEAD_BYTES
