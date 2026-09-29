@@ -1910,12 +1910,25 @@ class TestTrackingJobCreation(APITestCase):
             with self.subTest(field):
                 response = self._post(self._body(event_ids=[self.events[0].pk], **{field: False}), self.manager)
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-                self.assertEqual(response.data["params"]["config"], [f"{field}: Only staff can change this setting."])
+                self.assertEqual(
+                    response.data["params"]["config"], [f"{field}: Only a superuser can change this setting."]
+                )
         self.assertFalse(Job.objects.filter(job_type_key="post_processing").exists())
 
         # Restating a guard at its default is accepted.
         response = self._post(self._body(event_ids=[self.events[0].pk], require_fresh_event=True), self.manager)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_a_superuser_can_create_a_run_with_staff_only_settings(self):
+        """The fields a member may not set are refused to members and accepted from a superuser."""
+        body = self._body(event_ids=[self.events[0].pk], require_fresh_event=False, species_gate="penalty")
+        refused = self._post(body, self.manager)
+        self.assertEqual(refused.status_code, status.HTTP_400_BAD_REQUEST, refused.data)
+
+        created = self._post(body, self.superuser)
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        config = Job.objects.get(pk=created.data["id"]).params["config"]
+        self.assertEqual((config["require_fresh_event"], config["species_gate"]), (False, "penalty"))
 
     def _run(self, job: Job, user: User):
         self.client.force_authenticate(user=user)
