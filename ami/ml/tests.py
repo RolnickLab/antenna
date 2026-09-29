@@ -2908,6 +2908,80 @@ class TestAbsoluteMediaURL(TestCase):
         )
 
 
+class TestTheCallbackTargetIsNotClientSupplied(TestCase):
+    """
+    Where the service reports back is Antenna's to decide, not the request body's.
+
+    A job's params are free JSON and any member who can create a job may set them, so a
+    params-supplied callback would send the signed token to a host of their choosing. That
+    token also unlocks the head upload, which writes into Antenna's own storage.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+        from ami.ml.models.processing_service import ProcessingService
+
+        self.project = Project.objects.create(name="Callback Target Project")
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.service = ProcessingService.objects.create(name="Somewhere", endpoint_url="http://service.example")
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={
+                "algorithm_key": self.algorithm.key,
+                "callback_url": "http://attacker.example/collect",
+                "media_base_url": "http://attacker.example",
+            },
+        )
+
+    def _dispatch(self) -> dict:
+        """Send a training request and return the payload the service would have seen."""
+        from unittest import mock
+
+        from ami.ml import training_dispatch
+
+        sent = {}
+
+        class Reply:
+            ok = True
+
+            def json(self):
+                return {}
+
+        class Session:
+            def post(self, endpoint, json=None, timeout=None):
+                sent.update(json or {})
+                return Reply()
+
+        with mock.patch.object(training_dispatch, "create_session", return_value=Session()):
+            training_dispatch.send_training_request(
+                job=self.job,
+                service=self.service,
+                algorithm=self.algorithm,
+                dataset={"url": "/media/training/set.npz", "path": "training/set.npz"},
+            )
+        return sent
+
+    def test_a_callback_url_in_the_params_is_ignored(self):
+        payload = self._dispatch()
+
+        self.assertNotIn("attacker.example", payload["callback_url"])
+        self.assertIn(f"/jobs/{self.job.pk}/training-result/", payload["callback_url"])
+
+    def test_a_head_upload_url_in_the_params_is_ignored(self):
+        payload = self._dispatch()
+
+        self.assertNotIn("attacker.example", payload["head_upload_url"])
+        self.assertIn(f"/jobs/{self.job.pk}/training-head/", payload["head_upload_url"])
+
+    def test_the_dataset_url_is_not_taken_from_the_params_either(self):
+        """It is only a download, but it is still the request body choosing a host."""
+        payload = self._dispatch()
+
+        self.assertNotIn("attacker.example", payload["dataset_url"])
+
+
 class TestGenerateEmbeddingsJob(TestCase):
     """
     The job that fills in embeddings for verified crops, so a head can be retrained
@@ -3446,9 +3520,20 @@ class TestTrainingCallback(APITestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_the_callback_url_points_at_this_job(self):
+        """
+        Built from the configured base, not from the job's params.
+
+        This job carries a media_base_url in its params, left over from when that could
+        override the callback target. It must have no effect: the params are client input
+        and this URL receives the signed token.
+        """
+        from django.conf import settings
+
         from ami.ml.training_dispatch import callback_url_for
 
-        self.assertEqual(callback_url_for(self.job), f"http://antenna:8000/api/v2/jobs/{self.job.pk}/training-result/")
+        expected = f"{settings.EXTERNAL_BASE_URL.rstrip('/')}/api/v2/jobs/{self.job.pk}/training-result/"
+        self.assertEqual(callback_url_for(self.job), expected)
+        self.assertNotIn("antenna:8000", callback_url_for(self.job))
 
 
 class TestAlgorithmUriIsNotErasedByInfo(TestCase):

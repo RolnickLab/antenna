@@ -46,12 +46,18 @@ def verify_callback_token(token: str, job) -> bool:
 
 
 def _callback_base(job) -> str:
-    """Where the service can reach this Antenna."""
-    base = (job.params or {}).get("media_base_url") or getattr(settings, "EXTERNAL_BASE_URL", "")
+    """
+    Where the service can reach this Antenna.
+
+    Deliberately not taken from the job's params. Params are free JSON that any member who
+    can create a job may set, and this base decides where the signed callback token is
+    sent -- a token that also unlocks the head upload. A per-deployment override belongs
+    in settings, not in a request body.
+    """
+    base = getattr(settings, "EXTERNAL_BASE_URL", "")
     if not base:
         raise ValueError(
-            "No base URL is configured, so the processing service has no way to report back. "
-            "Set EXTERNAL_BASE_URL, or pass media_base_url in the job params."
+            "No base URL is configured, so the processing service has no way to report back. " "Set EXTERNAL_BASE_URL."
         )
     return base
 
@@ -74,8 +80,7 @@ def absolute_media_url(url: str, base_url: str | None = None) -> str:
     Turn a stored file's URL into one a processing service can fetch.
 
     In production MEDIA_URL is already an absolute S3 URL and this is a no-op. Locally it is
-    the relative /media/ path, so it needs a base in front. EXTERNAL_BASE_URL points at the
-    UI, which is not always where media is served from, so a job may override it.
+    the relative /media/ path, so it needs a base in front.
     """
     if url.startswith("http://") or url.startswith("https://"):
         return url
@@ -83,8 +88,7 @@ def absolute_media_url(url: str, base_url: str | None = None) -> str:
     if not base:
         raise ValueError(
             "The training set is stored at a relative URL and no base URL is configured, so the "
-            "processing service has no way to download it. Set EXTERNAL_BASE_URL, or pass "
-            "media_base_url in the job params."
+            "processing service has no way to download it. Set EXTERNAL_BASE_URL."
         )
     return urljoin(base.rstrip("/") + "/", url.lstrip("/"))
 
@@ -100,7 +104,7 @@ def send_training_request(job, service, algorithm, dataset: dict) -> dict | None
     params = job.params or {}
     config = algorithm.training_config
     payload: dict[str, typing.Any] = {
-        "dataset_url": absolute_media_url(dataset["url"], params.get("media_base_url")),
+        "dataset_url": absolute_media_url(dataset["url"]),
         "algorithm_key": algorithm.key,
         "job_id": job.pk,
         "name": f"{algorithm.key}-job-{job.pk}",
@@ -116,7 +120,7 @@ def send_training_request(job, service, algorithm, dataset: dict) -> dict | None
 
     # Always sent: a service that finishes after the request times out reports back here
     # instead, which is the only way a real training set can work.
-    payload["callback_url"] = (job.params or {}).get("callback_url") or callback_url_for(job)
+    payload["callback_url"] = callback_url_for(job)
     payload["callback_token"] = make_callback_token(job)
     # The head itself comes back here. A service that does not support the upload simply
     # ignores this, and the version is registered without a stored copy as before.
