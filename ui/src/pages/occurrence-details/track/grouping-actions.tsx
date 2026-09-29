@@ -77,7 +77,7 @@ export const GroupingActions = ({
 
   // Extending opens the session view on the track's newest frame, where the next
   // capture is a click away.
-  const lastCaptureId = occurrence.frames[0]?.captureId
+  const lastCaptureId = occurrence.lastFrame?.captureId
   const extendRoute =
     sessionRoute && lastCaptureId
       ? getAppRoute({

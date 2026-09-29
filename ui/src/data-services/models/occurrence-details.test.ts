@@ -1,12 +1,9 @@
 import {
-  FrameLabel,
   frameHasVector,
   getFrameClassification,
-  getFrameNames,
   OccurrenceDetails,
   ServerFrameClassification,
 } from './occurrence-details'
-import { Taxon } from './taxa'
 
 const serverTaxon = (id: string, name: string, rank = 'SPECIES') => ({
   cover_image_url: null,
@@ -91,38 +88,12 @@ describe('frame feature vectors', () => {
   })
 })
 
-describe('frame names', () => {
-  test('counts frames per label, most frames first, with the highest score', () => {
-    const noctua = new Taxon(NOCTUA)
-    const xestia = new Taxon(XESTIA)
-    const labels: FrameLabel[] = [
-      { score: 0.2, taxon: noctua },
-      { score: 0.9, taxon: xestia },
-      {},
-      { score: 0.6, taxon: noctua },
-      {},
-      { score: 0.4, taxon: noctua },
-    ]
-
-    expect(
-      getFrameNames(labels).map(({ frames, scoreMax, taxon }) => [
-        taxon?.name,
-        frames,
-        scoreMax,
-      ])
-    ).toEqual([
-      ['Noctua pronuba', 3, 0.6],
-      [undefined, 2, undefined],
-      ['Xestia c-nigrum', 1, 0.9],
-    ])
-  })
-})
-
 describe('occurrence details', () => {
   const detection = (id: number, classifications: unknown[]) => ({
-    bbox: [0, 0, 10, 10],
+    bbox: [0, 0, 10, 20],
     capture: { height: 100, id: id + 100, width: 100 },
     classifications,
+    frame_index: id - 1,
     height: null,
     id,
     timestamp: `2026-09-09T02:0${id}:00`,
@@ -140,31 +111,69 @@ describe('occurrence details', () => {
       ]),
       detection(2, []),
     ],
-    detections_count: 2,
+    detections_count: 40,
     determination: { id: 3, name: 'Noctua pronuba' },
     determination_details: { taxon: NOCTUA },
     first_appearance_timestamp: '2026-09-09T02:00:00',
+    first_detection: {
+      capture_id: 101,
+      frame_index: 0,
+      id: 1,
+      timestamp: '2026-09-09T02:01:00',
+    },
+    grouping_summary: {
+      frame_names: [
+        {
+          frames: 30,
+          score_max: 0.4,
+          taxon: { id: 3, name: 'Noctua pronuba', rank: 'SPECIES' },
+        },
+        { frames: 10, score_max: null, taxon: null },
+      ],
+    },
     id: 12,
     identifications: [],
+    last_detection: {
+      capture_id: 140,
+      frame_index: 39,
+      id: 40,
+      timestamp: '2026-09-09T02:40:00',
+    },
     predictions: [],
     track_stats: null,
     user_permissions: [],
   })
 
-  test('each frame carries its own label, and the track lists every label', () => {
-    expect(occurrence.getDetectionInfo('1').frameLabel).toMatchObject({
-      score: 0.12,
-      taxon: { name: 'Noctua pronuba' },
+  test('each frame of the first page carries its own label and position', () => {
+    const [first, second] = occurrence.firstFramesPage
+
+    expect(first).toMatchObject({
+      captureId: '101',
+      frameIndex: 0,
+      frameLabel: { score: 0.12, taxon: { name: 'Noctua pronuba' } },
+      hasVector: true,
     })
-    expect(occurrence.getDetectionInfo('2').label).toBe('No classification')
-    expect(occurrence.frameNames.map(({ taxon }) => taxon?.name)).toEqual([
-      'Noctua pronuba',
-      undefined,
-    ])
+    expect(second.label).toBe('No classification')
+    expect(second.hasVector).toBe(false)
+    // A missing crop keeps the bounding box's proportions.
+    expect(second.image).toEqual({
+      height: 20,
+      src: 'https://example.com/2.jpg',
+      width: 10,
+    })
   })
 
-  test('each frame reports whether the payload stored a vector for it', () => {
-    expect(occurrence.getDetectionInfo('1').hasVector).toBe(true)
-    expect(occurrence.getDetectionInfo('2').hasVector).toBe(false)
+  test('the track ends and label counts cover every frame, not just the first page', () => {
+    expect(occurrence.lastFrame).toMatchObject({
+      captureId: '140',
+      frameIndex: 39,
+      id: '40',
+    })
+    expect(
+      occurrence.frameNames.map(({ frames, taxon }) => [taxon?.name, frames])
+    ).toEqual([
+      ['Noctua pronuba', 30],
+      [undefined, 10],
+    ])
   })
 })

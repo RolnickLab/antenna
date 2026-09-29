@@ -8,8 +8,10 @@ import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMe
 import { useRemoveDetection } from 'data-services/hooks/occurrences/track/useRemoveDetection'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
+import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrencePath'
 import { CaptureDetection } from 'data-services/models/capture'
 import { TrackFrame } from 'data-services/models/occurrence-details'
+import { getTrackFrames } from 'data-services/models/occurrence-path'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -20,7 +22,7 @@ import {
   RouteIcon,
 } from 'lucide-react'
 import { BasicTooltip, Button, LoadingSpinner } from 'nova-ui-kit'
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -47,6 +49,20 @@ export type ExtendNote = 'no-later-capture' | 'only-frame'
 
 // A track under construction often scores below the project's default threshold.
 const EXTEND_FETCH_OPTIONS = { skipDefaultFilters: true }
+
+// Every frame of a track, from the lightweight path rather than the paged detail.
+const useTrackFrames = (occurrenceId?: string) => {
+  const { path, isLoading, error } = useOccurrencePath(
+    occurrenceId,
+    !!occurrenceId
+  )
+  const frames = useMemo(
+    () => (path ? getTrackFrames(path) : undefined),
+    [path]
+  )
+
+  return { frames, isLoading, error }
+}
 
 const NOTES: Record<ExtendNote, { isError?: boolean; string: STRING }> = {
   'no-later-capture': { string: STRING.TRACK_EXTEND_NO_LATER_CAPTURE },
@@ -111,13 +127,10 @@ export const useExtendTrack = ({
     sessionId,
     track: requestedTrack,
   })
-  const track = extendOccurrenceId ? requestedTrack : undefined
+  const { frames: trackFrames } = useTrackFrames(extendOccurrenceId)
   const [choice, setChoice] = useState<ExtendChoice>()
   // The merge deletes the clicked occurrence, so its frames are read while it still exists.
-  const { occurrence: clickedTrack } = useOccurrenceDetails(
-    choice?.occurrenceId ?? '',
-    EXTEND_FETCH_OPTIONS
-  )
+  const { frames: clickedFrames } = useTrackFrames(choice?.occurrenceId)
   const fetchCaptureDetails = useFetchCaptureDetails(projectId as string)
   const [note, setNote] = useState<ExtendNote>()
   const [pending, setPending] = useState<ExtendPending>()
@@ -219,11 +232,11 @@ export const useExtendTrack = ({
 
   // Every branch reads the track's frames, so a click waits for them to load.
   const previewClick = (detection: CaptureDetection) =>
-    extendOccurrenceId && track && !isLoading
+    extendOccurrenceId && trackFrames && !isLoading
       ? getExtendClick({
           captureId,
           detection,
-          frames: track.frames,
+          frames: trackFrames,
           occurrenceId: extendOccurrenceId,
         })
       : undefined
@@ -289,9 +302,9 @@ export const useExtendTrack = ({
     mergeChoice: () => {
       if (choice) {
         const extent = getMergedTrackExtent({
-          addedFrames: clickedTrack?.frames ?? [],
+          addedFrames: clickedFrames ?? [],
           clickedDetectionId: choice.detectionId,
-          trackFrames: track?.frames ?? [],
+          trackFrames: trackFrames ?? [],
         })
 
         merge
@@ -387,10 +400,11 @@ export const ExtendTrackBanner = ({
     EXTEND_FETCH_OPTIONS
   )
   const verify = useSetGroupingVerified(occurrenceId)
+  const { frames } = useTrackFrames(occurrenceId)
   const navigation = getTrackNavigation({
     captureDate,
     captureId,
-    frames: occurrence?.frames ?? [],
+    frames: frames ?? [],
   })
   const { first, last, position, total } = navigation
   const { canVerify } = getTrackEditRights(occurrence?.userPermissions)
@@ -632,38 +646,26 @@ export const ExtendTrackDialog = ({
   occurrenceId: string
 }) => {
   const {
-    occurrence: clicked,
+    frames: clicked,
     isLoading: clickedLoading,
     error: clickedError,
-  } = useOccurrenceDetails(choice.occurrenceId, EXTEND_FETCH_OPTIONS)
+  } = useTrackFrames(choice.occurrenceId)
   const {
-    occurrence: extended,
+    frames: extended,
     isLoading: extendedLoading,
     error: extendedError,
-  } = useOccurrenceDetails(occurrenceId, EXTEND_FETCH_OPTIONS)
+  } = useTrackFrames(occurrenceId)
 
   // One animal cannot appear twice in a capture, so nothing may land on a capture
   // the extended track already covers.
-  const coveredCaptureIds = new Set(
-    extended?.frames.map((frame) => frame.captureId)
-  )
+  const coveredCaptureIds = new Set(extended?.map((frame) => frame.captureId))
   const isCovered = (captureId?: string) =>
     !!captureId && coveredCaptureIds.has(captureId)
-  const clickedFrame = clicked?.frames.find(
-    (frame) => frame.id === choice.detectionId
-  )
-  const mergeBlocked = !!clicked?.frames.some((frame) =>
-    isCovered(frame.captureId)
-  )
+  const clickedFrame = clicked?.find((frame) => frame.id === choice.detectionId)
+  const mergeBlocked = !!clicked?.some((frame) => isCovered(frame.captureId))
   const moveBlocked = isCovered(clickedFrame?.captureId)
 
-  const clickedCrop = clickedFrame
-    ? clicked?.getDetectionInfo(choice.detectionId)
-    : undefined
-  const latestFrameId = extended?.frames[0]?.id
-  const latestCrop = latestFrameId
-    ? extended?.getDetectionInfo(latestFrameId)
-    : undefined
+  const latestFrame = extended?.[0]
 
   return (
     <TrackEditDialog
@@ -693,13 +695,13 @@ export const ExtendTrackDialog = ({
           <div className="flex flex-wrap items-start justify-center gap-6">
             <ExtendCrop
               label={translate(STRING.TRACK_EXTEND_CLICKED_FRAME)}
-              src={clickedCrop?.image.src}
-              timeLabel={clickedCrop?.timeLabel}
+              src={clickedFrame?.cropUrl}
+              timeLabel={clickedFrame?.timeLabel}
             />
             <ExtendCrop
               label={translate(STRING.TRACK_EXTEND_LATEST_FRAME)}
-              src={latestCrop?.image.src}
-              timeLabel={latestCrop?.timeLabel}
+              src={latestFrame?.cropUrl}
+              timeLabel={latestFrame?.timeLabel}
             />
           </div>
           <div className="flex justify-center">

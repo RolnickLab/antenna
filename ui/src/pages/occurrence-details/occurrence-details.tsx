@@ -1,13 +1,6 @@
-import {
-  BlueprintCollection,
-  BlueprintItem,
-} from 'components/blueprint-collection/blueprint-collection'
 import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
-import {
-  FrameLabel,
-  OccurrenceDetails as Occurrence,
-} from 'data-services/models/occurrence-details'
+import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
@@ -18,12 +11,10 @@ import {
   InfoBlockField,
   InfoBlockFieldValue,
   Tabs,
-  buttonVariants,
 } from 'nova-ui-kit'
-import { cn } from 'nova-ui-kit/utils'
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -41,8 +32,7 @@ import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
 import { FrameActionDialogs } from './track/frame-action-dialogs'
-import { FrameCaption } from './track/frame-caption'
-import { FrameMenu } from './track/frame-menu'
+import { FrameStrip } from './track/frame-strip'
 import { GroupingActions } from './track/grouping-actions'
 import { getTrackEditRights } from './track/track-edit-rights'
 import { PendingFrameAction } from './track/types'
@@ -52,28 +42,6 @@ export const TABS = {
   IDENTIFICATION: 'identification',
   RAW: 'raw',
 }
-
-const JumpToFrame = ({
-  label,
-  onClick,
-  to,
-}: {
-  label: string
-  onClick?: () => void
-  to?: string
-}) =>
-  to ? (
-    <Link
-      className={cn(
-        buttonVariants({ size: 'small', variant: 'ghost' }),
-        'px-2'
-      )}
-      onClick={onClick}
-      to={to}
-    >
-      <span>{label}</span>
-    </Link>
-  ) : null
 
 export const OccurrenceDetails = ({
   occurrence,
@@ -95,7 +63,7 @@ export const OccurrenceDetails = ({
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -107,63 +75,6 @@ export const OccurrenceDetails = ({
     occurrence.userPermissions
   )
   const trackingEnabled = useProjectFeature('tracking')
-
-  const sessionRoute = occurrence.sessionId
-    ? APP_ROUTES.SESSION_DETAILS({
-        projectId: projectId as string,
-        sessionId: occurrence.sessionId,
-      })
-    : undefined
-
-  const blueprintItems = useMemo(
-    () =>
-      occurrence.detections.length
-        ? occurrence.detections
-            .map((id) => occurrence.getDetectionInfo(id))
-            .filter(
-              (
-                item
-              ): item is BlueprintItem & {
-                captureId: string
-                frameLabel: FrameLabel
-                hasVector: boolean | undefined
-              } => !!item
-            )
-            .map((item) => {
-              if (!sessionRoute) {
-                return { ...item, to: undefined }
-              }
-
-              // On the session page itself, keep the other selected occurrences and
-              // only move the capture.
-              if (pathname === sessionRoute) {
-                const params = new URLSearchParams(search)
-                if (!params.getAll('occurrence').includes(occurrence.id)) {
-                  params.append('occurrence', occurrence.id)
-                }
-                params.set('capture', item.captureId)
-
-                return { ...item, to: `${sessionRoute}?${params}` }
-              }
-
-              return {
-                ...item,
-                to: getAppRoute({
-                  to: sessionRoute,
-                  filters: {
-                    occurrence: occurrence.id,
-                    capture: item.captureId,
-                  },
-                }),
-              }
-            })
-        : [],
-    [occurrence, pathname, search, sessionRoute]
-  )
-
-  // The strip runs newest first, so the track's earliest frame is its last row.
-  const newestFrame = blueprintItems[0]
-  const earliestFrame = blueprintItems[blueprintItems.length - 1]
 
   const fields = [
     {
@@ -402,78 +313,16 @@ export const OccurrenceDetails = ({
                 occurrence={occurrence}
               />
             )}
-            <BlueprintCollection
-              filmStrip={trackingEnabled}
-              showLicenseInfo={blueprintItems.length > 0}
-            >
-              {trackingEnabled && blueprintItems.length ? (
-                <div className="flex flex-wrap items-center justify-between gap-1 pb-2">
-                  <span className="body-small text-muted-foreground">
-                    {blueprintItems.length === 1
-                      ? translate(STRING.TRACK_FRAMES_ONE)
-                      : translate(STRING.TRACK_FRAMES_COUNT, {
-                          count: blueprintItems.length,
-                        })}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1">
-                    {blueprintItems.length === 1 ? (
-                      <JumpToFrame
-                        label={translate(STRING.TRACK_JUMP_ONLY_FRAME)}
-                        onClick={onNavigate}
-                        to={newestFrame.to}
-                      />
-                    ) : (
-                      <>
-                        <JumpToFrame
-                          label={translate(STRING.TRACK_JUMP_FIRST_FRAME)}
-                          onClick={onNavigate}
-                          to={earliestFrame.to}
-                        />
-                        <JumpToFrame
-                          label={translate(STRING.TRACK_JUMP_LAST_FRAME)}
-                          onClick={onNavigate}
-                          to={newestFrame.to}
-                        />
-                      </>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-              {blueprintItems.map((item, index) => (
-                <BlueprintItem
-                  actions={
-                    trackingEnabled && canRestructure ? (
-                      <FrameMenu
-                        isFirstInTime={index === blueprintItems.length - 1}
-                        isOnlyFrame={blueprintItems.length < 2}
-                        onAction={(action) =>
-                          setPendingFrameAction({
-                            action,
-                            detectionId: item.id,
-                            movedBySplit: index + 1,
-                            timeLabel: item.timeLabel,
-                            total: blueprintItems.length,
-                          })
-                        }
-                      />
-                    ) : undefined
-                  }
-                  caption={
-                    trackingEnabled ? (
-                      <FrameCaption
-                        detectionId={item.id}
-                        hasVector={item.hasVector}
-                        label={item.frameLabel}
-                        timeLabel={item.timeLabel}
-                      />
-                    ) : undefined
-                  }
-                  key={item.id}
-                  item={item}
-                  onLinkClick={onNavigate}
-                />
-              ))}
-            </BlueprintCollection>
+            <FrameStrip
+              // Keyed so the open page does not carry over to the next occurrence.
+              key={occurrence.id}
+              canRestructure={canRestructure}
+              occurrence={occurrence}
+              onAction={setPendingFrameAction}
+              onNavigate={onNavigate}
+              projectId={projectId as string}
+              trackingEnabled={trackingEnabled}
+            />
             <FrameActionDialogs
               occurrence={occurrence}
               onClose={() => setPendingFrameAction(undefined)}
