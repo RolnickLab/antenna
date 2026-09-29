@@ -45,6 +45,12 @@ archived.
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
 
+## Reports (point-in-time findings)
+
+| File | Description |
+|---|---|
+| `reports/2026-10-02-tracking-parameter-tuning.md` | Tracking parameter tuning on a partner's evaluation project (three cameras: busy micromoth, medium macromoth, quiet nights) and three by-eye audits of the proposed tracks. Recommends setting D3 (threshold 0.9, BioCLIP appearance, gate 0.47, log activity scaling, species penalty 0.5 at 0.2); measured saving 22.7% / 45.9% / 93.2% with 0 joins in 175 sampled long tracks. Covers the structural threshold-1.0 fact, why confirmed-track metrics hide joins, BioCLIP vs classifier-backbone similarity scales (AUC equal, scale not), what did not work, staff-only vs member fields, production readiness and PR landing order. Keywords: tracking, tuning, cost_threshold, BioCLIP, embeddings, species gate, activity scaling, visual audit, joins, merges |
+
 ## Archive / session snapshots
 
 | File | Description |
