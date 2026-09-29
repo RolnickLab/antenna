@@ -7,11 +7,23 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from ami.main.models import Classification, Detection, Identification, Occurrence, SourceImage, Taxon
+from ami.main.models import (
+    Classification,
+    Detection,
+    Identification,
+    Occurrence,
+    OccurrenceHistoryRecord,
+    SourceImage,
+    Taxon,
+)
 from ami.main.models_future.session_reset import SessionResetRefused, reset_session_tracking, session_tracking_counts
 from ami.main.tests import cachalot_disabled
 from ami.ml.models import Algorithm
-from ami.ml.post_processing.tracking_task import assign_occurrences_from_detection_chains, event_is_fresh
+from ami.ml.post_processing.tracking_task import (
+    TrackingHistory,
+    assign_occurrences_from_detection_chains,
+    event_is_fresh,
+)
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.tests.factories import UserFactory
 
@@ -50,7 +62,9 @@ class TestResetSessionTracking(TestCase):
                 current.save(update_fields=["next_detection"])
 
         tracking = Algorithm.objects.get_or_create(key="tracking", defaults={"name": "Occurrence Tracking"})[0]
-        assign_occurrences_from_detection_chains(captures, logger, record_as=tracking)
+        assign_occurrences_from_detection_chains(
+            captures, logger, record_as=tracking, history=TrackingHistory(settings={}, algorithm=tracking)
+        )
         keeper = Occurrence.objects.filter(event=event).order_by("pk").first()
         Occurrence.objects.filter(pk=keeper.pk).update(
             grouping_verified_at=timezone.now(), grouping_verified_by=UserFactory()
@@ -65,6 +79,7 @@ class TestResetSessionTracking(TestCase):
         ).delete()
         tracked = session_tracking_counts(event)
         self.assertEqual((tracked.occurrences, tracked.multi_detection_occurrences), (2, 2))
+        self.assertEqual(OccurrenceHistoryRecord.objects.filter(subtype="tracking").count(), 2)
         self.assertEqual((tracked.links, tracked.grouping_verified), (6, 1))
 
         result = reset_session_tracking(event)
@@ -75,12 +90,39 @@ class TestResetSessionTracking(TestCase):
         self.assertEqual((after.links, after.grouping_verified), (0, 0))
         self.assertTrue(event_is_fresh(event)[0])
         self.assertFalse(Classification.objects.filter(algorithm__key="tracking").exists())
+        self.assertEqual(result.tracking_history_deleted, 2)
+        self.assertFalse(OccurrenceHistoryRecord.objects.filter(subtype="tracking").exists())
         for occurrence in Occurrence.objects.filter(detections__source_image__event=event):
             best = occurrence.best_prediction
             expected = (best.taxon_id, best.score) if best else (None, None)
             self.assertEqual((occurrence.determination_id, occurrence.determination_score), expected)
         unscored_keeper.refresh_from_db()
         self.assertIsNone(unscored_keeper.determination_id)
+
+    def test_tracking_again_after_a_reset_records_only_the_new_run(self):
+        """An occurrence's history lists the merges of the run that made it, not those of runs a reset undid."""
+        project, event = self._build_tracked_session(images=3)
+        review = OccurrenceHistoryRecord.objects.create(
+            occurrence=Occurrence.objects.filter(event=event).order_by("pk").first(),
+            kind=OccurrenceHistoryRecord.Kind.REVIEW,
+            subtype="track_complete",
+            timestamp=timezone.now(),
+            payload={"detection_ids": [], "frames_count": 3},
+        )
+        reset_session_tracking(event)
+        self.assertEqual(OccurrenceHistoryRecord.objects.filter(subtype="tracking").count(), 0)
+
+        captures = list(event.captures.order_by("timestamp"))
+        for dets in zip(*(list(c.detections.order_by("pk")) for c in captures)):
+            for current, following in zip(dets, dets[1:]):
+                current.next_detection = following
+                current.save(update_fields=["next_detection"])
+        assign_occurrences_from_detection_chains(captures, logger, history=TrackingHistory(settings={"run": 2}))
+
+        records = OccurrenceHistoryRecord.objects.filter(subtype="tracking")
+        self.assertEqual(records.count(), 2)
+        self.assertEqual({r.payload["settings"]["run"] for r in records}, {2})
+        self.assertTrue(OccurrenceHistoryRecord.objects.filter(pk=review.pk).exists())
 
     def test_refuses_a_session_with_identifications_unless_forced(self):
         project, event = self._build_tracked_session(images=3)

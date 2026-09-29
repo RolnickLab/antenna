@@ -23,6 +23,10 @@ After a reset, for every detection of the session that shared an occurrence:
 - Classifications the tracking task recorded on the session's detections are deleted.
   Each is a copy of a prediction on the same detection, made when a merge changed a
   determination, so it describes a merge that no longer exists.
+- For the same reason, the tracking results in the history of the session's
+  occurrences are deleted. Reviews stay, since the history keeps every review. An
+  occurrence that also holds detections of another session keeps its whole history,
+  because a tracking result does not say which session's run wrote it.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from ami.main.models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceHistoryRecord,
     update_calculated_fields_for_sessions_and_stations,
 )
 from ami.main.models_future.occurrence import best_prediction_from_prefetch
@@ -78,6 +83,7 @@ class SessionResetResult:
     links_cleared: int
     verifications_cleared: int
     tracking_classifications_deleted: int
+    tracking_history_deleted: int
     determinations_updated: int
     before: SessionTrackingCounts
     after: SessionTrackingCounts | None
@@ -245,6 +251,17 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
         detection__source_image__event=event, algorithm__key=TRACKING_ALGORITHM_KEY
     )
     verified = Occurrence.objects.filter(pk__in=_session_occurrence_ids(event), grouping_verified_at__isnull=False)
+    spanning = (
+        Detection.objects.filter(occurrence_id__in=_session_occurrence_ids(event))
+        .exclude(source_image__event=event)
+        .order_by()
+        .values("occurrence_id")
+    )
+    tracking_history = OccurrenceHistoryRecord.objects.filter(
+        occurrence_id__in=_session_occurrence_ids(event),
+        kind=OccurrenceHistoryRecord.Kind.ALGORITHM_RESULT,
+        subtype=TRACKING_ALGORITHM_KEY,
+    ).exclude(occurrence_id__in=spanning)
 
     if dry_run:
         plan = _plan_reset(event, force)
@@ -257,6 +274,7 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
             links_cleared=plan.before.links,
             verifications_cleared=plan.before.grouping_verified,
             tracking_classifications_deleted=tracking_classifications.count(),
+            tracking_history_deleted=tracking_history.count(),
             determinations_updated=0,
             before=plan.before,
             after=None,
@@ -270,6 +288,9 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
         verifications_cleared = verified.update(grouping_verified_at=None, grouping_verified_by=None)
         _, deleted_by_model = tracking_classifications.delete()
         tracking_deleted = deleted_by_model.get(Classification._meta.label, 0)
+        # Before the split, while each occurrence still holds the detections that decide
+        # whether it reaches into another session.
+        history_deleted, _ = tracking_history.delete()
 
         new_occurrences = Occurrence.objects.bulk_create(
             [Occurrence(event=event, deployment_id=event.deployment_id, project_id=event.project_id) for _ in movers],
@@ -302,6 +323,7 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
         links_cleared=links_cleared,
         verifications_cleared=verifications_cleared,
         tracking_classifications_deleted=tracking_deleted,
+        tracking_history_deleted=history_deleted,
         determinations_updated=determinations_updated,
         before=plan.before,
         after=session_tracking_counts(event),
