@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Run on this capture set</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#FFFFFF;color:#171820}
+a{color:#0B6CF4}a:hover{color:#065AD0}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 620px; height: 880px; box-sizing: border-box; display: flex; flex-direction: column; background: #FFFFFF; border-radius: 14px; overflow: hidden; border: 1px solid #DEDFE3;">
+
+  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 24px; border-bottom: 1px solid #DEDFE3;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <h1 style="margin: 0; font-size: 17px; font-weight: 700; color: #171820;">Class masking</h1>
+      <span style="font-size: 12px; color: #52545D;">Post-processing &middot; Panama 2024 &mdash; nightly sample</span>
+    </div>
+    <button type="button" aria-label="Close" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 6px; cursor: pointer; flex-shrink: 0;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#52545D" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+  </div>
+
+  <div style="flex-grow: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px;">
+
+    <div style="display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 8px; background: #EEF0F9;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#313B72" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h10"></path></svg>
+      <span style="flex-grow: 1; font-size: 12.5px; color: #1C244F;">Running on <strong>this capture set</strong> &middot; 12,480 captures</span>
+      <a href="#change" style="font-size: 12px; font-weight: 600;">Change</a>
+    </div>
+
+    <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #52545D;">Masks out classes whose taxon is not on the chosen list and renormalises each prediction over what remains. The original classification is kept and demoted.</p>
+
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="height: 1px; flex-grow: 1; background: #DEDFE3;"></div>
+      <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #71747D;">CLASS MASKING SETTINGS</span>
+      <div style="height: 1px; flex-grow: 1; background: #DEDFE3;"></div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label for="s2-taxa" style="font-size: 13px; font-weight: 600; color: #3E4049;">Taxa list to keep <span style="color: #D10550;">*</span></label>
+      <div style="display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 12px; border: 1px solid #CBCDD2; border-radius: 8px;">
+        <span id="s2-taxa" style="font-size: 14px; color: #171820;">Panama moths</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#52545D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <span style="font-size: 12px; color: #52545D;">1,204 taxa. Classes outside this list are masked out.</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label for="s2-algo" style="font-size: 13px; font-weight: 600; color: #3E4049;">Source classifier <span style="color: #D10550;">*</span></label>
+      <div style="display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 12px; border: 1px solid #CBCDD2; border-radius: 8px;">
+        <span id="s2-algo" style="font-size: 14px; color: #171820;">global_moths_2024</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#52545D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <span style="font-size: 12px; color: #52545D;">Only classifiers that ran on this set are listed.</span>
+    </div>
+
+    <div style="display: flex; gap: 10px; align-items: flex-start;">
+      <div style="width: 18px; height: 18px; border-radius: 4px; background: #313B72; display: flex; align-items: center; justify-content: center; margin-top: 1px; flex-shrink: 0;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <label for="s2-reweight" style="font-size: 13px; font-weight: 600; color: #3E4049;">Reweight scores</label>
+        <span id="s2-reweight" style="font-size: 12px; line-height: 1.5; color: #52545D;">Renormalise the kept classes to sum to 1. Off keeps raw absolute scores; the chosen species is the same either way.</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 9px; align-items: flex-start; padding: 11px 12px; border-radius: 8px; background: #FFF4E0;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A76A01" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px;"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+      <span style="font-size: 12px; line-height: 1.5; color: #754A00;">55,530 classifications are in scope. This rewrites the model&rsquo;s identifications for the whole set; originals are demoted, not deleted.</span>
+    </div>
+
+    <button type="button" style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed #CBCDD2; border-radius: 8px; background: #F9F9FA; cursor: pointer; text-align: left;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#52545D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      <span style="font-size: 13px; font-weight: 600; color: #3E4049;">Advanced</span>
+      <span style="font-size: 12px; color: #71747D;">Job name, delay</span>
+    </button>
+
+    <div style="margin-top: auto; display: flex; gap: 9px; align-items: flex-start; padding: 11px 12px; border-radius: 8px; background: #F4F5F6;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52545D" stroke-width="2" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg>
+      <span style="font-size: 12px; line-height: 1.5; color: #52545D;">Opened from the capture set&rsquo;s Run menu. Same form, same endpoint &mdash; only the job type, the method and the scope arrive already answered.</span>
+    </div>
+
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-top: 1px solid #DEDFE3; background: #F9F9FA;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 18px; height: 18px; border-radius: 4px; background: #313B72; display: flex; align-items: center; justify-content: center;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </div>
+      <label for="s2-now" style="font-size: 13px; color: #3E4049;">Start immediately</label>
+      <span id="s2-now" style="display: none;"></span>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <button type="button" style="height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #CBCDD2; background: #FFFFFF; font-size: 14px; font-weight: 600; color: #3E4049; cursor: pointer;">Cancel</button>
+      <button type="button" style="height: 38px; padding: 0 18px; border-radius: 8px; border: none; background: #313B72; font-size: 14px; font-weight: 600; color: #FFFFFF; cursor: pointer;">Run on 12,480 captures</button>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":620,"height":880}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
+
