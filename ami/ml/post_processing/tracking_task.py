@@ -249,6 +249,10 @@ class TopLabel:
 def shift_in_box_sizes(bb1, bb2) -> float:
     area1 = (bb1[2] - bb1[0] + 1) * (bb1[3] - bb1[1] + 1)
     area2 = (bb2[2] - bb2[0] + 1) * (bb2[3] - bb2[1] + 1)
+    # Every pair is scored with this, move rule or not, so a malformed box must not raise.
+    # An infinite shift leaves the overlap term as it is.
+    if area1 <= 0 or area2 <= 0:
+        return math.inf
     shift = math.dist(((bb1[0] + bb1[2]) / 2, (bb1[1] + bb1[3]) / 2), ((bb2[0] + bb2[2]) / 2, (bb2[1] + bb2[3]) / 2))
     return shift / math.sqrt(math.sqrt(area1 * area2))
 
