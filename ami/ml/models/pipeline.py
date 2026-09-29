@@ -40,7 +40,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
-from ami.ml.exceptions import FeatureResultsMatchNoDetections, PipelineNotConfigured
+from ami.ml.exceptions import FeatureResultsStoredNothing, PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -871,10 +871,15 @@ UNMATCHED_BOXES_TO_LOG = 5
 
 @dataclasses.dataclass
 class StoredEmbeddings:
-    """The vectors stored from one batch, and the returned boxes that matched no detection."""
+    """The vectors stored from one batch, and the returned boxes that matched no detection.
+
+    ``without_vector`` counts the detections on the batch's images that still lack a vector
+    after the save: boxes the service did not return, or returned without a vector.
+    """
 
     embeddings: list[DetectionEmbedding]
     unmatched: list[DetectionResponse]
+    without_vector: int = 0
 
 
 def _describe_boxes(detection_responses: list[DetectionResponse]) -> str:
@@ -963,9 +968,11 @@ def save_features_for_existing_detections(
 
     Writes ``DetectionEmbedding`` rows and nothing else: a box that matches no stored
     detection is skipped rather than created, classifications in the response are ignored,
-    and no occurrence, determination or null marker is touched. A batch whose boxes all
-    match nothing raises ``FeatureResultsMatchNoDetections``, because its detections would
-    otherwise be sent again on every run.
+    and no occurrence, determination or null marker is touched. Detections on the batch's
+    images that still lack a vector afterwards are counted in ``without_vector``. A batch
+    that stores no vector at all while such detections remain raises
+    ``FeatureResultsStoredNothing``, because they would otherwise be sent again on every run.
+    A response that reports an error is left to the error handling of the caller.
     """
     ignored = sum(len(detection.classifications) for detection in results.detections)
     if ignored:
@@ -982,11 +989,26 @@ def save_features_for_existing_detections(
         logger=logger,
         job_id=job_id,
     )
-    if returned_boxes and len(stored.unmatched) == len(returned_boxes):
-        raise FeatureResultsMatchNoDetections(
-            f"None of the {len(returned_boxes)} boxes returned by the feature-only pipeline matches a "
-            f"stored detection, so no vectors were saved. First boxes: {_describe_boxes(returned_boxes)}",
-            unmatched=len(returned_boxes),
+    batch_image_ids = image_ids | {int(image.id) for image in results.source_images}
+    extractor_ids = [algorithm.pk for algorithm in feature_extractors_if_feature_only(list(algorithms_known.values()))]
+    if batch_image_ids and extractor_ids:
+        stored.without_vector = detections_missing_features(
+            Detection.objects.filter(source_image_id__in=batch_image_ids), extractor_ids
+        ).count()
+    if stored.without_vector:
+        logger.warning(
+            f"{stored.without_vector} detections on the {len(batch_image_ids)} images of this batch "
+            "still have no feature vector after saving it."
+        )
+    all_unmatched = bool(returned_boxes) and len(stored.unmatched) == len(returned_boxes)
+    if not stored.embeddings and (stored.without_vector or all_unmatched) and not results.errors:
+        raise FeatureResultsStoredNothing(
+            f"The feature-only pipeline returned {len(returned_boxes)} boxes and no vector was saved, "
+            f"while {stored.without_vector} detections on these images still have none "
+            f"({len(stored.unmatched)} returned boxes match no stored detection). "
+            f"First boxes: {_describe_boxes(returned_boxes)}",
+            unmatched=len(stored.unmatched),
+            without_vector=stored.without_vector,
         )
     return stored
 
@@ -1291,8 +1313,10 @@ class PipelineSaveResults:
     classifications: list[Classification]
     algorithms: dict[str, Algorithm]
     total_time: float
-    # Returned boxes that matched no stored detection; only a feature-only save reports it.
+    # Only a feature-only save reports these: returned boxes that matched no stored detection,
+    # and detections on the saved images that still have no vector.
     unmatched_detections: int | None = None
+    detections_without_vector: int | None = None
 
 
 def create_null_detections_for_undetected_images(
@@ -1391,6 +1415,7 @@ def save_results(
                 algorithms={},
                 total_time=total_time,
                 unmatched_detections=len(stored.unmatched),
+                detections_without_vector=stored.without_vector,
             )
         return None
 
