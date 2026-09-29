@@ -19,12 +19,19 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - nats
-      - minio-init
-      - ml_backend
-      - rabbitmq
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      nats:
+        condition: service_started
+      # Wait for bucket setup to succeed, so Django never starts against missing buckets.
+      minio-init:
+        condition: service_completed_successfully
+      ml_backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     volumes:
       - .:/app:z
     env_file:
@@ -169,8 +176,10 @@ services:
     env_file:
       - ./.envs/.local/.django
     depends_on:
-      - minio
-      - minio-proxy
+      minio:
+        condition: service_healthy
+      minio-proxy:
+        condition: service_started
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
