@@ -64,7 +64,7 @@ from ami.main.models_future.track_stats import bbox_corners, frame_diagonal
 
 if TYPE_CHECKING:
     from ami.main.models import Occurrence, SourceImage
-    from ami.ml.post_processing.tracking_task import TrackingConfig
+    from ami.ml.post_processing.tracking_task import LinkOptions, TrackingConfig
 
 DEFAULT_WINDOW_MINUTES = 5
 MAX_WINDOW_MINUTES = 30
@@ -161,21 +161,27 @@ def _latest_vectors(classifications) -> dict[tuple[int, int], Any]:
     return vectors
 
 
-def _score_pair(track_frame: dict, frame: dict, track_vector, frame_vector) -> dict[str, float | None]:
+def _score_pair(
+    track_frame: dict, frame: dict, track_vector, frame_vector, options: LinkOptions
+) -> dict[str, float | None]:
     """The cost terms for one pair of frames, all None for a box that cannot be read."""
     corners_a = bbox_corners(track_frame["bbox"])
     corners_b = bbox_corners(frame["bbox"])
     if corners_a is None or corners_b is None:
         return dict.fromkeys(_PAIR_SCORE_FIELDS)
     diagonal = _pair_diagonal(track_frame, frame, corners_a, corners_b)
-    return _pair_scores(corners_a, corners_b, track_vector, frame_vector, diagonal)
+    return _pair_scores(corners_a, corners_b, track_vector, frame_vector, diagonal, options)
 
 
 def _would_link(scores: dict[str, float | None], config: TrackingConfig) -> bool:
-    """Whether the pair passes the tracker's pairing rule: a cost under its threshold, and a
-    vector on both frames when it requires them. A preview of the rule, not of a run: the
-    matcher only pairs adjacent captures and claims each box once."""
+    """Whether the pair passes the tracker's pairing rule: a cost under its threshold, a
+    vector on both frames when it requires them, and embeddings no less alike than its
+    appearance gate. A preview of the rule, not of a run: the matcher only pairs adjacent
+    captures, claims each box once, and applies the species gate and crowd scaling."""
     if scores["cost"] is None or (config.require_features and scores["similarity"] is None):
+        return False
+    gate = config.appearance_min_similarity
+    if gate is not None and scores["similarity"] is not None and scores["similarity"] < gate:
         return False
     return scores["cost"] < config.cost_threshold
 
@@ -222,6 +228,7 @@ def rank_merge_candidates(
     from ami.main.models import Classification, Detection, get_media_url
 
     config = tracking_config_for(occurrence)
+    options = config.link_options()
     track = Detection.objects.valid().filter(occurrence_id=occurrence.pk)
     if detection_id is None:
         target_frames = _timed_frames(track)
@@ -304,7 +311,7 @@ def rank_merge_candidates(
         track_frame, frame = pairs[candidate.pk]
         algorithm_id, track_vector = vector_by_track_frame.get(track_frame["pk"], (None, None))
         frame_vector = frame_vectors.get((frame["pk"], algorithm_id)) if algorithm_id is not None else None
-        scores = _score_pair(track_frame, frame, track_vector, frame_vector)
+        scores = _score_pair(track_frame, frame, track_vector, frame_vector, options)
         crop = frame["path"] or next((f["path"] for f in frames_by_occurrence[candidate.pk] if f["path"]), None)
         rows.append(
             {
@@ -355,20 +362,31 @@ def _likelihood(cost: float, similarity: float | None) -> float:
     return round(min(max(1 - cost / terms, 0.0), 1.0), _ROUND_TO)
 
 
-def _pair_scores(bbox_a, bbox_b, vector_a, vector_b, diag: float) -> dict[str, float | None]:
-    """The tracking cost between two boxes, each of its terms, and the likelihood."""
-    from ami.ml.post_processing.tracking_task import box_ratio, cosine_similarity, distance_ratio, iou, total_cost
+def _pair_scores(
+    bbox_a,
+    bbox_b,
+    vector_a,
+    vector_b,
+    diag: float,
+    options: LinkOptions | None = None,
+    distance_multiplier: float = 1.0,
+) -> dict[str, float | None]:
+    """The tracking cost between two boxes, each of its raw terms, and the likelihood.
 
-    cost = total_cost(vector_a, vector_b, bbox_a, bbox_b, diag)
-    similarity = None
-    if vector_a is not None and vector_b is not None:
-        similarity = round(cosine_similarity(vector_a, vector_b), _ROUND_TO)
+    The cost is the tracker's own ``weighted_cost`` under the session's link options, so the
+    weights, appearance calibration and move rule change it here exactly as they do in a run.
+    """
+    from ami.ml.post_processing.tracking_task import DEFAULT_LINK_OPTIONS, pair_terms, weighted_cost
+
+    terms = pair_terms(vector_a, vector_b, bbox_a, bbox_b, diag)
+    cost = weighted_cost(terms, options or DEFAULT_LINK_OPTIONS, distance_multiplier)
+    similarity = None if terms.appearance is None else round(1 - terms.appearance, _ROUND_TO)
     return {
         "likelihood": _likelihood(cost, similarity),
         "cost": round(cost, _ROUND_TO),
-        "distance": round(distance_ratio(bbox_a, bbox_b, diag), _ROUND_TO),
-        "iou": round(iou(bbox_a, bbox_b), _ROUND_TO),
-        "size_ratio": round(box_ratio(bbox_a, bbox_b), _ROUND_TO),
+        "distance": round(terms.distance, _ROUND_TO),
+        "iou": round(terms.iou, _ROUND_TO),
+        "size_ratio": round(terms.size_ratio, _ROUND_TO),
         "similarity": similarity,
     }
 
@@ -398,7 +416,7 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
 
     The reference is the track frame nearest in time on another capture. The tracker's own
     matcher runs between every box on the reference frame's capture and every box on
-    ``capture``, with the tracker's default settings, feature algorithm and image diagonal,
+    ``capture``, with the session's tracking settings, feature algorithm and image diagonal,
     and ``would_link`` marks the box it links the reference frame to. Tracking only pairs
     adjacent captures, so across a longer gap this previews its pairing rule, not a run.
 
@@ -410,6 +428,7 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     from ami.main.models import Classification, Detection, SourceImage
     from ami.ml.models import Algorithm
     from ami.ml.post_processing.tracking_task import (
+        activity_multiplier,
         image_diagonal,
         latest_feature_vectors,
         resolve_feature_algorithm,
@@ -417,6 +436,7 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     )
 
     config = tracking_config_for(occurrence)
+    options = config.link_options()
     reference, relation = _reference_frame(occurrence.pk, capture) if capture.timestamp else (None, None)
     reference_capture_id = reference["source_image_id"] if reference is not None else None
     detections = list(
@@ -448,7 +468,7 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     def skipped(detection_id: int) -> str | None:
         return SKIPPED_NO_VECTOR if config.require_features and detection_id not in vectors else None
 
-    diag, linked, reference_detection = None, set(), None
+    diag, linked, reference_detection, multiplier = None, set(), None, 1.0
     if reference is not None:
         reference_detection = next(d for d in detections if d.pk == reference["pk"])
         reference_boxes = [d for d in detections if d.source_image_id == reference_capture_id]
@@ -461,8 +481,11 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
         if width and height:
             diag = image_diagonal(width, height)
             current, following = (boxes, reference_boxes) if capture_first else (reference_boxes, boxes)
-            links = select_links(current, following, vectors, diag, config.cost_threshold, config.require_features)
+            links = select_links(
+                current, following, vectors, diag, config.cost_threshold, config.require_features, options
+            )
             linked = {frozenset((det.pk, nxt.pk)) for det, nxt, _ in links}
+            multiplier = activity_multiplier(max(len(current), len(following)), options)
 
     # Captures from the reference frame's to this one, signed: 1 is the adjacent capture the
     # tracker would pair, so a larger count means the preview spans captures it never compares.
@@ -504,6 +527,8 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
                         vectors.get(reference["pk"]),
                         vectors.get(box.pk),
                         diag,
+                        options,
+                        multiplier,
                     )
                 )
         rows.append(row)

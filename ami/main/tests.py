@@ -64,7 +64,9 @@ from ami.ml.post_processing.tracking_task import (
     image_diagonal,
     iou,
     pair_detections,
+    pair_terms,
     total_cost,
+    weighted_cost,
 )
 from ami.tests.fixtures.main import (
     create_captures,
@@ -10064,6 +10066,38 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertLess(by_id[far.pk]["likelihood"], by_id[same_box.pk]["likelihood"])
         self.assertFalse(by_id[far.pk]["would_link"])
 
+    def test_candidates_are_scored_with_the_sessions_link_options(self):
+        """The picker's cost is the tracker's scored cost under the session's settings, so an
+        appearance calibration changes the cost and the appearance gate stops a pair from
+        linking here as it does in a run."""
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector, unlike_vector = [1.0] + [0.0] * 2047, [0.6, 0.8] + [0.0] * 2046
+        self._give_target_vectors(vector, extractor)
+        track_box = [10, 10, 40, 40]
+        alike = self._make_occurrence([self.after_capture], bbox=track_box, vector=vector, algorithm=extractor)
+        unlike = self._make_occurrence([self.after_capture], bbox=track_box, vector=unlike_vector, algorithm=extractor)
+        config = TrackingConfig(
+            event_ids=[self.event.pk],
+            appearance_similarity_floor=0.5,
+            appearance_similarity_ceiling=0.9,
+            appearance_min_similarity=0.8,
+        )
+
+        with mock.patch("ami.main.models_future.merge_candidates.tracking_config_for", return_value=config):
+            rows = self.get_candidates().data["candidates"]
+
+        by_id = {row["id"]: row for row in rows}
+        diagonal = image_diagonal(self.FRAME_SIZE, self.FRAME_SIZE)
+        expected = weighted_cost(
+            pair_terms(vector, unlike_vector, track_box, track_box, diagonal), config.link_options()
+        )
+        self.assertAlmostEqual(by_id[unlike.pk]["cost"], expected, places=4)
+        self.assertAlmostEqual(expected, 0.75, places=4, msg="Similarity 0.6 maps to 0.75 between 0.5 and 0.9")
+        self.assertNotAlmostEqual(expected, total_cost(vector, unlike_vector, track_box, track_box, diagonal))
+        self.assertEqual([row["id"] for row in rows], [alike.pk, unlike.pk])
+        self.assertTrue(by_id[alike.pk]["would_link"])
+        self.assertFalse(by_id[unlike.pk]["would_link"], "The appearance gate forbids this pair")
+
     def test_adjacent_captures_are_searched_by_default(self):
         """The default search is the one capture on either side of the track, since that is
         where the frame continuing it sits; `captures` widens it by count and `minutes` by time."""
@@ -10339,6 +10373,8 @@ class CaptureMatchesTestCase(APITestCase):
     NEAR_BOX = [11, 11, 41, 41]
     OFFSET_BOX = [12, 12, 42, 42]
     FAR_BOX = [500, 500, 530, 530]
+    # Cosine similarity 0.6 with VECTOR.
+    UNLIKE_VECTOR = [0.6, 0.8] + [0.0] * 2046
 
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project(reuse=False)
@@ -10471,6 +10507,36 @@ class CaptureMatchesTestCase(APITestCase):
 
         self.assertFalse(row["would_link"])
         self.assertGreater(row["likelihood"], 0.5)
+
+    def test_the_preview_uses_the_sessions_link_options(self):
+        """The preview runs the matcher and scores each box with the session's settings: a box
+        that would link by default is not linked when the appearance gate forbids it, and its
+        cost is the calibrated one."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        capture = self.captures[3]
+        unlike = self._box(capture, self.NEAR_BOX, vector=self.UNLIKE_VECTOR)
+        config = TrackingConfig(
+            event_ids=[self.event.pk],
+            cost_threshold=1.0,
+            appearance_similarity_floor=0.5,
+            appearance_similarity_ceiling=0.9,
+            appearance_min_similarity=0.8,
+        )
+
+        with mock.patch("ami.main.models_future.merge_candidates.tracking_config_for", return_value=config):
+            row = self.get_matches(track, capture.pk).data["detections"][0]
+        without_gate = config.copy(update={"appearance_min_similarity": None})
+        with mock.patch("ami.main.models_future.merge_candidates.tracking_config_for", return_value=without_gate):
+            ungated = self.get_matches(track, capture.pk).data["detections"][0]
+
+        expected = weighted_cost(
+            pair_terms(self.VECTOR, self.UNLIKE_VECTOR, self.TRACK_BOX, self.NEAR_BOX, self.diagonal),
+            config.link_options(),
+        )
+        self.assertEqual(row["detection_id"], unlike.pk)
+        self.assertAlmostEqual(row["cost"], expected, places=4)
+        self.assertFalse(row["would_link"], "The appearance gate forbids this pair")
+        self.assertTrue(ungated["would_link"], "Without the gate the same box links under the threshold")
 
     def test_the_preview_links_what_a_tracking_pass_saves(self):
         """The preview and a tracking pass share one matcher, so on the same two captures the box
