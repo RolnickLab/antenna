@@ -468,6 +468,7 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
                 reply_subject=f"reply.features.{image.pk}",
             )
         self.assertEqual(self._results_param("unmatched"), 2)
+        self.assertEqual(self._results_param("without_vector"), 0)
         self.assertNotEqual(self.job.status, JobState.FAILURE.value)
 
     @patch("ami.jobs.tasks._ack_task_via_nats")
@@ -483,6 +484,7 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         )
         mock_ack.assert_called_once()
         self.assertEqual(self._results_param("unmatched"), 2)
+        self.assertEqual(self._results_param("without_vector"), 1)
         self.assertEqual(self.job.status, JobState.FAILURE.value)
 
     @patch("ami.jobs.tasks.TaskQueueManager")
