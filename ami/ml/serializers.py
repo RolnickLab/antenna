@@ -66,10 +66,11 @@ class AlgorithmSerializer(DefaultSerializer):
         Scoped to the project being viewed: an algorithm is shared across the platform but
         an evaluation set is not.
         """
-        from ami.base.views import get_active_project
         from ami.ml import reporting
 
-        project = get_active_project(request=self.context["request"], required=False)
+        # .get(): this serializer is nested inside other responses, which do not always
+        # carry a request. Without one there is no project, so only the global sets show.
+        project = reporting.project_for(self.context.get("request"))
         return reporting.latest_evaluations(obj, project=project)
 
 

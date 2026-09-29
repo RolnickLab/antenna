@@ -4092,6 +4092,79 @@ class TestAlgorithmEvaluation(TestCase):
         self.assertIn(shared, OccurrenceSet.objects.for_project(self.project))
 
 
+class TestEvaluationsAreNotExposedAcrossProjects(TestCase):
+    """
+    An evaluation names the set it ran on and how the model scored. Sets belong to
+    projects, so those names and numbers are project data.
+
+    Scoping by project only helps when a project is named and when the caller may see it.
+    Neither held: with no project the read was unfiltered, and a named project was loaded
+    by id without checking the caller could see it, so a draft project's id worked.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="outsider@example.com", password="testpass123")
+        self.algorithm = Algorithm.objects.create(name="Shared model", key="shared-model")
+
+        self.taxon = Taxon.objects.create(name="Exposus taxon", rank=TaxonRank.SPECIES.name)
+
+        self.global_set = OccurrenceSet.objects.create(name="Platform-wide set")
+        self.their_project = Project.objects.create(name="Someone Else's Project", draft=True)
+        self.their_set = OccurrenceSet.objects.create(name="Their private set")
+        self.their_set.projects.add(self.their_project)
+
+        for occurrence_set in (self.global_set, self.their_set):
+            evaluation = AlgorithmEvaluation.objects.create(
+                algorithm=self.algorithm,
+                occurrence_set=occurrence_set,
+                micro_accuracy=0.9,
+                macro_accuracy=0.9,
+                occurrences_scored=10,
+                species_scored=1,
+            )
+            TaxonEvaluation.objects.create(
+                evaluation=evaluation, taxon=self.taxon, accuracy=0.9, occurrences_scored=10, correct=9
+            )
+
+    def _request_naming(self, project):
+        """A DRF request, since get_active_project reads request.data."""
+        from rest_framework.request import Request
+
+        request = Request(APIRequestFactory().get("/", {"project_id": project.pk}))
+        request.user = self.user
+        return request
+
+    def test_without_a_project_only_the_global_sets_are_shown(self):
+        """No project named must mean the platform-wide sets, not every project's."""
+        names = [row["occurrence_set"]["name"] for row in reporting.latest_evaluations(self.algorithm)]
+
+        self.assertIn(self.global_set.name, names)
+        self.assertNotIn(self.their_set.name, names)
+
+    def test_a_taxon_without_a_project_shows_only_the_global_sets(self):
+        names = [row["occurrence_set"]["name"] for row in reporting.performance_for_taxon(self.taxon)]
+
+        self.assertIn(self.global_set.name, names)
+        self.assertNotIn(self.their_set.name, names)
+
+    def test_a_project_the_caller_cannot_see_is_not_used(self):
+        """A draft project's id is loaded by the helper without a visibility check."""
+        request = self._request_naming(self.their_project)
+
+        project = reporting.project_for(request)
+
+        self.assertIsNone(project)
+
+    def test_a_project_the_caller_can_see_is_used(self):
+        self.their_project.members.add(self.user)
+
+        self.assertEqual(reporting.project_for(self._request_naming(self.their_project)), self.their_project)
+
+    def test_no_request_means_no_project(self):
+        """This serializer is nested in responses that do not carry a request."""
+        self.assertIsNone(reporting.project_for(None))
+
+
 class TestTaxaListQueryCount(APITestCase):
     """
     Guard against an N+1 on the taxa-lists page.

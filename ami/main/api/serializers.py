@@ -1138,7 +1138,7 @@ class TaxonSerializer(DefaultSerializer):
         """
         from ami.ml import reporting
 
-        project = get_active_project(request=self.context["request"], required=False)
+        project = reporting.project_for(self.context.get("request"))
         return reporting.performance_for_taxon(obj, project=project)
 
 

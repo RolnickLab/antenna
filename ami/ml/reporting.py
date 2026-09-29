@@ -17,17 +17,36 @@ from ami.ml.models.evaluation import AlgorithmEvaluation, TaxonEvaluation
 DEFAULT_EVALUATION_LIMIT = 5
 
 
-def visible_sets(project: Project | None):
+def visible_sets(project: Project | None) -> models.QuerySet:
     """
     The evaluation sets a project may be shown: its own, plus the global ones.
 
     Taxa and algorithms are shared across the platform but evaluation sets are not, so
-    every read below has to be scoped or it reports another project's numbers. Passing
-    None means no scoping, which is only for a caller that has already scoped itself.
+    every read below has to be scoped or it reports another project's numbers. Without a
+    project that means the global sets alone: an unscoped read would answer with every
+    project's set names and scores, and this is reachable without naming one.
     """
     if project is None:
-        return None
+        return OccurrenceSet.objects.filter(projects__isnull=True)
     return OccurrenceSet.objects.for_project(project)
+
+
+def project_for(request) -> Project | None:
+    """
+    The project a request is asking about, if the caller may see it.
+
+    get_active_project loads a project by id alone, so a caller can name a draft project
+    they are not a member of and have it scoped to. Anything that scopes by project has to
+    check visibility itself until that helper does.
+    """
+    from ami.base.views import get_active_project
+
+    if request is None:
+        return None
+    project = get_active_project(request=request, required=False)
+    if project is None:
+        return None
+    return Project.objects.visible_for_user(request.user).filter(pk=project.pk).first()
 
 
 # How "best" is decided, in one place so the single-list lookup and the list page cannot
@@ -40,10 +59,7 @@ def best_evaluation_for_taxa_list(taxa_list: TaxaList, project: Project | None =
     """The algorithm that scores highest on the species in this list."""
     # No .distinct(): the join repeats an evaluation once per species it scored in the list,
     # which cannot change which row sorts first.
-    sets = visible_sets(project)
-    rows = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=taxa_list)
-    if sets is not None:
-        rows = rows.filter(occurrence_set__in=sets)
+    rows = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=taxa_list, occurrence_set__in=visible_sets(project))
     return rows.select_related("algorithm", "occurrence_set").order_by(*BEST_MODEL_ORDERING).first()
 
 
@@ -55,10 +71,7 @@ def annotate_best_model(taxa_lists: models.QuerySet, project: Project | None = N
     best model, so a per-row lookup costs one query each.
     """
     best = AlgorithmEvaluation.objects.filter(taxa__taxon__lists=models.OuterRef("pk"))
-    sets = visible_sets(project)
-    if sets is not None:
-        best = best.filter(occurrence_set__in=sets)
-    best = best.order_by(*BEST_MODEL_ORDERING)
+    best = best.filter(occurrence_set__in=visible_sets(project)).order_by(*BEST_MODEL_ORDERING)
     return taxa_lists.annotate(
         best_algorithm_id=models.Subquery(best.values("algorithm_id")[:1]),
         best_algorithm_name=models.Subquery(best.values("algorithm__name")[:1]),
@@ -75,10 +88,7 @@ def performance_for_taxon(taxon: Taxon, project: Project | None = None) -> list[
     The breakdown the taxon page shows: one row per algorithm that has been scored on a set
     containing this species.
     """
-    rows = TaxonEvaluation.objects.filter(taxon=taxon)
-    sets = visible_sets(project)
-    if sets is not None:
-        rows = rows.filter(evaluation__occurrence_set__in=sets)
+    rows = TaxonEvaluation.objects.filter(taxon=taxon, evaluation__occurrence_set__in=visible_sets(project))
     rows = rows.select_related("evaluation__algorithm", "evaluation__occurrence_set").order_by("-accuracy")
     return [
         {
@@ -112,10 +122,9 @@ def latest_evaluations(
     prefetched the evaluations is served from that cache instead of one query per row.
     """
     rows = sorted(algorithm.evaluations.all(), key=lambda row: row.created_at, reverse=True)
-    if project is not None:
-        # Filtered in Python, not SQL, to keep using the prefetched cache above.
-        allowed = set(visible_sets(project).values_list("pk", flat=True))
-        rows = [row for row in rows if row.occurrence_set_id in allowed]
+    # Filtered in Python, not SQL, to keep using the prefetched cache above.
+    allowed = set(visible_sets(project).values_list("pk", flat=True))
+    rows = [row for row in rows if row.occurrence_set_id in allowed]
     rows = rows[:limit]
     return [
         {
