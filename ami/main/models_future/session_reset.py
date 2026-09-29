@@ -9,8 +9,9 @@ including groupings a person confirmed.
 After a reset, for every detection of the session that shared an occurrence:
 
 - The earliest detection (in capture order) keeps the occurrence; each other
-  detection in the session moves to a new occurrence of its own. Detections of the
-  same occurrence in other sessions stay where they are.
+  detection in the session moves to a new occurrence of its own. An occurrence that
+  also holds detections of another session stays with those detections, untouched
+  there, and every detection of this session leaves it.
 - Every occurrence the split touched takes its determination from its own
   detections' best prediction, the rule ``Occurrence.best_prediction`` applies. An
   occurrence with a human identification keeps the determination it has.
@@ -109,22 +110,26 @@ def session_tracking_counts(event: Event) -> SessionTrackingCounts:
     )
 
 
-def _plan_split(event: Event) -> tuple[list[int], list[int]]:
-    """The multi-detection occurrences of the session, and the detections that leave them.
+def _plan_split(event: Event) -> tuple[list[int], list[int], dict[int, int]]:
+    """The multi-detection occurrences of the session, the detections that leave them, and
+    the occurrences whose session changes.
 
-    A detection leaves when it is in this session and is not its occurrence's first
-    detection in capture order.
+    An occurrence that lies wholly in this session keeps its first detection in capture
+    order, and its other detections leave. An occurrence that also holds detections of
+    another session stays whole there: every detection of this session leaves it, and if
+    it was filed under this session it moves to the session of its first remaining
+    detection.
     """
-    multi_ids = list(
+    multi = dict(
         Occurrence.objects.filter(pk__in=_session_occurrence_ids(event))
         .annotate(_n=Count("detections"))
         .filter(_n__gt=1)
-        .values_list("pk", flat=True)
+        .values_list("pk", "event_id")
     )
-    if not multi_ids:
-        return [], []
+    if not multi:
+        return [], [], {}
     rows = list(
-        Detection.objects.filter(occurrence_id__in=multi_ids)
+        Detection.objects.filter(occurrence_id__in=multi)
         .order_by()
         .values("pk", "occurrence_id", "source_image_id", "source_image__timestamp", "source_image__event_id")
     )
@@ -132,10 +137,17 @@ def _plan_split(event: Event) -> tuple[list[int], list[int]]:
     for row in rows:
         by_occurrence.setdefault(row["occurrence_id"], []).append(row)
     movers: list[int] = []
-    for members in by_occurrence.values():
+    new_sessions: dict[int, int] = {}
+    for occurrence_id, members in by_occurrence.items():
         members.sort(key=_capture_order_key)
-        movers.extend(row["pk"] for row in members[1:] if row["source_image__event_id"] == event.pk)
-    return multi_ids, movers
+        outside = [row for row in members if row["source_image__event_id"] != event.pk]
+        if outside:
+            movers.extend(row["pk"] for row in members if row["source_image__event_id"] == event.pk)
+            if multi[occurrence_id] == event.pk:
+                new_sessions[occurrence_id] = outside[0]["source_image__event_id"]
+        else:
+            movers.extend(row["pk"] for row in members[1:])
+    return list(multi), movers, new_sessions
 
 
 def _refresh_determinations(occurrence_ids: Iterable[int]) -> int:
@@ -193,7 +205,7 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
             "Resetting would split occurrences a person identified; pass force to reset anyway."
         )
 
-    multi_ids, movers = _plan_split(event)
+    multi_ids, movers, new_sessions = _plan_split(event)
     links = _session_detections(event).filter(next_detection__source_image__event=event)
     tracking_classifications = Classification.objects.filter(
         detection__source_image__event=event, algorithm__key=TRACKING_ALGORITHM_KEY
@@ -234,11 +246,17 @@ def reset_session_tracking(event: Event, *, force: bool = False, dry_run: bool =
             batch_size=1000,
         )
 
+        Occurrence.objects.bulk_update(
+            [Occurrence(pk=pk, event_id=session_id) for pk, session_id in new_sessions.items()], ["event"]
+        )
+
         touched = [*multi_ids, *(o.pk for o in new_occurrences)]
         determinations_updated = _refresh_determinations(pk for pk in touched if pk not in identified)
         refresh_track_stats_for_ids(touched)
 
-    update_calculated_fields_for_sessions_and_stations([event.pk], stations_async=False)
+    update_calculated_fields_for_sessions_and_stations(
+        [event.pk, *set(new_sessions.values())], stations_async=False
+    )
     return SessionResetResult(
         event_id=event.pk,
         dry_run=False,
