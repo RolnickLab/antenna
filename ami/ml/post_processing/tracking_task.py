@@ -100,6 +100,20 @@ class TrackingConfig(pydantic.BaseModel):
     stationary_cost_threshold: float = pydantic.Field(0.2, ge=0)
     stationary_allow_missing_features: bool = False
 
+    # Appearance calibration: cosine similarity at or above the ceiling costs 0, at or below the
+    # floor costs 1, linearly between. Each feature extractor has its own similarity range, so the
+    # defaults (0 and 1, the plain 1 - similarity) suit none in particular.
+    appearance_similarity_floor: float = pydantic.Field(0.0, ge=0, le=1)
+    appearance_similarity_ceiling: float = pydantic.Field(1.0, ge=0, le=1)
+    # Appearance gate: never link two detections whose embeddings are less similar than this.
+    # Pairs missing an embedding are not gated.
+    appearance_min_similarity: float | None = pydantic.Field(None, ge=0, le=1)
+    # Move rule: when two embeddings are at least this similar, the overlap term becomes at most
+    # the centre shift in box sizes divided by motion_max_shift, so an insect that moved clear of
+    # its old box can still link. Off (None) keeps the overlap term as it is.
+    motion_min_similarity: float | None = pydantic.Field(None, ge=0, le=1)
+    motion_max_shift: float = pydantic.Field(3.0, gt=0)
+
     @pydantic.validator("activity_steps")
     def _steps_ascend(cls, steps: list[tuple[int, float]]) -> list[tuple[int, float]]:
         counts = [count for count, _ in steps]
@@ -116,6 +130,8 @@ class TrackingConfig(pydantic.BaseModel):
             raise ValueError("Provide exactly one of source_image_collection_id or event_ids")
         if values.get("activity_scaling") == "steps" and not values.get("activity_steps"):
             raise ValueError("activity_scaling 'steps' needs activity_steps")
+        if values.get("appearance_similarity_floor", 0.0) >= values.get("appearance_similarity_ceiling", 1.0):
+            raise ValueError("appearance_similarity_floor must be below appearance_similarity_ceiling")
         return values
 
     def link_options(self) -> "LinkOptions":
@@ -198,6 +214,11 @@ class LinkOptions:
     stationary_min_iou: float = 0.7
     stationary_cost_threshold: float = 0.2
     stationary_allow_missing_features: bool = False
+    appearance_similarity_floor: float = 0.0
+    appearance_similarity_ceiling: float = 1.0
+    appearance_min_similarity: float | None = None
+    motion_min_similarity: float | None = None
+    motion_max_shift: float = 3.0
 
 
 DEFAULT_LINK_OPTIONS = LinkOptions()
@@ -206,12 +227,14 @@ DEFAULT_LINK_OPTIONS = LinkOptions()
 @dataclasses.dataclass(frozen=True)
 class PairTerms:
     """The raw cost terms of one pair of detections. ``appearance`` is 1 - cosine similarity,
-    or None when either detection has no embedding."""
+    or None when either detection has no embedding. ``shift`` is the centre shift in box sizes
+    (the geometric mean of the two boxes' sides), used only by the move rule."""
 
     appearance: float | None
     iou: float
     size_ratio: float
     distance: float
+    shift: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -223,22 +246,53 @@ class TopLabel:
     ancestor_ids: frozenset[int] = frozenset()
 
 
+def shift_in_box_sizes(bb1, bb2) -> float:
+    area1 = (bb1[2] - bb1[0] + 1) * (bb1[3] - bb1[1] + 1)
+    area2 = (bb2[2] - bb2[0] + 1) * (bb2[3] - bb2[1] + 1)
+    shift = math.dist(((bb1[0] + bb1[2]) / 2, (bb1[1] + bb1[3]) / 2), ((bb2[0] + bb2[2]) / 2, (bb2[1] + bb2[3]) / 2))
+    return shift / math.sqrt(math.sqrt(area1 * area2))
+
+
 def pair_terms(f1, f2, bb1, bb2, diag: float) -> PairTerms:
     appearance = None if f1 is None or f2 is None else 1 - cosine_similarity(f1, f2)
-    return PairTerms(appearance, iou(bb1, bb2), box_ratio(bb1, bb2), distance_ratio(bb1, bb2, diag))
+    return PairTerms(
+        appearance, iou(bb1, bb2), box_ratio(bb1, bb2), distance_ratio(bb1, bb2, diag), shift_in_box_sizes(bb1, bb2)
+    )
+
+
+def appearance_term(appearance: float, options: LinkOptions) -> float:
+    """The appearance cost after calibration: 0 at or above the similarity ceiling, 1 at or below the floor."""
+    floor, ceiling = options.appearance_similarity_floor, options.appearance_similarity_ceiling
+    if floor == 0.0 and ceiling == 1.0:
+        return appearance  # Returned untouched so the default cost stays bit-identical.
+    similarity = 1 - appearance
+    return min(1.0, max(0.0, (ceiling - similarity) / (ceiling - floor)))
+
+
+def overlap_term(terms: PairTerms, options: LinkOptions) -> float:
+    """1 - IoU, or with the move rule and look-alike embeddings, at most the shift over motion_max_shift."""
+    term = 1 - terms.iou
+    if (
+        options.motion_min_similarity is not None
+        and terms.appearance is not None
+        and terms.shift is not None
+        and 1 - terms.appearance >= options.motion_min_similarity
+    ):
+        term = min(term, terms.shift / options.motion_max_shift)
+    return term
 
 
 def weighted_cost(terms: PairTerms, options: LinkOptions = DEFAULT_LINK_OPTIONS, distance_multiplier=1.0) -> float:
-    """The matching cost from its terms. At the default weights it equals ``total_cost``
+    """The matching cost from its terms. At the default options it equals ``total_cost``
     exactly: the terms are summed in the same order and multiplying by 1.0 changes nothing."""
     geometry = (
-        options.iou_weight * (1 - terms.iou)
+        options.iou_weight * overlap_term(terms, options)
         + options.size_weight * (1 - terms.size_ratio)
         + options.distance_weight * distance_multiplier * terms.distance
     )
     if terms.appearance is None:
         return geometry
-    return options.appearance_weight * terms.appearance + geometry
+    return options.appearance_weight * appearance_term(terms.appearance, options) + geometry
 
 
 def activity_multiplier(detection_count: int, options: LinkOptions) -> float:
@@ -288,6 +342,12 @@ def choose_links(
     candidates: list[tuple[typing.Any, typing.Any, float]] = []
     for det, nxt, terms in pairs:
         missing = terms.appearance is None
+        if (
+            options.appearance_min_similarity is not None
+            and not missing
+            and 1 - terms.appearance < options.appearance_min_similarity
+        ):
+            continue
         cost = weighted_cost(terms, options, multiplier)
         if options.species_gate != "off" and labels_conflict(
             labels.get(key(det)), labels.get(key(nxt)), options.species_gate_min_score

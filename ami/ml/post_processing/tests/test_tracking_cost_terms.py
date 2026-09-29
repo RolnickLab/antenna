@@ -25,6 +25,7 @@ from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
     TrackingTask,
     activity_multiplier,
+    appearance_term,
     choose_links,
     event_transition_pairs,
     image_diagonal,
@@ -35,6 +36,7 @@ from ami.ml.post_processing.tracking_task import (
     propose_event_links,
     resolve_feature_algorithm,
     resolve_label_algorithm,
+    shift_in_box_sizes,
     top_labels,
     total_cost,
     weighted_cost,
@@ -139,6 +141,46 @@ class TestChooseLinks(SimpleTestCase):
         self.assertEqual(choose_links([(1, 10, moved)], 0.65, options=options, detection_count=60), [])
 
 
+class TestAppearanceAndMoveRules(SimpleTestCase):
+    # Two boxes of side 40 whose centres are 80 px apart: no overlap, a shift of two box sizes.
+    APART = dict(iou=0.0, size_ratio=1.0, distance=0.02, shift=2.0)
+
+    def test_calibration_maps_the_similarity_range_onto_zero_to_one(self):
+        options = LinkOptions(appearance_similarity_floor=0.4, appearance_similarity_ceiling=0.9)
+        self.assertEqual(appearance_term(1 - 0.95, options), 0.0)
+        self.assertAlmostEqual(appearance_term(1 - 0.65, options), 0.5)
+        self.assertEqual(appearance_term(1 - 0.2, options), 1.0)
+        self.assertEqual(appearance_term(0.123, DEFAULT_LINK_OPTIONS), 0.123)
+
+    def test_appearance_gate_forbids_only_pairs_whose_embeddings_disagree(self):
+        alike = PairTerms(appearance=0.1, iou=0.9, size_ratio=1.0, distance=0.001)
+        unlike = PairTerms(appearance=0.6, iou=0.9, size_ratio=1.0, distance=0.001)
+        no_vector = PairTerms(appearance=None, iou=0.9, size_ratio=1.0, distance=0.001)
+        gate = LinkOptions(appearance_min_similarity=0.5)
+        self.assertEqual(len(choose_links([(1, 10, unlike)], 1.0)), 1, "The gate is off by default")
+        self.assertEqual(choose_links([(1, 10, unlike)], 1.0, options=gate), [])
+        self.assertEqual(len(choose_links([(1, 10, alike)], 1.0, options=gate)), 1)
+        self.assertEqual(len(choose_links([(1, 10, no_vector)], 1.0, require_features=False, options=gate)), 1)
+
+    def test_move_rule_lets_a_look_alike_link_clear_of_its_old_box(self):
+        alike = PairTerms(appearance=0.05, **self.APART)
+        unlike = PairTerms(appearance=0.4, **self.APART)
+        self.assertEqual(choose_links([(1, 10, alike)], 1.0), [], "Disjoint boxes cannot link at 1.0 by default")
+        move = LinkOptions(motion_min_similarity=0.9, motion_max_shift=4.0)
+        ((_, _, cost),) = choose_links([(1, 10, alike)], 1.0, options=move)
+        self.assertAlmostEqual(cost, 0.05 + 0.5 + 0.02)
+        self.assertEqual(choose_links([(1, 10, unlike)], 1.0, options=move), [])
+        far = PairTerms(appearance=0.05, iou=0.0, size_ratio=1.0, distance=0.1, shift=8.0)
+        self.assertEqual(choose_links([(1, 10, far)], 1.0, options=move), [], "The shift is capped at one overlap")
+        without_vector = PairTerms(appearance=None, **self.APART)
+        self.assertEqual(choose_links([(1, 10, without_vector)], 1.0, require_features=False, options=move), [])
+
+    def test_shift_is_measured_in_box_sizes(self):
+        self.assertAlmostEqual(shift_in_box_sizes(_box(0, 0, 39), _box(80, 0, 39)), 2.0)
+        self.assertAlmostEqual(shift_in_box_sizes(_box(0, 0, 9), _box(0, 30, 9)), 3.0)
+        self.assertEqual(pair_terms(None, None, _box(0, 0), _box(0, 0), 800).shift, 0.0)
+
+
 class TestTrackingConfigTerms(SimpleTestCase):
     def test_defaults_leave_every_new_rule_off(self):
         config = TrackingConfig(event_ids=[1])
@@ -152,6 +194,9 @@ class TestTrackingConfigTerms(SimpleTestCase):
             {"activity_scaling": "steps"},
             {"activity_scaling": "steps", "activity_steps": [[30, 2.0], [10, 1.5]]},
             {"activity_steps": [[10, 0]]},
+            {"appearance_similarity_floor": 0.9, "appearance_similarity_ceiling": 0.4},
+            {"appearance_min_similarity": 1.2},
+            {"motion_max_shift": 0},
         ):
             with self.subTest(bad=bad), self.assertRaises(pydantic.ValidationError):
                 TrackingConfig(event_ids=[1], **bad)
@@ -162,6 +207,12 @@ class TestTrackingConfigTerms(SimpleTestCase):
             staff_only_config_fields("tracking", config), ["appearance_weight", "species_gate", "stationary_first"]
         )
         self.assertEqual(staff_only_config_fields("tracking", {"species_gate": "off"}), [])
+        calibrated = {
+            "appearance_similarity_floor": 0.4,
+            "appearance_min_similarity": 0.5,
+            "motion_min_similarity": 0.8,
+        }
+        self.assertEqual(staff_only_config_fields("tracking", calibrated), sorted(calibrated))
 
 
 class TestSweepReporting(SimpleTestCase):
@@ -311,6 +362,12 @@ class TestCostTermsOnATrackingSession(TestCase):
             {"species_gate": "penalty", "species_gate_min_score": 0.0, "species_gate_penalty": 0.3},
             {"stationary_first": True, "stationary_max_shift": 0.05, "stationary_min_iou": 0.3},
             {"activity_scaling": "log", "activity_reference_count": 1, "appearance_weight": 0.5},
+            {
+                "appearance_similarity_floor": 0.3,
+                "appearance_similarity_ceiling": 0.9,
+                "appearance_min_similarity": 0.2,
+                "motion_min_similarity": 0.5,
+            },
         ):
             with self.subTest(extra=extra):
                 config = TrackingConfig(event_ids=[self.event.pk], cost_threshold=0.8, require_features=False, **extra)
