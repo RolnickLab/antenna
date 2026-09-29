@@ -7,7 +7,8 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models import F, OuterRef, Prefetch, Q, Subquery, Window
+from django.db.models.functions import RowNumber
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -23,6 +24,7 @@ from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.utils.urls import remove_query_param
 from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
@@ -45,12 +47,14 @@ from ami.main.models_future.merge_candidates import (
     tracking_config_for,
 )
 from ami.main.models_future.occurrence import (
+    OCCURRENCE_FRAMES_PAGE_SIZE,
     model_agreement_for_project,
     occurrence_path,
     prefetch_nested_classifications,
     top_identifiers_for_project,
 )
 from ami.main.models_future.tracks import (
+    CAPTURE_ORDER,
     TrackEditError,
     add_detections,
     detach_detection,
@@ -108,6 +112,7 @@ from .serializers import (
     MergeCandidatesResponseSerializer,
     ModelAgreementSerializer,
     OccurrenceAddDetectionsSerializer,
+    OccurrenceFrameSerializer,
     OccurrenceGroupingSerializer,
     OccurrenceListSerializer,
     OccurrenceMergeSerializer,
@@ -1576,6 +1581,29 @@ class OccurrenceFilterSet(FilterSet):
         fields = list(OCCURRENCE_FILTERSET_FIELDS)
 
 
+class OccurrenceFramesPagination(LimitOffsetPaginationWithPermissions):
+    """Pages of one occurrence's frames. The view sets ``around_index`` to open the
+    page that holds a given frame, instead of reading ``offset``."""
+
+    default_limit = OCCURRENCE_FRAMES_PAGE_SIZE
+    max_limit = 200
+    around_index: int | None = None
+
+    def get_offset(self, request):
+        if self.around_index is not None:
+            return (self.around_index // self.limit) * self.limit
+        return super().get_offset(request)
+
+    # The neighbouring pages are addressed by offset alone; kept, `around` would win.
+    def get_next_link(self):
+        url = super().get_next_link()
+        return remove_query_param(url, "around") if url else url
+
+    def get_previous_link(self):
+        url = super().get_previous_link()
+        return remove_query_param(url, "around") if url else url
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1630,7 +1658,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     # Actions that open one occurrence. They drop the determination requirement; see
     # get_queryset.
-    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path")
+    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path", "detections")
     # Actions the project's default filters never hide an occurrence from. The session
     # view selects occurrences with those filters off and draws their paths.
     UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path")
@@ -1658,14 +1686,15 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             "event",
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
-        qs = qs.with_identifications()  # type: ignore
+        if self.action != "detections":
+            qs = qs.with_identifications()  # type: ignore
         if self.action not in self.UNFILTERED_ACTIONS:
             qs = qs.apply_default_filters(  # type: ignore
                 project, self.request, include_undetermined=allow_undetermined
             )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        elif self.action not in ("path", "merge_candidates", "capture_matches"):
+        elif self.action not in ("path", "detections", "merge_candidates", "capture_matches"):
             # `path` and the track-edit pickers build their own values() queries and never
             # serialize the occurrence, so the detail prefetch would only be waste:
             # measured at 249ms/4 queries against 6ms/2 for the same object without
@@ -1727,6 +1756,63 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         """
         occurrence = self.get_object()
         return Response(OccurrencePathFrameSerializer(occurrence_path(occurrence), many=True).data)
+
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="around",
+                description="A detection of this occurrence. Returns the page that holds it, " "in place of `offset`.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ],
+        responses=OccurrenceFrameSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"], name="detections", pagination_class=OccurrenceFramesPagination)
+    def detections(self, request: Request, pk=None) -> Response:
+        """This occurrence's detections one page at a time, in capture order.
+
+        A track can hold hundreds of frames, too many to embed in the detail
+        response, which carries only the first page. ``frame_index`` is each
+        detection's position in the whole track, so pages can be labelled and
+        jumped between without loading the others.
+        """
+        occurrence = self.get_object()
+        params = request.query_params
+        SingleParamSerializer[int].clean(
+            param_name="limit",
+            field=serializers.IntegerField(
+                required=False, min_value=1, max_value=OccurrenceFramesPagination.max_limit
+            ),
+            data=params,
+        )
+        SingleParamSerializer[int].clean(
+            param_name="offset", field=serializers.IntegerField(required=False, min_value=0), data=params
+        )
+        around = SingleParamSerializer[int].clean(
+            param_name="around", field=serializers.IntegerField(required=False, min_value=1), data=params
+        )
+        if around is not None and "offset" in params:
+            raise api_exceptions.ValidationError({"around": "Pass either `around` or `offset`, not both."})
+
+        frame_order = [F(field) if isinstance(field, str) else field for field in CAPTURE_ORDER]
+        if around is not None:
+            ordered_ids = list(occurrence.detections.order_by(*frame_order).values_list("pk", flat=True))
+            if around not in ordered_ids:
+                raise api_exceptions.ValidationError({"around": f"Detection {around} is not in this occurrence."})
+            self.paginator.around_index = ordered_ids.index(around)
+
+        frames = (
+            Detection.objects.filter(occurrence=occurrence)
+            .select_related("source_image__deployment__data_source")
+            .prefetch_related(prefetch_nested_classifications())
+            .annotate(frame_index=Window(RowNumber(), order_by=frame_order) - 1)
+            .order_by(*frame_order)
+        )
+        page = self.paginate_queryset(frames)
+        serializer = OccurrenceFrameSerializer(page, many=True, context=self.get_serializer_context())
+        return self.get_paginated_response(serializer.data)
 
     def get_permissions(self):
         # The viewset as a whole is staff-only for writes. Track edits are the

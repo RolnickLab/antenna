@@ -11,6 +11,7 @@ Tracking issue: https://github.com/RolnickLab/antenna/issues/1271
 from __future__ import annotations
 
 import collections
+import datetime
 from typing import TYPE_CHECKING
 
 from django.db.models import Count, OuterRef, Prefetch, Q, QuerySet, Subquery
@@ -19,9 +20,13 @@ from ami.main.models import Project, TaxonRank, User
 from ami.utils.stats import cohens_kappa, wilson_interval
 
 if TYPE_CHECKING:
-    from ami.main.models import Classification, Identification, Occurrence
+    from ami.main.models import Classification, Detection, Identification, Occurrence
 
 TaxonTuple = tuple[int, str, list[dict]]
+
+# Frames per page of an occurrence's detections, in the detail response and the
+# paginated detections endpoint alike, so the detail's frames are that endpoint's first page.
+OCCURRENCE_FRAMES_PAGE_SIZE = 20
 
 
 def lca_rank_between(a: TaxonTuple, b: TaxonTuple) -> TaxonRank | None:
@@ -76,7 +81,8 @@ def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) 
 
     qs = Detection.objects.prefetch_related(prefetch_nested_classifications()).order_by(*ordering)
     if with_source_image:
-        qs = qs.select_related("source_image")
+        # The capture's URL is built from its deployment's data source.
+        qs = qs.select_related("source_image__deployment__data_source")
     return Prefetch("detections", queryset=qs)
 
 
@@ -92,6 +98,29 @@ def prefetch_detections_for_detail() -> Prefetch:
     which dereferences `source_image` (as `capture`).
     """
     return _detections_prefetch(ordering=("-timestamp",), with_source_image=True)
+
+
+def _frame_order_key(detection: Detection) -> tuple:
+    """``tracks.CAPTURE_ORDER`` for a detection with its source_image loaded."""
+    timestamp = detection.source_image.timestamp
+    return (timestamp is None, timestamp or datetime.datetime.min, detection.source_image_id, detection.pk)
+
+
+def frames_from_prefetch(occurrence: Occurrence) -> list[Detection]:
+    """The prefetched detections in frame order, each with its ``frame_index`` set.
+
+    Frame order is the capture order the track edits and the tracks export use, so a
+    frame's index matches the one the paginated detections endpoint reports. Strict:
+    requires `detections` prefetched with their source_image.
+    """
+    frames = getattr(occurrence, "_frames_in_order", None)
+    if frames is None:
+        _require_prefetch(occurrence, "detections")
+        frames = sorted(occurrence.detections.all(), key=_frame_order_key)
+        for index, detection in enumerate(frames):
+            detection.frame_index = index
+        occurrence._frames_in_order = frames
+    return frames
 
 
 def _require_prefetch(occurrence: Occurrence, *relations: str) -> None:
