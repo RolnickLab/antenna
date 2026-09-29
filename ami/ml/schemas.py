@@ -197,16 +197,8 @@ class EmbeddingResponse(pydantic.BaseModel):
     algorithm's own (extractors differ), and only vectors from one algorithm are comparable.
     """
 
-    features: list[float] = pydantic.Field(
-        description="The feature vector. Also accepted under the key 'vector'.",
-    )
+    features: list[float] = pydantic.Field(description="The feature vector.")
     algorithm: AlgorithmReference
-
-    @pydantic.root_validator(pre=True)
-    def _accept_vector_key(cls, values):
-        if isinstance(values, dict) and "features" not in values and "vector" in values:
-            values = {**values, "features": values["vector"]}
-        return values
 
     @pydantic.validator("features")
     def _features_not_empty(cls, v):

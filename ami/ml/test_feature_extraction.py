@@ -122,7 +122,7 @@ class FeatureOnlyFixture:
                     "embeddings": [
                         {
                             "algorithm": {"name": self.extractor.name, "key": self.extractor.key},
-                            "vector": [0.1] * length,
+                            "features": [0.1] * length,
                         }
                     ],
                     **extra,
@@ -141,13 +141,14 @@ class FeatureOnlyFixture:
 
 
 class TestEmbeddingSchema(TestCase):
-    def test_a_vector_of_any_length_is_accepted_under_either_key(self):
+    def test_a_vector_is_read_from_the_features_key_only(self):
+        """The processing service sends ``features``; an empty vector or any other key is refused."""
         algorithm = {"name": "Backbone", "key": "test-backbone"}
-        for key in ("features", "vector"):
-            parsed = EmbeddingResponse.parse_obj({"algorithm": algorithm, key: [0.1] * BIOCLIP_DIMENSIONS})
-            self.assertEqual(len(parsed.features), BIOCLIP_DIMENSIONS)
-        with self.assertRaises(pydantic.ValidationError):
-            EmbeddingResponse.parse_obj({"algorithm": algorithm, "vector": []})
+        parsed = EmbeddingResponse.parse_obj({"algorithm": algorithm, "features": [0.1] * BIOCLIP_DIMENSIONS})
+        self.assertEqual(len(parsed.features), BIOCLIP_DIMENSIONS)
+        for payload in ({"features": []}, {"vector": [0.1] * BIOCLIP_DIMENSIONS}):
+            with self.assertRaises(pydantic.ValidationError):
+                EmbeddingResponse.parse_obj({"algorithm": algorithm, **payload})
 
 
 class TestFeatureOnlySave(FeatureOnlyFixture, TestCase):
