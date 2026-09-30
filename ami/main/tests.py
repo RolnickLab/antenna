@@ -9976,6 +9976,50 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
         self.assertEqual(Detection.objects.get(pk=second_box.pk).next_detection_id, self.detections[2].pk)
         self.assertIsNone(Detection.objects.get(pk=self.detections[1].pk).next_detection_id)
 
+    def _interleave_chains(self) -> None:
+        """Link the four frames as two tracks on alternating captures, 0→2 and 1→3: the shape
+        two merged tracks keep inside one occurrence if their chains are not rebuilt."""
+        d = self.detections
+        Detection.objects.filter(pk__in=[x.pk for x in d]).update(next_detection=None)
+        Detection.objects.filter(pk=d[0].pk).update(next_detection=d[2])
+        Detection.objects.filter(pk=d[1].pk).update(next_detection=d[3])
+
+    def assertNoLinkLeaves(self, occurrence: Occurrence) -> None:
+        """No link runs into or out of ``occurrence``; the next tracking run would follow one."""
+        outgoing = Detection.objects.filter(occurrence=occurrence, next_detection__isnull=False).exclude(
+            next_detection__occurrence=occurrence
+        )
+        incoming = Detection.objects.filter(next_detection__occurrence=occurrence).exclude(occurrence=occurrence)
+        self.assertEqual(list(outgoing.values_list("pk", flat=True)), [])
+        self.assertEqual(list(incoming.values_list("pk", flat=True)), [])
+
+    def test_splitting_interleaved_tracks_leaves_no_link_across_the_cut(self):
+        self._interleave_chains()
+
+        tail = split_track(self.occurrence, self.detections[2])
+
+        self.assertNoLinkLeaves(self.occurrence)
+        self.assertNoLinkLeaves(tail)
+
+    def test_detaching_from_interleaved_tracks_leaves_no_link_into_the_frame(self):
+        self._interleave_chains()
+
+        detached = detach_detection(self.occurrence, self.detections[2])
+
+        self.assertNoLinkLeaves(self.occurrence)
+        self.assertNoLinkLeaves(detached)
+
+    def test_splitting_after_merging_alternating_tracks_leaves_no_link_across_the_cut(self):
+        after = self._make_captures_after(4)
+        first, first_detections = self._make_track(2, captures=[after[0], after[2]])
+        second, _ = self._make_track(2, captures=[after[1], after[3]])
+
+        merge_occurrences(first, [second])
+        tail = split_track(first, first_detections[1])
+
+        self.assertNoLinkLeaves(first)
+        self.assertNoLinkLeaves(tail)
+
     def test_a_merge_spanning_two_sessions_links_nothing_across_them(self):
         later_session = Event.objects.create(
             project=self.project,
