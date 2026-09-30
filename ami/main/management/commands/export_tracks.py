@@ -36,7 +36,7 @@ class Command(BaseCommand):
         if not Project.objects.filter(pk=project_id).exists():
             raise CommandError(f"Project {project_id} does not exist")
 
-        occurrences = Occurrence.objects.valid().filter(project_id=project_id)  # type: ignore[union-attr]
+        occurrences = Occurrence.objects.with_real_detections().filter(project_id=project_id)  # type: ignore[union-attr]
         if options["events"]:
             occurrences = occurrences.filter(event_id__in=options["events"])
         if options["verified_only"]:

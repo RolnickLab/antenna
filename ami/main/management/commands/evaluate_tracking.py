@@ -14,7 +14,14 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from ami.main.models import Detection, Event, Project
-from ami.ml.post_processing.tracking_evaluation import TrackingEvaluation, evaluate_tracks, tracks_from_links
+from ami.ml.post_processing.tracking_evaluation import (
+    REPORT_NOTES,
+    ConfirmedSetBias,
+    TrackingEvaluation,
+    describe_confirmed_set,
+    evaluate_tracks,
+    tracks_from_links,
+)
 from ami.ml.post_processing.tracking_task import TrackingConfig, propose_event_links, resolve_feature_algorithm
 
 logger = logging.getLogger(__name__)
@@ -91,6 +98,7 @@ class Command(BaseCommand):
         ground_truth: dict[int, int] = {}
         timestamps: dict[int, object] = {}
         predictions: dict[int, int] = {}
+        captures: dict[int, int] = {}
         per_event: list[dict] = []
         skipped: list[dict] = []
         for event in Event.objects.filter(pk__in=event_ids).order_by("pk"):
@@ -101,10 +109,10 @@ class Command(BaseCommand):
                 continue
 
             links = propose_event_links(event, algorithm, config, logger)
-            event_detection_ids = (
-                Detection.objects.valid().filter(source_image__event=event).values_list("pk", flat=True)
+            event_captures = dict(
+                Detection.objects.valid().filter(source_image__event=event).values_list("pk", "source_image_id")
             )
-            event_predictions = tracks_from_links(event_detection_ids, [(a, b) for a, b, _ in links])
+            event_predictions = tracks_from_links(event_captures, [(a, b) for a, b, _ in links])
             event_truth = {pk: occurrence_id for pk, occurrence_id, _, _ in event_rows}
             event_times = {pk: timestamp for pk, _, timestamp, _ in event_rows}
 
@@ -118,6 +126,7 @@ class Command(BaseCommand):
             ground_truth.update(event_truth)
             timestamps.update(event_times)
             predictions.update(event_predictions)
+            captures.update(event_captures)
             per_event.append(
                 {
                     "event_id": event.pk,
@@ -125,12 +134,15 @@ class Command(BaseCommand):
                     "note": note,
                     "links_proposed": len(links),
                     "evaluation": evaluate_tracks(event_truth, event_predictions, event_times),
+                    "confirmed_vs_session": describe_confirmed_set(event_truth, event_predictions, event_captures),
                 }
             )
 
         overall: TrackingEvaluation | None = None
+        overall_bias: ConfirmedSetBias | None = None
         if ground_truth:
             overall = evaluate_tracks(ground_truth, predictions, timestamps)
+            overall_bias = describe_confirmed_set(ground_truth, predictions, captures)
 
         per_track = options["per_track"]
         return {
@@ -141,12 +153,23 @@ class Command(BaseCommand):
                 "feature_extraction_algorithm_id": config.feature_extraction_algorithm_id,
             },
             "events": [
-                {**entry, "evaluation": entry["evaluation"].to_dict(include_tracks=per_track)} for entry in per_event
+                {
+                    **entry,
+                    "evaluation": entry["evaluation"].to_dict(include_tracks=per_track),
+                    "confirmed_vs_session": entry["confirmed_vs_session"].to_dict(),
+                }
+                for entry in per_event
             ],
             "skipped_events": skipped,
             "overall": overall.to_dict(include_tracks=per_track) if overall else None,
-            "_overall_lines": overall.summary_lines() if overall else [],
-            "_event_lines": {entry["event_id"]: entry["evaluation"].summary_lines() for entry in per_event},
+            "confirmed_vs_session": overall_bias.to_dict() if overall_bias else None,
+            "_overall_lines": overall.summary_lines() + overall_bias.summary_lines()
+            if overall and overall_bias
+            else [],
+            "_event_lines": {
+                entry["event_id"]: entry["evaluation"].summary_lines() + entry["confirmed_vs_session"].summary_lines()
+                for entry in per_event
+            },
         }
 
     def _as_text(self, report: dict) -> str:
@@ -155,6 +178,7 @@ class Command(BaseCommand):
             f"Project {report['project_id']}: cost_threshold={config['cost_threshold']} "
             f"require_features={config['require_features']} "
             f"feature_extraction_algorithm_id={config['feature_extraction_algorithm_id']}",
+            *REPORT_NOTES,
         ]
         for entry in report["events"]:
             lines.append("")
