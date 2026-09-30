@@ -26,14 +26,29 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
     source_image_collection_id: int | None = None
     occurrence_id: int | None = None
-    # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int
-    # The source classifier whose terminal classifications are re-scored.
-    algorithm_id: int
-    # When True (default), renormalise the kept classes' scores to sum to 1 after
-    # masking. When False, the kept classes retain their original absolute scores and
-    # the excluded classes are zeroed; the chosen species is identical either way.
-    reweight: bool = True
+    taxa_list_id: int = pydantic.Field(
+        ...,
+        title="Taxa list to keep",
+        description="Classes outside this list are masked out.",
+        ami_widget="entity",
+        ami_entity="taxa/lists",
+    )
+    algorithm_id: int = pydantic.Field(
+        ...,
+        title="Source classifier",
+        description="Its terminal predictions are the ones re-scored.",
+        ami_widget="entity",
+        ami_entity="ml/algorithms",
+        ami_entity_filters={"task_type": "classification"},
+    )
+    reweight: bool = pydantic.Field(
+        True,
+        title="Reweight scores",
+        description=(
+            "Renormalise the kept classes to sum to 1. Off keeps raw absolute scores; "
+            "the chosen species is the same either way."
+        ),
+    )
 
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
@@ -269,6 +284,11 @@ def make_classifications_filtered_by_taxa_list(
 
 
 class ClassMaskingTask(BasePostProcessingTask):
+    """
+    Masks out classes whose taxon is not on the chosen list and renormalises each prediction over what
+    remains. The original classification is kept and demoted.
+    """
+
     key = "class_masking"
     name = "Class masking"
     config_schema = ClassMaskingConfig

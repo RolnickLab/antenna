@@ -12,7 +12,7 @@ from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotAuthenticated, PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
@@ -42,7 +42,7 @@ from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
 from .models import Job, JobDispatchMode, JobState, PostProcessingJob
-from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
+from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer, describe_job_types
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +258,28 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 data=self.request.query_params,
             )
         return context
+
+    @extend_schema(parameters=[project_id_doc_param])
+    @action(detail=False, methods=["get"], name="types")
+    def types(self, request):
+        """
+        List the job types the Create Job dialog can offer for a project, with what each one
+        runs on (``scope``) and a JSON Schema of its settings (``config_schema``).
+
+        Only members of the project may read it. See docs/claude/reference/jobs-panel.md.
+        """
+        # ObjectPermission.has_permission allows every request, and a list-style action never
+        # reaches the object check, so this action gates itself.
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
+        self.require_project = True
+        project = self.get_active_project()
+        if project is None:  # get_active_project already raises 400/404 when required
+            raise ValidationError({"project_id": "This parameter is required."})
+        user = request.user
+        if not (user.is_superuser or project.owner_id == user.pk or project.members.filter(pk=user.pk).exists()):
+            raise PermissionDenied("Only members of this project can list its job types.")
+        return Response({"results": describe_job_types(project, user)})
 
     @action(detail=True, methods=["post"], name="run")
     def run(self, request, pk=None):
