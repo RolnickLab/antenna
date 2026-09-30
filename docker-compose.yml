@@ -200,7 +200,8 @@ services:
         bind:
           create_host_path: false
     ports:
-      - "9111:9111"
+      # Loopback only: the gateway has no authentication, so it must not be reachable from other machines.
+      - "127.0.0.1:9111:9111"
     networks:
       default:
         aliases:
