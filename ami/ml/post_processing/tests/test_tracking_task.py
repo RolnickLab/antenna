@@ -1,11 +1,13 @@
 import logging
+import threading
 import typing
 from collections import defaultdict
+from unittest import mock
 
 import numpy as np
 import pydantic
-from django.db import connection
-from django.test import SimpleTestCase, TestCase
+from django.db import connection, transaction
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -21,9 +23,11 @@ from ami.main.models import (
     update_calculated_fields_for_events,
 )
 from ami.main.models_future.tracks import (
+    SessionBusy,
     TrackEditError,
     add_detections,
     detach_detection,
+    lock_sessions,
     merge_occurrences,
     split_track,
     unverify_grouping,
@@ -326,7 +330,7 @@ class TestTrackingWithoutFeatures(TestCase):
         )
 
 
-def _one_box_in_two_captures(test: TestCase) -> None:
+def _one_box_in_two_captures(test: TransactionTestCase) -> None:
     """One session of two captures with one detection each on the same box, each detection
     on an occurrence of its own, so a geometry-only run links and merges them."""
     test.project, test.deployment = setup_test_project(reuse=False)
@@ -450,6 +454,39 @@ class TestRunsAndEditsShareTheSessionLock(TestCase):
         with self.assertRaises(TrackEditError):
             verify_grouping(stale_second, UserFactory())
         self.assertEqual(stale_first.detections.count(), 2)
+
+
+class TestAnEditDoesNotWaitLongForARun(TransactionTestCase):
+    """An edit on a session a tracking run holds gives up after a short wait with a reason
+    the reviewer can act on, rather than waiting until the web server drops the request."""
+
+    def setUp(self) -> None:
+        _one_box_in_two_captures(self)
+
+    def test_an_edit_on_a_locked_session_is_refused_as_busy(self):
+        locked, release = threading.Event(), threading.Event()
+
+        def hold_the_session() -> None:
+            try:
+                with transaction.atomic():
+                    lock_sessions([self.event.pk])
+                    locked.set()
+                    release.wait(timeout=30)
+            finally:
+                connection.close()
+
+        holder = threading.Thread(target=hold_the_session)
+        holder.start()
+        try:
+            self.assertTrue(locked.wait(timeout=30), "The other connection never took the lock")
+            with mock.patch("ami.main.models_future.tracks.EDIT_LOCK_TIMEOUT_MS", 200):
+                with self.assertRaises(SessionBusy):
+                    merge_occurrences(self.first, [self.second])
+        finally:
+            release.set()
+            holder.join()
+
+        self.assertEqual(Occurrence.objects.filter(pk__in=[self.first.pk, self.second.pk]).count(), 2)
 
 
 class TestFreshEventGuard(TestCase):

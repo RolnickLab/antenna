@@ -42,7 +42,8 @@ import itertools
 from collections import Counter
 from collections.abc import Iterable
 
-from django.db import transaction
+import psycopg.errors
+from django.db import OperationalError, connection, transaction
 from django.db.models import F
 from django.utils import timezone
 
@@ -73,15 +74,34 @@ class TrackEditError(ValueError):
     """A track edit that cannot be applied to this occurrence and detection."""
 
 
-def lock_sessions(event_ids: Iterable[int | None]) -> None:
+class SessionBusy(TrackEditError):
+    """A track edit that gave up waiting for a tracking run on the same session."""
+
+
+# How long an edit waits for a tracking run to release the session. A run can hold it for
+# minutes, and a request left waiting that long fails at the web server with no message.
+EDIT_LOCK_TIMEOUT_MS = 5000
+
+
+def lock_sessions(event_ids: Iterable[int | None], timeout_ms: int | None = None) -> None:
     """Hold a row lock on each session until the surrounding transaction ends.
 
     Tracking runs and track edits both call this before reading what they change, so
     one waits for the other. Locking in id order keeps two writers from deadlocking.
+    With ``timeout_ms``, raises ``SessionBusy`` instead of waiting longer than that.
     """
     pks = sorted({pk for pk in event_ids if pk is not None})
-    if pks:
+    if not pks:
+        return
+    if timeout_ms is not None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SET LOCAL lock_timeout = {int(timeout_ms)}")
+    try:
         list(Event.objects.select_for_update().filter(pk__in=pks).order_by("pk").values_list("pk", flat=True))
+    except OperationalError as e:
+        if isinstance(e.__cause__, psycopg.errors.LockNotAvailable):
+            raise SessionBusy("Tracking is running on this session; try again when it finishes.") from e
+        raise
 
 
 def _lock_for_edit(*occurrences: Occurrence, detections: Iterable[Detection] = ()) -> None:
@@ -90,7 +110,7 @@ def _lock_for_edit(*occurrences: Occurrence, detections: Iterable[Detection] = (
     The caller loaded these rows before waiting on the lock, and saving them as loaded
     would write a finished run's changes back over.
     """
-    lock_sessions(o.event_id for o in occurrences)
+    lock_sessions((o.event_id for o in occurrences), timeout_ms=EDIT_LOCK_TIMEOUT_MS)
     for occurrence in occurrences:
         try:
             occurrence.refresh_from_db()
@@ -197,6 +217,13 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     whole track within its session and the link records that they are one animal.
     Returns the new occurrences in time order, or an empty list when nothing was split.
     """
+    # Waits without a timeout, as a tracking run does: a regroup is a background job too.
+    sessions = SourceImage.objects.filter(detections__occurrence=occurrence).values_list("event_id", flat=True)
+    lock_sessions([occurrence.event_id, *sessions])
+    try:
+        occurrence.refresh_from_db()
+    except Occurrence.DoesNotExist:
+        return []
     detections = occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER)
     by_session: dict[int, list[Detection]] = {}
     for detection in detections:
