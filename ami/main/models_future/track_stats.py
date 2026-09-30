@@ -330,6 +330,50 @@ def tracking_algorithm_summary() -> dict | None:
     return Algorithm.objects.filter(key=TrackingTask.key).values("id", "name", "key").first()
 
 
+def _frame_label(detection: Detection):
+    """The classification a frame is labelled with, or None when none names a taxon.
+
+    Terminal classifications outrank intermediate ones such as a moth filter; then the
+    higher score wins, then the more recent. The frame strip applies the same rule.
+    """
+    named = [c for c in detection.classifications.all() if c.taxon_id is not None]
+    candidates = [c for c in named if c.terminal] or named
+    return max(
+        candidates,
+        key=lambda c: (c.score if c.score is not None else -1, c.created_at.timestamp() if c.created_at else 0),
+        default=None,
+    )
+
+
+def frame_names_from_detections(detections: Iterable[Detection]) -> list[dict]:
+    """Each distinct frame label across a track, with its frame count and best score.
+
+    Most frames first. Frames without a label are counted under a null taxon.
+    """
+    names: dict[int | None, dict] = {}
+    for detection in detections:
+        label = _frame_label(detection)
+        taxon = label.taxon if label else None
+        name = names.setdefault(
+            taxon.pk if taxon else None,
+            {
+                "taxon": {"id": taxon.pk, "name": taxon.name, "rank": taxon.rank} if taxon else None,
+                "frames": 0,
+                "score_max": None,
+            },
+        )
+        name["frames"] += 1
+        if label and label.score is not None and (name["score_max"] is None or label.score > name["score_max"]):
+            name["score_max"] = label.score
+    for name in names.values():
+        if name["score_max"] is not None:
+            name["score_max"] = round(name["score_max"], _ROUND_TO)
+    return sorted(
+        names.values(),
+        key=lambda n: (-n["frames"], -(n["score_max"] if n["score_max"] is not None else -1)),
+    )
+
+
 def grouping_summary_from_prefetch(occurrence: Occurrence, algorithm: dict | None) -> dict:
     """Read-time description of how this occurrence's detections hang together.
 
@@ -371,4 +415,5 @@ def grouping_summary_from_prefetch(occurrence: Occurrence, algorithm: dict | Non
         "score_min": round(min(scores), _ROUND_TO) if scores else None,
         "score_mean": round(statistics.fmean(scores), _ROUND_TO) if scores else None,
         "score_max": round(max(scores), _ROUND_TO) if scores else None,
+        "frame_names": frame_names_from_detections(detections),
     }
