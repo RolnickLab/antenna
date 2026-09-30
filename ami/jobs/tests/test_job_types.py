@@ -209,7 +209,7 @@ class TestCreateJobWithParams(APITestCase):
             params={"anything": 1},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.json())
-        self.assertEqual(Job.objects.get(pk=response.json()["id"]).params, {})
+        self.assertFalse(Job.objects.get(pk=response.json()["id"]).params)
 
     def test_capture_set_column_from_another_project_is_refused(self):
         response = self.post_job(

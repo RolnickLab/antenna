@@ -270,9 +270,14 @@ class JobSerializer(JobListSerializer):
 
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        attrs["params"] = job_type.validate_params(project, user, attrs.get("params"))
+        params = job_type.validate_params(project, user, attrs.get("params"))
+        if params:
+            attrs["params"] = params
+        else:
+            # Job types that read nothing from params store none.
+            attrs.pop("params", None)
         if job_type.variant_key:
-            self._check_may_run(job_type, project, attrs["params"], user)
+            self._check_may_run(job_type, project, params, user)
         return attrs
 
     def _check_scope_in_project(self, attrs: dict, project: Project | None) -> None:
