@@ -14,7 +14,13 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
     # post-processing tasks copy when they gain per-occurrence / per-event triggers.
     source_image_collection_id: int | None = None
     occurrence_id: int | None = None
-    size_threshold: float = 0.0008
+    size_threshold: float = pydantic.Field(
+        0.0008,
+        title="Size threshold",
+        description="Detections smaller than this fraction of the image area are marked as not identifiable.",
+        gt=0.0,
+        lt=1.0,
+    )
 
     @pydantic.validator("size_threshold")
     def _threshold_in_unit_interval(cls, v: float) -> float:
@@ -34,6 +40,10 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
 
 
 class SmallSizeFilterTask(BasePostProcessingTask):
+    """
+    Marks detections that are too small to identify, so they stop counting towards species totals.
+    """
+
     key = "small_size_filter"
     name = "Small size filter"
     config_schema = SmallSizeFilterConfig

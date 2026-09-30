@@ -1,6 +1,7 @@
 from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
-from rest_framework import serializers
+from guardian.shortcuts import get_perms
+from rest_framework import exceptions, serializers
 
 from ami.exports.models import DataExport
 from ami.main.api.serializers import (
@@ -14,7 +15,18 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import JOB_LOGS_DEFAULT_LIMIT, Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
+from .descriptors import describe_docstring, normalize_config_schema
+from .models import (
+    JOB_LOGS_DEFAULT_LIMIT,
+    VALID_JOB_TYPES,
+    Job,
+    JobProgress,
+    JobType,
+    MLJob,
+    _legacy_logs_shape,
+    get_job_type_by_key,
+    serialize_job_logs,
+)
 from .schemas import QueuedTaskAcknowledgment
 
 
@@ -39,6 +51,40 @@ class DataExportNestedSerializer(serializers.ModelSerializer):
 class JobTypeSerializer(serializers.Serializer):
     name = serializers.CharField(read_only=True)
     key = serializers.SlugField(read_only=True)
+
+
+def describe_job_types(project: Project, user) -> list[dict]:
+    """Describe every job type ``user`` may pick in the Create Job dialog for ``project``.
+
+    ``allowed`` says whether the user may run a job of that type here; the dialog disables
+    rather than hides a type the user may not run, so they can see it exists. Permissions are
+    read once for the whole list.
+    """
+    perms = set(get_perms(user, project))
+    described = []
+    for job_type in VALID_JOB_TYPES:
+        if not job_type.user_creatable:
+            continue
+        allowed = user.is_superuser or f"run_{job_type.key}_job" in perms
+        variants = job_type.variants(user=user)
+        for variant in variants:
+            allowed_for_members = variant.pop("allowed_for_members")
+            variant["allowed"] = allowed and (user.is_superuser or allowed_for_members)
+        described.append(
+            {
+                "key": job_type.key,
+                "name": job_type.name,
+                "description": describe_docstring(job_type),
+                "allowed": allowed,
+                "scope": [field.as_dict() for field in job_type.scope_fields],
+                "required_fields": list(job_type.required_fields),
+                "required_params": list(job_type.required_params),
+                "config_schema": (normalize_config_schema(job_type.config_schema) if job_type.config_schema else None),
+                "variant_key": job_type.variant_key,
+                "variants": variants,
+            }
+        )
+    return described
 
 
 class JobListSerializer(DefaultSerializer):
@@ -176,10 +222,79 @@ class JobListSerializer(DefaultSerializer):
 class JobSerializer(JobListSerializer):
     # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
+    # A job's settings, checked by its job type when the job is created and fixed after that:
+    # a later update cannot swap in settings that were never validated. See JobType.validate_params.
+    params = serializers.JSONField(required=False, allow_null=True)
+
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
             "result",
+            "params",
         ]
+
+    def validate_job_type_key(self, value: str) -> str:
+        job_type = get_job_type_by_key(value)
+        if not job_type:
+            known = sorted(t.key for t in VALID_JOB_TYPES if t.user_creatable)
+            raise serializers.ValidationError(f"Unknown job type '{value}'. Known types: {known}")
+        if self.instance is None and not job_type.user_creatable:
+            raise serializers.ValidationError(
+                f"{job_type.name} jobs are created by the platform, not through this API."
+            )
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            # Settings are fixed once the job exists.
+            attrs.pop("params", None)
+            return attrs
+
+        job_type = get_job_type_by_key(attrs.get("job_type_key", MLJob.key))
+        if job_type is None:  # validate_job_type_key refuses unknown keys; this guards the default
+            raise serializers.ValidationError({"job_type_key": "Unknown job type."})
+        project = attrs.get("project")
+        self._check_scope_in_project(attrs, project)
+
+        missing_fields = [name for name in job_type.required_fields if not attrs.get(name)]
+        if missing_fields:
+            raise serializers.ValidationError(
+                {f"{name}_id": f"{job_type.name} jobs need a {name}." for name in missing_fields}
+            )
+        params = attrs.get("params") or {}
+        missing_params = [name for name in job_type.required_params if not params.get(name)]
+        if missing_params:
+            raise serializers.ValidationError(
+                {"params": f"{job_type.name} jobs need {', '.join(missing_params)} in their params."}
+            )
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        attrs["params"] = job_type.validate_params(project, user, attrs.get("params"))
+        if job_type.variant_key:
+            self._check_may_run(job_type, project, attrs["params"], user)
+        return attrs
+
+    def _check_scope_in_project(self, attrs: dict, project: Project | None) -> None:
+        errors = {}
+        for field in ("deployment", "source_image_collection", "source_image_single"):
+            obj = attrs.get(field)
+            if obj is not None and obj.project_id != getattr(project, "pk", None):
+                errors[f"{field}_id"] = "Not found in this project."
+        if errors:
+            raise serializers.ValidationError(errors)
+
+    def _check_may_run(self, job_type: type[JobType], project: Project | None, params: dict, user) -> None:
+        # Creating a job whose type runs registered methods (post-processing) takes the
+        # permission to run it, so a role that cannot start one is refused before a job it
+        # could never run is stored.
+        if user is None:
+            return
+        job = Job(job_type_key=job_type.key, project=project, params=params)
+        if not job.check_custom_permission(user, "run"):
+            raise exceptions.PermissionDenied(
+                f"You do not have permission to run {job_type.name} jobs in this project."
+            )
 
 
 class MinimalJobSerializer(DefaultSerializer):
