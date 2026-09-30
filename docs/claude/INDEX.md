@@ -9,6 +9,7 @@ archived.
 
 | File | Description |
 |---|---|
+| `reference/jobs-panel.md` | How a job type or post-processing task appears in the generated Create Job dialog: `GET /jobs/types/` contract, ScopeField, pydantic Field hints (`ami_widget`/`ami_entity`), `validate_params`, member allowlist, gating gotcha. Indexed 2026-09-29. Keywords: jobs panel, job types, config_schema, post-processing, params |
 | `reference/canonical-patterns.md` | Existing helpers/patterns to reuse before writing new ones, with file:line refs (SingleParamSerializer, ProjectMixin, permissions, schemas, fixtures). Keywords: reuse, helpers, conventions, DRF |
 | `reference/query-patterns.md` | DB model relationship table, composite indexes, prefetch/select_related patterns, full custom QuerySet method catalog, query anti-patterns. Keywords: N+1, indexes, ORM, performance |
 | `reference/api-stats-pattern.md` | How to add aggregate/leaderboard/chart endpoints (`/<entity>/stats/<kind>/`): GenericViewSet + @action, pure querysets in models_future. Keywords: stats, charts, aggregation |

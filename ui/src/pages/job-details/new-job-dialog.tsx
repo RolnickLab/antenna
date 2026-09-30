@@ -15,6 +15,7 @@ const CLOSE_TIMEOUT = 1000
 
 type NewJobType = 'processing' | 'tracking'
 
+// Fallback used by CreateJobDialog when the job types request fails.
 export const NewJobDialog = () => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
