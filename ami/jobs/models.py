@@ -601,7 +601,8 @@ class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
     user_creatable = True
-    required_fields = ("pipeline",)
+    # The dialog requires a pipeline, but the API has always accepted an ML job without one
+    # (it fails when run), so required_fields stays empty to keep existing clients working.
     scope_fields = (PIPELINE_SCOPE, CAPTURE_SET_SCOPE)
 
     @classmethod
