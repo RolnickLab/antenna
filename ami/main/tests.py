@@ -47,6 +47,8 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.main.models_future.tracks import (
+    SessionBusy,
+    TrackEditError,
     add_detections,
     detach_detection,
     merge_occurrences,
@@ -9006,6 +9008,20 @@ class TrackEditTestCase(TrackFixtureTestCase):
     leaves the surviving track broken in the middle.
     """
 
+    def test_an_edit_refused_because_a_run_holds_the_session_is_a_conflict(self):
+        """A reviewer blocked by a tracking run gets 409 with the reason, not a 400 or 500."""
+        busy = SessionBusy("Tracking is running on this session; try again when it finishes.")
+        self.client.force_authenticate(user=self.curator)
+        with mock.patch("ami.main.api.views.split_track", side_effect=busy):
+            split = self.post("split-track", self.detections[2])
+        with mock.patch("ami.main.api.views.verify_grouping", side_effect=busy):
+            verify = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/")
+        with mock.patch("ami.main.api.views.unverify_grouping", side_effect=TrackEditError("gone")):
+            unverify = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/")
+
+        self.assertEqual((split.status_code, verify.status_code, unverify.status_code), (409, 409, 400))
+        self.assertEqual(verify.data["detail"], str(busy))
+
     def test_split_moves_the_tail_into_a_new_occurrence(self):
         response = self.post("split-track", self.detections[2], user=self.curator)
         self.assertEqual(response.status_code, 200, response.data)
@@ -9613,6 +9629,94 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         foreign.refresh_from_db()
         self.assertEqual(foreign.project_id, other_project.pk)
 
+    def _make_sessionless_track(self, project: Project, deployment: Deployment, length: int = 2) -> Occurrence:
+        """An occurrence on captures that were never grouped into a session."""
+        occurrence = Occurrence.objects.create(event=None, deployment=deployment, project=project)
+        start = self.captures[-1].timestamp + datetime.timedelta(hours=1)
+        for i in range(length):
+            capture = SourceImage.objects.create(
+                deployment=deployment,
+                event=None,
+                timestamp=start + datetime.timedelta(minutes=i),
+                path=f"test/ungrouped-{occurrence.pk}-{i}.jpg",
+            )
+            Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+        return occurrence
+
+    def test_merge_refuses_a_sessionless_occurrence_from_another_project(self):
+        """Two occurrences without a session have no session to compare, so a merge from a
+        public project into this one must still be refused and must not delete the source."""
+        other_project, other_deployment = setup_test_project(reuse=False)
+        target = self._make_sessionless_track(self.project, self.deployment)
+        foreign = self._make_sessionless_track(other_project, other_deployment)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{target.pk}/merge/", {"occurrence_ids": [foreign.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertTrue(Occurrence.objects.filter(pk=foreign.pk, project=other_project).exists())
+        self.assertEqual(foreign.detections.count(), 2)
+
+    def test_track_edits_refuse_a_target_without_a_session(self):
+        """Every track edit and picker compares against the target's session, so a target
+        without one is a 400, not a 500 or a search across every ungrouped capture."""
+        target = self._make_sessionless_track(self.project, self.deployment)
+        other = self._make_sessionless_track(self.project, self.deployment)
+        detection = other.detections.first()
+        assert detection is not None
+        base = f"/api/v2/occurrences/{target.pk}"
+
+        self.client.force_authenticate(user=self.curator)
+        responses = {
+            "merge": self.client.post(f"{base}/merge/", {"occurrence_ids": [other.pk]}, format="json"),
+            "add-detections": self.client.post(
+                f"{base}/add-detections/", {"detection_ids": [detection.pk]}, format="json"
+            ),
+            "merge-candidates": self.client.get(f"{base}/merge-candidates/?project_id={self.project.pk}"),
+        }
+        for action, response in responses.items():
+            with self.subTest(action=action):
+                self.assertEqual(response.status_code, 400, getattr(response, "data", response))
+        self.assertEqual(other.detections.count(), 2)
+
+    def test_adding_a_detection_on_an_ungrouped_capture_is_refused(self):
+        """A capture that was never grouped belongs to no session, so its boxes cannot join a
+        track until the captures are grouped."""
+        capture = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=None,
+            timestamp=self.captures[-1].timestamp + datetime.timedelta(minutes=5),
+            path="test/ungrouped-single.jpg",
+        )
+        bare = Detection.objects.create(
+            source_image=capture, timestamp=capture.timestamp, bbox=[60, 60, 90, 90], occurrence=None
+        )
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [bare.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        bare.refresh_from_db()
+        self.assertIsNone(bare.occurrence_id)
+
+    def test_merge_refuses_a_source_in_another_project_even_on_the_same_session(self):
+        """Occurrence and session projects are separate columns, so the project is checked on
+        its own rather than trusted to follow from the session."""
+        other_project, other_deployment = setup_test_project(reuse=False)
+        stray, _ = self._make_track(1, captures=self._make_captures_after(1))
+        Occurrence.objects.filter(pk=stray.pk).update(project=other_project, deployment=other_deployment)
+        stray.refresh_from_db()
+
+        with self.assertRaises(TrackEditError):
+            merge_occurrences(self.occurrence, [stray])
+        self.assertTrue(Occurrence.objects.filter(pk=stray.pk).exists())
+
     def test_merge_refuses_a_source_on_a_capture_the_track_covers(self):
         """One animal appears once per capture, so a source with a box on one of the track's
         captures is a second individual and the whole merge is refused."""
@@ -9887,6 +9991,50 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
         self.assertEqual(Detection.objects.get(pk=second_box.pk).next_detection_id, self.detections[2].pk)
         self.assertIsNone(Detection.objects.get(pk=self.detections[1].pk).next_detection_id)
 
+    def _interleave_chains(self) -> None:
+        """Link the four frames as two tracks on alternating captures, 0→2 and 1→3: the shape
+        two merged tracks keep inside one occurrence if their chains are not rebuilt."""
+        d = self.detections
+        Detection.objects.filter(pk__in=[x.pk for x in d]).update(next_detection=None)
+        Detection.objects.filter(pk=d[0].pk).update(next_detection=d[2])
+        Detection.objects.filter(pk=d[1].pk).update(next_detection=d[3])
+
+    def assertNoLinkLeaves(self, occurrence: Occurrence) -> None:
+        """No link runs into or out of ``occurrence``; the next tracking run would follow one."""
+        outgoing = Detection.objects.filter(occurrence=occurrence, next_detection__isnull=False).exclude(
+            next_detection__occurrence=occurrence
+        )
+        incoming = Detection.objects.filter(next_detection__occurrence=occurrence).exclude(occurrence=occurrence)
+        self.assertEqual(list(outgoing.values_list("pk", flat=True)), [])
+        self.assertEqual(list(incoming.values_list("pk", flat=True)), [])
+
+    def test_splitting_interleaved_tracks_leaves_no_link_across_the_cut(self):
+        self._interleave_chains()
+
+        tail = split_track(self.occurrence, self.detections[2])
+
+        self.assertNoLinkLeaves(self.occurrence)
+        self.assertNoLinkLeaves(tail)
+
+    def test_detaching_from_interleaved_tracks_leaves_no_link_into_the_frame(self):
+        self._interleave_chains()
+
+        detached = detach_detection(self.occurrence, self.detections[2])
+
+        self.assertNoLinkLeaves(self.occurrence)
+        self.assertNoLinkLeaves(detached)
+
+    def test_splitting_after_merging_alternating_tracks_leaves_no_link_across_the_cut(self):
+        after = self._make_captures_after(4)
+        first, first_detections = self._make_track(2, captures=[after[0], after[2]])
+        second, _ = self._make_track(2, captures=[after[1], after[3]])
+
+        merge_occurrences(first, [second])
+        tail = split_track(first, first_detections[1])
+
+        self.assertNoLinkLeaves(first)
+        self.assertNoLinkLeaves(tail)
+
     def test_a_merge_spanning_two_sessions_links_nothing_across_them(self):
         later_session = Event.objects.create(
             project=self.project,
@@ -9961,7 +10109,7 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
     def test_a_multi_frame_merge_does_not_query_per_frame(self):
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
 
-        with self.assertNumQueries(29):
+        with self.assertNumQueries(34):
             merge_occurrences(self.occurrence, [other])
 
         self.assertFullyLinked(self.occurrence)
