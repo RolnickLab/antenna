@@ -696,6 +696,31 @@ class DeploymentManager(models.Manager.from_queryset(ProjectQuerySet)):
     pass
 
 
+def _log_sync_summary(
+    deployment: "Deployment",
+    objects_checked: int,
+    objects_listed_as_images: int,
+    imported: int,
+    failed: int,
+    job: "Job | None" = None,
+) -> None:
+    """Tell the user how many listed objects were skipped, so a folder of unsupported files is not a silent "0"."""
+    job_logger = job.logger if job else logger
+    skipped = objects_checked - objects_listed_as_images
+    job_logger.info(
+        f"Checked {objects_checked} objects: {imported} images imported, {skipped} skipped "
+        f"(not a supported image type, excluded by the filename filter, empty, or a folder), {failed} failed"
+    )
+    if objects_checked > 0 and objects_listed_as_images == 0:
+        msg = (
+            f"None of the {objects_checked} objects found were imported. "
+            f"Supported file types: {', '.join(ami.utils.s3.IMAGE_FILE_EXTENSIONS)}."
+        )
+        if deployment.data_source_regex:
+            msg += f' Filenames must also match the filter "{deployment.data_source_regex}".'
+        job_logger.warning(msg)
+
+
 def _create_source_image_for_sync(
     deployment: "Deployment",
     obj: ami.utils.s3.ObjectTypeDef,
@@ -906,6 +931,8 @@ class Deployment(BaseModel):
         total_size = 0
         total_files = 0
         failed = 0
+        objects_checked = 0
+        objects_listed_as_images = 0
         source_images = []
         django_batch_size = batch_size
         sql_batch_size = 1000
@@ -921,8 +948,10 @@ class Deployment(BaseModel):
             regex_filter=self.data_source_regex,
         ):
             logger.debug(f"Processing file {file_index}: {obj}")
+            objects_checked = file_index
             if not obj:
                 continue
+            objects_listed_as_images += 1
             try:
                 source_image = _create_source_image_for_sync(deployment, obj)
             except Exception:
@@ -974,6 +1003,15 @@ class Deployment(BaseModel):
             job.logger.info(f"Processed {total_files} files")
             job.progress.update_stage(job.job_type().key, total_files=total_files, failed=failed)
             job.update_progress()
+
+        _log_sync_summary(
+            deployment,
+            objects_checked=objects_checked,
+            objects_listed_as_images=objects_listed_as_images,
+            imported=total_files,
+            failed=failed,
+            job=job,
+        )
 
         _compare_totals_for_sync(deployment, total_files)
 
