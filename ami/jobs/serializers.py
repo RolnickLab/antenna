@@ -65,11 +65,12 @@ def _pydantic_messages(exc: pydantic.ValidationError) -> list[str]:
     return messages
 
 
-def validate_post_processing_params(project: Project | None, params) -> dict:
+def validate_post_processing_params(project: Project | None, params, user=None) -> dict:
     """Check a post-processing job's ``{"task": ..., "config": {...}}`` before it is saved.
 
     Returns the params with the config normalized by the task's schema, so the stored
-    job carries every default the worker will run with. Raises a 400 otherwise.
+    job carries every default the worker will run with. Raises a 400 otherwise. Only a
+    superuser may set the staff-only config fields, matching who may run such a job.
     """
     if not isinstance(params, dict) or set(params) - {"task", "config"}:
         raise serializers.ValidationError(
@@ -90,9 +91,9 @@ def validate_post_processing_params(project: Project | None, params) -> dict:
     if not isinstance(config, dict):
         raise serializers.ValidationError({"params": {"config": "Must be an object."}})
     staff_only = staff_only_config_fields(task_key, config)
-    if staff_only:
+    if staff_only and not (user is not None and user.is_superuser):
         raise serializers.ValidationError(
-            {"params": {"config": [f"{name}: Only staff can change this setting." for name in staff_only]}}
+            {"params": {"config": [f"{name}: Only a superuser can change this setting." for name in staff_only]}}
         )
     try:
         model = task_cls.config_schema(**config)
@@ -237,7 +238,9 @@ class JobListSerializer(DefaultSerializer):
         attrs = super().validate(attrs)
         if attrs.get("job_type_key") == PostProcessingJob.key:
             project = attrs.get("project") or getattr(self.instance, "project", None)
-            attrs["params"] = validate_post_processing_params(project, attrs.get("params"))
+            request = self.context.get("request")
+            user = getattr(request, "user", None)
+            attrs["params"] = validate_post_processing_params(project, attrs.get("params"), user)
             self._check_may_run_post_processing(project, attrs["params"])
         else:
             # Other job types do not read params, so none are stored for them.
