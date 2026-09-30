@@ -3,8 +3,8 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.descriptors import normalize_config_schema
-from ami.jobs.models import Job, PostProcessingJob
+from ami.jobs.descriptors import _sentence_case, describe_docstring, normalize_config_schema, strip_markup
+from ami.jobs.models import Job, PostProcessingJob, RegroupEventsJob
 from ami.main.models import Occurrence, Project, SourceImageCollection, TaxaList
 from ami.ml.models import Algorithm
 from ami.ml.post_processing import registry
@@ -92,6 +92,24 @@ class TestJobTypesEndpoint(APITestCase):
         self.assertEqual(properties["algorithm_id"]["ami_entity"], "ml/algorithms")
         self.assertTrue(masking["description"].startswith("Masks out classes"))
 
+    def test_superuser_sees_which_settings_members_cannot_change(self):
+        original = dict(registry.MEMBER_POST_PROCESSING_TASKS)
+        registry.MEMBER_POST_PROCESSING_TASKS["class_masking"] = frozenset(
+            {"source_image_collection_id", "taxa_list_id", "algorithm_id"}
+        )
+        try:
+            superuser_types = {t["key"]: t for t in self.get_types(self.superuser).json()["results"]}
+            member_types = {t["key"]: t for t in self.get_types(self.ml_manager).json()["results"]}
+        finally:
+            registry.MEMBER_POST_PROCESSING_TASKS.clear()
+            registry.MEMBER_POST_PROCESSING_TASKS.update(original)
+        masking = {v["key"]: v for v in superuser_types["post_processing"]["variants"]}["class_masking"]
+        properties = masking["config_schema"]["properties"]
+        self.assertTrue(properties["reweight"]["ami_staff_only"])
+        self.assertNotIn("ami_staff_only", properties["taxa_list_id"])
+        member_masking = {v["key"]: v for v in member_types["post_processing"]["variants"]}["class_masking"]
+        self.assertEqual(set(member_masking["config_schema"]["properties"]), {"taxa_list_id", "algorithm_id"})
+
     def test_query_count_does_not_grow_with_job_types(self):
         self.client.force_authenticate(user=self.ml_manager)
         with cachalot_disabled():
@@ -101,6 +119,17 @@ class TestJobTypesEndpoint(APITestCase):
                 response = self.client.get(types_url(self.project.pk))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(len(response.json()["results"]), 3)
+
+
+class TestDescriptionText(APITestCase):
+    def test_generated_labels_keep_acronyms(self):
+        self.assertEqual(_sentence_case("iou_weight"), "IoU weight")
+        self.assertEqual(_sentence_case("stationary_min_iou"), "Stationary min IoU")
+        self.assertEqual(_sentence_case("species_label_algorithm_id"), "Species label algorithm")
+
+    def test_docstring_markup_is_stripped(self):
+        self.assertEqual(strip_markup("uses ``a_b`` and :class:`Foo` and `x`"), "uses a_b and Foo and x")
+        self.assertNotIn("`", describe_docstring(RegroupEventsJob))
 
 
 class TestSchemaNormalizer(APITestCase):

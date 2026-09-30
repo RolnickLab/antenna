@@ -22,6 +22,7 @@ from ami.jobs.descriptors import (
     CAPTURE_SET_SCOPE,
     ENTITY_KEY,
     PIPELINE_SCOPE,
+    STAFF_ONLY_KEY,
     STATION_SCOPE,
     ScopeField,
     describe_docstring,
@@ -1083,9 +1084,15 @@ class PostProcessingJob(JobType):
         for key, task_cls in POSTPROCESSING_TASKS.items():
             scope = cls.task_scope(task_cls)
             exclude = {f.field for f in scope} | cls.HIDDEN_CONFIG_FIELDS
+            member_fields = MEMBER_POST_PROCESSING_TASKS.get(key, frozenset())
             if not is_superuser:
-                member_fields = MEMBER_POST_PROCESSING_TASKS.get(key, frozenset())
                 exclude |= set(task_cls.config_schema.__fields__) - member_fields
+            config_schema = normalize_config_schema(task_cls.config_schema, exclude=exclude)
+            if is_superuser and cls.member_may_run_task(key):
+                # Staff see every setting; mark the ones members cannot change.
+                for name, prop in config_schema["properties"].items():
+                    if name not in member_fields:
+                        prop[STAFF_ONLY_KEY] = True
             variants.append(
                 {
                     "key": key,
@@ -1094,7 +1101,7 @@ class PostProcessingJob(JobType):
                     "allowed_for_members": cls.member_may_run_task(key),
                     "scope": [f.as_dict() for f in scope],
                     "scope_rule": "exactly_one" if len(scope) > 1 else "all_required",
-                    "config_schema": normalize_config_schema(task_cls.config_schema, exclude=exclude),
+                    "config_schema": config_schema,
                 }
             )
         return variants
