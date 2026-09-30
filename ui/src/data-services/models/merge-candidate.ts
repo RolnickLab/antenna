@@ -220,10 +220,53 @@ export type MergeCandidateSortColumn =
   | 'cost'
   | 'match'
 
-/** One column the reviewer clicked, or all three applied in turn. */
+export interface MergeCandidateColumnSort {
+  column: MergeCandidateSortColumn
+  descending: boolean
+}
+
+/**
+ * The column the reviewer clicked last, with the ones clicked before it breaking its
+ * ties, or time, distance and similarity applied in turn.
+ */
 export type MergeCandidateSort =
-  | { column: MergeCandidateSortColumn; descending: boolean }
+  | (MergeCandidateColumnSort & { thenBy?: MergeCandidateColumnSort[] })
   | { cumulative: true }
+
+// Two earlier clicks are enough to say "species, then frames, then time".
+const MAX_THEN_BY = 2
+
+/**
+ * The order after a click on a column header: the same column flips its direction,
+ * another becomes the first key and the previous keys break its ties, as in a
+ * spreadsheet sorted one column at a time.
+ */
+export const addSortColumn = (
+  sort: MergeCandidateSort | undefined,
+  column: MergeCandidateSortColumn,
+  descendingFirst: boolean
+): MergeCandidateSort => {
+  const current = sort && 'column' in sort ? sort : undefined
+
+  if (current?.column === column) {
+    return { ...current, descending: !current.descending }
+  }
+
+  const previous = current
+    ? [
+        { column: current.column, descending: current.descending },
+        ...(current.thenBy ?? []),
+      ]
+    : []
+
+  return {
+    column,
+    descending: descendingFirst,
+    thenBy: previous
+      .filter((key) => key.column !== column)
+      .slice(0, MAX_THEN_BY),
+  }
+}
 
 const sortValue = (
   candidate: MergeCandidate,
@@ -299,11 +342,24 @@ export const sortMergeCandidates = (
     })
   }
 
-  return [...candidates].sort((a, b) =>
-    compare(
-      sortValue(a, sort.column),
-      sortValue(b, sort.column),
-      sort.descending
-    )
-  )
+  const keys = [
+    { column: sort.column, descending: sort.descending },
+    ...(sort.thenBy ?? []),
+  ]
+
+  return [...candidates].sort((a, b) => {
+    for (const key of keys) {
+      const result = compare(
+        sortValue(a, key.column),
+        sortValue(b, key.column),
+        key.descending
+      )
+
+      if (result !== 0) {
+        return result
+      }
+    }
+
+    return 0
+  })
 }

@@ -20,12 +20,14 @@ export const UserPreferencesContextProvider = ({
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(
     () => {
       // TODO: For logged in users, here we could check backend for stored preferences
-      const storedPreferences =
-        hasStorageConsent && localStorage.getItem(USER_PREFERENCES_STORAGE_KEY)
-      if (!storedPreferences) {
-        return DEFAULT_PREFERENCES
-      }
+      // Storage can throw (blocked site data, some private windows); defaults stand in.
       try {
+        const storedPreferences =
+          hasStorageConsent &&
+          localStorage.getItem(USER_PREFERENCES_STORAGE_KEY)
+        if (!storedPreferences) {
+          return DEFAULT_PREFERENCES
+        }
         return {
           ...DEFAULT_PREFERENCES,
           ...JSON.parse(storedPreferences),
@@ -43,10 +45,14 @@ export const UserPreferencesContextProvider = ({
         setUserPreferences: (userPreferences: UserPreferences) => {
           // TODO: For logged in users, here we could sync preferences to backend
           if (hasStorageConsent) {
-            localStorage.setItem(
-              USER_PREFERENCES_STORAGE_KEY,
-              JSON.stringify(userPreferences)
-            )
+            try {
+              localStorage.setItem(
+                USER_PREFERENCES_STORAGE_KEY,
+                JSON.stringify(userPreferences)
+              )
+            } catch {
+              // The preference still applies for this visit.
+            }
           }
           setUserPreferences(userPreferences)
         },

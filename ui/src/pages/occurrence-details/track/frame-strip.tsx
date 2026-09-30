@@ -177,6 +177,7 @@ export const FrameStrip = ({
       caption={
         trackingEnabled ? (
           <FrameCaption
+            captureUrl={frame.captureUrl}
             detectionId={frame.id}
             hasVector={frame.hasVector}
             label={frame.frameLabel}

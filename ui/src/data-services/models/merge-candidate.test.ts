@@ -9,6 +9,7 @@ import {
   MergeCandidate,
   ServerMergeCandidate,
   sortMergeCandidates,
+  addSortColumn,
 } from './merge-candidate'
 
 const serverCandidate = (
@@ -268,5 +269,78 @@ describe('merge candidate sorting', () => {
     expect(
       ids(sortMergeCandidates(rows, { column: 'similarity', descending: true }))
     ).toEqual(['3', '2', '1'])
+  })
+
+  test('a second column breaks the ties of the column clicked after it', () => {
+    const table = [
+      serverCandidate({
+        id: 1,
+        determination: { id: 1, name: 'Pelosia muscerda' },
+        detections_count: 2,
+      }),
+      serverCandidate({
+        id: 2,
+        determination: { id: 2, name: 'Eilema lurideola' },
+        detections_count: 3,
+      }),
+      serverCandidate({
+        id: 3,
+        determination: { id: 1, name: 'Pelosia muscerda' },
+        detections_count: 9,
+      }),
+    ].map(convertMergeCandidate)
+
+    const byFrames = addSortColumn(undefined, 'frames', true)
+    const bySpeciesThenFrames = addSortColumn(byFrames, 'species', false)
+
+    expect(ids(sortMergeCandidates(table, bySpeciesThenFrames))).toEqual([
+      '2',
+      '3',
+      '1',
+    ])
+    // Without the earlier click the tie keeps the server's order.
+    expect(
+      ids(
+        sortMergeCandidates(table, addSortColumn(undefined, 'species', false))
+      )
+    ).toEqual(['2', '1', '3'])
+  })
+
+  test('clicking the first column again flips it and keeps its tie-breakers', () => {
+    const sort = addSortColumn(
+      addSortColumn(undefined, 'frames', true),
+      'species',
+      false
+    )
+
+    expect(addSortColumn(sort, 'species', false)).toEqual({
+      column: 'species',
+      descending: true,
+      thenBy: [{ column: 'frames', descending: true }],
+    })
+  })
+
+  test('a column appears once and only two earlier columns are kept', () => {
+    let sort = addSortColumn(undefined, 'when', false)
+    sort = addSortColumn(sort, 'distance', false)
+    sort = addSortColumn(sort, 'similarity', true)
+    sort = addSortColumn(sort, 'when', false)
+
+    expect(sort).toEqual({
+      column: 'when',
+      descending: false,
+      thenBy: [
+        { column: 'similarity', descending: true },
+        { column: 'distance', descending: false },
+      ],
+    })
+  })
+
+  test('switching from the cumulative order starts a fresh column sort', () => {
+    expect(addSortColumn({ cumulative: true }, 'frames', true)).toEqual({
+      column: 'frames',
+      descending: true,
+      thenBy: [],
+    })
   })
 })

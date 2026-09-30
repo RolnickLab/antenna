@@ -1,9 +1,12 @@
 import {
+  FrameName,
+  formatFrameNames,
   frameHasVector,
   getFrameClassification,
   OccurrenceDetails,
   ServerFrameClassification,
 } from './occurrence-details'
+import { Taxon } from './taxa'
 
 const serverTaxon = (id: string, name: string, rank = 'SPECIES') => ({
   cover_image_url: null,
@@ -88,10 +91,32 @@ describe('frame feature vectors', () => {
   })
 })
 
+describe('frame names', () => {
+  test('reads as one line of names and counts, unclassified frames included', () => {
+    const names: FrameName[] = [
+      { frames: 2, taxon: new Taxon(NOCTUA) },
+      { frames: 1 },
+      { frames: 1, taxon: new Taxon(XESTIA) },
+    ]
+
+    expect(formatFrameNames(names)).toBe(
+      'Noctua pronuba ×2, No classification ×1, Xestia c-nigrum ×1'
+    )
+    expect(formatFrameNames(names, 1)).toBe('Noctua pronuba ×2, 2 more')
+    expect(formatFrameNames([])).toBe('')
+  })
+})
+
 describe('occurrence details', () => {
   const detection = (id: number, classifications: unknown[]) => ({
     bbox: [0, 0, 10, 20],
-    capture: { height: 100, id: id + 100, width: 100 },
+    capture: {
+      height: 100,
+      id: id + 100,
+      // Only the first frame's capture has an image stored.
+      url: id === 1 ? 'https://example.com/capture-101.jpg' : null,
+      width: 100,
+    },
     classifications,
     frame_index: id - 1,
     height: null,
@@ -161,6 +186,13 @@ describe('occurrence details', () => {
       src: 'https://example.com/2.jpg',
       width: 10,
     })
+  })
+
+  test('each frame links to the full capture it was cropped from, when there is one', () => {
+    const [first, second] = occurrence.firstFramesPage
+
+    expect(first.captureUrl).toBe('https://example.com/capture-101.jpg')
+    expect(second.captureUrl).toBeUndefined()
   })
 
   test('the track ends and label counts cover every frame, not just the first page', () => {

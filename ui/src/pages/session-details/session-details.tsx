@@ -24,6 +24,7 @@ import {
   useProjectFeature,
 } from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
+import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { OccurrenceTimelineMarkers } from './activity-plot/occurrence-timeline-markers'
 import { CaptureInfo } from './capture-info'
@@ -94,11 +95,22 @@ const Content = ({ session }: { session: SessionDetails }) => {
   // Settings
   const [poll, setPoll] = useState(false)
   const transformRef = useRef<ReactZoomPanPinchRef>(null)
-  const [settings, setSettings] = useState<ViewSettingsValues>({
+  const [viewSettings, setViewSettings] = useState({
     defaultFilters: true,
     showDetections: true,
-    showPathCrops: true,
   })
+  // Kept per browser: a reviewer who wants the crops along a path wants them every visit.
+  const { userPreferences, setUserPreferences } = useUserPreferences()
+  const settings: ViewSettingsValues = {
+    ...viewSettings,
+    showPathCrops: !!userPreferences.showPathCrops,
+  }
+  const setSettings = ({ showPathCrops, ...rest }: ViewSettingsValues) => {
+    setViewSettings(rest)
+    if (showPathCrops !== settings.showPathCrops) {
+      setUserPreferences({ ...userPreferences, showPathCrops })
+    }
+  }
 
   // Data
   const { projectId } = useParams()
@@ -210,10 +222,10 @@ const Content = ({ session }: { session: SessionDetails }) => {
               height={activeCapture?.height ?? session.firstCapture.height}
               trackingEnabled={trackingEnabled}
               onTogglePathCrops={() =>
-                setSettings((current) => ({
-                  ...current,
-                  showPathCrops: !current.showPathCrops,
-                }))
+                setSettings({
+                  ...settings,
+                  showPathCrops: !settings.showPathCrops,
+                })
               }
               showDetections={settings.showDetections}
               showPathCrops={settings.showPathCrops}

@@ -1,6 +1,7 @@
 import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
+import { formatFrameNames } from 'data-services/models/occurrence-details'
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
@@ -10,6 +11,7 @@ import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { buildDetectionLink } from '../hooks/useActiveDetection'
+import { getPathEnds } from './track-navigation'
 
 export interface ToolbarOccurrence {
   frameCount: number
@@ -63,6 +65,7 @@ export const OccurrenceToolbar = ({
   onHidePath,
   onMerge,
   onOpenOccurrence,
+  onSelectCapture,
   onShowPath,
   onSplit,
   onTogglePathCrops,
@@ -84,6 +87,8 @@ export const OccurrenceToolbar = ({
   onHidePath: () => void
   onMerge: () => void
   onOpenOccurrence: () => void
+  /** Steps the viewer to another capture, keeping this track selected. */
+  onSelectCapture?: (captureId: string) => void
   onShowPath: () => void
   onSplit: () => void
   /** Switch the path's boxes between the moth's own pixels and an outline. */
@@ -107,6 +112,11 @@ export const OccurrenceToolbar = ({
   const { canRestructure, canVerify } = getTrackEditRights(
     details?.userPermissions
   )
+  // The classifier's own name for each frame, which a merge or a confirmed
+  // identification does not change: the evidence behind the track's name.
+  const frameNames = details?.frameNames.length
+    ? formatFrameNames(details.frameNames)
+    : undefined
 
   // Matched on the detection rather than the capture: one capture can hold two frames
   // of the same track, and they are different positions along it.
@@ -121,6 +131,10 @@ export const OccurrenceToolbar = ({
           total: path.length,
         })
       : undefined
+
+  const ends = pathShown ? getPathEnds(path) : undefined
+  const currentCaptureId =
+    frameIndex !== -1 ? path?.[frameIndex].captureId : undefined
 
   const subtitle = () => {
     if (!pathShown) {
@@ -163,6 +177,24 @@ export const OccurrenceToolbar = ({
             : translate(STRING.SHOW_PATH_CROPS)}
         </span>
       </Button>
+    ) : null,
+    ends && onSelectCapture && path && path.length > 1 ? (
+      <div className="flex items-center gap-1" key="ends">
+        {[
+          { frame: ends.first, label: STRING.TRACK_GO_FIRST_FRAME },
+          { frame: ends.last, label: STRING.TRACK_GO_LAST_FRAME },
+        ].map(({ frame, label }) => (
+          <Button
+            disabled={frame.captureId === currentCaptureId}
+            key={label}
+            onClick={() => onSelectCapture(frame.captureId)}
+            size="small"
+            variant="ghost"
+          >
+            <span>{translate(label)}</span>
+          </Button>
+        ))}
+      </div>
     ) : null,
     // A single frame has no path to draw, and the subtitle says so.
     !pathShown && !singleFrame ? (
@@ -241,6 +273,13 @@ export const OccurrenceToolbar = ({
       </div>
 
       <div className="flex flex-col gap-0.5 body-small text-muted-foreground">
+        {frameNames ? (
+          <span>
+            {translate(STRING.TRACK_SUMMARY_FRAME_NAMES)}:{' '}
+            <span className="text-foreground">{frameNames}</span>
+          </span>
+        ) : null}
+
         {framePosition ? <span>{framePosition}</span> : null}
 
         {shownFrames !== undefined && path && shownFrames < path.length ? (

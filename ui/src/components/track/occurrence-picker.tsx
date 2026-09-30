@@ -4,6 +4,7 @@ import {
   MERGE_SCOPES,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
 import {
+  addSortColumn,
   getComparisonSides,
   getCostLabel,
   getDistanceLabel,
@@ -206,11 +207,18 @@ export const OccurrencePicker = ({
   const columnSort = sort && 'column' in sort ? sort : undefined
 
   const toggleSort = (column: MergeCandidateSortColumn) =>
-    setSort(
-      columnSort?.column === column
-        ? { column, descending: !columnSort.descending }
-        : { column, descending: DESCENDING_FIRST.includes(column) }
-    )
+    setSort(addSortColumn(sort, column, DESCENDING_FIRST.includes(column)))
+
+  const sortKeys = columnSort
+    ? [columnSort, ...(columnSort.thenBy ?? [])].map((key) => key.column)
+    : []
+  const columnSortLabel = sortKeys.length
+    ? sortKeys
+        .map((column) => translate(COLUMN_LABELS[column]))
+        .reduce((first, next) =>
+          translate(STRING.TRACK_SORT_THEN, { first, next: next.toLowerCase() })
+        )
+    : undefined
 
   const chooseOrder = (value: string) =>
     setSort(value === CUMULATIVE ? { cumulative: true } : undefined)
@@ -250,6 +258,8 @@ export const OccurrencePicker = ({
     const label = COLUMN_LABELS[column]
     const help = COLUMN_HELP[column]
     const active = columnSort?.column === column
+    // Columns clicked earlier break the ties of the last one and are numbered from 2.
+    const tieBreakRank = active ? 0 : sortKeys.indexOf(column) + 1
     const DirectionIcon = !active
       ? ArrowUpDownIcon
       : columnSort.descending
@@ -285,6 +295,16 @@ export const OccurrencePicker = ({
             <span>{translate(label)}</span>
           )}
           <DirectionIcon aria-hidden className="w-3 h-3" />
+          {tieBreakRank > 1 ? (
+            <span
+              className="tabular-nums text-foreground"
+              title={translate(STRING.TRACK_SORT_TIE_BREAK, {
+                rank: tieBreakRank,
+              })}
+            >
+              {tieBreakRank}
+            </span>
+          ) : null}
         </button>
       </th>
     )
@@ -344,7 +364,7 @@ export const OccurrencePicker = ({
                     className="h-8 body-small"
                     value={columnSort.column}
                   >
-                    {translate(COLUMN_LABELS[columnSort.column])}
+                    {columnSortLabel}
                   </Select.Item>
                 ) : null}
               </Select.Content>

@@ -5,6 +5,8 @@ export interface UserPreferences {
     label: string
     value: string
   }[]
+  /** Fill the boxes along a track's path with each frame's crop, not just an outline. */
+  showPathCrops?: boolean
   termsMessageSeen?: boolean
 }
 

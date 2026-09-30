@@ -1,7 +1,7 @@
 import { isGenusOrBelow } from 'components/taxon-details/utils'
 import { FrameLabel } from 'data-services/models/occurrence-details'
 import { Taxon } from 'data-services/models/taxa'
-import { BanIcon } from 'lucide-react'
+import { BanIcon, ImageIcon } from 'lucide-react'
 import { cn } from 'nova-ui-kit/utils'
 import { STRING, translate } from 'utils/language'
 
@@ -27,11 +27,14 @@ export const FrameTaxonName = ({ taxon }: { taxon?: Taxon }) => {
  * `hasVector` is undefined when the payload did not say, and only a definite no is marked.
  */
 export const FrameCaption = ({
+  captureUrl,
   detectionId,
   hasVector,
   label,
   timeLabel,
 }: {
+  /** The whole capture this frame was cropped from, opened at full size. */
+  captureUrl?: string
   detectionId: string
   hasVector?: boolean
   label: FrameLabel
@@ -57,7 +60,21 @@ export const FrameCaption = ({
           </span>
         ) : null}
       </div>
-      <span>{timeLabel}</span>
+      <div className="flex items-center gap-1">
+        <span>{timeLabel}</span>
+        {captureUrl ? (
+          <a
+            aria-label={translate(STRING.TRACK_OPEN_FULL_CAPTURE)}
+            className="flex items-center hover:text-foreground"
+            href={captureUrl}
+            rel="noreferrer"
+            target="_blank"
+            title={translate(STRING.TRACK_OPEN_FULL_CAPTURE)}
+          >
+            <ImageIcon aria-hidden className="w-3 h-3" />
+          </a>
+        ) : null}
+      </div>
     </div>
     <span className="font-medium">
       <FrameTaxonName taxon={label.taxon} />

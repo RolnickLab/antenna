@@ -34,6 +34,7 @@ import { ExtendClick, getExtendClickHint } from './extend-click'
 import { ExtendTrackDialog, ExtendTrackState } from './extend-track'
 import { buildTrail } from './ghost-trail'
 import { OccurrenceToolbar } from './occurrence-toolbar'
+import { PANEL_LAYER } from './panel-layer'
 import {
   SessionPathStatus,
   SessionTrackEdit,
@@ -284,7 +285,11 @@ export const Capture = ({
     >
       <TransformWrapper
         maxScale={maxScale}
-        onTransform={(_, state) => setScale(state.scale)}
+        onTransform={(ref, state) => {
+          setScale(state.scale)
+          // The box panels live in a portal and reposition on scroll, not on transforms.
+          ref.instance.wrapperComponent?.dispatchEvent(new Event('scroll'))
+        }}
         ref={transformRef}
       >
         <TransformComponent
@@ -346,6 +351,7 @@ export const Capture = ({
               isLoadingPath={isLoadingPath}
               matches={matches}
               onHidePath={() => setPathOccurrenceId(undefined)}
+              onSelectCapture={setActiveCaptureId}
               onShowPath={(occurrenceId) =>
                 occurrenceId === shownPathId
                   ? refetchPath()
@@ -493,6 +499,7 @@ const CaptureDetections = ({
   isLoadingPath,
   matches,
   onHidePath,
+  onSelectCapture,
   onShowPath,
   onTogglePathCrops,
   path,
@@ -510,6 +517,7 @@ const CaptureDetections = ({
   isLoadingPath?: boolean
   matches?: Record<string, CaptureMatch>
   onHidePath: () => void
+  onSelectCapture: (captureId: string) => void
   onShowPath: (occurrenceId: string) => void
   /** Switch the path's boxes between the moth's own pixels and an outline. */
   onTogglePathCrops?: () => void
@@ -522,9 +530,6 @@ const CaptureDetections = ({
   shownFrames?: number
   trackingEnabled?: boolean
 }) => {
-  // Held in state, not a ref: Radix needs the element itself to keep a panel inside
-  // the image, and a ref assignment does not re-render to hand it over.
-  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
   const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
   // Selected occurrences whose panel was closed with Escape; they stay selected.
@@ -653,7 +658,7 @@ const CaptureDetections = ({
 
   return (
     <>
-      <div className={styles.detections} ref={setContainer}>
+      <div className={styles.detections}>
         {Object.entries(boxStyles).map(([id, style]) => {
           const detection = detections.find((d) => d.id === id)
 
@@ -729,54 +734,57 @@ const CaptureDetections = ({
                   open={hoveredBox === detection.id || (plainLabel && isActive)}
                 >
                   <Tooltip.Trigger asChild>{box}</Tooltip.Trigger>
-                  <Tooltip.Content
-                    className={classNames(
-                      'z-[1]',
-                      plainLabel
-                        ? 'pointer-events-auto'
-                        : 'pointer-events-none',
-                      detailsHidden ? 'px-3 py-2' : 'p-3'
-                    )}
-                    collisionBoundary={container}
-                    collisionPadding={8}
-                    onMouseEnter={() => hoverBox(detection.id)}
-                    onMouseLeave={() => unhoverBox(detection.id)}
-                    side="bottom"
-                  >
-                    {detailsHidden ? (
-                      <CaptureMatchTooltip
-                        click={click}
-                        detection={detection}
-                        detections={detections}
-                        isTrackFrame={isExtended}
-                        match={match}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-start gap-1">
-                        {plainLabel ? (
-                          <button
-                            className="body-base text-primary font-medium"
-                            disabled={!detection.occurrenceId}
-                            onClick={() =>
-                              setActiveOccurrence(detection.occurrenceId)
-                            }
-                            type="button"
-                          >
-                            {detection.label}
-                          </button>
-                        ) : (
-                          <span className="body-base font-medium">
-                            {detection.label}
-                          </span>
-                        )}
-                        <DeterminationScore
-                          score={detection.score}
-                          scoreLabel={detection.scoreLabel}
-                          verified={detection.score === 1}
+                  <Tooltip.Portal>
+                    <Tooltip.Content
+                      className={classNames(
+                        PANEL_LAYER,
+                        styles.panel,
+                        plainLabel
+                          ? 'pointer-events-auto'
+                          : 'pointer-events-none',
+                        detailsHidden ? 'px-3 py-2' : 'p-3'
+                      )}
+                      collisionPadding={8}
+                      hideWhenDetached
+                      onMouseEnter={() => hoverBox(detection.id)}
+                      onMouseLeave={() => unhoverBox(detection.id)}
+                      side="bottom"
+                    >
+                      {detailsHidden ? (
+                        <CaptureMatchTooltip
+                          click={click}
+                          detection={detection}
+                          detections={detections}
+                          isTrackFrame={isExtended}
+                          match={match}
                         />
-                      </div>
-                    )}
-                  </Tooltip.Content>
+                      ) : (
+                        <div className="flex flex-col items-start gap-1">
+                          {plainLabel ? (
+                            <button
+                              className="body-base text-primary font-medium"
+                              disabled={!detection.occurrenceId}
+                              onClick={() =>
+                                setActiveOccurrence(detection.occurrenceId)
+                              }
+                              type="button"
+                            >
+                              {detection.label}
+                            </button>
+                          ) : (
+                            <span className="body-base font-medium">
+                              {detection.label}
+                            </span>
+                          )}
+                          <DeterminationScore
+                            score={detection.score}
+                            scoreLabel={detection.scoreLabel}
+                            verified={detection.score === 1}
+                          />
+                        </div>
+                      )}
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
                 </Tooltip.Root>
               </Tooltip.Provider>
             )
@@ -785,95 +793,102 @@ const CaptureDetections = ({
           return (
             <Popover.Root key={detection.id} open={panelOpen}>
               <Popover.Trigger asChild>{box}</Popover.Trigger>
-              <Popover.Content
-                align="center"
-                // The layer holding the boxes is transparent to the pointer so a path
-                // frame below it stays reachable, so this panel, which has links in
-                // it, has to take clicks back.
-                className="w-auto p-3 z-[1] body-small pointer-events-auto"
-                collisionBoundary={container}
-                collisionPadding={8}
-                onEscapeKeyDown={() => {
-                  if (isActive) {
-                    setDismissed(detection.occurrenceId as string, true)
-                  } else {
-                    setHoveredBox(undefined)
-                  }
-                }}
-                onMouseEnter={() => hoverBox(detection.id)}
-                onMouseLeave={() => unhoverBox(detection.id)}
-                // The panel follows a selection or a hover rather than a deliberate
-                // open, so it must not pull focus off the capture.
-                onOpenAutoFocus={(event) => event.preventDefault()}
-                side="bottom"
-              >
-                <OccurrenceToolbar
-                  detectionId={detection.id}
-                  isExtended={isExtended}
-                  isLoadingPath={
-                    isLoadingPath && pathOccurrenceId === detection.occurrenceId
-                  }
-                  occurrence={{
-                    frameCount: detection.frameCount,
-                    groupingVerified: detection.groupingVerified,
-                    groupingVerifiedAt: detection.groupingVerifiedAt,
-                    groupingVerifiedBy: detection.groupingVerifiedBy,
-                    id: detection.occurrenceId,
-                    label: detection.label,
-                    score: detection.score,
-                    scoreLabel: detection.scoreLabel,
+              <Popover.Portal>
+                <Popover.Content
+                  align="center"
+                  className={classNames(
+                    'w-auto p-3 body-small overflow-y-auto max-h-[var(--radix-popover-content-available-height)]',
+                    PANEL_LAYER,
+                    styles.panel
+                  )}
+                  collisionPadding={8}
+                  hideWhenDetached
+                  onEscapeKeyDown={() => {
+                    if (isActive) {
+                      setDismissed(detection.occurrenceId as string, true)
+                    } else {
+                      setHoveredBox(undefined)
+                    }
                   }}
-                  onExtend={() =>
-                    extend.start(detection.occurrenceId as string)
-                  }
-                  onDismiss={() =>
-                    setDismissed(detection.occurrenceId as string, true)
-                  }
-                  onHidePath={onHidePath}
-                  onTogglePathCrops={onTogglePathCrops}
-                  showPathCrops={showPathCrops}
-                  onMerge={() =>
-                    setTrackEdit({
-                      action: 'merge',
-                      detectionId: detection.id,
-                      occurrenceId: detection.occurrenceId as string,
-                    })
-                  }
-                  onOpenOccurrence={() =>
-                    setActiveOccurrence(detection.occurrenceId)
-                  }
-                  onShowPath={() => showPath(detection.occurrenceId as string)}
-                  onSplit={() =>
-                    setTrackEdit({
-                      action: 'split',
-                      detectionId: detection.id,
-                      occurrenceId: detection.occurrenceId as string,
-                      ...describeSplit(detection.id),
-                    })
-                  }
-                  onVerify={() =>
-                    setTrackEdit({
-                      action: 'verify',
-                      detectionId: detection.id,
-                      occurrenceId: detection.occurrenceId as string,
-                      verified: detection.groupingVerified,
-                    })
-                  }
-                  path={
-                    pathOccurrenceId === detection.occurrenceId
-                      ? path
-                      : undefined
-                  }
-                  pathError={
-                    pathError && pathOccurrenceId === detection.occurrenceId
-                  }
-                  shownFrames={
-                    pathOccurrenceId === detection.occurrenceId
-                      ? shownFrames
-                      : undefined
-                  }
-                />
-              </Popover.Content>
+                  onMouseEnter={() => hoverBox(detection.id)}
+                  onMouseLeave={() => unhoverBox(detection.id)}
+                  // The panel follows a selection or a hover rather than a deliberate
+                  // open, so it must not pull focus off the capture.
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                  side="bottom"
+                >
+                  <OccurrenceToolbar
+                    detectionId={detection.id}
+                    isExtended={isExtended}
+                    isLoadingPath={
+                      isLoadingPath &&
+                      pathOccurrenceId === detection.occurrenceId
+                    }
+                    occurrence={{
+                      frameCount: detection.frameCount,
+                      groupingVerified: detection.groupingVerified,
+                      groupingVerifiedAt: detection.groupingVerifiedAt,
+                      groupingVerifiedBy: detection.groupingVerifiedBy,
+                      id: detection.occurrenceId,
+                      label: detection.label,
+                      score: detection.score,
+                      scoreLabel: detection.scoreLabel,
+                    }}
+                    onExtend={() =>
+                      extend.start(detection.occurrenceId as string)
+                    }
+                    onDismiss={() =>
+                      setDismissed(detection.occurrenceId as string, true)
+                    }
+                    onHidePath={onHidePath}
+                    onTogglePathCrops={onTogglePathCrops}
+                    showPathCrops={showPathCrops}
+                    onMerge={() =>
+                      setTrackEdit({
+                        action: 'merge',
+                        detectionId: detection.id,
+                        occurrenceId: detection.occurrenceId as string,
+                      })
+                    }
+                    onOpenOccurrence={() =>
+                      setActiveOccurrence(detection.occurrenceId)
+                    }
+                    onSelectCapture={onSelectCapture}
+                    onShowPath={() =>
+                      showPath(detection.occurrenceId as string)
+                    }
+                    onSplit={() =>
+                      setTrackEdit({
+                        action: 'split',
+                        detectionId: detection.id,
+                        occurrenceId: detection.occurrenceId as string,
+                        ...describeSplit(detection.id),
+                      })
+                    }
+                    onVerify={() =>
+                      setTrackEdit({
+                        action: 'verify',
+                        detectionId: detection.id,
+                        occurrenceId: detection.occurrenceId as string,
+                        verified: detection.groupingVerified,
+                      })
+                    }
+                    path={
+                      pathOccurrenceId === detection.occurrenceId
+                        ? path
+                        : undefined
+                    }
+                    pathError={
+                      pathError && pathOccurrenceId === detection.occurrenceId
+                    }
+                    shownFrames={
+                      pathOccurrenceId === detection.occurrenceId
+                        ? shownFrames
+                        : undefined
+                    }
+                  />
+                </Popover.Content>
+              </Popover.Portal>
             </Popover.Root>
           )
         })}
