@@ -71,7 +71,10 @@ class TrackingConfig(pydantic.BaseModel):
         description="Only link detections that both have a feature embedding. Off matches on box geometry alone.",
     )
 
-    skip_if_human_identifications: bool = True
+    skip_if_human_identifications: bool = pydantic.Field(
+        True,
+        description="Leave a session untouched if anyone has already identified an occurrence in it.",
+    )
     require_completely_processed_session: bool = pydantic.Field(
         False,
         title="Require a fully processed session",
@@ -81,7 +84,10 @@ class TrackingConfig(pydantic.BaseModel):
     # v1 only operates on fresh data: every detection has its own auto-created
     # occurrence (1:1) and no chain links exist yet. Re-tracking previously-tracked
     # data is a v2 concern (see #1272 for the incremental append/prepend plan).
-    require_fresh_event: bool = True
+    require_fresh_event: bool = pydantic.Field(
+        True,
+        description="Only track sessions that have not been tracked or merged by hand. Off re-tracks them.",
+    )
 
     # Which feature extractor's embeddings to compare. Left unset: the event's only one,
     # or the project's default among several (see resolve_feature_algorithm).
@@ -95,54 +101,142 @@ class TrackingConfig(pydantic.BaseModel):
     )
 
     # Weight of each cost term. At 1.0 each the cost is the plain sum described above.
-    appearance_weight: float = pydantic.Field(1.0, ge=0)
-    iou_weight: float = pydantic.Field(1.0, ge=0)
-    size_weight: float = pydantic.Field(1.0, ge=0)
-    distance_weight: float = pydantic.Field(1.0, ge=0)
+    appearance_weight: float = pydantic.Field(
+        1.0,
+        ge=0,
+        description="How much looking alike counts towards the matching cost.",
+    )
+    iou_weight: float = pydantic.Field(
+        1.0,
+        ge=0,
+        description="How much box overlap counts towards the matching cost.",
+    )
+    size_weight: float = pydantic.Field(
+        1.0,
+        ge=0,
+        description="How much a change in box size counts towards the matching cost.",
+    )
+    distance_weight: float = pydantic.Field(
+        1.0,
+        ge=0,
+        description="How much the distance moved counts towards the matching cost.",
+    )
 
     # Species gate: two detections whose top labels both score at least species_gate_min_score
     # and name unrelated taxa (neither is an ancestor of the other) are either never linked
     # ("forbid") or have species_gate_penalty added to their cost ("penalty").
-    species_gate: typing.Literal["off", "penalty", "forbid"] = "off"
-    species_gate_min_score: float = pydantic.Field(0.5, ge=0, le=1)
-    species_gate_penalty: float = pydantic.Field(1.0, ge=0)
+    species_gate: typing.Literal["off", "penalty", "forbid"] = pydantic.Field(
+        "off",
+        description="Penalise or forbid links between detections confidently labelled as unrelated taxa.",
+    )
+    species_gate_min_score: float = pydantic.Field(
+        0.5,
+        ge=0,
+        le=1,
+        description="Both labels must score at least this for the species gate to apply.",
+    )
+    species_gate_penalty: float = pydantic.Field(
+        1.0,
+        ge=0,
+        description="Cost added to a pair when the species gate is set to penalty.",
+    )
     # Which classifier's labels the gate compares. Scores from different models are not on
     # one scale, so left unset the gate uses the only classifier that labelled the session
     # and skips a session labelled by several.
-    species_label_algorithm_id: int | None = None
+    species_label_algorithm_id: int | None = pydantic.Field(
+        None,
+        title="Species classifier",
+        description="Whose labels the species gate compares. Left empty, the session's only classifier is used.",
+        ami_widget="entity",
+        ami_entity="ml/algorithms",
+        ami_entity_filters={"task_type": "classification"},
+    )
 
     # Activity scaling: the more detections a pair of captures holds, the more the distance
     # term weighs, so a crowded sheet tolerates less movement. "log" multiplies it by
     # log(1 + n) / log(1 + activity_reference_count) when that exceeds 1; "steps" uses the
     # multiplier of the highest [count, multiplier] step in activity_steps that n reaches.
-    activity_scaling: typing.Literal["off", "log", "steps"] = "off"
-    activity_reference_count: int = pydantic.Field(5, ge=1)
-    activity_steps: list[tuple[int, float]] = []
+    activity_scaling: typing.Literal["off", "log", "steps"] = pydantic.Field(
+        "off",
+        description="Make movement count for more on crowded captures, on a log scale or in steps.",
+    )
+    activity_reference_count: int = pydantic.Field(
+        5,
+        ge=1,
+        description="Detection count above which log scaling starts to raise the distance term.",
+    )
+    activity_steps: list[tuple[int, float]] = pydantic.Field(
+        [],
+        description="For step scaling: [count, multiplier] pairs, for example [[10, 1.5], [30, 2]].",
+    )
 
     # Stationary-first pass: pairs whose centre moved at most stationary_max_shift (share of
     # the image diagonal), overlap by at least stationary_min_iou and cost less than
     # stationary_cost_threshold are linked before any other pair, so a moving insect cannot
     # take the place of one sitting still. With stationary_allow_missing_features, such a
     # pair is linked on geometry alone even when require_features would skip it.
-    stationary_first: bool = False
-    stationary_max_shift: float = pydantic.Field(0.01, ge=0)
-    stationary_min_iou: float = pydantic.Field(0.7, ge=0, le=1)
-    stationary_cost_threshold: float = pydantic.Field(0.2, ge=0)
-    stationary_allow_missing_features: bool = False
+    stationary_first: bool = pydantic.Field(
+        False,
+        description="Link insects that sat still before any others, so a moving one cannot take their place.",
+    )
+    stationary_max_shift: float = pydantic.Field(
+        0.01,
+        ge=0,
+        description="Furthest a still insect's centre may move, as a share of the image diagonal.",
+    )
+    stationary_min_iou: float = pydantic.Field(
+        0.7,
+        ge=0,
+        le=1,
+        description="Least box overlap for a pair to count as sitting still.",
+    )
+    stationary_cost_threshold: float = pydantic.Field(
+        0.2,
+        ge=0,
+        description="Highest cost at which a still pair is linked in the first pass.",
+    )
+    stationary_allow_missing_features: bool = pydantic.Field(
+        False,
+        description="Link still pairs on box geometry alone when an embedding is missing.",
+    )
 
     # Appearance calibration: cosine similarity at or above the ceiling costs 0, at or below the
     # floor costs 1, linearly between. Each feature extractor has its own similarity range, so the
     # defaults (0 and 1, the plain 1 - similarity) suit none in particular.
-    appearance_similarity_floor: float = pydantic.Field(0.0, ge=0, le=1)
-    appearance_similarity_ceiling: float = pydantic.Field(1.0, ge=0, le=1)
+    appearance_similarity_floor: float = pydantic.Field(
+        0.0,
+        ge=0,
+        le=1,
+        description="Embedding similarity at or below which appearance costs the most.",
+    )
+    appearance_similarity_ceiling: float = pydantic.Field(
+        1.0,
+        ge=0,
+        le=1,
+        description="Embedding similarity at or above which appearance costs nothing.",
+    )
     # Appearance gate: never link two detections whose embeddings are less similar than this.
     # Pairs missing an embedding are not gated.
-    appearance_min_similarity: float | None = pydantic.Field(None, ge=0, le=1)
+    appearance_min_similarity: float | None = pydantic.Field(
+        None,
+        ge=0,
+        le=1,
+        description="Never link detections less alike than this. Empty turns the check off.",
+    )
     # Move rule: when two embeddings are at least this similar, the overlap term becomes at most
     # the centre shift in box sizes divided by motion_max_shift, so an insect that moved clear of
     # its old box can still link. Off (None) keeps the overlap term as it is.
-    motion_min_similarity: float | None = pydantic.Field(None, ge=0, le=1)
-    motion_max_shift: float = pydantic.Field(3.0, gt=0)
+    motion_min_similarity: float | None = pydantic.Field(
+        None,
+        ge=0,
+        le=1,
+        description="Above this similarity, an insect that moved clear of its box can still link. Empty turns it off.",
+    )
+    motion_max_shift: float = pydantic.Field(
+        3.0,
+        gt=0,
+        description="For that rule, how far the centre may move, measured in box sizes.",
+    )
 
     @pydantic.validator("activity_steps")
     def _steps_ascend(cls, steps: list[tuple[int, float]]) -> list[tuple[int, float]]:
