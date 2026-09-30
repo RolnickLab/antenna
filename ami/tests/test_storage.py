@@ -243,6 +243,24 @@ class TestCapturePublicUrlEncoding(SimpleTestCase):
         self.assertEqual(SourceImage.build_public_url(self.base, "site/a%20b.jpg"), self.base + "site/a%2520b.jpg")
 
 
+class TestStorageSourcePublicUrlMatchesCaptures(SimpleTestCase):
+    """The connection test's sample URL must be the URL a synced capture gets, or a broken base URL looks fine."""
+
+    def test_sample_url_matches_capture_url(self):
+        for base in ("http://h/bucket", "http://h"):
+            config = s3.S3Config(
+                endpoint_url="http://h",
+                access_key_id="key",
+                secret_access_key="secret",
+                bucket_name="bucket",
+                prefix="",
+                public_base_url=base,
+            )
+            key = "site 1/20240701235959-snapshot.jpg"
+            with self.subTest(base=base):
+                self.assertEqual(s3.public_url(config, key), SourceImage.build_public_url(base, key))
+
+
 class TestStorageSource(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()

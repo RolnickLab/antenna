@@ -649,8 +649,8 @@ def public_url(config: S3Config, key: str):
     if not config.public_base_url:
         return get_presigned_url(config, key)
     else:
-        # return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
-        return urllib.parse.urljoin(config.public_base_url, make_full_key_uri(config, key, with_protocol=False))
+        # Same builder as capture URLs, so the connection test shows the URL captures will actually get.
+        return join_public_url(config.public_base_url, key_with_prefix(config, key))
 
 
 def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24 * 7) -> str:
