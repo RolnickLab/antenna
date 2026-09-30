@@ -1135,7 +1135,11 @@ class PostProcessingJob(JobType):
             staff_only = staff_only_config_fields(task_key, config)
             if staff_only:
                 raise serializers.ValidationError(
-                    {"params": {"config": [f"{name}: Only staff can change this setting." for name in staff_only]}}
+                    {
+                        "params": {
+                            "config": [f"{name}: Only a superuser can change this setting." for name in staff_only]
+                        }
+                    }
                 )
         scope_entities = {f.field: f.entity for f in cls.task_scope(task_cls)}
         scope_entities["occurrence_id"] = "occurrences"

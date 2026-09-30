@@ -223,7 +223,7 @@ class TestCreateJobWithParams(APITestCase):
             registry.MEMBER_POST_PROCESSING_TASKS.clear()
             registry.MEMBER_POST_PROCESSING_TASKS.update(original)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("reweight: Only staff", str(response.json()))
+        self.assertIn("reweight: Only a superuser can change this setting.", str(response.json()))
 
     def test_platform_job_types_cannot_be_created_through_the_api(self):
         response = self.post_job(self.superuser, job_type_key="data_export")

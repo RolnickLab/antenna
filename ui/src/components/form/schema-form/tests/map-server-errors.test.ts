@@ -12,7 +12,7 @@ describe('mapServerErrors', () => {
         params: {
           config: [
             'taxa_list_id: field required',
-            'reweight: Only staff can change this setting.',
+            'reweight: Only a superuser can change this setting.',
           ],
         },
       },
@@ -20,7 +20,7 @@ describe('mapServerErrors', () => {
     )
     expect(fieldErrors).toEqual({
       'config.taxa_list_id': 'field required',
-      'config.reweight': 'Only staff can change this setting.',
+      'config.reweight': 'Only a superuser can change this setting.',
     })
     expect(general).toEqual([])
   })
