@@ -2995,6 +2995,23 @@ class TestDeploymentSyncCreatesEvents(TestCase):
         self.assertTrue(any(expected in line for line in logs.output), logs.output)
         self.assertFalse(any("None of the" in line for line in logs.output), logs.output)
 
+    def test_sync_summary_counts_unwritten_batches_as_failed(self):
+        """Captures that the database refused must show up as failed in the summary, not as imported."""
+        project, deployment = setup_test_project(reuse=False)
+        assert deployment.data_source is not None
+        config = deployment.data_source.config
+        subdir = f"deployment_{deployment.pk}"
+        populate_bucket(config=config, subdir=subdir, num_nights=1, images_per_day=2, skip_existing=False)
+
+        with mock.patch.object(SourceImage.objects, "bulk_create", side_effect=IntegrityError("boom")):
+            with self.assertLogs("ami.main.models", level="INFO") as logs:
+                deployment.sync_captures()
+
+        summary = [line for line in logs.output if "Checked" in line and "objects:" in line]
+        self.assertEqual(len(summary), 1, logs.output)
+        self.assertIn("0 images imported", summary[0])
+        self.assertIn("2 failed", summary[0])
+
     def test_sync_warns_when_every_file_is_skipped(self):
         """When nothing is importable, the sync must name the supported file types so the user knows why."""
         project, deployment = setup_test_project(reuse=False)

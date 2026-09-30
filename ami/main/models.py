@@ -747,8 +747,10 @@ def _insert_or_update_batch_for_sync(
     total_size: int,
     sql_batch_size=500,
     regroup_events_per_batch=False,
-):
+) -> int:
+    """Write one batch of captures. Returns how many could not be written, which the sync summary counts as failed."""
     logger.info(f"Bulk inserting or updating batch of {len(source_images)} SourceImages")
+    not_written = 0
     try:
         SourceImage.objects.bulk_create(
             source_images,
@@ -759,6 +761,7 @@ def _insert_or_update_batch_for_sync(
         )
     except IntegrityError as e:
         logger.error(f"Error bulk inserting batch of SourceImages: {e}")
+        not_written = len(source_images)
 
     if total_files > (deployment.data_source_total_files or 0):
         deployment.data_source_total_files = total_files
@@ -770,6 +773,7 @@ def _insert_or_update_batch_for_sync(
         group_images_into_events(deployment)
 
     deployment.save(update_calculated_fields=False)
+    return not_written
 
 
 def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
@@ -931,6 +935,7 @@ class Deployment(BaseModel):
         total_size = 0
         total_files = 0
         failed = 0
+        not_written = 0
         objects_checked = 0
         objects_listed_as_images = 0
         source_images = []
@@ -985,7 +990,7 @@ class Deployment(BaseModel):
                 source_images.append(source_image)
 
             if len(source_images) >= django_batch_size:
-                _insert_or_update_batch_for_sync(
+                not_written += _insert_or_update_batch_for_sync(
                     deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
                 )
                 source_images = []
@@ -996,7 +1001,7 @@ class Deployment(BaseModel):
 
         if source_images:
             # Insert/update the last batch
-            _insert_or_update_batch_for_sync(
+            not_written += _insert_or_update_batch_for_sync(
                 deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
             )
         if job:
@@ -1008,8 +1013,8 @@ class Deployment(BaseModel):
             deployment,
             objects_checked=objects_checked,
             objects_listed_as_images=objects_listed_as_images,
-            imported=total_files,
-            failed=failed,
+            imported=total_files - not_written,
+            failed=failed + not_written,
             job=job,
         )
 
