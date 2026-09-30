@@ -61,6 +61,55 @@ Output: per-session scores and an overall score pooled over all scored sessions.
 keys `project_id`, `config`, `events[]` (`event_id`, `feature_extraction_algorithm_id`, `note`,
 `links_proposed`, `evaluation`), `skipped_events[]`, `overall`.
 
+### Sweeps
+
+```bash
+python manage.py evaluate_tracking --project <id> --sweep grid.json --output-dir out/ [--per-track-csv out/tracks.csv] \
+    [--vectors-file vectors.npz] [--config '{"species_gate": "forbid"}']
+```
+
+- `--sweep` takes inline JSON or a file: a list of settings, or `{"base": {...}, "grid": {name: [values]},
+  "configs": [...]}`. The grid is a cartesian product on top of `base`; a grid value that is an object is
+  merged whole, so one axis can set a mode and its parameters together. Every setting is validated by
+  `TrackingConfig`; scope fields are refused (the command picks the sessions).
+- Pairs and their cost terms are read and computed once per session and extractor
+  (`event_transition_pairs`) and re-scored per setting (`links_from_transition_pairs`, the same
+  `choose_links` a run uses; a test pins that both give the same links). 168 settings over three
+  one-hour sessions (about 12k detections) took 47 s locally.
+- Writes `sweep.json` (every run, with per-session and overall evaluations, and flat `rows`) and
+  `sweep.md` (one table per session, then overall; only the settings that vary are shown; scores
+  are cut, not rounded, to three places so only a perfect score prints 1.000).
+- `--vectors-file`: an `.npz` with `detection_ids` and `vectors`, compared instead of stored
+  embeddings (for extractors whose vectors are not stored as classifications).
+- Added scores: `multi_detection_*` (confirmed tracks of 2+ detections; single-detection tracks
+  are recovered by doing nothing and never count as exact there), `cross_species_merges`
+  (predicted tracks joining confirmed tracks with different determinations), and per session
+  `summarise_session`: occurrences and distinct determinations before (one per detection) and
+  after tracking, predicted tracks of 2+ detections and their median/max length, and
+  `links_with_conflicting_labels` (links whose two confident labels, score >= 0.5, name
+  unrelated taxa: a session-wide proxy for wrong links, since confirmed tracks only reveal a
+  merge of two confirmed tracks). The proxy has a noise floor: labels flicker on the same insect.
+- For a hard guarantee against writes on a copied database, also run with
+  `PGOPTIONS="-c default_transaction_read_only=on"` in the container environment.
+
+### Calibrating the appearance term for a feature extractor
+
+Each extractor has its own cosine similarity range, so the appearance settings are chosen per extractor from
+confirmed tracks. On a partner's evaluation project (three one-hour sessions, 40 multi-detection tracks), measured:
+
+| | classifier backbone (2048-d) | BioCLIP (1024-d) |
+|---|---|---|
+| true consecutive pairs, similarity p1 / p25 / p50 | 0.958 / 0.988 / 0.992 | 0.47 / 0.89 / 0.95 |
+| different insects in adjacent captures within 3 box sizes, p50 / p95 | 0.957 / 0.979 | 0.39 / 0.78 |
+| AUC, true pairs vs those near negatives | 0.980 | 0.979 |
+| true pairs that moved clear of their box, p50 | 0.981 | 0.74 |
+
+Both rank pairs about equally well; the backbone squeezes them into 0.87–1, so its plain `1 - similarity`
+term barely changes the cost. A rule of thumb used there (not optimised): ceiling = p25 of true pairs,
+floor = p50 of the near negatives, gate (`appearance_min_similarity`) = p1 of true pairs. Only 29 of 1,212
+true links were moves; the move rule recovered a few of them at threshold 1.0 without merges but added
+about one doubtful link per correct move, so it stays an experiment.
+
 ### 2. Outside Antenna, from exported CSVs
 
 ```bash
@@ -109,8 +158,6 @@ print("\n".join(result.summary_lines()))
 
 ## Next steps (not built)
 
-- Parameter sweeps: run the command over a grid of `--cost-threshold` values, with and without
-  features, and table link F1 against threshold. A small wrapper script is enough to start.
 - Per-species breakdown: group the per-track scores by the confirmed occurrence's determination.
   Untested idea; needs the determination added to the command's output.
 - A dry-run tracking job (#1416) that stores proposed links for review in the UI would reuse
@@ -125,6 +172,9 @@ print("\n".join(result.summary_lines()))
   `evaluate_csv_files`, `main`; no Django imports.
 - `ami/ml/post_processing/tracking_task.py`: `iter_transition_links` (read-only, shared by the task
   and the evaluator), `propose_event_links`, `select_transition_links`, `save_links`.
-- `ami/main/management/commands/evaluate_tracking.py`: the command.
+- `ami/main/management/commands/evaluate_tracking.py`: the command, `expand_sweep`, `load_vectors_file`.
+- `tracking_evaluation.py`: `summarise_session`, `sweep_row`, `format_sweep_markdown` (no Django).
+- Tests for the optional rules and sweeps: `ami/ml/post_processing/tests/test_tracking_cost_terms.py`
+  (includes the regression test pinning default links to a frozen copy of the old matcher).
 - Tests: `ami/ml/post_processing/tests/test_tracking_evaluation.py` (metrics on hand-built cases,
   CSV adapter, command on a synthetic session, and proposed links equal to the links a run saves).

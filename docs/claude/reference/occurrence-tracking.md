@@ -68,6 +68,22 @@ now-empty siblings.
 | `skip_if_human_identifications` | True | Protect reviewed sessions. |
 | `feature_extraction_algorithm_id` | None | Disambiguate when several classifiers ran. |
 | `require_completely_processed_session` | False | Off deliberately; see below. |
+| `appearance_weight`, `iou_weight`, `size_weight`, `distance_weight` | 1.0 | Weight of each cost term. At 1.0 the cost is the plain sum above, bit for bit. |
+| `species_gate` (`off`/`penalty`/`forbid`), `species_gate_min_score`, `species_gate_penalty`, `species_label_algorithm_id` | off, 0.5, 1.0, None | Forbid or penalise a link whose two top labels are both confident and name unrelated taxa (ancestor/descendant is not a conflict). Labels: highest-score terminal classification per detection from ONE classifier (`species_label_algorithm_id`, else the only one in the session; several ⇒ run skips the session, `evaluate_tracking` errors), rows with `applied_to` excluded; read once per session (`resolve_label_algorithm` + `top_labels`). |
+| `activity_scaling` (`off`/`log`/`steps`), `activity_reference_count`, `activity_steps` | off, 5, [] | Multiply the distance term by `log(1+n)/log(1+ref)` (at least 1) or by a step table, where n is the larger detection count of the two captures. Crowded sheets tolerate less movement. |
+| `stationary_first`, `stationary_max_shift`, `stationary_min_iou`, `stationary_cost_threshold`, `stationary_allow_missing_features` | False, 0.01, 0.7, 0.2, False | Link pairs that barely moved before any other pair; optionally even without embeddings. |
+| `appearance_similarity_floor`, `appearance_similarity_ceiling` | 0, 1 | Map cosine similarity onto the appearance cost: 0 at or above the ceiling, 1 at or below the floor. The defaults are the plain `1 - similarity`. Set per feature extractor (see below). |
+| `appearance_min_similarity` | None | Never link a pair whose two embeddings are less similar than this; pairs without an embedding are not gated. |
+| `motion_min_similarity`, `motion_max_shift` | None, 3.0 | For pairs at least this similar, the overlap term becomes `min(1 - IoU, shift / motion_max_shift)`, the shift measured in box sizes, so a moved insect can link below a threshold of 1. |
+
+Everything after `require_completely_processed_session` is staff-only (not in
+`MEMBER_POST_PROCESSING_TASKS` in `registry.py`). The matcher is `choose_links()`; the pure
+helpers are `pair_terms`, `weighted_cost`, `activity_multiplier`, `labels_conflict`,
+`is_stationary`, `appearance_term`, `overlap_term`, `shift_in_box_sizes`. Structural fact worth knowing when tuning: `(1 - IoU)` is 1 for boxes that do
+not overlap, so at `cost_threshold <= 1.0` with `iou_weight=1` only overlapping boxes can link,
+whatever the other terms say. Linking a moth that moved further needs a threshold above 1 or a
+lower `iou_weight`, and that is where the activity scaling earns its keep (see
+`tracking-evaluation.md`).
 
 ## The trap that matters most
 

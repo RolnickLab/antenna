@@ -2021,6 +2021,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             field=serializers.IntegerField(required=False, min_value=1),
             data=request.query_params,
         )
+        config = tracking_config_for(occurrence)
         try:
             candidates = rank_merge_candidates(
                 occurrence,
@@ -2028,10 +2029,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 minutes=minutes,
                 captures=captures,
                 detection_id=detection_id,
+                config=config,
             )
         except DetectionNotInOccurrence:
             raise api_exceptions.ValidationError({"detection": "Not a detection of this occurrence."})
-        config = tracking_config_for(occurrence)
         return Response(
             MergeCandidatesResponseSerializer(
                 {
