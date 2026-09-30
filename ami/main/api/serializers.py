@@ -17,6 +17,7 @@ from ami.main.models_future.merge_candidates import CAPTURE_MATCH_RELATIONS
 from ami.main.models_future.merge_candidates import MAX_CANDIDATES as MAX_MERGE_CANDIDATES
 from ami.main.models_future.merge_candidates import RELATIONS as MERGE_CANDIDATE_RELATIONS
 from ami.main.models_future.merge_candidates import SKIPPED_REASONS as CAPTURE_MATCH_SKIPPED_REASONS
+from ami.main.models_future.occurrence import OCCURRENCE_FRAMES_PAGE_SIZE, frames_from_prefetch
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
@@ -1267,6 +1268,39 @@ class DetectionNestedSerializer(DefaultSerializer):
         ]
 
 
+class OccurrenceFrameCaptureSerializer(DetectionCaptureNestedSerializer):
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+
+class OccurrenceFrameSerializer(DetectionNestedSerializer):
+    """One detection of an occurrence, with its position in the occurrence's frames.
+
+    Frame edits are gated on the occurrence's permissions, so no per-frame permissions
+    are looked up: that would cost queries for every frame.
+    """
+
+    capture = OccurrenceFrameCaptureSerializer(read_only=True, source="source_image")
+    frame_index = serializers.IntegerField(
+        read_only=True, help_text="Zero-based position among the occurrence's detections in capture order."
+    )
+
+    class Meta(DetectionNestedSerializer.Meta):
+        fields = DetectionNestedSerializer.Meta.fields + ["frame_index"]
+
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+
+class OccurrenceFrameSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    timestamp = serializers.DateTimeField(allow_null=True)
+    capture_id = serializers.IntegerField()
+    frame_index = serializers.IntegerField()
+
+
 class DetectionListSerializer(DefaultSerializer):
     class Meta:
         model = Detection
@@ -1557,6 +1591,20 @@ class TrackingAlgorithmSerializer(serializers.Serializer):
     key = serializers.CharField()
 
 
+class FrameNameTaxonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.CharField()
+
+
+class FrameNameSerializer(serializers.Serializer):
+    """One distinct label across a track's frames. A null taxon counts unlabelled frames."""
+
+    taxon = FrameNameTaxonSerializer(allow_null=True)
+    frames = serializers.IntegerField()
+    score_max = serializers.FloatField(allow_null=True)
+
+
 class GroupingSummarySerializer(TrackStatsSerializer):
     """How an occurrence's detections hang together, computed on read from the current detections."""
 
@@ -1568,6 +1616,7 @@ class GroupingSummarySerializer(TrackStatsSerializer):
     score_min = serializers.FloatField(allow_null=True)
     score_mean = serializers.FloatField(allow_null=True)
     score_max = serializers.FloatField(allow_null=True)
+    frame_names = FrameNameSerializer(many=True)
 
 
 class OccurrenceListSerializer(DefaultSerializer):
@@ -1705,9 +1754,17 @@ class OccurrenceListSerializer(DefaultSerializer):
 
 class OccurrenceSerializer(OccurrenceListSerializer):
     detection_images_limit: int | None = 100
+    # The detail carries the first page of frames so it renders without a second
+    # request; the rest come from the detections action, which pages the same way.
+    detections_page_size = OCCURRENCE_FRAMES_PAGE_SIZE
 
     determination = CaptureTaxonSerializer(read_only=True)
-    detections = DetectionNestedSerializer(many=True, read_only=True)
+    detections = serializers.SerializerMethodField(
+        help_text="The first page of the occurrence's detections in capture order. "
+        "Page through the rest with the occurrence's detections endpoint."
+    )
+    first_detection = serializers.SerializerMethodField()
+    last_detection = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
     predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
@@ -1727,6 +1784,8 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         fields = [name for name in OccurrenceListSerializer.Meta.fields if name != "track_stats"] + [
             "determination_id",
             "detections",
+            "first_detection",
+            "last_detection",
             "predictions",
             # Whether a person confirmed this occurrence holds the right detections,
             # which is a separate judgement from the taxon it was identified as.
@@ -1745,6 +1804,31 @@ class OccurrenceSerializer(OccurrenceListSerializer):
 
         # Editing the detections withdraws the confirmation, so a confirmed grouping is unchanged.
         return obj.grouping_verified_at is None and edited_since_track_complete_review(obj)
+
+    @extend_schema_field(OccurrenceFrameSerializer(many=True))
+    def get_detections(self, obj: Occurrence) -> list[dict]:
+        frames = frames_from_prefetch(obj)[: self.detections_page_size]
+        return OccurrenceFrameSerializer(frames, many=True, context=self.context).data
+
+    def _frame_summary(self, detection: Detection | None) -> dict | None:
+        if detection is None:
+            return None
+        return {
+            "id": detection.pk,
+            "timestamp": detection.source_image.timestamp,
+            "capture_id": detection.source_image_id,
+            "frame_index": detection.frame_index,
+        }
+
+    @extend_schema_field(OccurrenceFrameSummarySerializer(allow_null=True))
+    def get_first_detection(self, obj: Occurrence) -> dict | None:
+        frames = frames_from_prefetch(obj)
+        return self._frame_summary(frames[0] if frames else None)
+
+    @extend_schema_field(OccurrenceFrameSummarySerializer(allow_null=True))
+    def get_last_detection(self, obj: Occurrence) -> dict | None:
+        frames = frames_from_prefetch(obj)
+        return self._frame_summary(frames[-1] if frames else None)
 
     @extend_schema_field(GroupingSummarySerializer())
     def get_grouping_summary(self, obj: Occurrence) -> dict:

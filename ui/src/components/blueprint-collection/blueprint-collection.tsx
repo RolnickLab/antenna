@@ -83,10 +83,13 @@ export const BlueprintItem = ({
   caption,
   item,
   onLinkClick,
+  selected,
 }: {
   actions?: ReactNode
   caption?: ReactNode
   onLinkClick?: () => void
+  /** The frame a link pointed at. */
+  selected?: boolean
   item: {
     id: string
     image: { src: string; width: number; height: number }
@@ -96,7 +99,12 @@ export const BlueprintItem = ({
     to?: string
   }
 }) => (
-  <div className={classNames(styles.blueprintItem, 'group')}>
+  <div
+    aria-current={selected || undefined}
+    className={classNames(styles.blueprintItem, 'group', {
+      'bg-primary-100': selected,
+    })}
+  >
     <div className={styles.crop}>
       <CropImage image={item.image} />
     </div>

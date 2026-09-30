@@ -15,7 +15,7 @@ const frame = (minute: number): TrackFrame => ({
   timeLabel: '',
 })
 
-// Newest first, the order OccurrenceDetails.frames holds them in.
+// Newest first, the order getTrackFrames returns them in.
 const FRAMES = [frame(30), frame(20), frame(10)]
 
 describe('getTrackNavigation', () => {
