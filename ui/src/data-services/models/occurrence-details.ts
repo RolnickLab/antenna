@@ -9,11 +9,18 @@ import { TrackStats } from './track-stats'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
+export interface ServerFrameName {
+  frames: number
+  score_max: number | null
+  taxon: { id: number; name: string; rank: string } | null
+}
+
 export interface ServerGroupingSummary {
   algorithm: { id: number; key: string; name: string } | null
   derived: boolean
   distinct_taxa: number
   duration_seconds: number | null
+  frame_names?: ServerFrameName[]
   frames: number
   frames_with_vectors?: number
   id_agreement: number | null
@@ -74,9 +81,49 @@ export interface TrackFrame {
   captureHeight?: number
   captureId?: string
   captureWidth?: number
+  cropUrl?: string
   id: string
   timestamp: Date
   timeLabel: string
+}
+
+export interface ServerOccurrenceFrame {
+  bbox: number[] | null
+  capture: { id: number; height: number | null; width: number | null } | null
+  classifications: ServerFrameClassification[] | null
+  frame_index: number
+  height: number | null
+  id: number
+  timestamp: string | null
+  url: string | null
+  width: number | null
+}
+
+/** One detection of an occurrence, as a frame of the track strip. */
+export interface OccurrenceFrame {
+  captureId?: string
+  frameIndex: number
+  frameLabel: FrameLabel
+  hasVector?: boolean
+  id: string
+  image: { src: string; width: number; height: number }
+  label: string
+  timeLabel: string
+}
+
+export interface ServerFrameSummary {
+  capture_id: number
+  frame_index: number
+  id: number
+  timestamp: string | null
+}
+
+/** The first or last frame of a track, carried by the detail so no page is needed to reach it. */
+export interface FrameSummary {
+  captureId: string
+  frameIndex: number
+  id: string
+  timeLabel?: string
 }
 
 export interface ServerFrameClassification {
@@ -143,27 +190,13 @@ export const frameHasVector = (
   return flags.length && flags.every((flag) => flag == null) ? undefined : false
 }
 
-export const getFrameNames = (labels: FrameLabel[]): FrameName[] => {
-  const names = new Map<string, FrameName>()
-
-  labels.forEach(({ score, taxon }) => {
-    const key = taxon?.id ?? ''
-    const name = names.get(key) ?? { frames: 0, taxon }
-    name.frames += 1
-    if (
-      score !== undefined &&
-      (name.scoreMax === undefined || score > name.scoreMax)
-    ) {
-      name.scoreMax = score
-    }
-    names.set(key, name)
-  })
-
-  return Array.from(names.values()).sort(
-    (n1, n2) =>
-      n2.frames - n1.frames || (n2.scoreMax ?? -1) - (n1.scoreMax ?? -1)
-  )
-}
+const timeLabelOf = (timestamp?: string | null) =>
+  timestamp
+    ? getFormatedTimeString({
+        date: new Date(timestamp),
+        options: { second: true },
+      })
+    : undefined
 
 /** Width and height of a `[x1, y1, x2, y2]` box, 0 when the box is malformed. */
 const bboxSize = (bbox?: number[]): [number, number] =>
@@ -171,52 +204,60 @@ const bboxSize = (bbox?: number[]): [number, number] =>
     ? [Math.max(bbox[2] - bbox[0], 0), Math.max(bbox[3] - bbox[1], 0)]
     : [0, 0]
 
+export const convertOccurrenceFrame = (
+  frame: ServerOccurrenceFrame
+): OccurrenceFrame => {
+  const classification = getFrameClassification(frame.classifications)
+  const frameLabel: FrameLabel = classification?.taxon
+    ? {
+        score: classification.score ?? undefined,
+        taxon: new Taxon(classification.taxon),
+      }
+    : {}
+
+  return {
+    captureId: frame.capture ? `${frame.capture.id}` : undefined,
+    frameIndex: frame.frame_index,
+    frameLabel,
+    hasVector: frameHasVector(frame.classifications),
+    id: `${frame.id}`,
+    // The bounding box gives the crop's proportions when the crop itself is missing.
+    image: {
+      src: frame.url ?? '',
+      width: frame.width ?? bboxSize(frame.bbox ?? undefined)[0],
+      height: frame.height ?? bboxSize(frame.bbox ?? undefined)[1],
+    },
+    label: frameLabel.taxon
+      ? `${frameLabel.taxon.name} (${
+          frameLabel.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)
+        })`
+      : translate(STRING.TRACK_FRAME_NO_CLASSIFICATION),
+    timeLabel: timeLabelOf(frame.timestamp) ?? '',
+  }
+}
+
+const convertFrameSummary = (
+  summary?: ServerFrameSummary | null
+): FrameSummary | undefined =>
+  summary
+    ? {
+        captureId: `${summary.capture_id}`,
+        frameIndex: summary.frame_index,
+        id: `${summary.id}`,
+        timeLabel: timeLabelOf(summary.timestamp),
+      }
+    : undefined
+
 export class OccurrenceDetails extends Occurrence {
-  private readonly _frameLabels: Map<string, FrameLabel>
-  private readonly _frames: TrackFrame[] = []
+  private readonly _firstPage: OccurrenceFrame[]
   private readonly _humanIdentifications: HumanIdentification[]
   private readonly _machinePredictions: MachinePrediction[]
 
   public constructor(occurrence: ServerOccurrenceDetails) {
     super(occurrence)
 
-    // Sorted here rather than taken in payload order: the track editing actions
-    // describe a split as "this frame and everything later in time", so the order
-    // the frames are listed in has to be a property of this model, not of whatever
-    // ordering the endpoint happens to prefetch. See #1272.
-    this._frames = this._occurrence.detections
-      .map((d: any) => ({
-        bbox: d.bbox ?? [],
-        captureHeight: d.capture?.height ?? undefined,
-        captureId: d.capture?.id !== undefined ? `${d.capture.id}` : undefined,
-        captureWidth: d.capture?.width ?? undefined,
-        id: `${d.id}`,
-        timestamp: new Date(d.timestamp),
-        timeLabel: getFormatedTimeString({
-          date: new Date(d.timestamp),
-          options: { second: true },
-        }),
-      }))
-      .sort(
-        (f1: TrackFrame, f2: TrackFrame) =>
-          f2.timestamp.getTime() - f1.timestamp.getTime()
-      )
-
-    this._frameLabels = new Map(
-      this._occurrence.detections.map((d: any): [string, FrameLabel] => {
-        const classification =
-          getFrameClassification<ServerFrameClassification>(d.classifications)
-
-        return [
-          `${d.id}`,
-          classification?.taxon
-            ? {
-                score: classification.score ?? undefined,
-                taxon: new Taxon(classification.taxon),
-              }
-            : {},
-        ]
-      })
+    this._firstPage = (this._occurrence.detections ?? []).map(
+      convertOccurrenceFrame
     )
 
     const sortByDate = (i1: any, i2: any) => {
@@ -281,18 +322,36 @@ export class OccurrenceDetails extends Occurrence {
     return this._occurrence.details
   }
 
-  get detections(): string[] {
-    return this._frames.map((frame) => frame.id)
+  /** The first page of frames, earliest first; the frames endpoint serves the rest. */
+  get firstFramesPage(): OccurrenceFrame[] {
+    return this._firstPage
   }
 
-  /** Detections of this occurrence, newest first — the order the strip renders them in. */
-  get frames(): TrackFrame[] {
-    return this._frames
+  get firstFrame(): FrameSummary | undefined {
+    return convertFrameSummary(this._occurrence.first_detection)
   }
 
-  /** Distinct labels across the frames, most frames first. */
+  get lastFrame(): FrameSummary | undefined {
+    return convertFrameSummary(this._occurrence.last_detection)
+  }
+
+  /** Distinct labels across every frame, most frames first. */
   get frameNames(): FrameName[] {
-    return getFrameNames(Array.from(this._frameLabels.values()))
+    const names: ServerFrameName[] =
+      this._occurrence.grouping_summary?.frame_names ?? []
+
+    return names.map((name) => ({
+      frames: name.frames,
+      scoreMax: name.score_max ?? undefined,
+      taxon: name.taxon
+        ? new Taxon({
+            cover_image_url: null,
+            id: `${name.taxon.id}`,
+            name: name.taxon.name,
+            rank: name.taxon.rank,
+          })
+        : undefined,
+    }))
   }
 
   get groupingVerified(): boolean {
@@ -365,39 +424,5 @@ export class OccurrenceDetails extends Occurrence {
 
   get rawData(): string {
     return JSON.stringify(this._occurrence, null, 4)
-  }
-
-  getDetectionInfo(id: string) {
-    const detection = this._occurrence.detections.find(
-      (d: any) => `${d.id}` === id
-    )
-
-    const frameLabel = this._frameLabels.get(id) ?? {}
-    const label = frameLabel.taxon
-      ? `${frameLabel.taxon.name} (${
-          frameLabel.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)
-        })`
-      : translate(STRING.TRACK_FRAME_NO_CLASSIFICATION)
-
-    return {
-      id,
-      captureId:
-        detection.capture?.id !== undefined
-          ? `${detection.capture.id}`
-          : undefined,
-      // The bounding box gives the crop's proportions when the crop itself is missing.
-      image: {
-        src: detection.url,
-        width: detection.width ?? bboxSize(detection.bbox)[0],
-        height: detection.height ?? bboxSize(detection.bbox)[1],
-      },
-      frameLabel,
-      hasVector: frameHasVector(detection.classifications),
-      label,
-      timeLabel: getFormatedTimeString({
-        date: new Date(detection.timestamp),
-        options: { second: true },
-      }),
-    }
   }
 }

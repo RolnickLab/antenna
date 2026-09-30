@@ -15,15 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 def get_export_serializer():
-    from ami.main.api.serializers import OccurrenceSerializer
+    from ami.main.api.serializers import DetectionNestedSerializer, OccurrenceSerializer
+
+    # The detail response pages its detections; an export carries every one of them.
+    detail_only_fields = ("grouping_summary", "first_detection", "last_detection")
 
     class OccurrenceExportSerializer(OccurrenceSerializer):
         detection_images = serializers.SerializerMethodField()
+        detections = DetectionNestedSerializer(many=True, read_only=True)
 
         class Meta(OccurrenceSerializer.Meta):
             # The grouping summary describes the detections as they stand at read
             # time; it is not part of the occurrence record and is never exported.
-            fields = [name for name in OccurrenceSerializer.Meta.fields if name != "grouping_summary"]
+            fields = [name for name in OccurrenceSerializer.Meta.fields if name not in detail_only_fields]
 
         def get_detection_images(self, obj: Occurrence):
             """Convert the generator field to a list before serialization"""

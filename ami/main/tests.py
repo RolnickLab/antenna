@@ -9382,6 +9382,133 @@ class TrackEditTestCase(TrackFixtureTestCase):
         self.assertEqual(response.data["new_occurrence_detections_count"], len(self.detections) - 2)
 
 
+class OccurrenceFramesTestCase(TrackFixtureTestCase):
+    """Paging through an occurrence's detections, which a long track has too many of to embed."""
+
+    def frames(self, query: str = "", occurrence: Occurrence | None = None):
+        occurrence = occurrence or self.occurrence
+        return self.client.get(f"/api/v2/occurrences/{occurrence.pk}/detections/?project_id={self.project.pk}{query}")
+
+    def test_frames_run_in_capture_order_with_their_index_in_the_track(self):
+        self.client.force_authenticate(user=self.reader)
+        first = self.frames("&limit=3")
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["count"], len(self.detections))
+        self.assertEqual([row["id"] for row in first.data["results"]], [d.pk for d in self.detections[:3]])
+        self.assertEqual([row["frame_index"] for row in first.data["results"]], [0, 1, 2])
+        self.assertEqual(first.data["results"][0]["capture"]["id"], self.captures[0].pk)
+        self.assertIsNone(first.data["previous"])
+
+        rest = self.client.get(first.data["next"])
+        self.assertEqual([row["id"] for row in rest.data["results"]], [self.detections[3].pk])
+        self.assertEqual([row["frame_index"] for row in rest.data["results"]], [3])
+        self.assertIsNone(rest.data["next"])
+
+    def test_around_opens_the_page_holding_that_frame(self):
+        """Opening the strip on a given frame needs its page, wherever it falls in the track."""
+        self.client.force_authenticate(user=self.reader)
+        response = self.frames(f"&limit=3&around={self.detections[3].pk}")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([row["frame_index"] for row in response.data["results"]], [3])
+        # The neighbouring page is addressed by offset, or following it would reopen this one.
+        self.assertNotIn("around", response.data["previous"])
+        self.assertEqual(
+            [row["frame_index"] for row in self.client.get(response.data["previous"]).data["results"]], [0, 1, 2]
+        )
+
+        self.assertEqual(
+            [row["frame_index"] for row in self.frames(f"&limit=3&around={self.detections[1].pk}").data["results"]],
+            [0, 1, 2],
+        )
+
+    def test_invalid_paging_parameters_are_rejected(self):
+        other, other_detections = self._make_track(1, captures=self._make_captures_after(1))
+        self.client.force_authenticate(user=self.reader)
+        for query in (
+            "&limit=abc",
+            "&limit=0",
+            "&offset=-1",
+            "&around=abc",
+            f"&around={other_detections[0].pk}",
+            f"&around={self.detections[0].pk}&offset=0",
+        ):
+            self.assertEqual(self.frames(query).status_code, 400, query)
+
+    def test_the_detail_embeds_the_first_page_and_the_track_ends(self):
+        """The detail renders the strip without a second request, so its frames must be the first page."""
+        from ami.main.api.serializers import OccurrenceSerializer
+
+        self.client.force_authenticate(user=self.reader)
+        with mock.patch.object(OccurrenceSerializer, "detections_page_size", 2):
+            detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, 200, detail.data)
+        page = self.frames("&limit=2").data["results"]
+        self.assertEqual(detail.data["detections"], page)
+        self.assertEqual(detail.data["detections_count"], len(self.detections))
+        self.assertEqual(detail.data["first_detection"]["id"], self.detections[0].pk)
+        self.assertEqual(detail.data["last_detection"]["id"], self.detections[-1].pk)
+        self.assertEqual(detail.data["last_detection"]["frame_index"], len(self.detections) - 1)
+        self.assertEqual(detail.data["last_detection"]["capture_id"], self.captures[len(self.detections) - 1].pk)
+
+    def test_the_grouping_summary_names_the_labels_across_every_frame(self):
+        """The strip shows one page, so the per-label frame counts have to come from the server."""
+        other_taxon = Taxon.objects.filter(projects=self.project).exclude(pk=self.taxon.pk).first()
+        Classification.objects.filter(detection=self.detections[0]).update(taxon=other_taxon, score=0.5)
+        Classification.objects.filter(detection=self.detections[1]).delete()
+
+        self.client.force_authenticate(user=self.reader)
+        detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
+        names = [
+            (n["taxon"] and n["taxon"]["id"], n["frames"], n["score_max"])
+            for n in detail.data["grouping_summary"]["frame_names"]
+        ]
+        self.assertEqual(names, [(self.taxon.pk, 2, 0.9), (other_taxon.pk, 1, 0.5), (None, 1, None)])
+
+    def test_the_json_export_keeps_every_detection(self):
+        from ami.exports.format_types import get_export_serializer
+        from ami.exports.utils import generate_fake_request
+        from ami.main.api.serializers import OccurrenceSerializer
+
+        # The queryset the JSON export reads occurrences through.
+        occurrences = Occurrence.objects.filter(pk=self.occurrence.pk).with_timestamps()  # type: ignore[union-attr]
+        occurrence = occurrences.with_detections_count().with_identifications().with_detail_prefetches().get()
+        with mock.patch.object(OccurrenceSerializer, "detections_page_size", 2):
+            data = get_export_serializer()(occurrence, context={"request": generate_fake_request()}).data
+        self.assertEqual(len(data["detections"]), len(self.detections))
+        self.assertNotIn("first_detection", data)
+
+    def test_a_page_costs_the_same_queries_however_long_the_track(self):
+        """A per-frame read would add queries for the longer track."""
+        self.client.force_authenticate(user=self.reader)
+        long_track, _ = self._make_track(8, captures=self.captures + self._make_captures_after(4))
+        self.frames()  # warm up auth and pool state
+        with cachalot_disabled(), self.assertNumQueries(12):
+            short = self.frames()
+        with cachalot_disabled(), self.assertNumQueries(12):
+            long = self.frames(occurrence=long_track)
+        self.assertEqual(len(short.data["results"]), 4)
+        self.assertEqual(len(long.data["results"]), 8)
+
+    def test_frames_are_exactly_as_visible_as_the_occurrence(self):
+        """Read-only, so the detail's visibility applies, including on a draft project."""
+        outsider = User.objects.create_user(email="outsider@insectai.org")  # type: ignore[attr-defined]
+        superuser = User.objects.create_superuser(  # type: ignore[attr-defined]
+            email="frames-admin@insectai.org", password="secret"
+        )
+        detail_url = f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}"
+
+        for draft in (False, True):
+            self.project.draft = draft
+            self.project.save(update_fields=["draft"])
+            for user, expect_ok in ((self.reader, True), (superuser, True), (outsider, not draft), (None, not draft)):
+                self.client.force_authenticate(user=user)
+                frames = self.frames()
+                detail = self.client.get(detail_url)
+                label = (draft, user and user.email)
+                self.assertEqual(frames.status_code, detail.status_code, label)
+                self.assertEqual(frames.status_code == 200, expect_ok, label)
+
+
 class TrackingFlagGateTestCase(TrackFixtureTestCase):
     """Track editing is refused on a project that has not opted into tracking.
 
