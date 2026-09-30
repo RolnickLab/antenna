@@ -13,7 +13,7 @@ import {
   Table,
 } from 'nova-ui-kit'
 import { JobDetails } from 'pages/job-details/job-details'
-import { NewJobDialog } from 'pages/job-details/new-job-dialog'
+import { CreateJobDialog } from 'pages/job-details/create-job-dialog'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
@@ -70,7 +70,7 @@ export const Jobs = () => {
           title={translate(STRING.NAV_ITEM_JOBS)}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
-          {canCreate ? <NewJobDialog /> : null}
+          {canCreate ? <CreateJobDialog /> : null}
           <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
           <ColumnSettings
             columns={tableColumns}
