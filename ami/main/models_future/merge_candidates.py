@@ -62,7 +62,8 @@ import collections
 import datetime
 from typing import TYPE_CHECKING, Any
 
-from django.db.models import Q, QuerySet
+import pydantic
+from django.db.models import F, Q, QuerySet
 
 from ami.main.models_future.embeddings import algorithm_ids_with_vectors, latest_vectors, vectors_for_detections
 from ami.main.models_future.track_stats import bbox_corners, frame_diagonal
@@ -157,10 +158,13 @@ def _pair_diagonal(track_frame: dict, frame: dict, corners_a, corners_b) -> floa
     return frame_diagonal(None, None, max(corners_a[2], corners_b[2]), max(corners_a[3], corners_b[3]))
 
 
-def _comparison_algorithm(track_vectors: dict[tuple[int, int], Any]) -> int | None:
-    """The algorithm every candidate is scored with: the one with vectors on the most of the
-    occurrence's scored frames, the lowest id on a tie so the choice is stable."""
+def _comparison_algorithm(track_vectors: dict[tuple[int, int], Any], preferred: int | None = None) -> int | None:
+    """The algorithm every candidate is scored with: the tracking run's feature extractor when the
+    track has vectors from it, otherwise the one with vectors on the most of the occurrence's
+    scored frames, the lowest id on a tie so the choice is stable."""
     counts = collections.Counter(algorithm_id for _, algorithm_id in track_vectors)
+    if preferred is not None and counts.get(preferred):
+        return preferred
     return min(counts, key=lambda algorithm_id: (-counts[algorithm_id], algorithm_id)) if counts else None
 
 
@@ -201,6 +205,7 @@ def rank_merge_candidates(
     captures: int = DEFAULT_ADJACENT_CAPTURES,
     limit: int = MAX_CANDIDATES,
     detection_id: int | None = None,
+    config: TrackingConfig | None = None,
 ) -> list[dict[str, Any]]:
     """Candidates for merging with ``occurrence``, lowest cost first, at most ``limit``.
 
@@ -230,7 +235,7 @@ def rank_merge_candidates(
     """
     from ami.main.models import Detection, get_media_url
 
-    config = tracking_config_for(occurrence)
+    config = config or tracking_config_for(occurrence)
     options = config.link_options()
     track = Detection.objects.valid().filter(occurrence_id=occurrence.pk)
     if detection_id is None:
@@ -290,7 +295,7 @@ def rank_merge_candidates(
     }
 
     track_vectors = latest_vectors({track_frame["pk"] for track_frame, _ in pairs.values()})
-    algorithm_id = _comparison_algorithm(track_vectors)
+    algorithm_id = _comparison_algorithm(track_vectors, config.feature_extraction_algorithm_id)
     frame_vectors: dict[int, Any] = {}
     if algorithm_id is not None:
         frame_vectors = vectors_for_detections([frame["pk"] for _, frame in pairs.values()], algorithm_id)
@@ -336,11 +341,33 @@ SKIPPED_REASONS = (SKIPPED_NO_VECTOR,)
 
 
 def tracking_config_for(occurrence: Occurrence) -> TrackingConfig:
-    """The tracking settings the previews here judge pairs by: the threshold, link options and
-    feature requirement. Only the defaults exist today; no per-session settings are stored."""
+    """The tracking settings the previews here judge pairs by: those of the latest successful
+    tracking run over the occurrence's session, so the scores shown match how the session was
+    tracked, or the defaults when no run covered it."""
+    from ami.jobs.models import Job, JobState
+    from ami.main.models import SourceImageCollection
     from ami.ml.post_processing.tracking_task import TrackingConfig
 
-    return TrackingConfig(event_ids=[occurrence.event_id])
+    event_id = occurrence.event_id
+    runs = Job.objects.filter(
+        project_id=occurrence.project_id,
+        job_type_key="post_processing",
+        status=JobState.SUCCESS.name,
+        params__task="tracking",
+    ).order_by(F("finished_at").desc(nulls_last=True), "-pk")
+    for job in runs.only("params")[:50]:
+        config = (job.params or {}).get("config") or {}
+        covers = event_id in (config.get("event_ids") or [])
+        if not covers and config.get("source_image_collection_id"):
+            covers = SourceImageCollection.objects.filter(
+                pk=config["source_image_collection_id"], images__event_id=event_id
+            ).exists()
+        if covers:
+            try:
+                return TrackingConfig(**{**config, "event_ids": [event_id], "source_image_collection_id": None})
+            except pydantic.ValidationError:
+                break  # a run stored with settings this version no longer reads
+    return TrackingConfig(event_ids=[event_id])
 
 
 def _likelihood(cost: float, similarity: float | None) -> float:
@@ -363,7 +390,7 @@ def _pair_scores(
     """The tracking cost between two boxes, each of its raw terms, and the likelihood.
 
     The cost is the tracker's own ``weighted_cost`` under the given link options (from
-    ``tracking_config_for``, the defaults today), so non-default weights, appearance
+    ``tracking_config_for``: the session's latest tracking run, else the defaults), so non-default weights, appearance
     calibration or move rule would change it here as they do in a run.
     """
     from ami.ml.post_processing.tracking_task import DEFAULT_LINK_OPTIONS, pair_terms, weighted_cost
@@ -406,7 +433,7 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
 
     The reference is the track frame nearest in time on another capture. The tracker's own
     matcher runs between every box on the reference frame's capture and every box on
-    ``capture``, with the settings ``tracking_config_for`` returns (the defaults today), the
+    ``capture``, with the settings ``tracking_config_for`` returns (the session's latest tracking run), the
     session's feature algorithm and the image diagonal, and ``would_link`` marks the box it
     links the reference frame to. Tracking only pairs adjacent captures, so across a longer
     gap this previews its pairing rule, not a run.
