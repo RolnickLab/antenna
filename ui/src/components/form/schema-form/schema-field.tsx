@@ -41,6 +41,9 @@ export const SchemaField = ({
     }}
     render={({ field: controller, fieldState }) => {
       const label = field.required ? `${field.label} *` : field.label
+      const notSet = field.required
+        ? undefined
+        : translate(STRING.JOB_VALUE_NOT_SET)
       const error = fieldState.error?.message
 
       switch (field.kind) {
@@ -69,6 +72,7 @@ export const SchemaField = ({
                 entity={field.entity as string}
                 entityFilters={field.entityFilters}
                 projectId={projectId}
+                placeholder={notSet}
                 value={controller.value}
                 onValueChange={(value, optionLabel) => {
                   controller.onChange(value)
@@ -113,6 +117,7 @@ export const SchemaField = ({
               <textarea
                 className="w-full min-h-[80px] p-2 rounded-md border border-border bg-background body-small font-mono"
                 {...controller}
+                placeholder={notSet}
                 value={controller.value ?? ''}
               />
             </InputContent>
@@ -125,9 +130,7 @@ export const SchemaField = ({
               description={field.description}
               error={error}
               label={label}
-              placeholder={
-                field.kind === 'integer-list' ? '1, 2, 3' : undefined
-              }
+              placeholder={field.kind === 'integer-list' ? '1, 2, 3' : notSet}
               type={
                 field.kind === 'integer' || field.kind === 'number'
                   ? 'number'

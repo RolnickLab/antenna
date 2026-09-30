@@ -23,12 +23,14 @@ export const EntitySelect = ({
   entityFilters,
   projectId,
   value,
+  placeholder,
   onValueChange,
 }: {
   entity: string
   entityFilters?: { [key: string]: string | number | boolean }
   projectId: string
   value?: string
+  placeholder?: string
   onValueChange: (value: string | undefined, label?: string) => void
 }) => {
   const params = new URLSearchParams({
@@ -59,7 +61,9 @@ export const EntitySelect = ({
       value={selected}
     >
       <Select.Trigger loading={isLoading}>
-        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
+        <Select.Value
+          placeholder={placeholder ?? translate(STRING.SELECT_PLACEHOLDER)}
+        />
       </Select.Trigger>
       <Select.Content className="max-h-72">
         {options.map((option) => (
