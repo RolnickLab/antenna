@@ -276,7 +276,7 @@ class TracksCSVExporter(BaseExporter):
     required_feature_flag = "tracking"
 
     def get_queryset(self):
-        return Occurrence.objects.valid().filter(project=self.project)  # type: ignore[union-attr]
+        return Occurrence.objects.with_real_detections().filter(project=self.project)  # type: ignore[union-attr]
 
     def export(self):
         from ami.exports.tracks import write_tracks_csv

@@ -1,4 +1,5 @@
 import csv
+import io
 import json
 import logging
 from unittest import mock
@@ -765,6 +766,35 @@ class TracksExportTest(TestCase):
         self.assertEqual({row["occurrence_id"] for row in rows}, {str(verified.pk)})
         self.assertEqual(len(rows), 3)
         self.assertEqual({row["grouping_verified"] for row in rows}, {"true"})
+
+    def test_undetermined_tracks_are_exported_and_scored_alike(self):
+        """On a project where only a detector ran, no occurrence has a determination, and its
+        confirmed tracks must still reach the benchmark file that the scorer reads them from."""
+        from django.core.management import call_command
+        from django.utils import timezone
+
+        undetermined = Occurrence.objects.create(
+            project=self.project, deployment=self.deployment, event=self.captures[0].event
+        )
+        for capture in self.captures:
+            Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[500, 500, 510, 520], occurrence=undetermined
+            )
+        self.assertIsNone(Occurrence.objects.get(pk=undetermined.pk).determination_id)
+        Occurrence.objects.filter(pk__in=[undetermined.pk, self.occurrences[0].pk]).update(
+            grouping_verified_at=timezone.now()
+        )
+
+        content, _ = self._run_format_export()
+        exported = {row["occurrence_id"] for row in csv.DictReader(content.splitlines())}
+        self.assertIn(str(undetermined.pk), exported)
+
+        rows, _ = self._run_command(verified_only=True)
+        self.assertEqual({row["occurrence_id"] for row in rows}, {str(undetermined.pk), str(self.occurrences[0].pk)})
+        output = io.StringIO()
+        args = ["--project", str(self.project.pk), "--format", "json", "--no-require-features"]
+        call_command("evaluate_tracking", *args, stdout=output)
+        self.assertEqual(len(rows), json.loads(output.getvalue())["overall"]["detections"])
 
     def test_occurrence_csv_carries_grouping_confirmation(self):
         from django.utils import timezone
