@@ -27,6 +27,7 @@ export interface FieldDescriptor {
   options?: (string | number)[]
   entity?: string
   entityFilters?: { [key: string]: string | number | boolean }
+  staffOnly?: boolean
 }
 
 export const schemaToFields = (
@@ -39,6 +40,7 @@ export const schemaToFields = (
       description: prop.description,
       required: !!schema?.required?.includes(name),
       defaultValue: prop.default,
+      staffOnly: !!prop.ami_staff_only,
     }
 
     if (prop.ami_widget === 'entity' && prop.ami_entity) {
@@ -87,8 +89,16 @@ export const scopeToFields = (
     entityFilters: item.entity_filters,
   }))
 
+const isEmptyDefault = (value: unknown) =>
+  value === undefined ||
+  value === null ||
+  (Array.isArray(value) && value.length === 0) ||
+  (typeof value === 'object' && Object.keys(value as object).length === 0)
+
+// Empty defaults (null, [], {}) start blank and show "Not set", rather than as
+// raw JSON; leaving them blank sends nothing, so the server default applies.
 export const getInitialValue = (field: FieldDescriptor): unknown =>
-  field.defaultValue === undefined || field.defaultValue === null
+  isEmptyDefault(field.defaultValue)
     ? undefined
     : field.kind === 'boolean' || field.kind === 'select'
     ? field.defaultValue

@@ -73,6 +73,7 @@ const CreateJobForm = ({
   )
   const [generalErrors, setGeneralErrors] = useState<string[]>([])
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [staffOpen, setStaffOpen] = useState(false)
 
   const { control, handleSubmit, watch, setValue, setError } =
     useForm<FormValues>({
@@ -83,7 +84,7 @@ const CreateJobForm = ({
         config: {},
         name: '',
         delay: '0',
-        startNow: false,
+        startNow: true,
       },
       mode: 'onChange',
     })
@@ -106,6 +107,8 @@ const CreateJobForm = ({
     () => schemaToFields(variant?.config_schema ?? jobType?.config_schema),
     [jobType, variant]
   )
+  const memberFields = configFields.filter((field) => !field.staffOnly)
+  const staffFields = configFields.filter((field) => field.staffOnly)
 
   // Scope and settings belong to the selected type and method, so they start
   // fresh (with schema defaults) whenever either changes.
@@ -256,7 +259,23 @@ const CreateJobForm = ({
                   method: variant?.name ?? jobType?.name ?? '',
                 })}
               />
-              {configFields.map((field) => renderField(field, 'config'))}
+              {memberFields.map((field) => renderField(field, 'config'))}
+              {staffFields.length ? (
+                <div className="flex flex-col gap-6">
+                  <button
+                    type="button"
+                    className="text-left body-small font-semibold text-primary"
+                    onClick={() => setStaffOpen((open) => !open)}
+                    aria-expanded={staffOpen}
+                  >
+                    {translate(STRING.JOB_STAFF_SETTINGS)}{' '}
+                    {staffOpen ? '▾' : '▸'}
+                  </button>
+                  {staffOpen
+                    ? staffFields.map((field) => renderField(field, 'config'))
+                    : null}
+                </div>
+              ) : null}
             </>
           ) : null}
         </>
@@ -303,7 +322,9 @@ const CreateJobForm = ({
             type="submit"
             disabled={isLoading || isSuccess || !jobType || !variantReady}
           >
-            {translate(STRING.JOB_CREATE)}
+            {watch('startNow')
+              ? translate(STRING.JOB_START_NOW)
+              : translate(STRING.JOB_CREATE)}
           </Button>
         </div>
       </div>

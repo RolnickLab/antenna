@@ -20,6 +20,7 @@ export interface ServerConfigSchemaProperty {
   exclusiveMaximum?: number
   items?: { type?: string }
   ami_widget?: string
+  ami_staff_only?: boolean
   ami_entity?: string
   ami_entity_filters?: { [key: string]: string | number | boolean }
 }

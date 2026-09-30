@@ -122,3 +122,30 @@ describe('getInitialValue / validateNumber', () => {
     expect(validateNumber(f.count, '')).toBeUndefined()
   })
 })
+
+describe('empty defaults and staff-only settings', () => {
+  const fields = schemaToFields({
+    type: 'object',
+    properties: {
+      steps: { title: 'Activity steps', type: 'array', default: [] },
+      floor: { title: 'Floor', type: 'number' },
+      gate: {
+        title: 'Gate',
+        type: 'string',
+        default: 'off',
+        ami_staff_only: true,
+      },
+    },
+    required: [],
+  } as any)
+
+  it('starts empty list and object defaults blank instead of as raw JSON', () => {
+    expect(getInitialValue(fields[0])).toBeUndefined()
+    expect(getInitialValue(fields[1])).toBeUndefined()
+    expect(getInitialValue(fields[2])).toBe('off')
+  })
+
+  it('carries the staff-only hint', () => {
+    expect(fields.map((f) => !!f.staffOnly)).toEqual([false, false, true])
+  })
+})
