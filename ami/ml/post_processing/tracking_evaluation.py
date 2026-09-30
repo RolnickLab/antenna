@@ -3,6 +3,8 @@
 Ground truth is the set of occurrences whose grouping a person confirmed: each one is taken
 to be a complete and accurate track. Nothing is known about detections outside those tracks,
 so every metric here is computed only over the detections that belong to a confirmed track.
+In particular, a predicted detection outside every confirmed track is never an identity false
+positive, which makes ID precision, ID recall and IDF1 the same number here.
 
 This module imports nothing from Django, so it also runs outside Antenna on exported CSVs:
 
@@ -25,6 +27,20 @@ DetectionId = Hashable
 TrackId = Hashable
 
 TRUE_VALUES = {"true", "1", "yes", "t", "y"}
+
+# Share of a confirmed track's detections held by one predicted track, at or above which it is
+# mostly tracked, and below which it is mostly lost; in between it is partly tracked.
+MOSTLY_TRACKED = 0.8
+MOSTLY_LOST = 0.2
+
+REPORT_NOTES = [
+    "Headline: IDF1, the share of confirmed detections whose predicted track is the one matched "
+    "one-to-one to their confirmed track. Predicted detections outside confirmed tracks are not counted "
+    "as errors, because the confirmed tracks are only part of the session.",
+    "Weighting: IDF1 and link scores count each detection or link once, so long tracks weigh more; "
+    "pairwise scores grow with the square of track length; track counts and means count each "
+    "confirmed track once.",
+]
 
 
 def _sort_key(value: typing.Any) -> tuple:
@@ -64,6 +80,8 @@ class GroundTruthTrackScore:
     fragments: int
     completeness: float
     exactly_recovered: bool
+    # How many times the predicted track changes between consecutive detections, in time order.
+    id_switches: int
 
 
 @dataclasses.dataclass
@@ -96,6 +114,15 @@ class TrackingEvaluation:
     ground_truth_singletons: int
     predicted_tracks: int
     predicted_singletons: int
+
+    # The headline score, IDF1 (Ristani et al. 2016), from a one-to-one matching of confirmed
+    # and predicted tracks that keeps as many detections as possible in their matched track.
+    idf1: float | None
+    id_true_positives: int
+    id_switches: int
+    mostly_tracked: int
+    partly_tracked: int
+    mostly_lost: int
 
     # Every unordered pair of detections: is it the same insect in both?
     pairwise_true_positives: int
@@ -136,6 +163,10 @@ class TrackingEvaluation:
             return "n/a" if value is None else f"{value:.3f}"
 
         return [
+            f"IDF1 {fmt(self.idf1)}  ({self.id_true_positives}/{self.detections} detections in their "
+            f"matched predicted track)",
+            f"Mostly tracked {self.mostly_tracked}  partly tracked {self.partly_tracked}  "
+            f"mostly lost {self.mostly_lost}  ID switches {self.id_switches}",
             f"Confirmed tracks: {self.ground_truth_tracks} ({self.ground_truth_singletons} single-detection), "
             f"detections: {self.detections}",
             f"Predicted tracks over those detections: {self.predicted_tracks} "
@@ -162,6 +193,76 @@ def _consecutive_links(tracks: Mapping[TrackId, list[DetectionId]]) -> set[froze
         for first, second in zip(members, members[1:]):
             links.add(frozenset((first, second)))
     return links
+
+
+def _best_assignment_total(weights: list[list[int]]) -> int:
+    """The largest total weight of a one-to-one matching of rows to columns (Hungarian method).
+
+    scipy's ``linear_sum_assignment`` does this, but scipy is not a dependency of this module.
+    """
+    infinity = float("inf")
+    if len(weights) > len(weights[0]):
+        weights = [list(column) for column in zip(*weights)]
+    rows, columns = len(weights), len(weights[0])
+    # Potentials and matches are 1-indexed; column 0 is a free slot the method starts from.
+    row_potential = [0] * (rows + 1)
+    column_potential = [0] * (columns + 1)
+    row_of_column = [0] * (columns + 1)
+    previous_column = [0] * (columns + 1)
+    for row in range(1, rows + 1):
+        row_of_column[0] = row
+        column = 0
+        slack = [infinity] * (columns + 1)
+        used = [False] * (columns + 1)
+        while row_of_column[column]:
+            used[column] = True
+            current_row, delta, next_column = row_of_column[column], infinity, 0
+            for j in range(1, columns + 1):
+                if used[j]:
+                    continue
+                cost = -weights[current_row - 1][j - 1] - row_potential[current_row] - column_potential[j]
+                if cost < slack[j]:
+                    slack[j], previous_column[j] = cost, column
+                if slack[j] < delta:
+                    delta, next_column = slack[j], j
+            for j in range(columns + 1):
+                if used[j]:
+                    row_potential[row_of_column[j]] += delta
+                    column_potential[j] -= delta
+                else:
+                    slack[j] -= delta
+            column = next_column
+        while column:
+            row_of_column[column] = row_of_column[previous_column[column]]
+            column = previous_column[column]
+    return sum(weights[row_of_column[j] - 1][j - 1] for j in range(1, columns + 1) if row_of_column[j])
+
+
+def _identity_true_positives(overlap: Mapping[tuple[TrackId, TrackId], int]) -> int:
+    """Detections kept in their track by the best one-to-one matching of confirmed to predicted tracks.
+
+    The matching is solved separately for each group of tracks connected by shared detections,
+    which keeps every matrix small.
+    """
+    parent: dict[tuple, tuple] = {}
+
+    def root(node: tuple) -> tuple:
+        while parent.setdefault(node, node) != node:
+            node = parent[node]
+        return node
+
+    for gt_id, pred_id in overlap:
+        parent[root(("gt", gt_id))] = root(("pred", pred_id))
+    groups: dict[tuple, list[tuple[TrackId, TrackId]]] = collections.defaultdict(list)
+    for key in overlap:
+        groups[root(("gt", key[0]))].append(key)
+
+    total = 0
+    for keys in groups.values():
+        gt_ids = sorted({gt_id for gt_id, _ in keys}, key=_sort_key)
+        pred_ids = sorted({pred_id for _, pred_id in keys}, key=_sort_key)
+        total += _best_assignment_total([[overlap.get((g, p), 0) for p in pred_ids] for g in gt_ids])
+    return total
 
 
 def evaluate_tracks(
@@ -210,6 +311,8 @@ def evaluate_tracks(
     link_precision = _ratio(links_correct, len(pred_links))
     link_recall = _ratio(links_correct, len(gt_links))
 
+    id_true_positives = _identity_true_positives(overlap)
+
     gt_scores = []
     for gt_id in sorted(gt_tracks, key=_sort_key):
         pieces = pred_by_gt[gt_id]
@@ -222,6 +325,10 @@ def evaluate_tracks(
                 fragments=len(pieces),
                 completeness=largest / length,
                 exactly_recovered=len(pieces) == 1 and len(gt_by_pred[largest_pred]) == 1,
+                id_switches=sum(
+                    predicted_track_of[a] != predicted_track_of[b]
+                    for a, b in zip(gt_tracks[gt_id], gt_tracks[gt_id][1:])
+                ),
             )
         )
 
@@ -245,6 +352,12 @@ def evaluate_tracks(
         ground_truth_singletons=sum(1 for m in gt_tracks.values() if len(m) == 1),
         predicted_tracks=len(pred_tracks),
         predicted_singletons=sum(1 for m in pred_tracks.values() if len(m) == 1),
+        idf1=_ratio(id_true_positives, len(scored)),
+        id_true_positives=id_true_positives,
+        id_switches=sum(s.id_switches for s in gt_scores),
+        mostly_tracked=sum(1 for s in gt_scores if s.completeness >= MOSTLY_TRACKED),
+        partly_tracked=sum(1 for s in gt_scores if MOSTLY_LOST <= s.completeness < MOSTLY_TRACKED),
+        mostly_lost=sum(1 for s in gt_scores if s.completeness < MOSTLY_LOST),
         pairwise_true_positives=pairwise_tp,
         pairwise_predicted=pairwise_pred,
         pairwise_ground_truth=pairwise_gt,
@@ -387,7 +500,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dump(result.to_dict(include_tracks=args.per_track), sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")
     else:
-        sys.stdout.write("\n".join(result.summary_lines()) + "\n")
+        sys.stdout.write("\n".join(REPORT_NOTES + result.summary_lines()) + "\n")
     return 0
 
 
