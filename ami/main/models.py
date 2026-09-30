@@ -2204,9 +2204,10 @@ class SourceImage(BaseModel):
         """Join a public base URL with a stored object path.
 
         Shared with callers that have annotated `public_base_url` + `path` onto a
-        queryset row and want to skip loading the SourceImage instance.
+        queryset row and want to skip loading the SourceImage instance. See
+        `ami.utils.s3.join_public_url` for the slash and encoding rules.
         """
-        return urllib.parse.urljoin(base_url, path.lstrip("/"))
+        return ami.utils.s3.join_public_url(base_url, path)
 
     def public_url(self, raise_errors=False) -> str | None:
         """

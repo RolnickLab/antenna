@@ -2,9 +2,9 @@ import logging
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
-from ami.main.models import S3StorageSource
+from ami.main.models import S3StorageSource, SourceImage
 from ami.tests.fixtures.main import create_captures_from_files, setup_test_project
 from ami.tests.fixtures.storage import S3_TEST_CONFIG
 from ami.utils import s3
@@ -190,6 +190,32 @@ class TestS3PrefixUtils(TestCase):
         result = s3.make_full_key_uri(self.config, key, with_protocol=False)
         expected = "/test_bucket/test_prefix/subdir/file.txt"
         self.assertEqual(result, expected)
+
+
+class TestCapturePublicUrl(SimpleTestCase):
+    """Capture URLs must keep every segment of the public base URL, with or without a trailing slash."""
+
+    key = "deployment_1/2024-07-01/20240701235959-snapshot.jpg"
+
+    def test_base_with_and_without_trailing_slash_match(self):
+        for base in ("http://h/bucket", "http://h/bucket/"):
+            with self.subTest(base=base):
+                self.assertEqual(SourceImage.build_public_url(base, self.key), f"http://h/bucket/{self.key}")
+
+    def test_base_with_nested_path(self):
+        for base in ("http://h/bucket/sub", "http://h/bucket/sub/"):
+            with self.subTest(base=base):
+                self.assertEqual(SourceImage.build_public_url(base, self.key), f"http://h/bucket/sub/{self.key}")
+
+    def test_host_only_base(self):
+        for base in ("http://h", "http://h/"):
+            with self.subTest(base=base):
+                self.assertEqual(SourceImage.build_public_url(base, self.key), f"http://h/{self.key}")
+
+    def test_key_with_leading_slash(self):
+        self.assertEqual(
+            SourceImage.build_public_url("http://h/bucket", "/" + self.key), f"http://h/bucket/{self.key}"
+        )
 
 
 class TestStorageSource(TestCase):

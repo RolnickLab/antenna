@@ -629,6 +629,15 @@ def read_image(config: S3Config, key: str) -> PIL.Image.Image:
     return img
 
 
+def join_public_url(base_url: str, key: str) -> str:
+    """Build the browser/ML URL for an object from a public base URL and its raw key.
+
+    The base URL is treated as a folder whether or not it ends with "/", so a
+    missing slash cannot drop its last segment (such as the bucket name).
+    """
+    return base_url.rstrip("/") + "/" + key.lstrip("/")
+
+
 def public_url(config: S3Config, key: str):
     """
     Return public URL for a given key.
