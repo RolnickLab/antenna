@@ -633,9 +633,11 @@ def join_public_url(base_url: str, key: str) -> str:
     """Build the browser/ML URL for an object from a public base URL and its raw key.
 
     The base URL is treated as a folder whether or not it ends with "/", so a
-    missing slash cannot drop its last segment (such as the bucket name).
+    missing slash cannot drop its last segment (such as the bucket name). The key
+    is always percent-encoded (keeping "/") because paths are stored as the raw
+    keys S3 lists, so a literal "%20" in a filename is encoded again, not decoded.
     """
-    return base_url.rstrip("/") + "/" + key.lstrip("/")
+    return base_url.rstrip("/") + "/" + urllib.parse.quote(key.lstrip("/"), safe="/")
 
 
 def public_url(config: S3Config, key: str):

@@ -218,6 +218,31 @@ class TestCapturePublicUrl(SimpleTestCase):
         )
 
 
+class TestCapturePublicUrlEncoding(SimpleTestCase):
+    """Keys are stored raw, so characters that are not URL-safe must be percent-encoded in capture URLs."""
+
+    base = "http://h/bucket/"
+
+    def test_plain_ascii_key_unchanged(self):
+        key = "site-1/2024-07-01/20240701235959-snapshot.jpg"
+        self.assertEqual(SourceImage.build_public_url(self.base, key), self.base + key)
+
+    def test_special_characters_are_encoded(self):
+        cases = {
+            "cyprus site 2/snap shot.jpg": "cyprus%20site%202/snap%20shot.jpg",
+            "site/snápshot.jpg": "site/sn%C3%A1pshot.jpg",
+            "site/a+b.jpg": "site/a%2Bb.jpg",
+            "site/a#b.jpg": "site/a%23b.jpg",
+            "site/a?b.jpg": "site/a%3Fb.jpg",
+        }
+        for key, encoded in cases.items():
+            with self.subTest(key=key):
+                self.assertEqual(SourceImage.build_public_url(self.base, key), self.base + encoded)
+
+    def test_literal_percent_in_key_is_encoded_again(self):
+        self.assertEqual(SourceImage.build_public_url(self.base, "site/a%20b.jpg"), self.base + "site/a%2520b.jpg")
+
+
 class TestStorageSource(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project()
