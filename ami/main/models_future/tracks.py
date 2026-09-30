@@ -29,6 +29,10 @@ Five invariants hold after every operation here:
   edit however many occurrences it touched (see ``track_stats.refresh_track_stats``).
 - The cached counts of the sessions and stations the edit touched are refreshed once,
   since an edit adds or removes occurrences.
+
+Every edit, and every tracking run, first locks the session it changes
+(``lock_sessions``), so an edit made during a run waits for the run to finish
+instead of being overwritten by it.
 """
 
 from __future__ import annotations
@@ -44,6 +48,7 @@ from django.utils import timezone
 
 from ami.main.models import (
     Detection,
+    Event,
     Identification,
     Occurrence,
     SourceImage,
@@ -66,6 +71,36 @@ def _capture_order_key(row: dict) -> tuple:
 
 class TrackEditError(ValueError):
     """A track edit that cannot be applied to this occurrence and detection."""
+
+
+def lock_sessions(event_ids: Iterable[int | None]) -> None:
+    """Hold a row lock on each session until the surrounding transaction ends.
+
+    Tracking runs and track edits both call this before reading what they change, so
+    one waits for the other. Locking in id order keeps two writers from deadlocking.
+    """
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if pks:
+        list(Event.objects.select_for_update().filter(pk__in=pks).order_by("pk").values_list("pk", flat=True))
+
+
+def _lock_for_edit(*occurrences: Occurrence, detections: Iterable[Detection] = ()) -> None:
+    """Lock the sessions of ``occurrences``, then re-read what a tracking run may have changed.
+
+    The caller loaded these rows before waiting on the lock, and saving them as loaded
+    would write a finished run's changes back over.
+    """
+    lock_sessions(o.event_id for o in occurrences)
+    for occurrence in occurrences:
+        try:
+            occurrence.refresh_from_db()
+        except Occurrence.DoesNotExist:
+            raise TrackEditError(f"Occurrence {occurrence.pk} no longer exists; it was merged while this edit waited.")
+    detections = list(detections)
+    if detections:
+        current = dict(Detection.objects.filter(pk__in=[d.pk for d in detections]).values_list("pk", "occurrence_id"))
+        for detection in detections:
+            detection.occurrence_id = current.get(detection.pk)
 
 
 def _ordered_detections(occurrence: Occurrence) -> list[Detection]:
@@ -99,6 +134,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     interface that splits at the frame the operator clicked must map the
     displayed position back to capture order, or it will keep the wrong half.
     """
+    _lock_for_edit(occurrence)
     ordered = _ordered_detections(occurrence)
     index = next((i for i, d in enumerate(ordered) if d.pk == detection.pk), None)
     if index is None:
@@ -128,6 +164,7 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     track is stitched back together across the gap, so removing a detection from
     the middle does not also split what remains. Returns the new occurrence.
     """
+    _lock_for_edit(occurrence)
     ordered = _ordered_detections(occurrence)
     if len(ordered) < 2:
         raise TrackEditError(
@@ -448,6 +485,7 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     sources = [o for o in sources if o.pk != target.pk]
     if not sources:
         raise TrackEditError("Nothing to merge: no occurrence other than the target was given.")
+    _lock_for_edit(target, *sources)
 
     cross_session = sorted(o.pk for o in sources if o.event_id != target.event_id)
     if cross_session:
@@ -496,6 +534,8 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     is no donor to absorb. Any occurrence left with no detections is absorbed rather
     than deleted outright, so identifications on it survive.
     """
+    detections = list(detections)
+    _lock_for_edit(target, detections=detections)
     detections = [d for d in detections if d.occurrence_id != target.pk]
     if not detections:
         raise TrackEditError("Nothing to add: every detection given is already in this occurrence.")
@@ -533,20 +573,24 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     return target
 
 
+@transaction.atomic
 def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
     """Record that a person confirmed this occurrence holds the right detections.
 
     This is the label the tracking methods are scored against, so it is deliberately
     an explicit act — no operation in this module sets it as a side effect.
     """
+    _lock_for_edit(occurrence)
     occurrence.grouping_verified_at = timezone.now()
     occurrence.grouping_verified_by = user
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])
     return occurrence
 
 
+@transaction.atomic
 def unverify_grouping(occurrence: Occurrence) -> Occurrence:
     """Withdraw a previous confirmation, leaving the detections untouched."""
+    _lock_for_edit(occurrence)
     occurrence.grouping_verified_at = None
     occurrence.grouping_verified_by = None
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])

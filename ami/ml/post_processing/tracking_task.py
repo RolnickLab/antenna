@@ -19,8 +19,10 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     update_calculated_fields_for_sessions_and_stations,
+    update_occurrence_determination,
 )
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
+from ami.main.models_future.tracks import lock_sessions
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -358,7 +360,7 @@ def assign_occurrences_from_detection_chains(
             for d in chain:
                 if d.occurrence_id != keeper.pk:
                     d.occurrence = keeper
-                    d.save()
+                    d.save(update_fields=["occurrence"])
 
             # Move identifications onto the keeper before deleting the occurrences that
             # held them. Identification.occurrence CASCADEs, so deleting first destroys a
@@ -377,7 +379,10 @@ def assign_occurrences_from_detection_chains(
                 except Exception as e:
                     logger.error(f"Failed to delete occurrence {occ_id}: {e}")
 
-            keeper.save()
+            # Only the determination is written, so a column the run did not change is
+            # never overwritten with the value it loaded.
+            if update_occurrence_determination(keeper, save=False):
+                keeper.save(update_determination=False, update_fields=["determination", "determination_score"])
             if record_as is not None and keeper.determination_id != previous_determination_id:
                 if record_tracking_determination(keeper, record_as) is not None:
                     determinations_recorded += 1
@@ -514,10 +519,10 @@ def save_links(links: Iterable[tuple[Detection, Detection, float]], logger: logg
             prior = None
         if prior is not None:
             prior.next_detection = None
-            prior.save()
+            prior.save(update_fields=["next_detection"])
 
         det.next_detection = nxt
-        det.save()
+        det.save(update_fields=["next_detection"])
         logger.debug(f"Linked detection {det.id} -> {nxt.id} (cost {cost:.4f})")
 
 
@@ -743,62 +748,66 @@ class TrackingTask(BasePostProcessingTask):
 
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
+            # Each session is checked and tracked under the lock track edits also take, so the
+            # checks see an edit made since the job started and an edit made during the run waits.
+            with transaction.atomic():
+                lock_sessions([event.pk])
 
-            if self.config.require_fresh_event:
-                fresh, reason = event_is_fresh(event)
-                if not fresh:
-                    self.logger.info(
-                        f"Skipping event {event.pk}: not fresh ({reason}). "
-                        "v1 only handles 1:1 detection/occurrence input. "
-                        "Re-tracking previously-tracked data lands in v2 (incremental)."
-                    )
+                if self.config.require_fresh_event:
+                    fresh, reason = event_is_fresh(event)
+                    if not fresh:
+                        self.logger.info(
+                            f"Skipping event {event.pk}: not fresh ({reason}). "
+                            "v1 only handles 1:1 detection/occurrence input. "
+                            "Re-tracking previously-tracked data lands in v2 (incremental)."
+                        )
+                        totals["events_skipped"] += 1
+                        skip_reasons["it was already tracked or edited"] += 1
+                        continue
+
+                algorithm, should_track = self._resolve_algorithm(event)
+                if not should_track:
                     totals["events_skipped"] += 1
-                    skip_reasons["it was already tracked or edited"] += 1
+                    skip_reasons["it has no embeddings from a single feature extractor to compare"] += 1
                     continue
 
-            algorithm, should_track = self._resolve_algorithm(event)
-            if not should_track:
-                totals["events_skipped"] += 1
-                skip_reasons["it has no embeddings from a single feature extractor to compare"] += 1
-                continue
+                if (
+                    self.config.skip_if_human_identifications
+                    and Occurrence.objects.filter(event=event, identifications__isnull=False).exists()
+                ):
+                    self.logger.info(f"Skipping event {event.pk}: has human identifications.")
+                    totals["events_skipped"] += 1
+                    skip_reasons["it has human identifications"] += 1
+                    continue
 
-            if (
-                self.config.skip_if_human_identifications
-                and Occurrence.objects.filter(event=event, identifications__isnull=False).exists()
-            ):
-                self.logger.info(f"Skipping event {event.pk}: has human identifications.")
-                totals["events_skipped"] += 1
-                skip_reasons["it has human identifications"] += 1
-                continue
+                if (
+                    self.config.require_completely_processed_session
+                    and algorithm is not None
+                    and not event_fully_processed(event, logger=self.logger, algorithm=algorithm)
+                ):
+                    self.logger.info(f"Skipping event {event.pk}: not fully processed.")
+                    totals["events_skipped"] += 1
+                    skip_reasons["it is not fully processed"] += 1
+                    continue
 
-            if (
-                self.config.require_completely_processed_session
-                and algorithm is not None
-                and not event_fully_processed(event, logger=self.logger, algorithm=algorithm)
-            ):
-                self.logger.info(f"Skipping event {event.pk}: not fully processed.")
-                totals["events_skipped"] += 1
-                skip_reasons["it is not fully processed"] += 1
-                continue
+                def _stage_progress(p: float, _idx=idx, _total=total) -> None:
+                    # Aggregate per-event progress into overall task progress.
+                    overall = ((_idx - 1) + p) / _total
+                    self.update_progress(overall)
 
-            def _stage_progress(p: float, _idx=idx, _total=total) -> None:
-                # Aggregate per-event progress into overall task progress.
-                overall = ((_idx - 1) + p) / _total
-                self.update_progress(overall)
-
-            counters = assign_occurrences_by_tracking_images(
-                event=event,
-                logger=self.logger,
-                algorithm=algorithm,
-                config=self.config,
-                record_as=self.algorithm,
-                progress_cb=_stage_progress,
-            )
-            totals["events_tracked"] += 1
-            tracked_event_ids.append(event.pk)
-            totals["links_created"] += counters.get("links_created", 0)
-            totals["occurrences_merged"] += counters.get("occurrences_merged", 0)
-            totals["confirmed_tracks_left_unchanged"] += counters.get("confirmed_tracks_left_unchanged", 0)
+                counters = assign_occurrences_by_tracking_images(
+                    event=event,
+                    logger=self.logger,
+                    algorithm=algorithm,
+                    config=self.config,
+                    record_as=self.algorithm,
+                    progress_cb=_stage_progress,
+                )
+                totals["events_tracked"] += 1
+                tracked_event_ids.append(event.pk)
+                totals["links_created"] += counters.get("links_created", 0)
+                totals["occurrences_merged"] += counters.get("occurrences_merged", 0)
+                totals["confirmed_tracks_left_unchanged"] += counters.get("confirmed_tracks_left_unchanged", 0)
 
         # Merging occurrences changes the session and station counts, which no save refreshes.
         # This already runs in a background job, so the station refresh stays inline.

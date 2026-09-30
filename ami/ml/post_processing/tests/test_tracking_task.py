@@ -4,7 +4,9 @@ from collections import defaultdict
 
 import numpy as np
 import pydantic
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from ami.jobs.models import Job
@@ -17,6 +19,15 @@ from ami.main.models import (
     SourceImageCollection,
     Taxon,
     update_calculated_fields_for_events,
+)
+from ami.main.models_future.tracks import (
+    TrackEditError,
+    add_detections,
+    detach_detection,
+    merge_occurrences,
+    split_track,
+    unverify_grouping,
+    verify_grouping,
 )
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import (
@@ -315,23 +326,28 @@ class TestTrackingWithoutFeatures(TestCase):
         )
 
 
+def _one_box_in_two_captures(test: TestCase) -> None:
+    """One session of two captures with one detection each on the same box, each detection
+    on an occurrence of its own, so a geometry-only run links and merges them."""
+    test.project, test.deployment = setup_test_project(reuse=False)
+    create_captures(deployment=test.deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+    create_taxa(test.project)
+    create_occurrences(deployment=test.deployment, num=2)
+    test.event = test.project.events.get()
+    _give_captures_dimensions(list(test.event.captures.all()))
+    test.first, test.second = list(
+        Occurrence.objects.filter(event=test.event).order_by("detections__source_image__timestamp")
+    )
+
+
 class TestConfirmedTracksAreFrozen(TestCase):
     """A tracking run never adds frames to, removes frames from, or deletes a confirmed
     occurrence, since confirmed tracks are the ground truth runs are scored against.
 
-    Two captures with one detection each, on the same box, so geometry alone links them.
     """
 
     def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2, interval_minutes=1)
-        create_taxa(self.project)
-        create_occurrences(deployment=self.deployment, num=2)
-        self.event = self.project.events.get()
-        _give_captures_dimensions(list(self.event.captures.all()))
-        self.first, self.second = list(
-            Occurrence.objects.filter(event=self.event).order_by("detections__source_image__timestamp")
-        )
+        _one_box_in_two_captures(self)
 
     def _run(self) -> dict[str, typing.Any]:
         job = Job.objects.create(
@@ -375,6 +391,65 @@ class TestConfirmedTracksAreFrozen(TestCase):
                 )
                 self.assertEqual(params["Confirmed tracks left unchanged"], 1)
                 self.assertEqual(params["Result"], "Tracked 1 session(s). Left 1 confirmed track(s) unchanged.")
+
+
+class TestRunsAndEditsShareTheSessionLock(TestCase):
+    """A tracking run and a track edit on the same session run one after the other, never
+    interleaved, so neither writes an older copy of a row over the other's change."""
+
+    def setUp(self) -> None:
+        _one_box_in_two_captures(self)
+
+    def _run(self) -> None:
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+
+    def _locks_the_session(self, queries: CaptureQueriesContext) -> bool:
+        return any('FROM "main_event"' in q["sql"] and "FOR UPDATE" in q["sql"] for q in queries.captured_queries)
+
+    def test_a_run_locks_the_session_and_writes_only_the_columns_it_changes(self):
+        with CaptureQueriesContext(connection) as queries:
+            self._run()
+
+        self.assertEqual(Occurrence.objects.filter(event=self.event).count(), 1, "The run must merge the pair")
+        self.assertTrue(self._locks_the_session(queries))
+        updates = [
+            q["sql"]
+            for q in queries.captured_queries
+            if q["sql"].startswith(('UPDATE "main_detection"', 'UPDATE "main_occurrence"'))
+        ]
+        self.assertTrue(updates)
+        for sql in updates:
+            set_clause = sql.split(" SET ", 1)[1].split(" WHERE ", 1)[0]
+            for column in ('"bbox"', '"path"', '"grouping_verified_at"', '"event_id"'):
+                self.assertNotIn(column, set_clause, sql)
+
+    def test_every_track_edit_locks_the_session(self):
+        user = UserFactory()
+        second_detection = self.second.detections.get()
+        edits = [
+            ("merge", lambda: merge_occurrences(self.first, [self.second])),
+            ("split", lambda: split_track(self.first, second_detection)),
+            ("add", lambda: add_detections(self.first, [Detection.objects.get(pk=second_detection.pk)])),
+            ("detach", lambda: detach_detection(self.first, second_detection)),
+            ("verify", lambda: verify_grouping(self.first, user)),
+            ("unverify", lambda: unverify_grouping(self.first)),
+        ]
+        for name, edit in edits:
+            with self.subTest(edit=name), CaptureQueriesContext(connection) as queries:
+                edit()
+                self.assertTrue(self._locks_the_session(queries))
+
+    def test_an_edit_loaded_before_a_run_sees_what_the_run_did(self):
+        """A request that loaded two occurrences, then waited while a run merged them, is
+        refused instead of acting on the rows it loaded."""
+        stale_first, stale_second = Occurrence.objects.get(pk=self.first.pk), Occurrence.objects.get(pk=self.second.pk)
+        self._run()
+
+        with self.assertRaises(TrackEditError):
+            merge_occurrences(stale_first, [stale_second])
+        with self.assertRaises(TrackEditError):
+            verify_grouping(stale_second, UserFactory())
+        self.assertEqual(stale_first.detections.count(), 2)
 
 
 class TestFreshEventGuard(TestCase):

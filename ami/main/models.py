@@ -3468,7 +3468,7 @@ class Detection(BaseModel):
             self.timestamp = self.source_image.timestamp
             needs_update = True
         if save and needs_update:
-            self.save(update_calculated_fields=False)
+            self.save(update_calculated_fields=False, update_fields=["timestamp"])
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)

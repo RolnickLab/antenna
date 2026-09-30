@@ -9961,7 +9961,7 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
     def test_a_multi_frame_merge_does_not_query_per_frame(self):
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
 
-        with self.assertNumQueries(29):
+        with self.assertNumQueries(33):
             merge_occurrences(self.occurrence, [other])
 
         self.assertFullyLinked(self.occurrence)
