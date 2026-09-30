@@ -805,7 +805,9 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         prefetch_queryset = (
             Detection.objects.valid()
             .annotate(
-                determination_score=models.Max("occurrence__detections__classifications__score"),
+                # The occurrence stores its score. A Max over every classification of every
+                # detection in the occurrence grows with track length.
+                determination_score=models.F("occurrence__determination_score"),
                 # Store whether this occurrence should be included based on default filters
                 occurrence_meets_criteria=models.Case(
                     models.When(
