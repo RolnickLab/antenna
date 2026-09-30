@@ -59,6 +59,7 @@ from ami.main.models_future.tracks import (
     add_detections,
     detach_detection,
     merge_occurrences,
+    refuse_edit_outside_session,
     split_track,
     unverify_grouping,
     verify_grouping,
@@ -1971,6 +1972,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         searching and scoring from it alone.
         """
         occurrence = self.get_object()
+        # Candidates are found by session, and event_id=None would match every ungrouped capture.
+        try:
+            refuse_edit_outside_session(occurrence)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"occurrence": str(e)})
         if "captures" in request.query_params and "minutes" in request.query_params:
             raise api_exceptions.ValidationError(
                 {"minutes": "Pass either `captures` or `minutes` to choose where to search, not both."}

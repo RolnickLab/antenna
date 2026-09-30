@@ -430,6 +430,29 @@ def _refuse_two_boxes_on_one_capture(target: Occurrence, incoming_capture_ids: I
         )
 
 
+def refuse_edit_outside_session(
+    target: Occurrence, members: Iterable[tuple[int, int | None, int | None]] = (), noun: str = "Occurrence(s)"
+) -> None:
+    """Refuse a track edit unless ``target`` has a session and every member shares it and its project.
+
+    ``members`` are ``(pk, project_id, event_id)`` of what the edit brings in. A capture that was
+    never grouped has no session, so it matches nothing, and without the project check two
+    session-less occurrences from different projects would compare equal.
+    """
+    if target.event_id is None:
+        raise TrackEditError(
+            f"Occurrence {target.pk} has no session. Group its captures into sessions before editing its track."
+        )
+    outside = sorted(
+        pk for pk, project_id, event_id in members if event_id != target.event_id or project_id != target.project_id
+    )
+    if outside:
+        raise TrackEditError(
+            f"{noun} {outside} are not in the session and project of occurrence {target.pk}. "
+            "An occurrence cannot span sessions or projects."
+        )
+
+
 def _time_of_day(timestamp: datetime.datetime | None) -> str:
     """A capture time as a reviewer reads it on the session page, e.g. 10:48:23 PM."""
     if timestamp is None:
@@ -442,19 +465,14 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     """Fold ``sources`` into ``target``: one animal that tracking recorded as several.
 
     Every detection and identification moves to ``target`` and the emptied sources
-    are deleted. Sources must belong to the same session, since an occurrence
-    cannot span two nights.
+    are deleted. Sources must belong to the target's session and project, since an
+    occurrence cannot span two nights.
     """
     sources = [o for o in sources if o.pk != target.pk]
     if not sources:
         raise TrackEditError("Nothing to merge: no occurrence other than the target was given.")
 
-    cross_session = sorted(o.pk for o in sources if o.event_id != target.event_id)
-    if cross_session:
-        raise TrackEditError(
-            f"Occurrence(s) {cross_session} belong to a different session than {target.pk}. "
-            "An occurrence cannot span sessions."
-        )
+    refuse_edit_outside_session(target, ((o.pk, o.project_id, o.event_id) for o in sources))
     _refuse_two_boxes_on_one_capture(
         target,
         Detection.objects.valid()
@@ -501,14 +519,9 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
         raise TrackEditError("Nothing to add: every detection given is already in this occurrence.")
 
     donor_pks = {d.occurrence_id for d in detections if d.occurrence_id}
-    cross_session = sorted(
-        d.pk for d in detections if d.source_image.event_id and d.source_image.event_id != target.event_id
+    refuse_edit_outside_session(
+        target, ((d.pk, d.source_image.project_id, d.source_image.event_id) for d in detections), "Detection(s)"
     )
-    if cross_session:
-        raise TrackEditError(
-            f"Detection(s) {cross_session} were captured in a different session than occurrence "
-            f"{target.pk}. An occurrence cannot span sessions."
-        )
     _refuse_two_boxes_on_one_capture(target, [d.source_image_id for d in detections])
 
     donors = list(Occurrence.objects.filter(pk__in=donor_pks))

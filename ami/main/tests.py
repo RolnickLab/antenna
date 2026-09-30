@@ -47,6 +47,7 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.main.models_future.tracks import (
+    TrackEditError,
     add_detections,
     detach_detection,
     merge_occurrences,
@@ -9612,6 +9613,94 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertEqual(response.status_code, 400)
         foreign.refresh_from_db()
         self.assertEqual(foreign.project_id, other_project.pk)
+
+    def _make_sessionless_track(self, project: Project, deployment: Deployment, length: int = 2) -> Occurrence:
+        """An occurrence on captures that were never grouped into a session."""
+        occurrence = Occurrence.objects.create(event=None, deployment=deployment, project=project)
+        start = self.captures[-1].timestamp + datetime.timedelta(hours=1)
+        for i in range(length):
+            capture = SourceImage.objects.create(
+                deployment=deployment,
+                event=None,
+                timestamp=start + datetime.timedelta(minutes=i),
+                path=f"test/ungrouped-{occurrence.pk}-{i}.jpg",
+            )
+            Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+        return occurrence
+
+    def test_merge_refuses_a_sessionless_occurrence_from_another_project(self):
+        """Two occurrences without a session have no session to compare, so a merge from a
+        public project into this one must still be refused and must not delete the source."""
+        other_project, other_deployment = setup_test_project(reuse=False)
+        target = self._make_sessionless_track(self.project, self.deployment)
+        foreign = self._make_sessionless_track(other_project, other_deployment)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{target.pk}/merge/", {"occurrence_ids": [foreign.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertTrue(Occurrence.objects.filter(pk=foreign.pk, project=other_project).exists())
+        self.assertEqual(foreign.detections.count(), 2)
+
+    def test_track_edits_refuse_a_target_without_a_session(self):
+        """Every track edit and picker compares against the target's session, so a target
+        without one is a 400, not a 500 or a search across every ungrouped capture."""
+        target = self._make_sessionless_track(self.project, self.deployment)
+        other = self._make_sessionless_track(self.project, self.deployment)
+        detection = other.detections.first()
+        assert detection is not None
+        base = f"/api/v2/occurrences/{target.pk}"
+
+        self.client.force_authenticate(user=self.curator)
+        responses = {
+            "merge": self.client.post(f"{base}/merge/", {"occurrence_ids": [other.pk]}, format="json"),
+            "add-detections": self.client.post(
+                f"{base}/add-detections/", {"detection_ids": [detection.pk]}, format="json"
+            ),
+            "merge-candidates": self.client.get(f"{base}/merge-candidates/?project_id={self.project.pk}"),
+        }
+        for action, response in responses.items():
+            with self.subTest(action=action):
+                self.assertEqual(response.status_code, 400, getattr(response, "data", response))
+        self.assertEqual(other.detections.count(), 2)
+
+    def test_adding_a_detection_on_an_ungrouped_capture_is_refused(self):
+        """A capture that was never grouped belongs to no session, so its boxes cannot join a
+        track until the captures are grouped."""
+        capture = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=None,
+            timestamp=self.captures[-1].timestamp + datetime.timedelta(minutes=5),
+            path="test/ungrouped-single.jpg",
+        )
+        bare = Detection.objects.create(
+            source_image=capture, timestamp=capture.timestamp, bbox=[60, 60, 90, 90], occurrence=None
+        )
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [bare.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        bare.refresh_from_db()
+        self.assertIsNone(bare.occurrence_id)
+
+    def test_merge_refuses_a_source_in_another_project_even_on_the_same_session(self):
+        """Occurrence and session projects are separate columns, so the project is checked on
+        its own rather than trusted to follow from the session."""
+        other_project, other_deployment = setup_test_project(reuse=False)
+        stray, _ = self._make_track(1, captures=self._make_captures_after(1))
+        Occurrence.objects.filter(pk=stray.pk).update(project=other_project, deployment=other_deployment)
+        stray.refresh_from_db()
+
+        with self.assertRaises(TrackEditError):
+            merge_occurrences(self.occurrence, [stray])
+        self.assertTrue(Occurrence.objects.filter(pk=stray.pk).exists())
 
     def test_merge_refuses_a_source_on_a_capture_the_track_covers(self):
         """One animal appears once per capture, so a source with a box on one of the track's
