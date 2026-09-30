@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from ami.main.models import Classification, Detection, Event, Occurrence
 from ami.ml.post_processing.tracking_evaluation import (
+    describe_confirmed_set,
     evaluate_csv_files,
     evaluate_tracks,
     main,
@@ -156,6 +157,26 @@ class TestIdentityScores(SimpleTestCase):
     def test_summary_leads_with_idf1(self):
         result = _evaluate({d: "all" for d in GROUND_TRUTH})
         self.assertTrue(result.summary_lines()[0].startswith("IDF1 0.571"))
+
+
+class TestDescribeConfirmedSet(SimpleTestCase):
+    def test_confirmed_tracks_are_profiled_next_to_every_track_in_the_session(self):
+        # Capture 10 holds detections 1-3, capture 20 holds 4-5, capture 30 holds 6.
+        captures = {1: 10, 2: 10, 3: 10, 4: 20, 5: 20, 6: 30}
+        ground_truth = {1: "A", 4: "A", 6: "B"}
+        predictions = {1: 1, 4: 1, 2: 2, 5: 2, 3: 3, 6: 6}
+        bias = describe_confirmed_set(ground_truth, predictions, captures)
+        confirmed, session = bias.confirmed, bias.session
+        self.assertEqual((confirmed.tracks, confirmed.singletons, confirmed.max_length), (2, 1, 2))
+        self.assertEqual((confirmed.median_length, confirmed.mean_length), (1.5, 1.5))
+        self.assertEqual(confirmed.mean_detections_per_capture, 2.0)
+        self.assertEqual((session.tracks, session.singletons, session.max_length), (4, 2, 2))
+        self.assertAlmostEqual(session.mean_detections_per_capture, 14 / 6)
+        self.assertIn("confirmed", bias.summary_lines()[0].lower())
+
+    def test_confirmed_detection_without_a_capture_is_an_error(self):
+        with self.assertRaises(ValueError):
+            describe_confirmed_set({1: "A"}, {1: 1}, {})
 
 
 class TestTracksFromLinks(SimpleTestCase):
@@ -308,6 +329,29 @@ class TestEvaluateTrackingCommand(TestCase):
         self.assertEqual(overall["exactly_recovered"], len(self.ground_truth.insects))
         self.assertEqual((overall["pairwise_f1"], overall["link_f1"]), (1.0, 1.0))
         self.assertEqual([entry["event_id"] for entry in report["events"]], [self.event.pk])
+
+    def test_text_report_leads_with_idf1_and_profiles_the_confirmed_set(self):
+        self._track_and_confirm()
+        output = io.StringIO()
+        call_command(
+            "evaluate_tracking",
+            "--project",
+            str(self.project.pk),
+            "--no-require-features",
+            "--cost-threshold",
+            "0.4",
+            stdout=output,
+        )
+        text = output.getvalue()
+        overall = text[text.index("\nOverall") :]
+        self.assertIn("Weighting:", text)
+        self.assertLess(overall.index("IDF1 1.000"), overall.index("Pairwise precision"))
+        self.assertIn("Confirmed tracks vs the whole session", overall)
+
+        report = self._run("--no-require-features", "--cost-threshold", "0.4")
+        self.assertEqual(report["overall"]["idf1"], 1.0)
+        self.assertEqual(report["confirmed_vs_session"]["confirmed"]["tracks"], len(self.ground_truth.insects))
+        self.assertIn("confirmed_vs_session", report["events"][0])
 
     def test_predictions_come_from_relinking_not_from_the_stored_tracks(self):
         self._track_and_confirm()

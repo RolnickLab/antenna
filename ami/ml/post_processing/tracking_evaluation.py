@@ -380,6 +380,91 @@ def evaluate_tracks(
     )
 
 
+def _median(values: list[int]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return float(ordered[middle]) if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+@dataclasses.dataclass
+class TrackSetProfile:
+    """Length and crowding of a set of tracks.
+
+    ``mean_detections_per_capture`` averages, over every detection in the set, how many
+    detections share its capture: a measure of how crowded the moments these tracks cover are.
+    """
+
+    tracks: int
+    singletons: int
+    median_length: float | None
+    mean_length: float | None
+    max_length: int | None
+    mean_detections_per_capture: float | None
+
+
+@dataclasses.dataclass
+class ConfirmedSetBias:
+    """The confirmed tracks next to every predicted track of the same sessions.
+
+    People tend to confirm short, clean tracks in quiet moments first, so the confirmed tracks
+    may not represent the session. The scores above hold only for tracks like these.
+    """
+
+    confirmed: TrackSetProfile
+    session: TrackSetProfile
+
+    def to_dict(self) -> dict[str, typing.Any]:
+        return dataclasses.asdict(self)
+
+    def summary_lines(self) -> list[str]:
+        def fmt(value: float | None) -> str:
+            return "n/a" if value is None else f"{value:.1f}"
+
+        confirmed, session = self.confirmed, self.session
+        return [
+            "Confirmed tracks vs the whole session (all predicted tracks):",
+            f"  tracks {confirmed.tracks} vs {session.tracks}  single-detection {confirmed.singletons} vs "
+            f"{session.singletons}",
+            f"  length median {fmt(confirmed.median_length)} vs {fmt(session.median_length)}  "
+            f"mean {fmt(confirmed.mean_length)} vs {fmt(session.mean_length)}  "
+            f"max {confirmed.max_length} vs {session.max_length}",
+            f"  detections per capture {fmt(confirmed.mean_detections_per_capture)} vs "
+            f"{fmt(session.mean_detections_per_capture)}",
+        ]
+
+
+def describe_confirmed_set(
+    ground_truth: Mapping[DetectionId, TrackId],
+    predictions: Mapping[DetectionId, TrackId],
+    captures: Mapping[DetectionId, Hashable],
+) -> ConfirmedSetBias:
+    """Profile the confirmed tracks against every predicted track of the sessions they come from.
+
+    ``predictions`` must cover every detection of those sessions, and ``captures`` gives each
+    of them its capture id. Unlike the scores, this looks beyond the confirmed tracks.
+    """
+    missing = [d for d in ground_truth if d not in captures]
+    if missing:
+        raise ValueError(f"{len(missing)} confirmed detection(s) have no capture, e.g. {missing[:3]}")
+    per_capture = collections.Counter(captures.values())
+
+    def profile(track_of: Mapping[DetectionId, TrackId]) -> TrackSetProfile:
+        lengths = list(collections.Counter(track_of.values()).values())
+        crowding = [per_capture[captures[d]] for d in track_of if d in captures]
+        return TrackSetProfile(
+            tracks=len(lengths),
+            singletons=sum(1 for n in lengths if n == 1),
+            median_length=_median(lengths),
+            mean_length=(sum(lengths) / len(lengths)) if lengths else None,
+            max_length=max(lengths) if lengths else None,
+            mean_detections_per_capture=(sum(crowding) / len(crowding)) if crowding else None,
+        )
+
+    return ConfirmedSetBias(confirmed=profile(ground_truth), session=profile(predictions))
+
+
 def tracks_from_links(
     detection_ids: Iterable[DetectionId], links: Iterable[tuple[DetectionId, DetectionId]]
 ) -> dict[DetectionId, DetectionId]:
