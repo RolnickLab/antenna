@@ -11,7 +11,13 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from ami.main.models import Classification, Detection, Event, Occurrence
-from ami.ml.post_processing.tracking_evaluation import evaluate_csv_files, evaluate_tracks, main, tracks_from_links
+from ami.ml.post_processing.tracking_evaluation import (
+    describe_confirmed_set,
+    evaluate_csv_files,
+    evaluate_tracks,
+    main,
+    tracks_from_links,
+)
 from ami.ml.post_processing.tracking_task import TrackingConfig, TrackingTask, propose_event_links
 from ami.tests.fixtures.main import create_taxa, setup_test_project
 from ami.tests.fixtures.tracking import create_tracking_session
@@ -99,6 +105,78 @@ class TestEvaluateTracks(SimpleTestCase):
         self.assertEqual([p["first_detection_id"] for p in predicted], [1, 4, 5, 7])
         self.assertFalse(any("track_id" in p for p in predicted))
         self.assertEqual([g["track_id"] for g in result.to_dict()["ground_truth_track_scores"]], ["A", "B", "C"])
+
+
+class TestIdentityScores(SimpleTestCase):
+    """IDF1, ID switches and the mostly tracked / partly tracked / mostly lost split."""
+
+    def test_perfect_prediction_has_idf1_one_and_no_switches(self):
+        result = _evaluate({1: "x", 2: "x", 3: "x", 4: "x", 5: "y", 6: "y", 7: "z"})
+        self.assertEqual((result.idf1, result.id_true_positives, result.id_switches), (1.0, 7, 0))
+        self.assertEqual((result.mostly_tracked, result.partly_tracked, result.mostly_lost), (3, 0, 0))
+
+    def test_idf1_is_the_share_of_detections_in_their_matched_predicted_track(self):
+        # Track A is split 2 + 2, so only one half of it can be matched: 5 of 7 detections.
+        split = _evaluate({1: "x", 2: "x", 3: "w", 4: "w", 5: "y", 6: "y", 7: "z"})
+        self.assertAlmostEqual(split.idf1, 5 / 7)
+        # One predicted track can be matched to one confirmed track only: A's four detections.
+        merged = _evaluate({d: "all" for d in GROUND_TRUTH})
+        self.assertAlmostEqual(merged.idf1, 4 / 7)
+
+    def test_idf1_matches_tracks_one_to_one_for_the_largest_total_overlap(self):
+        # A has 3 detections in p and 2 in q; B has 2 in p. Greedily matching A to p leaves
+        # B unmatched (3 correct); matching A to q and B to p gets 4 right.
+        ground_truth = {1: "A", 2: "A", 3: "A", 4: "A", 5: "A", 6: "B", 7: "B"}
+        predictions = {1: "p", 2: "p", 3: "p", 4: "q", 5: "q", 6: "p", 7: "p"}
+        result = evaluate_tracks(ground_truth, predictions, {d: d for d in ground_truth})
+        self.assertEqual(result.id_true_positives, 4)
+        self.assertAlmostEqual(result.idf1, 4 / 7)
+
+    def test_id_switches_count_every_change_of_predicted_track_in_time_order(self):
+        ground_truth = {1: "X", 2: "X", 3: "X", 4: "X"}
+        times = {1: 1, 2: 2, 3: 3, 4: 4}
+        alternating = evaluate_tracks(ground_truth, {1: "a", 2: "b", 3: "a", 4: "b"}, times)
+        blocks = evaluate_tracks(ground_truth, {1: "a", 2: "a", 3: "b", 4: "b"}, times)
+        for result, switches in [(alternating, 3), (blocks, 1)]:
+            (track,) = result.ground_truth_track_scores
+            self.assertEqual((track.fragments, track.id_switches, result.id_switches), (2, switches, switches))
+
+    def test_tracks_split_into_mostly_tracked_partly_tracked_and_mostly_lost(self):
+        # Share of each track in its largest predicted piece: 5/5, 4/5, 3/5, 1/5 and 1/6.
+        pieces = {"T1": [5], "T2": [4, 1], "T3": [3, 1, 1], "T4": [1] * 5, "T5": [1] * 6}
+        ground_truth, predictions = {}, {}
+        for track_id, sizes in pieces.items():
+            for piece, size in enumerate(sizes):
+                for _ in range(size):
+                    detection_id = len(ground_truth)
+                    ground_truth[detection_id] = track_id
+                    predictions[detection_id] = f"{track_id}-{piece}"
+        result = evaluate_tracks(ground_truth, predictions, {d: d for d in ground_truth})
+        self.assertEqual((result.mostly_tracked, result.partly_tracked, result.mostly_lost), (2, 2, 1))
+
+    def test_summary_leads_with_idf1(self):
+        result = _evaluate({d: "all" for d in GROUND_TRUTH})
+        self.assertTrue(result.summary_lines()[0].startswith("IDF1 0.571"))
+
+
+class TestDescribeConfirmedSet(SimpleTestCase):
+    def test_confirmed_tracks_are_profiled_next_to_every_track_in_the_session(self):
+        # Capture 10 holds detections 1-3, capture 20 holds 4-5, capture 30 holds 6.
+        captures = {1: 10, 2: 10, 3: 10, 4: 20, 5: 20, 6: 30}
+        ground_truth = {1: "A", 4: "A", 6: "B"}
+        predictions = {1: 1, 4: 1, 2: 2, 5: 2, 3: 3, 6: 6}
+        bias = describe_confirmed_set(ground_truth, predictions, captures)
+        confirmed, session = bias.confirmed, bias.session
+        self.assertEqual((confirmed.tracks, confirmed.singletons, confirmed.max_length), (2, 1, 2))
+        self.assertEqual((confirmed.median_length, confirmed.mean_length), (1.5, 1.5))
+        self.assertEqual(confirmed.mean_detections_per_capture, 2.0)
+        self.assertEqual((session.tracks, session.singletons, session.max_length), (4, 2, 2))
+        self.assertAlmostEqual(session.mean_detections_per_capture, 14 / 6)
+        self.assertIn("confirmed", bias.summary_lines()[0].lower())
+
+    def test_confirmed_detection_without_a_capture_is_an_error(self):
+        with self.assertRaises(ValueError):
+            describe_confirmed_set({1: "A"}, {1: 1}, {})
 
 
 class TestTracksFromLinks(SimpleTestCase):
@@ -251,6 +329,29 @@ class TestEvaluateTrackingCommand(TestCase):
         self.assertEqual(overall["exactly_recovered"], len(self.ground_truth.insects))
         self.assertEqual((overall["pairwise_f1"], overall["link_f1"]), (1.0, 1.0))
         self.assertEqual([entry["event_id"] for entry in report["events"]], [self.event.pk])
+
+    def test_text_report_leads_with_idf1_and_profiles_the_confirmed_set(self):
+        self._track_and_confirm()
+        output = io.StringIO()
+        call_command(
+            "evaluate_tracking",
+            "--project",
+            str(self.project.pk),
+            "--no-require-features",
+            "--cost-threshold",
+            "0.4",
+            stdout=output,
+        )
+        text = output.getvalue()
+        overall = text[text.index("\nOverall") :]
+        self.assertIn("Weighting:", text)
+        self.assertLess(overall.index("IDF1 1.000"), overall.index("Pairwise precision"))
+        self.assertIn("Confirmed tracks vs the whole session", overall)
+
+        report = self._run("--no-require-features", "--cost-threshold", "0.4")
+        self.assertEqual(report["overall"]["idf1"], 1.0)
+        self.assertEqual(report["confirmed_vs_session"]["confirmed"]["tracks"], len(self.ground_truth.insects))
+        self.assertIn("confirmed_vs_session", report["events"][0])
 
     def test_predictions_come_from_relinking_not_from_the_stored_tracks(self):
         self._track_and_confirm()
