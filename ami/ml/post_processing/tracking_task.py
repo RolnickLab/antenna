@@ -54,16 +54,29 @@ class TrackingConfig(pydantic.BaseModel):
     # that barely moved and look alike.
     # WARNING: the default is calibrated against synthetic features in tests. Tune it
     # per dataset, and raise it when running without embeddings (see require_features).
-    cost_threshold: float = 0.2
+    cost_threshold: float = pydantic.Field(
+        0.2,
+        title="Cost threshold",
+        description="Highest matching cost at which two detections are linked. Lower links fewer, closer matches.",
+        ge=0.0,
+    )
 
     # When True, a pair of detections is only considered if both carry a feature
     # embedding. When False, pairs without embeddings are still matched on geometry
     # alone (the appearance term is dropped, which makes matching more permissive) —
     # this is what lets tracking run on data processed before embeddings were stored.
-    require_features: bool = True
+    require_features: bool = pydantic.Field(
+        True,
+        title="Require features",
+        description="Only link detections that both have a feature embedding. Off matches on box geometry alone.",
+    )
 
     skip_if_human_identifications: bool = True
-    require_completely_processed_session: bool = False
+    require_completely_processed_session: bool = pydantic.Field(
+        False,
+        title="Require a fully processed session",
+        description="Skip sessions where some captures have not been processed yet.",
+    )
 
     # v1 only operates on fresh data: every detection has its own auto-created
     # occurrence (1:1) and no chain links exist yet. Re-tracking previously-tracked
@@ -72,7 +85,14 @@ class TrackingConfig(pydantic.BaseModel):
 
     # Which feature extractor's embeddings to compare. Left unset: the event's only one,
     # or the project's default among several (see resolve_feature_algorithm).
-    feature_extraction_algorithm_id: int | None = None
+    feature_extraction_algorithm_id: int | None = pydantic.Field(
+        None,
+        title="Feature extractor",
+        description="Whose embeddings to compare. Left empty, the one that produced the session's embeddings is used.",
+        ami_widget="entity",
+        ami_entity="ml/algorithms",
+        ami_entity_filters={"task_type": "feature_extraction"},
+    )
 
     # Weight of each cost term. At 1.0 each the cost is the plain sum described above.
     appearance_weight: float = pydantic.Field(1.0, ge=0)
@@ -1109,9 +1129,11 @@ def assign_occurrences_by_tracking_images(
 
 class TrackingTask(BasePostProcessingTask):
     """
-    Reconstruct occurrences by tracking detections across consecutive captures using
-    feature embeddings and bbox geometry. Updates each Detection's ``next_detection``
-    link and folds each chain of detections into a single Occurrence.
+    Follow each insect across consecutive captures and merge its detections into a single
+    occurrence, using how it looks (feature embeddings) and where its box moves.
+
+    Updates each Detection's ``next_detection`` link and folds each chain of detections
+    into a single Occurrence.
     """
 
     key = "tracking"
