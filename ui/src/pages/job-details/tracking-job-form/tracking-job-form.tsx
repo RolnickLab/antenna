@@ -11,7 +11,7 @@ import {
   toTrackingScope,
   TrackingScope,
 } from 'data-services/models/tracking-job'
-import { Checkbox, InputContent, SaveButton, Select } from 'nova-ui-kit'
+import { Button, Checkbox, InputContent, Select } from 'nova-ui-kit'
 import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -233,7 +233,16 @@ export const TrackingJobForm = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
+        <Button
+          disabled={isLoading || isSuccess}
+          size="small"
+          type="submit"
+          variant="success"
+        >
+          {watch('startNow')
+            ? translate(STRING.JOB_START_NOW)
+            : translate(STRING.JOB_CREATE)}
+        </Button>
       </FormActions>
     </form>
   )
