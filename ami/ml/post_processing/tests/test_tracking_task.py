@@ -144,29 +144,24 @@ class TestTracking(TestCase):
         self.assertEqual(keeper.detections.count(), 2)
         self.assertFalse(Classification.objects.filter(algorithm=tracking_algorithm).exists())
 
-    def test_a_merge_clears_verification_only_where_frames_changed(self):
-        """A keeper that gains frames loses its "complete and accurate" mark, as after a
-        manual edit, while an occurrence tracking leaves unchanged keeps its mark."""
-        det_a, det_b, _, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
-        user = UserFactory()
-        untouched = (
-            Occurrence.objects.filter(detections__source_image__in=self.source_images[:2])
-            .exclude(pk__in=[det_a.occurrence_id, det_b.occurrence_id])
-            .first()
-        )
-        assert untouched is not None
-        Occurrence.objects.filter(pk__in=[det_a.occurrence_id, det_b.occurrence_id, untouched.pk]).update(
-            grouping_verified_at=timezone.now(), grouping_verified_by=user
-        )
+    def test_a_stored_link_into_a_confirmed_track_changes_nothing(self):
+        """A chain that reaches a confirmed occurrence through an earlier link is left as it
+        is, whichever end is confirmed: no frames move and neither occurrence is deleted."""
+        for confirmed_end in ("first", "second"):
+            with self.subTest(confirmed=confirmed_end):
+                det_a, det_b, _, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
+                confirmed_pk = det_a.occurrence_id if confirmed_end == "first" else det_b.occurrence_id
+                Occurrence.objects.filter(pk=confirmed_pk).update(grouping_verified_at=timezone.now())
 
-        assign_occurrences_from_detection_chains(self.source_images[:2], logger)
+                counters = assign_occurrences_from_detection_chains(self.source_images[:2], logger)
 
-        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
-        self.assertEqual(keeper.detections.count(), 2)
-        self.assertEqual((keeper.grouping_verified_at, keeper.grouping_verified_by), (None, None))
-        untouched.refresh_from_db()
-        self.assertIsNotNone(untouched.grouping_verified_at)
-        self.assertEqual(untouched.grouping_verified_by, user)
+                self.assertEqual(counters["confirmed_chains_skipped"], 1)
+                det_a.refresh_from_db()
+                det_b.refresh_from_db()
+                self.assertNotEqual(det_a.occurrence_id, det_b.occurrence_id)
+                confirmed = Occurrence.objects.get(pk=confirmed_pk)
+                self.assertIsNotNone(confirmed.grouping_verified_at)
+                self.assertEqual(confirmed.detections.count(), 1)
 
     def test_null_marker_sentinels_are_ignored(self):
         """A capture marked "processed, nothing found" carries a bbox-less sentinel detection;
@@ -318,6 +313,68 @@ class TestTrackingWithoutFeatures(TestCase):
         self.assertEqual(
             Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).count(), 0
         )
+
+
+class TestConfirmedTracksAreFrozen(TestCase):
+    """A tracking run never adds frames to, removes frames from, or deletes a confirmed
+    occurrence, since confirmed tracks are the ground truth runs are scored against.
+
+    Two captures with one detection each, on the same box, so geometry alone links them.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+        create_taxa(self.project)
+        create_occurrences(deployment=self.deployment, num=2)
+        self.event = self.project.events.get()
+        _give_captures_dimensions(list(self.event.captures.all()))
+        self.first, self.second = list(
+            Occurrence.objects.filter(event=self.event).order_by("detections__source_image__timestamp")
+        )
+
+    def _run(self) -> dict[str, typing.Any]:
+        job = Job.objects.create(
+            name="Confirmed tracks test",
+            project=self.project,
+            job_type_key="post_processing",
+            params={"task": "tracking", "config": {"event_ids": [self.event.pk]}},
+        )
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+        job.refresh_from_db()
+        return {param.name: param.value for param in job.progress.get_stage("post_processing").params}
+
+    def test_an_unconfirmed_pair_is_merged(self):
+        params = self._run()
+
+        self.assertEqual(Occurrence.objects.filter(event=self.event).count(), 1)
+        self.assertEqual(params["Confirmed tracks left unchanged"], 0)
+        self.assertEqual(params["Result"], "Tracked 1 session(s).")
+
+    def test_a_confirmed_occurrence_is_left_as_it_is(self):
+        user = UserFactory()
+        for confirmed, other in ((self.first, self.second), (self.second, self.first)):
+            with self.subTest(confirmed="first" if confirmed is self.first else "second"):
+                Occurrence.objects.filter(pk__in=[self.first.pk, self.second.pk]).update(
+                    grouping_verified_at=None, grouping_verified_by=None
+                )
+                Occurrence.objects.filter(pk=confirmed.pk).update(
+                    grouping_verified_at=timezone.now(), grouping_verified_by=user
+                )
+
+                params = self._run()
+
+                confirmed.refresh_from_db()
+                self.assertEqual(confirmed.grouping_verified_by, user)
+                self.assertEqual(confirmed.detections.count(), 1)
+                self.assertTrue(Occurrence.objects.filter(pk=other.pk).exists())
+                self.assertFalse(
+                    Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).exists()
+                )
+                self.assertEqual(params["Confirmed tracks left unchanged"], 1)
+                self.assertEqual(params["Result"], "Tracked 1 session(s). Left 1 confirmed track(s) unchanged.")
 
 
 class TestFreshEventGuard(TestCase):
