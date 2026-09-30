@@ -11,6 +11,7 @@ a new job type or post-processing task appear in the UI with no frontend work. S
 import copy
 import dataclasses
 import inspect
+import re
 import typing
 
 import pydantic
@@ -23,6 +24,12 @@ SCHEMA_VERSION = 1
 WIDGET_KEY = "ami_widget"
 ENTITY_KEY = "ami_entity"
 ENTITY_FILTERS_KEY = "ami_entity_filters"
+# Set by the server on settings the requesting user may change but project members may not,
+# so the dialog can tuck them under a collapsed staff section.
+STAFF_ONLY_KEY = "ami_staff_only"
+
+# Words that sentence-casing a field name would get wrong.
+ACRONYMS = {"id": "ID", "ids": "IDs", "iou": "IoU", "ml": "ML", "gbif": "GBIF", "url": "URL"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -52,15 +59,23 @@ CAPTURE_SET_SCOPE = ScopeField(field="source_image_collection_id", label="Captur
 STATION_SCOPE = ScopeField(field="deployment_id", label="Station", entity="deployments")
 
 
+def strip_markup(text: str) -> str:
+    """Drop reST and Markdown code markup (``x``, `x`, :role:`x`) so help text reads as prose."""
+    text = re.sub(r":[a-z]+:`([^`]*)`", r"\1", text)
+    return re.sub(r"`{1,2}([^`]*)`{1,2}", r"\1", text)
+
+
 def describe_docstring(obj) -> str:
     """Return the first paragraph of a class docstring, as the help text shown in the dialog."""
     doc = inspect.getdoc(obj) or ""
-    return doc.split("\n\n")[0].replace("\n", " ").strip()
+    return strip_markup(doc.split("\n\n")[0].replace("\n", " ").strip())
 
 
 def _sentence_case(name: str) -> str:
-    words = name.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
-    return words[:1].upper() + words[1:]
+    words = name.removesuffix("_ids").removesuffix("_id").split("_")
+    words = [ACRONYMS.get(word, word) for word in words if word]
+    text = " ".join(words)
+    return text[:1].upper() + text[1:]
 
 
 def _inline_refs(node, definitions: dict):
