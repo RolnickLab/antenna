@@ -185,6 +185,27 @@ services:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: ["/bin/sh", "/etc/minio/init.sh"]
 
+  local-files:
+    # Serves a folder on this computer to Antenna as read-only S3, so existing captures can be synced without uploading.
+    # Each top-level sub-folder of ANTENNA_LOCAL_FILES_DIR (set it in .env) becomes a bucket. See docs/connect-existing-files.md.
+    # The fallback path is deliberately missing: a required variable (":?") would break "docker compose up" for everyone.
+    image: rclone/rclone:1.75.1
+    profiles: [local-files]
+    command: serve s3 /data --addr :9111 --read-only --dir-cache-time 30s --allow-origin "*"
+    volumes:
+      - type: bind
+        source: ${ANTENNA_LOCAL_FILES_DIR:-/ANTENNA_LOCAL_FILES_DIR-is-not-set-in-.env}
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "9111:9111"
+    networks:
+      default:
+        aliases:
+          - local-files
+
   ml_backend:
     build:
       context: ./processing_services/minimal
