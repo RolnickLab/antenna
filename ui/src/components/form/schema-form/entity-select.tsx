@@ -7,6 +7,7 @@ const PAGE_SIZE = 100
 
 interface EntityOption {
   id: string
+  name: string
   label: string
 }
 
@@ -43,6 +44,7 @@ export const EntitySelect = ({
   })
   const options: EntityOption[] = (data?.results ?? []).map((record) => ({
     id: `${record.id}`,
+    name: record.name ?? `${record.id}`,
     label: getLabel(record),
   }))
   const selected = options.some((option) => option.id === value) ? value : ''
@@ -52,7 +54,7 @@ export const EntitySelect = ({
       key={selected}
       disabled={isLoading || options.length === 0}
       onValueChange={(id) =>
-        onValueChange(id, options.find((option) => option.id === id)?.label)
+        onValueChange(id, options.find((option) => option.id === id)?.name)
       }
       value={selected}
     >

@@ -184,7 +184,10 @@ const CreateJobForm = ({
   const variantReady = !jobType?.variant_key || !!variant
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="flex flex-col gap-6 px-8 py-6"
+    >
       {generalErrors.length ? (
         <FormError
           inDialog
