@@ -1,10 +1,14 @@
 import logging
+import threading
 import typing
 from collections import defaultdict
+from unittest import mock
 
 import numpy as np
 import pydantic
-from django.test import SimpleTestCase, TestCase
+from django.db import connection, transaction
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from ami.jobs.models import Job
@@ -17,6 +21,17 @@ from ami.main.models import (
     SourceImageCollection,
     Taxon,
     update_calculated_fields_for_events,
+)
+from ami.main.models_future.tracks import (
+    SessionBusy,
+    TrackEditError,
+    add_detections,
+    detach_detection,
+    lock_sessions,
+    merge_occurrences,
+    split_track,
+    unverify_grouping,
+    verify_grouping,
 )
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import (
@@ -144,29 +159,24 @@ class TestTracking(TestCase):
         self.assertEqual(keeper.detections.count(), 2)
         self.assertFalse(Classification.objects.filter(algorithm=tracking_algorithm).exists())
 
-    def test_a_merge_clears_verification_only_where_frames_changed(self):
-        """A keeper that gains frames loses its "complete and accurate" mark, as after a
-        manual edit, while an occurrence tracking leaves unchanged keeps its mark."""
-        det_a, det_b, _, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
-        user = UserFactory()
-        untouched = (
-            Occurrence.objects.filter(detections__source_image__in=self.source_images[:2])
-            .exclude(pk__in=[det_a.occurrence_id, det_b.occurrence_id])
-            .first()
-        )
-        assert untouched is not None
-        Occurrence.objects.filter(pk__in=[det_a.occurrence_id, det_b.occurrence_id, untouched.pk]).update(
-            grouping_verified_at=timezone.now(), grouping_verified_by=user
-        )
+    def test_a_stored_link_into_a_confirmed_track_changes_nothing(self):
+        """A chain that reaches a confirmed occurrence through an earlier link is left as it
+        is, whichever end is confirmed: no frames move and neither occurrence is deleted."""
+        for confirmed_end in ("first", "second"):
+            with self.subTest(confirmed=confirmed_end):
+                det_a, det_b, _, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
+                confirmed_pk = det_a.occurrence_id if confirmed_end == "first" else det_b.occurrence_id
+                Occurrence.objects.filter(pk=confirmed_pk).update(grouping_verified_at=timezone.now())
 
-        assign_occurrences_from_detection_chains(self.source_images[:2], logger)
+                counters = assign_occurrences_from_detection_chains(self.source_images[:2], logger)
 
-        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
-        self.assertEqual(keeper.detections.count(), 2)
-        self.assertEqual((keeper.grouping_verified_at, keeper.grouping_verified_by), (None, None))
-        untouched.refresh_from_db()
-        self.assertIsNotNone(untouched.grouping_verified_at)
-        self.assertEqual(untouched.grouping_verified_by, user)
+                self.assertEqual(counters["confirmed_chains_skipped"], 1)
+                det_a.refresh_from_db()
+                det_b.refresh_from_db()
+                self.assertNotEqual(det_a.occurrence_id, det_b.occurrence_id)
+                confirmed = Occurrence.objects.get(pk=confirmed_pk)
+                self.assertIsNotNone(confirmed.grouping_verified_at)
+                self.assertEqual(confirmed.detections.count(), 1)
 
     def test_null_marker_sentinels_are_ignored(self):
         """A capture marked "processed, nothing found" carries a bbox-less sentinel detection;
@@ -318,6 +328,165 @@ class TestTrackingWithoutFeatures(TestCase):
         self.assertEqual(
             Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).count(), 0
         )
+
+
+def _one_box_in_two_captures(test: TransactionTestCase) -> None:
+    """One session of two captures with one detection each on the same box, each detection
+    on an occurrence of its own, so a geometry-only run links and merges them."""
+    test.project, test.deployment = setup_test_project(reuse=False)
+    create_captures(deployment=test.deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+    create_taxa(test.project)
+    create_occurrences(deployment=test.deployment, num=2)
+    test.event = test.project.events.get()
+    _give_captures_dimensions(list(test.event.captures.all()))
+    test.first, test.second = list(
+        Occurrence.objects.filter(event=test.event).order_by("detections__source_image__timestamp")
+    )
+
+
+class TestConfirmedTracksAreFrozen(TestCase):
+    """A tracking run never adds frames to, removes frames from, or deletes a confirmed
+    occurrence, since confirmed tracks are the ground truth runs are scored against.
+
+    """
+
+    def setUp(self) -> None:
+        _one_box_in_two_captures(self)
+
+    def _run(self) -> dict[str, typing.Any]:
+        job = Job.objects.create(
+            name="Confirmed tracks test",
+            project=self.project,
+            job_type_key="post_processing",
+            params={"task": "tracking", "config": {"event_ids": [self.event.pk]}},
+        )
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+        job.refresh_from_db()
+        return {param.name: param.value for param in job.progress.get_stage("post_processing").params}
+
+    def test_an_unconfirmed_pair_is_merged(self):
+        params = self._run()
+
+        self.assertEqual(Occurrence.objects.filter(event=self.event).count(), 1)
+        self.assertEqual(params["Confirmed tracks left unchanged"], 0)
+        self.assertEqual(params["Result"], "Tracked 1 session(s).")
+
+    def test_a_confirmed_occurrence_is_left_as_it_is(self):
+        user = UserFactory()
+        for confirmed, other in ((self.first, self.second), (self.second, self.first)):
+            with self.subTest(confirmed="first" if confirmed is self.first else "second"):
+                Occurrence.objects.filter(pk__in=[self.first.pk, self.second.pk]).update(
+                    grouping_verified_at=None, grouping_verified_by=None
+                )
+                Occurrence.objects.filter(pk=confirmed.pk).update(
+                    grouping_verified_at=timezone.now(), grouping_verified_by=user
+                )
+
+                params = self._run()
+
+                confirmed.refresh_from_db()
+                self.assertEqual(confirmed.grouping_verified_by, user)
+                self.assertEqual(confirmed.detections.count(), 1)
+                self.assertTrue(Occurrence.objects.filter(pk=other.pk).exists())
+                self.assertFalse(
+                    Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).exists()
+                )
+                self.assertEqual(params["Confirmed tracks left unchanged"], 1)
+                self.assertEqual(params["Result"], "Tracked 1 session(s). Left 1 confirmed track(s) unchanged.")
+
+
+class TestRunsAndEditsShareTheSessionLock(TestCase):
+    """A tracking run and a track edit on the same session run one after the other, never
+    interleaved, so neither writes an older copy of a row over the other's change."""
+
+    def setUp(self) -> None:
+        _one_box_in_two_captures(self)
+
+    def _run(self) -> None:
+        TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
+
+    def _locks_the_session(self, queries: CaptureQueriesContext) -> bool:
+        return any('FROM "main_event"' in q["sql"] and "FOR UPDATE" in q["sql"] for q in queries.captured_queries)
+
+    def test_a_run_locks_the_session_and_writes_only_the_columns_it_changes(self):
+        with CaptureQueriesContext(connection) as queries:
+            self._run()
+
+        self.assertEqual(Occurrence.objects.filter(event=self.event).count(), 1, "The run must merge the pair")
+        self.assertTrue(self._locks_the_session(queries))
+        updates = [
+            q["sql"]
+            for q in queries.captured_queries
+            if q["sql"].startswith(('UPDATE "main_detection"', 'UPDATE "main_occurrence"'))
+        ]
+        self.assertTrue(updates)
+        for sql in updates:
+            set_clause = sql.split(" SET ", 1)[1].split(" WHERE ", 1)[0]
+            for column in ('"bbox"', '"path"', '"grouping_verified_at"', '"event_id"'):
+                self.assertNotIn(column, set_clause, sql)
+
+    def test_every_track_edit_locks_the_session(self):
+        user = UserFactory()
+        second_detection = self.second.detections.get()
+        edits = [
+            ("merge", lambda: merge_occurrences(self.first, [self.second])),
+            ("split", lambda: split_track(self.first, second_detection)),
+            ("add", lambda: add_detections(self.first, [Detection.objects.get(pk=second_detection.pk)])),
+            ("detach", lambda: detach_detection(self.first, second_detection)),
+            ("verify", lambda: verify_grouping(self.first, user)),
+            ("unverify", lambda: unverify_grouping(self.first)),
+        ]
+        for name, edit in edits:
+            with self.subTest(edit=name), CaptureQueriesContext(connection) as queries:
+                edit()
+                self.assertTrue(self._locks_the_session(queries))
+
+    def test_an_edit_loaded_before_a_run_sees_what_the_run_did(self):
+        """A request that loaded two occurrences, then waited while a run merged them, is
+        refused instead of acting on the rows it loaded."""
+        stale_first, stale_second = Occurrence.objects.get(pk=self.first.pk), Occurrence.objects.get(pk=self.second.pk)
+        self._run()
+
+        with self.assertRaises(TrackEditError):
+            merge_occurrences(stale_first, [stale_second])
+        with self.assertRaises(TrackEditError):
+            verify_grouping(stale_second, UserFactory())
+        self.assertEqual(stale_first.detections.count(), 2)
+
+
+class TestAnEditDoesNotWaitLongForARun(TransactionTestCase):
+    """An edit on a session a tracking run holds gives up after a short wait with a reason
+    the reviewer can act on, rather than waiting until the web server drops the request."""
+
+    def setUp(self) -> None:
+        _one_box_in_two_captures(self)
+
+    def test_an_edit_on_a_locked_session_is_refused_as_busy(self):
+        locked, release = threading.Event(), threading.Event()
+
+        def hold_the_session() -> None:
+            try:
+                with transaction.atomic():
+                    lock_sessions([self.event.pk])
+                    locked.set()
+                    release.wait(timeout=30)
+            finally:
+                connection.close()
+
+        holder = threading.Thread(target=hold_the_session)
+        holder.start()
+        try:
+            self.assertTrue(locked.wait(timeout=30), "The other connection never took the lock")
+            with mock.patch("ami.main.models_future.tracks.EDIT_LOCK_TIMEOUT_MS", 200):
+                with self.assertRaises(SessionBusy):
+                    merge_occurrences(self.first, [self.second])
+        finally:
+            release.set()
+            holder.join()
+
+        self.assertEqual(Occurrence.objects.filter(pk__in=[self.first.pk, self.second.pk]).count(), 2)
 
 
 class TestFreshEventGuard(TestCase):

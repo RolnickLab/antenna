@@ -47,6 +47,7 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.main.models_future.tracks import (
+    SessionBusy,
     TrackEditError,
     add_detections,
     detach_detection,
@@ -9007,6 +9008,20 @@ class TrackEditTestCase(TrackFixtureTestCase):
     leaves the surviving track broken in the middle.
     """
 
+    def test_an_edit_refused_because_a_run_holds_the_session_is_a_conflict(self):
+        """A reviewer blocked by a tracking run gets 409 with the reason, not a 400 or 500."""
+        busy = SessionBusy("Tracking is running on this session; try again when it finishes.")
+        self.client.force_authenticate(user=self.curator)
+        with mock.patch("ami.main.api.views.split_track", side_effect=busy):
+            split = self.post("split-track", self.detections[2])
+        with mock.patch("ami.main.api.views.verify_grouping", side_effect=busy):
+            verify = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/")
+        with mock.patch("ami.main.api.views.unverify_grouping", side_effect=TrackEditError("gone")):
+            unverify = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/")
+
+        self.assertEqual((split.status_code, verify.status_code, unverify.status_code), (409, 409, 400))
+        self.assertEqual(verify.data["detail"], str(busy))
+
     def test_split_moves_the_tail_into_a_new_occurrence(self):
         response = self.post("split-track", self.detections[2], user=self.curator)
         self.assertEqual(response.status_code, 200, response.data)
@@ -10094,7 +10109,7 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
     def test_a_multi_frame_merge_does_not_query_per_frame(self):
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
 
-        with self.assertNumQueries(29):
+        with self.assertNumQueries(34):
             merge_occurrences(self.occurrence, [other])
 
         self.assertFullyLinked(self.occurrence)
