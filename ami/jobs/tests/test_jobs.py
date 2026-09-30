@@ -1921,14 +1921,14 @@ class TestTrackingJobCreation(APITestCase):
 
     def test_a_superuser_can_create_a_run_with_staff_only_settings(self):
         """The fields a member may not set are refused to members and accepted from a superuser."""
-        body = self._body(event_ids=[self.events[0].pk], require_fresh_event=False, species_gate="penalty")
+        body = self._body(event_ids=[self.events[0].pk], require_fresh_event=False, skip_if_human_identifications=False)
         refused = self._post(body, self.manager)
         self.assertEqual(refused.status_code, status.HTTP_400_BAD_REQUEST, refused.data)
 
         created = self._post(body, self.superuser)
         self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
         config = Job.objects.get(pk=created.data["id"]).params["config"]
-        self.assertEqual((config["require_fresh_event"], config["species_gate"]), (False, "penalty"))
+        self.assertEqual((config["require_fresh_event"], config["skip_if_human_identifications"]), (False, False))
 
     def _run(self, job: Job, user: User):
         self.client.force_authenticate(user=user)
