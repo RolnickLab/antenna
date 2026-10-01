@@ -32,6 +32,23 @@ archived.
 | `debugging/chaos-scenarios.md` | Fault-injection runbook for async_api jobs: Redis/NATS chaos, retry-path validation, `chaos_monkey` command. Keywords: chaos, Redis, NATS, retry |
 | `debugging/row-lock-contention-reproduction.md` | Reproducing `jobs_job` row-lock contention on a local stack. Keywords: locks, postgres, contention |
 
+## Research (external evidence for design work; one note per question)
+
+See `research/README.md` for the full table and conventions. Each note states the question, who produced it, sources per claim, and what could not be verified.
+
+| File | Description |
+|---|---|
+| `research/README.md` | Index of research notes and the conventions for adding one |
+| `research/2026-09-29-mlops-prediction-stores-and-provenance.md` | How ML platforms store per-input outputs, run provenance (MLflow, OpenLineage, PROV) and derived-model lineage |
+| `research/2026-09-29-postgres-float-arrays-and-pgvector.md` | pgvector type and index limits, real[] vs vector, TOAST behaviour, alternatives, published numbers |
+| `research/2026-09-29-biodiversity-and-annotation-platforms.md` | Machine prediction vs human verification in TRAPPER, iNaturalist, Zooniverse, Camtrap DP, Darwin Core, Label Studio, FiftyOne |
+| `research/2026-09-29-polymorphic-output-tables-and-naming.md` | Exclusive-arc FK vs per-target tables, Django specifics, naming by role in comparable systems |
+| `research/2026-10-01-invokeai-storage-schema.md` | InvokeAI: session JSON, tensors on disk, image provenance, hash-pinned model records |
+| `research/2026-10-01-denormalised-project-fk.md` | Antenna's copied `project` columns today, measured drift, composite-FK and helper strategies |
+| `research/2026-10-01-vector-database-data-models.md` | Named vectors, model identity, filtering, tenancy and quantization across Qdrant, Milvus, Weaviate, Vespa, Elasticsearch, Pinecone, LanceDB, Chroma |
+| `research/2026-10-01-applications-storing-embeddings.md` | Immich, PhotoPrism, FiftyOne, clip-retrieval, Ente, Nextcloud Recognize, TreeOfLife: schema, model key, model change |
+| `research/2026-10-01-embedding-lifecycle-practices.md` | Model versioning, Matryoshka vs PCA, compression, filtered ANN, clustering and OOD at scale, retention and privacy |
+
 ## Planning (point-in-time; may be superseded by merged code)
 
 | File | Description |
