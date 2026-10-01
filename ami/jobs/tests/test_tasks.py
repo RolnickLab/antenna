@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -513,6 +513,16 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         # Assert: Task was acknowledged despite missing job
         mock_manager.acknowledge_task.assert_called_once_with(reply_subject)
+
+
+class TestProcessNatsPipelineResultStoresNoResult(SimpleTestCase):
+    def test_task_ignores_its_result(self):
+        """The batch payload is saved to the database, not copied into the Celery result backend.
+
+        RESULT_EXTENDED stores task arguments with each result, which here is the full ML payload
+        for every batch. Nothing reads this task's state. See #1189.
+        """
+        self.assertTrue(process_nats_pipeline_result.ignore_result)
 
 
 class TestTaskFailureGuard(TransactionTestCase):
