@@ -1,0 +1,211 @@
+"""
+Write a classifier-head training set to storage, for a processing service to collect.
+
+The service is handed a URL rather than the rows themselves. A project with a few hundred
+thousand verified labels is hundreds of megabytes; that is fragile to send in one request
+and has to start over if the connection drops. A file in storage is small to hand over,
+cheap to retry, and the service already downloads capture images from the same place.
+"""
+
+import json
+import logging
+import pathlib
+import tempfile
+import typing
+
+import numpy as np
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.utils.text import slugify
+
+from ami.main.models import Project
+from ami.ml import training_data
+from ami.ml.models.algorithm import Algorithm
+from ami.ml.models.embedding import EMBEDDING_DIMENSIONS
+from ami.ml.models.training_set import record_training_set
+
+logger = logging.getLogger(__name__)
+
+# Vectors are written as float16 because that is exactly what Postgres stores (halfvec),
+# so nothing is lost. Measured on 10k rows: npz float16 is 21 MB against 227 MB of JSON,
+# and 1.1s to build against 29s.
+DATASET_DTYPE = np.float16
+
+DATASET_DIRECTORY = "training"
+
+# Rows are pulled from the database in batches so a large project does not have to fit
+# every vector in memory at once.
+FETCH_BATCH_SIZE = 2000
+
+
+class NotEnoughVerifiedData(Exception):
+    """The project does not hold enough verified labels to train and evaluate on."""
+
+
+def build_training_dataset(
+    project: Project,
+    algorithm: Algorithm,
+    min_per_species: int = 2,
+    split_salt: str = training_data.DEFAULT_SPLIT_SALT,
+    test_fraction: float = training_data.DEFAULT_TEST_FRACTION,
+    taxa_list=None,
+    job=None,
+) -> dict[str, typing.Any]:
+    """
+    Collect verified labels and their embeddings, and save them as one npz file.
+
+    Returns the storage path, the URL a service can fetch, and the metadata describing
+    what went in. Raises NotEnoughVerifiedData rather than writing a file nothing can be
+    trained on.
+    """
+    counts = training_data.label_counts(project, algorithm)
+    taxa_list = taxa_list or project.default_taxa_list
+
+    if taxa_list:
+        # The taxa list decides what the head can predict; the verified crops only decide
+        # how well it predicts each one. Without this the head shrinks to whatever happened
+        # to be verified, which silently narrows the pipeline.
+        classes = sorted(taxa_list.taxa.exclude(name="").values_list("name", flat=True))
+        if not classes:
+            raise NotEnoughVerifiedData(f"Taxa list '{taxa_list}' is empty, so there is nothing to train.")
+        keep = set(classes)
+        outside = sorted(name for name in counts if name and name not in keep)
+    else:
+        keep = training_data.species_with_enough_examples(counts, min_per_species)
+        if not keep:
+            raise NotEnoughVerifiedData(
+                f"No species in '{project.name}' has at least {min_per_species} verified crops with an "
+                f"embedding from {algorithm.key}. Verify more occurrences, or re-run the pipeline so the "
+                "verified detections get embeddings."
+            )
+        classes = sorted(keep)
+        outside = sorted(set(counts) - keep)
+
+    class_index = {name: i for i, name in enumerate(classes)}
+
+    rows = training_data.verified_training_rows(project, algorithm)
+    total = rows.count()
+
+    features = np.zeros((total, EMBEDDING_DIMENSIONS), dtype=DATASET_DTYPE)
+    labels = np.zeros(total, dtype=np.int64)
+    detection_ids = np.zeros(total, dtype=np.int64)
+    occurrence_ids = np.zeros(total, dtype=np.int64)
+    splits: list[str] = []
+
+    kept = 0
+    for embedding in rows.iterator(chunk_size=FETCH_BATCH_SIZE):
+        occurrence = embedding.detection.occurrence
+        if not occurrence or not occurrence.determination:
+            continue
+        name = occurrence.determination.name
+        if name not in class_index:
+            continue
+        features[kept] = np.asarray(embedding.vector.to_list(), dtype=DATASET_DTYPE)
+        labels[kept] = class_index[name]
+        detection_ids[kept] = embedding.detection_id
+        occurrence_ids[kept] = occurrence.pk
+        splits.append(training_data.split_for(occurrence.pk, split_salt, test_fraction))
+        kept += 1
+
+    if not kept:
+        raise NotEnoughVerifiedData("No verified detection has an embedding from this algorithm yet.")
+
+    features = features[:kept]
+    labels = labels[:kept]
+    detection_ids = detection_ids[:kept]
+    occurrence_ids = occurrence_ids[:kept]
+    split_array = np.array(splits)
+
+    n_train = int((split_array == "train").sum())
+    n_test = int((split_array == "test").sum())
+    if not n_train or not n_test:
+        raise NotEnoughVerifiedData(
+            f"The split left {n_train} training and {n_test} held-out rows. Both sides need rows "
+            "before a new head can be compared against the current one."
+        )
+
+    file_path = dataset_path(project, algorithm, job.pk if job else None)
+    metadata = {
+        # The file records where it was written. A retrain is only auditable if the
+        # version it produced can name the exact set it was fitted on, and the service
+        # echoes this metadata back in its result.
+        "url": f"{settings.MEDIA_URL}{file_path}",
+        "project": {"id": project.pk, "name": project.name},
+        "algorithm": {"key": algorithm.key, "name": algorithm.name, "version": algorithm.version},
+        "dimensions": EMBEDDING_DIMENSIONS,
+        "dtype": np.dtype(DATASET_DTYPE).name,
+        "classes": classes,
+        # .get(): with a taxa list, a class can legitimately have no verified crops yet.
+        "counts": {name: counts.get(name, 0) for name in classes},
+        "taxa_list": {"id": taxa_list.pk, "name": taxa_list.name} if taxa_list else None,
+        "classes_without_verified_data": sorted(name for name in classes if not counts.get(name)),
+        "dropped_species": outside,
+        "rows": kept,
+        "train": n_train,
+        "test": n_test,
+        "verified_detections_without_embedding": training_data.count_missing_embeddings(project, algorithm),
+        "settings": {
+            "min_per_species": min_per_species,
+            "split_salt": split_salt,
+            "test_fraction": test_fraction,
+            "split_grouped_by": "occurrence",
+        },
+    }
+
+    file_path = _save(
+        file_path=file_path,
+        arrays={
+            "features": features,
+            "labels": labels,
+            "detection_ids": detection_ids,
+            "occurrence_ids": occurrence_ids,
+            "split": split_array,
+            "classes": np.array(classes),
+        },
+        metadata=metadata,
+    )
+
+    if job:
+        # Written here rather than after training, because this is the moment the set is
+        # decided. A run that fails later still consumed these occurrences.
+        record_training_set(occurrence_ids=[int(pk) for pk in occurrence_ids[:kept]], job=job)
+
+    file_url = metadata["url"]
+    logger.info(f"Wrote training dataset with {kept} rows over {len(classes)} species to {file_path}")
+    return {"path": file_path, "url": file_url, "metadata": metadata}
+
+
+def dataset_path(project: Project, algorithm: Algorithm, job_id: int | None) -> str:
+    """Where this project's training set for this algorithm is written."""
+    stem = f"{slugify(project.name)}-{slugify(algorithm.key)}"
+    suffix = f"job-{job_id}" if job_id else "manual"
+    return f"{DATASET_DIRECTORY}/{stem}-{suffix}.npz"
+
+
+def _save(
+    file_path: str,
+    arrays: dict[str, np.ndarray],
+    metadata: dict[str, typing.Any],
+) -> str:
+    """
+    Write the npz to storage and return its path.
+
+    default_storage is the local filesystem in development and the project's S3 bucket in
+    production, so this follows wherever captures already live without a special case.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        local = pathlib.Path(tmp) / "dataset.npz"
+        # Uncompressed: embeddings are close to random, so compression buys about 10 per
+        # cent for real CPU. Metadata rides inside the archive so the file is self-describing.
+        np.savez(local, metadata=np.array(json.dumps(metadata)), **arrays)
+        if default_storage.exists(file_path):
+            # A re-run of the same job replaces its dataset instead of piling up copies.
+            default_storage.delete(file_path)
+        with open(local, "rb") as f:
+            saved_path = default_storage.save(file_path, f)
+
+    if saved_path != file_path:
+        # The metadata inside the archive records the URL it was written to, so a rename
+        # by the storage backend would leave the file describing somewhere it is not.
+        logger.warning(f"Storage wrote the training set to {saved_path}, not {file_path}.")
+    return saved_path

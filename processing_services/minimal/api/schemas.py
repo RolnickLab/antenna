@@ -95,6 +95,14 @@ class ClassificationResponse(pydantic.BaseModel):
         default_factory=list,
         description="The raw logits output by the model, before any calibration or normalization.",
     )
+    features: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "The embedding the backbone produced for this crop, taken before the "
+            "classification head. Optional, and only useful if every value comes from "
+            "the same backbone."
+        ),
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True

@@ -3,22 +3,29 @@ import logging
 from django.db import transaction
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
+from django.http import Http404
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ami.base.pagination import TrainingDataPagination
 from ami.base.permissions import ProjectPipelineConfigPermission
+from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
+from ami.ml import training_data
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
+from .models.embedding import EMBEDDING_DIMENSIONS, DetectionEmbedding
+from .models.evaluation import AlgorithmEvaluation
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
@@ -28,6 +35,7 @@ from .serializers import (
     PipelineRegistrationSerializer,
     PipelineSerializer,
     ProcessingServiceSerializer,
+    TrainingDataRowSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +48,9 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Algorithm.objects.all()
     serializer_class = AlgorithmSerializer
-    filterset_fields = ["name", "version"]
+    # ``trainable`` is filterable so a form that starts a retrain can offer only the heads
+    # a service will actually accept.
+    filterset_fields = ["name", "version", "trainable"]
     ordering_fields = [
         "id",
         "created_at",
@@ -56,6 +66,9 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet["Algorithm"]:
         qs: QuerySet["Algorithm"] = super().get_queryset()
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
+        qs = qs.prefetch_related(
+            Prefetch("evaluations", queryset=AlgorithmEvaluation.objects.select_related("occurrence_set"))
+        )
         # Only scope the list by project. Detail stays unscoped so links from historical
         # classifications whose pipeline is no longer enabled still resolve.
         if getattr(self, "action", None) == "list":
@@ -298,3 +311,146 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
         processing_service.mark_seen(live=True)
 
         return Response(response.dict(), status=status.HTTP_201_CREATED)
+
+
+class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    Verified detections and their embeddings, for retraining a classifier head.
+
+    A head is trained on embeddings, not pixels, and the backbone that produced them is
+    frozen. So a trainer can pull this and fit a new head without touching the images.
+
+    Requires `project_id` and `algorithm` (an algorithm key). Constraining to one
+    algorithm is not optional: vectors from different backbones are in different spaces.
+
+    GET /api/v2/ml/training-data/?project_id=3&algorithm=<key>
+    GET /api/v2/ml/training-data/summary/?project_id=3&algorithm=<key>
+    """
+
+    queryset = DetectionEmbedding.objects.none()
+    serializer_class = TrainingDataRowSerializer
+    require_project = True
+    # Membership is enforced in get_queryset() via Project.objects.visible_for_user():
+    # ObjectPermission maps a "list" action on a Project to check_custom_permission, which
+    # denies members, and IsAuthenticated alone would let any account read any project's
+    # verified labels.
+    permission_classes = [IsAuthenticated]
+    filter_backends: list = []
+    pagination_class = TrainingDataPagination
+
+    def _get_visible_project(self) -> Project:
+        """
+        The requested project, if this user is allowed to see it.
+
+        Verified labels are project data, so an account that cannot see the project must
+        not be able to read them.
+        """
+        project = self.get_active_project()
+        if not project:
+            raise Http404("Project not found.")
+        visible = Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists()
+        if not visible:
+            raise api_exceptions.PermissionDenied("You do not have access to this project.")
+        return project
+
+    def _get_algorithm(self) -> Algorithm:
+        key = SingleParamSerializer[str].clean(
+            "algorithm",
+            serializers.CharField(
+                required=True,
+                help_text="Key of the algorithm whose embeddings to train on.",
+            ),
+            self.request.query_params,
+        )
+        algorithm = Algorithm.objects.filter(key=key).first()
+        if not algorithm:
+            raise api_exceptions.NotFound(f"No algorithm with key '{key}'.")
+        return algorithm
+
+    def _get_split_settings(self) -> tuple[str, float]:
+        salt = SingleParamSerializer[str].clean(
+            "split_salt",
+            serializers.CharField(required=False, default=training_data.DEFAULT_SPLIT_SALT),
+            self.request.query_params,
+        )
+        fraction = SingleParamSerializer[float].clean(
+            "test_fraction",
+            serializers.FloatField(
+                required=False,
+                default=training_data.DEFAULT_TEST_FRACTION,
+                min_value=0,
+                max_value=0.99,
+            ),
+            self.request.query_params,
+        )
+        return salt, fraction
+
+    def get_queryset(self) -> QuerySet[DetectionEmbedding]:
+        project = self._get_visible_project()
+        qs = training_data.verified_training_rows(project, self._get_algorithm())
+
+        self._split_filter = SingleParamSerializer[str].clean(
+            "split",
+            serializers.ChoiceField(choices=list(training_data.SPLITS), required=False, allow_null=True, default=None),
+            self.request.query_params,
+        )
+        return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        salt, fraction = self._get_split_settings()
+        context["split_salt"] = salt
+        context["test_fraction"] = fraction
+        # Not url_boolean_param: it returns `value or default`, so a default of True can
+        # never be turned off.
+        context["include_features"] = SingleParamSerializer[bool].clean(
+            "include_features",
+            serializers.BooleanField(required=False, default=True),
+            self.request.query_params,
+        )
+        return context
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        split = getattr(self, "_split_filter", None)
+        if split:
+            # Filtering by split in Python rather than SQL: the assignment is a hash of the
+            # occurrence id, which Postgres cannot compute. Callers that need whole splits
+            # should page through everything and group client-side.
+            results = [row for row in response.data["results"] if row["split"] == split]
+            response.data["results"] = results
+        return response
+
+    @extend_schema(parameters=[project_id_doc_param])
+    @action(detail=False, methods=["get"])
+    def summary(self, request, *args, **kwargs):
+        """Counts only. Cheap enough to poll before deciding whether a retrain is worth it."""
+        project = self._get_visible_project()
+        algorithm = self._get_algorithm()
+        salt, fraction = self._get_split_settings()
+
+        counts = training_data.label_counts(project, algorithm)
+        rows = training_data.verified_training_rows(project, algorithm)
+        splits = {name: 0 for name in training_data.SPLITS}
+        for occurrence_id in rows.values_list("detection__occurrence_id", flat=True):
+            splits[training_data.split_for(occurrence_id, salt, fraction)] += 1
+
+        return Response(
+            {
+                "project": {"id": project.pk, "name": project.name},
+                "algorithm": {"key": algorithm.key, "name": algorithm.name, "version": algorithm.version},
+                "dimensions": EMBEDDING_DIMENSIONS,
+                "rows": sum(counts.values()),
+                "classes": len(counts),
+                "counts": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
+                "train": splits[training_data.SPLIT_TRAIN],
+                "test": splits[training_data.SPLIT_TEST],
+                "verified_detections_without_embedding": training_data.count_missing_embeddings(project, algorithm),
+                "settings": {
+                    "split_salt": salt,
+                    "test_fraction": fraction,
+                    "split_grouped_by": "occurrence",
+                },
+            }
+        )

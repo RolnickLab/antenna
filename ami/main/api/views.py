@@ -36,6 +36,7 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.ml import reporting
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
@@ -49,6 +50,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectQuerySet,
@@ -84,6 +86,7 @@ from .serializers import (
     ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
+    OccurrenceSetSerializer,
     PageListSerializer,
     PageSerializer,
     ProjectListSerializer,
@@ -951,6 +954,29 @@ class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
 
     default_limit = 100
     max_limit = 100
+
+
+class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
+    """
+    API endpoint listing the fixed occurrence sets a model can be scored against.
+
+    Read-only: membership is built deliberately, not edited in passing, because two models
+    can only be compared if they were scored on exactly the same occurrences.
+    """
+
+    queryset = OccurrenceSet.objects.all()
+    serializer_class = OccurrenceSetSerializer
+    http_method_names = ["get", "head", "options"]
+    ordering_fields = ["name", "created_at", "updated_at"]
+    search_fields = ["name"]
+    # Scoping is the whole point of the queryset below, so without a project there is
+    # nothing sensible to return: it would list every set on the platform.
+    require_project = True
+
+    def get_queryset(self) -> QuerySet["OccurrenceSet"]:
+        qs = super().get_queryset().annotate(annotated_occurrences_count=models.Count("occurrences"))
+        # A set with no project is global, so it is offered everywhere.
+        return qs.for_project(self.get_active_project())
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
@@ -2023,7 +2049,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         The sparse verification rollup (``verified_count`` / ``agreed_*``) is the same on
         either path — a Python pass over the verified subset applied as ``CASE``
-        annotations, see :meth:`TaxonQuerySet.with_verification_counts`.
+        annotations, see :meth:`TaxonQuerySet.with_verification_counts`. ``training_crops_count``
+        is annotated the same way, see :meth:`TaxonQuerySet.with_training_crop_counts`.
         """
         request = self.request
         use_aggregation = "collection" in request.query_params
@@ -2079,6 +2106,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             verified_counts=verified_counts,
         )
 
+        qs = self.annotate_training_crop_counts(qs, project, occurrence_filters=direct_filters)
+
         return self.annotate_example_occurrences(
             qs,
             project,
@@ -2087,6 +2116,30 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
         )
+
+    def annotate_training_crop_counts(
+        self,
+        qs: QuerySet,
+        project: Project,
+        *,
+        occurrence_filters: models.Q,
+    ) -> QuerySet:
+        """Add the ``training_crops_count`` annotation behind the ``with_training_crop_counts``
+        opt-in param.
+
+        One aggregate over the verified detections, but it grows with the project rather
+        than the page, and only the species table shows the column — so it runs when the
+        client asks for it. When off the count is annotated NULL so the serialized shape
+        stays stable and an uncomputed count cannot be read as "no crops".
+        """
+        include_counts = SingleParamSerializer[bool].clean(
+            param_name="with_training_crop_counts",
+            field=serializers.BooleanField(required=False, default=False),
+            data=self.request.query_params,
+        )
+        if not include_counts:
+            return qs.annotate(training_crops_count=models.Value(None, output_field=models.IntegerField()))
+        return qs.with_training_crop_counts(project, occurrence_filters=occurrence_filters)
 
     def annotate_example_occurrences(
         self,
@@ -2221,6 +2274,7 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         # database once per row.
         qs = qs.prefetch_related("projects")
         project = self.get_active_project()
+        qs = reporting.annotate_best_model(qs, project=project)
         if project:
             return qs.filter(projects=project)
         return qs
