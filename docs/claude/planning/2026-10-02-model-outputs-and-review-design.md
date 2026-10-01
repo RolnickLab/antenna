@@ -790,3 +790,286 @@ The review and output rows map onto the two standards Antenna already exports to
 - `ami/ml/post_processing/base.py` `BasePostProcessingTask`; `class_masking.py:126–182`.
 - `ami/base/models.py:72` `get_project_accessor`.
 - External sources are cited inline in section 3.
+
+## Appendix A (revision of 2026-10-01): agreed names, ERD and ORM usage
+
+Decisions taken in discussion after the research round, which supersede the matching parts of
+sections 4–6 above (the body text is updated in the next revision):
+
+- **Names.** Abstract base `AlgorithmOutput` (algorithm, run, timestamp). Embeddings are one table
+  per target on an abstract `Embedding(AlgorithmOutput)` base: `DetectionEmbedding`,
+  `SourceImageEmbedding`, `TaxonEmbedding` (later `OccurrenceEmbedding`). Run decisions are one
+  table, `AlgorithmResult`, with nullable targets `occurrence | source_image | event`
+  (`CHECK num_nonnulls(...) = 1`) and a denormalised `project` for permissions. `DetectionOutput`
+  and `OccurrenceOutput` are dropped as names: they describe the foreign key, not the thing.
+- **No `DetectionLink` table.** Accepted links stay on `Detection` (`next_detection`,
+  `next_detection_cost`, `next_detection_run`). Candidate matrices (detections × candidates, tens
+  of millions of rows per re-track) go to a file per run and session in object storage.
+- **Logits leave Postgres.** The processing service writes each batch's raw response to a
+  presigned URL (inline response kept as the fallback); a `ResultsBatch(run, batch_index,
+  object_key, sha256, bytes, status, keep)` row is the ledger; `Classification` gains `top_k`,
+  `results_batch`, `results_index`, `run` and loses `logits` and `scores`. Ingest derives rows
+  from the file, runs class masking in memory when the project has a list, and is replayable.
+- **Runs pin model identity by hash** (`AlgorithmRun.algorithm_hash`, `Algorithm.hash` from
+  `/info`), so replays survive a re-registration under a new key.
+- **Embedding column** reopens to native pgvector (`halfvec` on ≥ 0.7, else `vector`): the 16,000
+  cap only mattered for logits, and taxon similarity is the interactive query that wants the index.
+- **Taxon embeddings** are in scope: keys `text`, `text_taxonomic` (joint-space text encoder) and
+  `prototype` (centroid of verified crops, a derived algorithm). Public like `Taxon`.
+
+A rendered version of this appendix with the same diagrams and code: the "Model Outputs and
+Reviews" artifact (private, linked from the session).
+
+### A.1 ERD
+
+```mermaid
+erDiagram
+  Job |o--o{ AlgorithmRun : "started by"
+  Algorithm ||--o{ AlgorithmRun : "ran as"
+  Project ||--o{ AlgorithmRun : "in"
+  AlgorithmRun ||--o{ ResultsBatch : "wrote"
+  Algorithm |o--o{ Algorithm : "derived_from"
+  Algorithm |o--o{ Algorithm : "feature_extractor"
+  AlgorithmRun |o--o{ Algorithm : "produced_by_run"
+  AlgorithmRun |o--o{ Classification : "run"
+  ResultsBatch |o--o{ Classification : "results_batch + index"
+  Detection ||--o{ Classification : "about"
+  AlgorithmRun |o--o{ DetectionEmbedding : "run"
+  AlgorithmRun |o--o{ SourceImageEmbedding : "run"
+  AlgorithmRun |o--o{ TaxonEmbedding : "run"
+  Detection ||--o{ DetectionEmbedding : "about"
+  SourceImage ||--o{ SourceImageEmbedding : "about"
+  Taxon ||--o{ TaxonEmbedding : "about"
+  AlgorithmRun |o--o{ AlgorithmResult : "run"
+  Project ||--o{ AlgorithmResult : "permission path"
+  Occurrence |o--o{ AlgorithmResult : "about (one of)"
+  SourceImage |o--o{ AlgorithmResult : "about (one of)"
+  Event |o--o{ AlgorithmResult : "about (one of)"
+  Detection |o--o| Detection : "next_detection"
+  AlgorithmRun |o--o{ Detection : "next_detection_run"
+  Occurrence ||--o{ OccurrenceReview : "reviewed"
+  User ||--o{ OccurrenceReview : "by"
+  Identification |o--o| OccurrenceReview : "taxon payload"
+  AlgorithmResult |o--o{ OccurrenceReview : "reviewed_result"
+
+  Algorithm {
+    string key
+    string hash "new: content hash from /info"
+    json output_specs "new: [{key, type, dimensions, description, storage}]"
+    int derived_from_id FK "new"
+    string derived_relation "new: finetune | head_retrain | pca | prototype | calibration"
+    int produced_by_run_id FK "new"
+    int feature_extractor_id FK "new: backbone whose embedding this consumes"
+  }
+  AlgorithmRun {
+    int algorithm_id FK
+    int job_id FK "nullable, SET_NULL"
+    int project_id FK
+    string algorithm_hash
+    json config
+    datetime started_at
+    datetime finished_at
+    json summary
+  }
+  ResultsBatch {
+    int run_id FK
+    int batch_index
+    string object_key "raw response, gzipped JSON"
+    string sha256
+    bigint bytes
+    string status "expected | written | ingested | failed"
+    bool keep
+    datetime ingested_at
+  }
+  Classification {
+    int run_id FK "new"
+    json top_k "new: [[class_index, score], ...]"
+    bigint results_batch_id FK "new"
+    int results_index "new"
+    array logits "dropped"
+    array scores "dropped"
+  }
+  Detection {
+    bigint next_detection_id FK "cache of the accepted link"
+    float next_detection_cost "new"
+    int next_detection_run_id FK "new"
+  }
+  DetectionEmbedding {
+    bigint detection_id FK
+    int algorithm_id FK
+    int run_id FK
+    string key "embedding | projection | cls"
+    vector vector "unsized; dims per (algorithm, key)"
+  }
+  SourceImageEmbedding {
+    bigint source_image_id FK
+    int algorithm_id FK
+    int run_id FK
+    string key
+    vector vector
+  }
+  TaxonEmbedding {
+    int taxon_id FK
+    int algorithm_id FK
+    int run_id FK
+    string key "text | text_taxonomic | prototype"
+    vector vector
+  }
+  AlgorithmResult {
+    int project_id FK "denormalised for permissions"
+    bigint occurrence_id FK "nullable"
+    bigint source_image_id FK "nullable"
+    int event_id FK "nullable"
+    int algorithm_id FK
+    int run_id FK
+    string kind "tracking | class_masking | size_filter | llm_verdict"
+    json data "validated per kind"
+    datetime timestamp
+  }
+  OccurrenceReview {
+    bigint occurrence_id FK
+    int user_id FK
+    string aspect "identification | grouping | count"
+    string verdict "confirmed | rejected | corrected"
+    int identification_id FK "nullable"
+    bigint reviewed_result_id FK "nullable"
+    json payload "grouping: detection ids at review time"
+    datetime timestamp
+    bool withdrawn
+  }
+```
+
+Unique keys: `(detection, algorithm, key)` and the same shape on the other embedding tables;
+`(run, batch_index)`; reviews indexed `(occurrence, aspect, -timestamp)`; results indexed
+`(occurrence, -timestamp)` and `(run)`. Partial HNSW index per `(algorithm, key)` on each
+embedding table when the first similarity endpoint ships.
+
+### A.2 Where each kind of data lives
+
+| Data | Home | Why |
+|---|---|---|
+| Raw service response per batch | object storage (gz JSON, presigned PUT by the service) + `ResultsBatch` | source of truth, replay without GPU, large payloads out of HTTP/NATS bodies |
+| Label, score, top-k | `Classification` | determination, UI top-N; ~100 bytes |
+| Full logits | the batch file via `results_batch` + `results_index` | bulk reads only (masking, calibration) |
+| Embeddings per detection / capture / taxon | pgvector, one table per target | random access by id; ANN per `(algorithm, key)` |
+| Accepted link + cost | `Detection` columns | one per detection |
+| Candidate links | file per run and session | detections × candidates |
+| Run decisions per occurrence / capture / session | `AlgorithmResult` | timeline, run comparison, evaluation |
+| Run settings | `AlgorithmRun.config`, once | provenance; survives job deletion |
+
+### A.3 Queryset methods (proposed)
+
+| Queryset | Method | Returns |
+|---|---|---|
+| `EmbeddingQuerySet` (shared) | `for_algorithm(algorithm, key="embedding")` | one vector space |
+| | `nearest(vector, k=20)` | cosine `distance` annotated, ordered, limited |
+| | `as_dict()` / `as_matrix()` | `{id: ndarray}` / `(ids, float32 ndarray)`, iterator-backed |
+| | `coverage()` | rows and distinct targets per `(algorithm, key)` |
+| | `in_project(project)` | scoped via the target's project path |
+| `DetectionEmbeddingQuerySet` | `for_detections(ids)`, `in_event(event)` | tracking's reads |
+| | `verified(project)` | occurrence has a current identification review, not rejected |
+| | `for_taxa_list(taxa_list)`, `with_labels()` | determination in the list (descendants); `taxon_id` annotated |
+| | `training_arrays()` | `(X, y, detection_ids, occurrence_ids)` |
+| `DetectionQuerySet` | `missing_embedding(algorithm, key)` | anti-join for the feature-only job |
+| `TaxonEmbeddingQuerySet` | `in_taxa_list(taxa_list)` | zero-shot restricted to a list |
+| `AlgorithmResultQuerySet` | `for_occurrence`, `for_run`, `of_kind`, `with_review(aspect)`, `changed_determination()` | timeline, audit, evaluation |
+| `OccurrenceReviewQuerySet` | `current(aspect, verdict=None)`, `answering(result)` | latest non-withdrawn per occurrence |
+| `ResultsBatchQuerySet` | `for_run`, `ingested`, `pending`; instance `load()` | validated response from storage, LRU per process |
+| `ClassificationQuerySet` | `with_logits()` | batched loader grouped by batch file |
+
+### A.4 Usage
+
+```python
+# Tracking: vectors for two adjacent captures, one extractor
+vectors = (DetectionEmbedding.objects.for_algorithm(extractor)
+           .for_detections([d.pk for d in (*current, *nxt)]).as_dict())
+
+# Feature-only job: what still needs a vector; coverage for the tracking form
+todo = Detection.objects.valid().filter(source_image__event=event).missing_embedding(extractor)
+coverage = DetectionEmbedding.objects.in_event(event).coverage()
+
+# GET /detections/{id}/similar/?algorithm=12&k=20&project_id=18
+anchor = get_object_or_404(DetectionEmbedding, detection_id=pk, algorithm=algorithm, key="embedding")
+hits = (DetectionEmbedding.objects.for_algorithm(algorithm).in_project(project)
+        .exclude(detection_id=pk).nearest(anchor.vector, k=20)
+        .select_related("detection__occurrence__determination"))
+
+# GET /detections/{id}/suggested-taxa/?algorithm=bioclip&taxa_list=7  (zero-shot)
+taxa = (TaxonEmbedding.objects.for_algorithm(bioclip, key="text_taxonomic")
+        .in_taxa_list(taxa_list).nearest(anchor.vector, k=5).select_related("taxon"))
+
+# Train a logistic-regression head on verified crops for one taxa list
+rows = (DetectionEmbedding.objects.for_algorithm(backbone).verified(project)
+        .for_taxa_list(taxa_list).with_labels().order_by("pk"))
+X, y, detection_ids, occurrence_ids = rows.training_arrays()
+split = split_by_occurrence(occurrence_ids, salt=run.config["split_salt"])
+clf = LogisticRegression(max_iter=1000).fit(X[split.train], y[split.train])
+head = Algorithm.objects.register_derived(
+    name=f"{backbone.name} head · {taxa_list.name}",
+    derived_from=previous_head or backbone, derived_relation="head_retrain",
+    feature_extractor=backbone, produced_by_run=run,
+    category_map=AlgorithmCategoryMap.for_taxa(taxa_list), uri=store_head(run, clf))
+
+# Prototypes per taxon (nearest-centroid classes, no training)
+centroids = (DetectionEmbedding.objects.for_algorithm(backbone).verified(project).with_labels()
+             .values("taxon_id").annotate(vector=Avg("vector"), n=Count("pk")).filter(n__gte=5))
+TaxonEmbedding.objects.bulk_create(
+    [TaxonEmbedding(taxon_id=c["taxon_id"], algorithm=prototype_alg, run=run, key="prototype", vector=c["vector"])
+     for c in centroids],
+    update_conflicts=True, unique_fields=["taxon", "algorithm", "key"], update_fields=["vector", "run"])
+
+# Ingest a batch the service wrote; mask while the logits are in memory
+for batch in ResultsBatch.objects.for_run(run).pending():
+    results = batch.load()
+    detections = create_detections(results, batch)
+    classifications = create_classifications(results, detections, batch)   # top_k, results_batch, results_index
+    create_embeddings(results, detections, batch)
+    if (taxa_list := project.default_taxa_list):
+        mask_in_memory(results, classifications, taxa_list)                  # + AlgorithmResult(kind="class_masking")
+    batch.mark_ingested()
+logits = classification.logits()      # on demand, from the batch file
+
+# Timeline and run audit
+timeline = merge_by_time(AlgorithmResult.objects.for_occurrence(occ).select_related("algorithm", "run"),
+                         OccurrenceReview.objects.filter(occurrence=occ, withdrawn=False).select_related("user"),
+                         occ.identifications.select_related("user", "taxon"), occ.predictions_per_algorithm())
+renamed = AlgorithmResult.objects.for_run(run).of_kind("tracking").changed_determination().count()
+
+# Evaluation: tracking vs confirmed tracks; a head vs identifications
+pairs = AlgorithmResult.objects.for_run(run).of_kind("tracking").with_review(aspect="grouping")
+precision = pairs.filter(review_verdict="confirmed").count() / pairs.exclude(review_verdict=None).count()
+truth = (OccurrenceReview.objects.in_project(project).current(aspect="identification")
+         .exclude(verdict="rejected").values_list("occurrence_id", "identification__taxon_id"))
+
+# POST /occurrences/{id}/reviews/  (mark a track complete)
+OccurrenceReview.objects.create(
+    occurrence=occ, user=request.user, aspect="grouping", verdict="confirmed",
+    reviewed_result=AlgorithmResult.objects.for_occurrence(occ).of_kind("tracking").latest("timestamp"),
+    payload={"detection_ids": list(occ.detections.values_list("pk", flat=True))})
+occ.refresh_grouping_cache()
+```
+
+### A.5 Endpoints
+
+| Endpoint | Serves | Status |
+|---|---|---|
+| `GET /detections/{id}/similar/?algorithm&key&k` | similar crops in the project | new |
+| `GET /detections/{id}/suggested-taxa/?algorithm&taxa_list&k` | zero-shot suggestions on a list | new |
+| `GET /captures/{id}/similar/?algorithm&k` | similar frames | new, later |
+| `GET /events/{id}/feature-extractors/` | coverage per extractor | exists on #1439 |
+| `GET /ml/training-data/?algorithm&taxa_list&format=npz` | verified rows for a head | #1407 + list filter |
+| `GET /ml/runs/{id}/`, `/results/`, `/batches/` | what a run did; replay a batch | new |
+| `GET /occurrences/{id}/history/` | the timeline | exists on #1439 |
+| `POST /occurrences/{id}/reviews/`, `PATCH …/reviews/{rid}/` | human verdicts; withdraw | new |
+| `GET /classifications/{id}/?include=logits` | full array from the batch file | changed |
+
+### A.6 Decisions still open after this revision
+
+1. Embedding column: native pgvector (`halfvec` if production ≥ 0.7, else `vector`) vs `real[]`.
+2. Result-sink contract: presigned PUT per batch, inline kept as fallback.
+3. Old classification rows: export arrays to batch files once, then drop the columns, or leave them without a file.
+4. Retention of batch files (`keep` flag for bulk prune).
+5. Masking at ingest by default when the project has a list.
+6. Prototype vectors from a private project: public like taxa, or project-scoped.
+7. Landing order with #1407 (#1272 → foundation PR → #1407 rebased).
+8. `AlgorithmResult` targets now: occurrence only, or all three columns with occurrence writers only.
