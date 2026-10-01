@@ -202,6 +202,9 @@ def _log_worker_availability(job) -> None:
 
 @celery_app.task(
     bind=True,
+    # Nothing reads this task's state, and RESULT_EXTENDED would store the full
+    # ML result payload in the result backend for every batch. See #1189.
+    ignore_result=True,
     # Retry on transient Redis/connection errors so a single connection reset
     # doesn't flip the job to FAILURE mid-processing. Backoff is capped at 15s
     # (half of NATS ack_wait = TASK_TTR = 30s, see nats_queue.py) so a retry
