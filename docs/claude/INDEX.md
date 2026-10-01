@@ -47,6 +47,7 @@ See `research/README.md` for the full table and conventions. Each note states th
 | `research/2026-10-01-denormalised-project-fk.md` | Antenna's copied `project` columns today, measured drift, composite-FK and helper strategies |
 | `research/2026-10-01-vector-database-data-models.md` | Named vectors, model identity, filtering, tenancy and quantization across Qdrant, Milvus, Weaviate, Vespa, Elasticsearch, Pinecone, LanceDB, Chroma |
 | `research/2026-10-01-applications-storing-embeddings.md` | Immich, PhotoPrism, FiftyOne, clip-retrieval, Ente, Nextcloud Recognize, TreeOfLife: schema, model key, model change |
+| `research/2026-10-01-verification-pass.md` | Verdicts with evidence on ten open items: no Django upgrade needed, composite FKs stay raw SQL, pgvector 0.7/0.8 needed for halfvec and iterative scans, float16 shifts cosine by ~1e-4, BioCLIP projected embedding |
 | `research/2026-10-01-embedding-lifecycle-practices.md` | Model versioning, Matryoshka vs PCA, compression, filtered ANN, clustering and OOD at scale, retention and privacy |
 
 ## Planning (point-in-time; may be superseded by merged code)

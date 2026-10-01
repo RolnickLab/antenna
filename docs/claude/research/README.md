@@ -25,6 +25,7 @@ Conventions:
 | 2026-10-01 | [Vector database data models](2026-10-01-vector-database-data-models.md) | How do Qdrant, Milvus, Weaviate, Vespa, Elasticsearch, Pinecone, LanceDB and Chroma model several vectors per entity, tenancy and filtering? |
 | 2026-10-01 | [Applications storing embeddings](2026-10-01-applications-storing-embeddings.md) | How do Immich, PhotoPrism, FiftyOne, clip-retrieval, Ente, Nextcloud Recognize and TreeOfLife store and version embeddings? |
 | 2026-10-01 | [Embedding lifecycle practices](2026-10-01-embedding-lifecycle-practices.md) | Model versioning, multiple embeddings per item, compression, filtered ANN, clustering and OOD, retention and privacy. |
+| 2026-10-01 | [Verification pass](2026-10-01-verification-pass.md) | Settles ten items the notes above could not verify: Django 4.2 sufficiency, composite FK semantics, pgvector versions, float16 neighbour agreement, NATS payload, BioCLIP output choice, Immich model change. |
 
 Consumers: `../planning/2026-10-02-model-outputs-and-review-design.md`,
 `../planning/2026-10-01-project-fk-denormalization-ticket-draft.md`.
