@@ -1130,14 +1130,18 @@ class Job(BaseModel):
         def send_task():
             run_job.apply_async(kwargs={"job_id": self.pk}, task_id=task_id)
 
-        transaction.on_commit(send_task)
         self.task_id = task_id
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = AsyncResult(task_id).status
+        # A task that is about to be sent is PENDING by definition. Asking the result backend
+        # adds nothing and fails the request when its idle connection has been reset.
+        self.status = JobState.PENDING
         self.update_progress(save=False)
         self.save()
+        # Dispatch only after PENDING is saved: outside a transaction on_commit runs at once,
+        # and a fast worker's STARTED would otherwise be overwritten by the save above.
+        transaction.on_commit(send_task)
 
     def setup(self, save=True):
         """
