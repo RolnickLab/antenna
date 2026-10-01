@@ -24,6 +24,11 @@ from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
 
+# How often a synchronous ML job checks on its save_results sub-tasks, and how long it
+# waits without any of them finishing before failing the job.
+SAVE_RESULTS_POLL_SECONDS = 2
+SAVE_RESULTS_STALL_SECONDS = 600
+
 
 class JobDispatchMode(models.TextChoices):
     """
@@ -562,6 +567,42 @@ class MLJob(JobType):
             cls.process_images(job, images)
 
     @classmethod
+    def wait_for_save_tasks(cls, job, save_tasks: list[tuple[int, AsyncResult]]):
+        """
+        Block until every save_results sub-task has finished, then raise the first save failure.
+
+        Polls ``ready()`` rather than calling ``wait()``: with the rpc:// result backend, ``wait()``
+        reads a consumer connection the worker keeps between jobs, which the broker drops for missed
+        heartbeats during a long job, so ``wait()`` fails although the save succeeded.
+        """
+        pending = [(batch_num, task) for batch_num, task in save_tasks if not task.ready()]
+        job.logger.info(f"Waiting for {len(pending)} remaining sub-tasks that are still saving results.")
+        last_progress = time.monotonic()
+        while pending:
+            time.sleep(SAVE_RESULTS_POLL_SECONDS)
+            still_pending = [(batch_num, task) for batch_num, task in pending if not task.ready()]
+            if len(still_pending) < len(pending):
+                last_progress = time.monotonic()
+            elif time.monotonic() - last_progress > SAVE_RESULTS_STALL_SECONDS:
+                batch_nums = [batch_num for batch_num, _ in still_pending]
+                message = (
+                    f"No save sub-task finished in {SAVE_RESULTS_STALL_SECONDS}s; waiting on batches {batch_nums}"
+                )
+                job.logger.error(message)
+                job.progress.update_stage("results", status=JobState.FAILURE)
+                job.save()
+                raise TimeoutError(message)
+            pending = still_pending
+
+        failed = [(batch_num, task) for batch_num, task in save_tasks if not task.successful()]
+        for batch_num, task in failed:
+            job.logger.error(f"Failed to save results from batch {batch_num}! (sub-task {task.id}): {task.result}")
+        if failed:
+            job.progress.update_stage("results", status=JobState.FAILURE)
+            job.save()
+            failed[0][1].maybe_throw()
+
+    @classmethod
     def process_images(cls, job, images):
         image_count = len(images)
         # Keep track of sub-tasks for saving results, pair with batch number
@@ -641,21 +682,7 @@ class MLJob(JobType):
             percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
             job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
 
-        # Check all Celery sub-tasks if they have completed saving results
-        save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)
-        job.logger.info(
-            f"Checking the status of {len(save_tasks_remaining)} remaining sub-tasks that are still saving results."
-        )
-        for batch_num, sub_task in save_tasks:
-            if not sub_task.ready():
-                job.logger.info(f"Waiting for batch {batch_num} to finish saving results (sub-task {sub_task.id})")
-                # @TODO this is not recommended! Use a group or chain. But we need to refactor.
-                # https://docs.celeryq.dev/en/latest/userguide/tasks.html#avoid-launching-synchronous-subtasks
-                sub_task.wait(disable_sync_subtasks=False, timeout=60)
-            if not sub_task.successful():
-                error: Exception = sub_task.result
-                job.logger.error(f"Failed to save results from batch {batch_num}! (sub-task {sub_task.id}): {error}")
-                sub_task.maybe_throw()
+        cls.wait_for_save_tasks(job, save_tasks)
 
         job.logger.info(f"All tasks completed for job {job.pk}")
 
