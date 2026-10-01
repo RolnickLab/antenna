@@ -1073,3 +1073,130 @@ occ.refresh_grouping_cache()
 6. Prototype vectors from a private project: public like taxa, or project-scoped.
 7. Landing order with #1407 (#1272 → foundation PR → #1407 rebased).
 8. `AlgorithmResult` targets now: occurrence only, or all three columns with occurrence writers only.
+
+## Appendix B (2026-10-01, later): research on vector storage, and decisions since Appendix A
+
+Three further research passes (vector database data models; open-source applications that store
+embeddings; embedding lifecycle practice), one on InvokeAI's schema, and one on denormalised
+`project` columns. Sourced findings first, then the decisions they led to. Items the research
+could not verify are listed at the end and not relied on.
+
+### B.1 Vector databases (Qdrant, Milvus, Weaviate, Vespa, Elasticsearch, Pinecone, LanceDB, Chroma)
+
+- The `(target, algorithm, key, vector)` row is the relational form of **named vectors**
+  (Qdrant: several vectors per point, each with its own size and distance; Weaviate named
+  vectors; Milvus multi-vector fields; Vespa tensor fields). Model identity lives on the vector
+  field or the collection, never in the payload (https://qdrant.tech/documentation/concepts/vectors/,
+  https://docs.weaviate.io/weaviate/config-refs/collections, https://milvus.io/docs/multi-vector-search.md).
+- Re-embedding recipe (Qdrant docs): add a new named vector, re-embed in the background, drop the
+  old; or a new collection and an alias flip
+  (https://qdrant.tech/documentation/tutorials-operations/embedding-model-migration/). Weaviate and
+  Chroma make the vectorizer immutable per collection.
+- Tenancy is a filterable key with co-location (Qdrant `is_tenant` payload index, Milvus partition
+  key, Weaviate shard per tenant). A tenant filter must never need a join
+  (https://qdrant.tech/documentation/guides/multiple-partitions/, https://milvus.io/docs/use-partition-key.md).
+- Selective filters break HNSW graphs: filtering out 96 % of points leaves under one link per
+  node (https://qdrant.tech/articles/filtered-vector-search-acorn/); Weaviate switches to a flat
+  scan below a ~15 % match rate (https://docs.weaviate.io/weaviate/concepts/filtering). pgvector
+  0.8 adds `hnsw.iterative_scan`; the README recommends partial indexes and partitioning for
+  selective filters.
+- pgvector HNSW indexes `vector` to 2,000 dimensions and `halfvec` to 4,000, so a **2,048-d
+  backbone vector can only be indexed as `halfvec`** (https://github.com/pgvector/pgvector). Qdrant:
+  float16 has "virtually no quality impact". Hugging Face (text retrieval): int8 keeps ~99.3 % of
+  quality, binary ~92.5 %, ~96 % with rescoring (https://huggingface.co/blog/embedding-quantization).
+- No neutral pgvector vs Qdrant/Milvus benchmark was found; blog consensus is that pgvector is
+  comfortable to low tens of millions of vectors per index when it fits RAM, with pgvectorscale or
+  VectorChord (AGPL / Elastic licence) as the Postgres-side next step before an external store.
+
+### B.2 Applications (Immich, PhotoPrism, FiftyOne, clip-retrieval, Ente, Nextcloud Recognize, TreeOfLife)
+
+Read through summarising fetches at branch heads; permalinks are second-hand.
+
+| App | Storage | Model key | Several models | Model change |
+|---|---|---|---|---|
+| Immich | one 512-d pgvector/VectorChord column per asset and per face | none; config only | no | truncate the table, re-cast the column, re-queue every asset |
+| PhotoPrism | JSON per face marker with `EmbedModel`, `DetectModel`; one row per cluster keyed by a hash of its centroid with sample count and acceptance radius | on the row | implicit | recompute; no ANN, distances in Go |
+| FiftyOne Brain | sample field or backend index, model and kwargs on a named `brain_key` run | on the run | yes | new run |
+| clip-retrieval | `.npy` + parquet aligned **by position** + FAISS, one named index per CLIP model | per index | yes | new index folder |
+| Ente / Recognize | on-device encrypted DB / JSON column, no model column | none | no | not documented |
+| TreeOfLife-200M (Imageomics) | one parquet config per model, e.g. `bioclip-2.5-vith14_float16` (1,024-d, L2-normalised), keyed by uuid with taxonomy columns | config name carries model, dtype, normalisation | yes | new config |
+
+The applications that record the model on the row or run can run several models side by side;
+those that do not can only wipe and recompute. Position-aligned files are the positional-pairing
+defect by design. TreeOfLife's config naming (model, precision, normalisation) is the per-vector
+metadata the lifecycle literature asks for, from the BioCLIP authors themselves.
+
+### B.3 Lifecycle practice
+
+- Migration: dual-write, backfill, shadow-compare neighbour overlap, atomic pointer flip, keep
+  the old vectors until sign-off (https://formation.dev/blog/embedding-model-upgrade-migration).
+  Vectors are derived data: keep the crops and the pinned checkpoint, and any vector is droppable.
+- BioCLIP's image and taxonomic-text encoders share one space only for the same checkpoint's
+  projected, normalised output (https://arxiv.org/html/2311.18803v3). Matryoshka truncation works
+  only for models trained for it (https://proceedings.neurips.cc/paper_files/paper/2022/hash/c32319f4868da7613d78af9993100e42-Abstract.html);
+  a 2,048-d classifier tap gets no such guarantee, so a reduced variant stays a derived algorithm.
+- OOD: deep kNN distance on normalised features beat Mahalanobis by ~25 % FPR@TPR95 on ImageNet
+  and needs no covariance, but needs the training-set vectors (https://arxiv.org/pdf/2204.06507).
+  Class means are the cheap first method; a stored reference set per classifier is the better one.
+- Clustering at scale: FAISS k-means handles millions; plain HDBSCAN does not go much past a
+  million points without UMAP or GPU first. Diverse sampling: k-center greedy (farthest-first)
+  (https://arxiv.org/abs/1708.00489).
+- Privacy: CLIP image embeddings are reconstructible (https://arxiv.org/html/2508.00756v3).
+  Whole-capture embeddings of frames that may contain people are the exposure; gate
+  `SourceImageEmbedding` on a people-detection check. Insect crops are low risk.
+- Cost per million vectors, no index: 1,024-d is 4.1 GB float32 / 2.0 GB float16 / 1.0 GB int8;
+  2,048-d double that.
+
+### B.4 InvokeAI and the denormalised project column
+
+- InvokeAI keeps the whole execution as one JSON column keyed by queue item, tensors on disk
+  with only a generated name in the row, model identity pinned by hash inside each stored run,
+  intermediates flagged for bulk delete, and lineage as a loose many-to-many. Confirms: large
+  arrays out of the DB, raw run record as a blob plus a few queryable columns, hash-pinned runs.
+- Antenna's copied `project` columns drift today (measured on a production copy): 254,814
+  captures with no project and 81,157 disagreeing with their deployment; 4,354 / 1,704
+  occurrences. Nothing in the database enforces the copy. Issue draft:
+  `docs/claude/planning/2026-10-01-project-fk-denormalization-ticket-draft.md`.
+
+### B.5 Decisions since Appendix A
+
+1. **`Job` is the run.** `AlgorithmRun` is dropped. Outputs and `ResultsBatch` carry `job`;
+   `Algorithm.produced_by_job`; `Detection.next_detection_job`. Jobs that have outputs are hidden,
+   not deleted (soft delete or `PROTECT`); every writer runs inside a job, management commands
+   included, via a one-line helper; `Job.algorithms` snapshots `{key, hash, version}` at start.
+2. **`OccurrenceMeasurement`** replaces any per-detection scalar table: one number per
+   occurrence per algorithm per `kind`, newest wins, `job` recorded, indexed `(kind, value)`,
+   `project` denormalised. It generalises the `track_*` columns and the old
+   `determination_ood_score`. Per-frame detail rides in `AlgorithmResult.data`; link cost stays on
+   `Detection`; per-crop research reads come from batch files and embeddings.
+3. **No `DetectionLink` table.** Accepted link and cost on `Detection`; candidate matrices to a
+   file per job and session.
+4. **New uses recorded**: cross-night clustering with bulk annotation (cluster rows with centroid,
+   size, exemplar, acceptance radius as PhotoPrism keeps them; membership by nearest centroid or a
+   small typed table); most distinct captures of a night (farthest-first over
+   `SourceImageEmbedding`, stored as `AlgorithmResult(kind="representative_captures", event=…)`);
+   OOD scoring from detection vectors against `TaxonEmbedding(key="class_mean" | "prototype" |
+   "text_taxonomic")` or a stored reference set, with the result as an `OccurrenceMeasurement` and
+   ground truth derived from identification reviews against the classifier's category map.
+5. **`project` on every project-scoped output row**, NOT NULL, enforced with a composite foreign
+   key `(parent_id, project_id) REFERENCES parent (id, project_id)` via `RunSQL`, `ON UPDATE
+   CASCADE`; one shared derive helper for `save()` and bulk paths; the existing null and
+   mismatched parent rows repaired first (a `check_data_integrity` pair). `TaxonEmbedding` has no
+   project.
+6. **Embedding column leans `halfvec`**: the 2,048-d backbone cannot be HNSW-indexed otherwise,
+   float16 is the published form of BioCLIP vectors, and Qdrant reports no measurable loss.
+   Requires pgvector ≥ 0.7 on every deployment before the foundation PR migrates. Verify recall
+   on our models.
+7. **`Algorithm.output_specs` gains `normalized` and `preprocessing_version`** per key, so
+   comparability is declared, not assumed. Reduced variants remain derived algorithms.
+8. **Similarity endpoints choose the plan by project size**: exact scan for small projects, the
+   partial HNSW index per `(algorithm, key)` with `iterative_scan` for large ones.
+9. **People gate** on capture embeddings; crops unaffected.
+
+### B.6 What this round could not verify
+
+Neutral ANN benchmarks at 1–100 M rows; the "pgvector is fine until X" threshold; halfvec recall
+at 2,048-d on our models; quantization loss on image rather than text embeddings; which BioCLIP
+tap is best for retrieval vs head training; named big-company migration posts; Ente's server
+schema; Immich's face-model-change handling; whether any camera-trap tool stores embeddings;
+Django 5.2 composite-key FK targets; trigger-based alternatives to the composite FK.
