@@ -59,7 +59,7 @@ jobs:
       # which catches a dependency that installs but fails to import. It uses
       # the same minimal test settings as the Dockerfile's compilemessages
       # step, and bypasses the entrypoint, which waits for a database.
-      - name: Run Django system checks
+      - name: Check that the app loads in the built image (Django system checks)
         run: >-
           docker run --rm --network none
           -e DATABASE_URL=""
