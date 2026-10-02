@@ -44,6 +44,7 @@ from ami.main.models_future.filters import (
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
+from ami.main.schemas import validate_result_data, validate_review_payload
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -3511,6 +3512,30 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
+class ProjectScopedQuerySet(BaseQuerySet):
+    """Fills each row's ``project`` from its parent on bulk inserts (see models_future.project_scope)."""
+
+    def bulk_create(self, objs, *args, **kwargs):
+        from ami.main.models_future.project_scope import fill_project_ids
+
+        objs = list(objs)
+        fill_project_ids(objs)
+        return super().bulk_create(objs, *args, **kwargs)
+
+
+def exactly_one_of(*fields: str) -> Q:
+    """A check that exactly one of ``fields`` is set, as ``num_nonnulls(fields) = 1`` would be.
+
+    Spelled out as Q objects so Django can also validate it before a write.
+    """
+    check = Q()
+    for field in fields:
+        check |= Q(**{f"{field}__isnull": False}) & Q(
+            **{f"{other}__isnull": True for other in fields if other != field}
+        )
+    return check
+
+
 class AlgorithmOutput(BaseModel):
     """Something an algorithm produced in a job, about one target row.
 
@@ -3528,17 +3553,10 @@ class AlgorithmOutput(BaseModel):
         abstract = True
 
 
-class EmbeddingQuerySet(BaseQuerySet):
+class EmbeddingQuerySet(ProjectScopedQuerySet):
     def for_algorithm(self, algorithm, key: str = "embedding"):
         """Vectors of one kind from one algorithm: the only set whose vectors may be compared."""
         return self.filter(algorithm=algorithm, key=key)
-
-    def bulk_create(self, objs, *args, **kwargs):
-        from ami.main.models_future.project_scope import fill_project_ids
-
-        objs = list(objs)
-        fill_project_ids(objs)
-        return super().bulk_create(objs, *args, **kwargs)
 
     def store(self, objs) -> tuple[int, int]:
         """Write vectors insert-mostly; returns (inserted, unchanged).
@@ -4212,7 +4230,8 @@ class Occurrence(BaseModel):
         # Confirming a grouping is an expert judgement rather than a restructuring, so
         # identifying rights are enough — but the roles that restructure occurrences do
         # not inherit those, and they need to confirm their own corrections.
-        if action in ("verify_grouping", "unverify_grouping"):
+        # Leaving a comment (the reviews action) takes the same rights.
+        if action in ("verify_grouping", "unverify_grouping", "reviews"):
             project = self.get_project()
             return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, project) or user.has_perm(
                 Project.Permissions.DELETE_OCCURRENCES, project
@@ -4245,6 +4264,266 @@ class Occurrence(BaseModel):
             # on large projects). DESC = NULLS FIRST to match the ORM's ORDER BY.
             models.Index(fields=["project", "-determination_score"], name="occur_proj_score_desc_idx"),
         ]
+
+
+class AlgorithmResultQuerySet(ProjectScopedQuerySet):
+    def for_occurrence(self, occurrence):
+        return self.filter(occurrence=occurrence)
+
+    def for_capture(self, source_image):
+        return self.filter(source_image=source_image)
+
+    def for_event(self, event):
+        return self.filter(event=event)
+
+    def for_job(self, job):
+        return self.filter(job=job)
+
+    def of_kind(self, kind: str):
+        return self.filter(kind=kind)
+
+    def current(self):
+        return self.filter(is_current=True)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.data = validate_result_data(obj.kind, obj.data)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def record(self, **fields) -> "AlgorithmResult":
+        """Insert one result as the current one for its target, algorithm and kind."""
+        return self.record_many([self.model(**fields)])[0]
+
+    def record_many(self, results: typing.Iterable["AlgorithmResult"]) -> list["AlgorithmResult"]:
+        """Insert results as current, keeping each target's earlier result of the same algorithm and kind as history.
+
+        Rows are only inserted, never rewritten, apart from clearing ``is_current`` on the result
+        each new one replaces.
+        """
+        results = list(results)
+        if not results:
+            return []
+        groups: dict[tuple[str, int, str], set[int]] = collections.defaultdict(set)
+        for result in results:
+            target, target_id = result.target_field_and_id()
+            key = (target, result.algorithm_id, result.kind)
+            if target_id in groups[key]:
+                raise ValueError(f"Two results for {target} {target_id} from one algorithm and kind in one write.")
+            groups[key].add(target_id)
+            result.is_current = True
+        with transaction.atomic():
+            for (target, algorithm_id, kind), target_ids in groups.items():
+                self.filter(
+                    **{f"{target}_id__in": target_ids}, algorithm_id=algorithm_id, kind=kind, is_current=True
+                ).update(is_current=False)
+            return self.bulk_create(results)
+
+
+ALGORITHM_RESULT_TARGETS = ("occurrence", "source_image", "event")
+VALIDATION_REVIEW_TARGETS = ("occurrence", "detection", "source_image", "event")
+
+
+@final
+class AlgorithmResult(AlgorithmOutput):
+    """What a job decided or measured about one occurrence, capture or session.
+
+    ``value`` is the number lists filter and sort on; ``data`` holds the details, validated
+    against the schema for ``kind`` (ami/main/schemas.py). A new result for the same target,
+    algorithm and kind becomes the current one and the earlier ones stay as history. Write
+    through ``AlgorithmResult.objects.record`` or ``record_many``. See #1453.
+    """
+
+    TARGETS = ALGORITHM_RESULT_TARGETS
+
+    class Kind:
+        TRACKING = "tracking"
+        CLASS_MASKING = "class_masking"
+        SIZE_FILTER = "size_filter"
+
+    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="algorithm_results")
+    # Indexed together with the timestamp, below.
+    occurrence = models.ForeignKey(
+        Occurrence, on_delete=models.CASCADE, null=True, blank=True, related_name="algorithm_results", db_index=False
+    )
+    source_image = models.ForeignKey(
+        SourceImage, on_delete=models.CASCADE, null=True, blank=True, related_name="algorithm_results"
+    )
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, null=True, blank=True, related_name="algorithm_results")
+    # Open vocabulary: "tracking", "class_masking", "size_filter", later scores such as "ood_knn".
+    kind = models.CharField(max_length=64)
+    value = models.FloatField(null=True, blank=True)
+    data = models.JSONField(null=True, blank=True)
+    is_current = models.BooleanField(default=True)
+
+    project_parent_paths = TARGETS
+    project_accessor = "project"
+
+    objects = AlgorithmResultQuerySet.as_manager()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=exactly_one_of(*ALGORITHM_RESULT_TARGETS), name="algorithm_result_one_target"
+            ),
+            models.CheckConstraint(
+                check=Q(value__isnull=False) | Q(data__isnull=False), name="algorithm_result_value_or_data"
+            ),
+            models.CheckConstraint(check=~Q(kind=""), name="algorithm_result_kind_not_empty"),
+            *(
+                models.UniqueConstraint(
+                    fields=[target, "algorithm", "kind"],
+                    condition=Q(is_current=True, **{f"{target}__isnull": False}),
+                    name=f"algorithm_result_current_{target}",
+                )
+                for target in ALGORITHM_RESULT_TARGETS
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["occurrence", "-timestamp"], name="algorithm_result_occ_time"),
+            models.Index(
+                fields=["project", "kind", "value"],
+                condition=Q(is_current=True, value__isnull=False),
+                name="algorithm_result_current_value",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        target, target_id = self.target_field_and_id()
+        return f"#{self.pk} {self.kind} for {target} #{target_id} from Algorithm #{self.algorithm_id}"
+
+    def target_field_and_id(self) -> tuple[str, int]:
+        set_targets = [(t, getattr(self, f"{t}_id")) for t in self.TARGETS if getattr(self, f"{t}_id") is not None]
+        if len(set_targets) != 1:
+            raise ValueError(f"An algorithm result needs exactly one of {', '.join(self.TARGETS)}.")
+        return set_targets[0]
+
+    def save(self, *args, **kwargs):
+        from ami.main.models_future.project_scope import fill_project_ids
+
+        self.data = validate_result_data(self.kind, self.data)
+        fill_project_ids([self])
+        super().save(*args, **kwargs)
+
+
+class ValidationReviewQuerySet(ProjectScopedQuerySet):
+    def current(self, aspect: str | None = None, verdict: str | None = None):
+        """Reviews that stand: the latest of each person's on a target, not withdrawn."""
+        qs = self.filter(is_current=True, withdrawn=False)
+        if aspect is not None:
+            qs = qs.filter(aspect=aspect)
+        if verdict is not None:
+            qs = qs.filter(verdict=verdict)
+        return qs
+
+    def answering(self, result: AlgorithmResult):
+        return self.filter(reviewed_result=result)
+
+    def in_project(self, project):
+        return self.filter(project=project)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.payload = validate_review_payload(obj.aspect, obj.payload)
+        return super().bulk_create(objs, *args, **kwargs)
+
+
+@final
+class ValidationReview(BaseModel):
+    """A person's verdict on one aspect of an occurrence, detection, capture or session.
+
+    One table for every human check. ``is_current`` marks each person's latest review of
+    a target and aspect, so earlier ones stay as history; ``withdrawn`` marks one taken back.
+    A comment is ``aspect = comment`` with no verdict. ``reviewed_result`` is the algorithm
+    result the verdict answers, when there is one. See #1453.
+    """
+
+    TARGETS = VALIDATION_REVIEW_TARGETS
+
+    class Aspect(models.TextChoices):
+        IDENTIFICATION = "identification"
+        GROUPING = "grouping"
+        BBOX = "bbox"
+        COUNT = "count"
+        PERSON_PRESENT = "person_present"
+        NIGHT_VALID = "night_valid"
+        COMMENT = "comment"
+
+    class Verdict(models.TextChoices):
+        CONFIRMED = "confirmed"
+        REJECTED = "rejected"
+        CORRECTED = "corrected"
+
+    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="validation_reviews")
+    # Indexed together with the timestamp, below.
+    occurrence = models.ForeignKey(
+        Occurrence, on_delete=models.CASCADE, null=True, blank=True, related_name="validation_reviews", db_index=False
+    )
+    detection = models.ForeignKey(
+        Detection, on_delete=models.CASCADE, null=True, blank=True, related_name="validation_reviews"
+    )
+    source_image = models.ForeignKey(
+        SourceImage, on_delete=models.CASCADE, null=True, blank=True, related_name="validation_reviews"
+    )
+    event = models.ForeignKey(
+        Event, on_delete=models.CASCADE, null=True, blank=True, related_name="validation_reviews"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="validation_reviews"
+    )
+    aspect = models.CharField(max_length=32, choices=Aspect.choices)
+    verdict = models.CharField(max_length=16, choices=Verdict.choices, null=True, blank=True)
+    identification = models.ForeignKey(
+        Identification, on_delete=models.SET_NULL, null=True, blank=True, related_name="validation_reviews"
+    )
+    reviewed_result = models.ForeignKey(
+        AlgorithmResult, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviews"
+    )
+    payload = models.JSONField(default=dict, blank=True)
+    comment = models.TextField(blank=True, default="")
+    timestamp = models.DateTimeField(default=timezone.now)
+    withdrawn = models.BooleanField(default=False)
+    is_current = models.BooleanField(default=True)
+
+    project_parent_paths = ("occurrence", "detection__source_image", "source_image", "event")
+    project_accessor = "project"
+
+    objects = ValidationReviewQuerySet.as_manager()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=exactly_one_of(*VALIDATION_REVIEW_TARGETS), name="validation_review_one_target"
+            ),
+            # A comment carries no verdict and every other aspect needs one.
+            models.CheckConstraint(
+                check=(Q(aspect="comment", verdict__isnull=True) & ~Q(comment=""))
+                | (~Q(aspect="comment") & Q(verdict__isnull=False)),
+                name="validation_review_verdict_by_aspect",
+            ),
+            *(
+                models.UniqueConstraint(
+                    fields=[target, "aspect", "user"],
+                    condition=Q(is_current=True, **{f"{target}__isnull": False}) & ~Q(aspect="comment"),
+                    name=f"validation_review_current_{target}",
+                )
+                for target in VALIDATION_REVIEW_TARGETS
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["occurrence", "-timestamp"], name="validation_review_occ_time"),
+        ]
+
+    def __str__(self) -> str:
+        return f"#{self.pk} {self.aspect} {self.verdict or ''} by User #{self.user_id}".strip()
+
+    def save(self, *args, **kwargs):
+        from ami.main.models_future.project_scope import fill_project_ids
+
+        self.payload = validate_review_payload(self.aspect, self.payload)
+        fill_project_ids([self])
+        super().save(*args, **kwargs)
 
 
 def update_occurrence_determination(

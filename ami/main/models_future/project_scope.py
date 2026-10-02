@@ -6,6 +6,8 @@ through ``fill_project_ids`` and ``project_mismatch_counts`` reports rows that d
 
 A model opts in with ``project_parent_path``: the path from the row to the object whose
 ``project`` it copies, which must also have a ``deployment`` (a capture, occurrence or session).
+A table whose rows point at one of several targets declares ``project_parent_paths`` instead,
+one path per target; each row copies the project of the one target it has.
 """
 
 from __future__ import annotations
@@ -74,13 +76,27 @@ def project_ids_for(model: type[models.Model], ids: Iterable[int], via: str = ""
     return resolved
 
 
-def _parent(model: type[models.Model]) -> tuple[models.ForeignKey, str]:
-    parent_name, _, via = model.project_parent_path.partition("__")  # type: ignore[attr-defined]
-    return model._meta.get_field(parent_name), via  # type: ignore[return-value]
+def _parents(model: type[models.Model]) -> list[tuple[models.ForeignKey, str]]:
+    """Each target field of ``model`` with the path from its row to the project holder."""
+    paths = getattr(model, "project_parent_paths", None) or (model.project_parent_path,)  # type: ignore[attr-defined]
+    parents = []
+    for path in paths:
+        parent_name, _, via = path.partition("__")
+        parents.append((model._meta.get_field(parent_name), via))
+    return parents  # type: ignore[return-value]
+
+
+def _set_parent(obj: Any, parents: list[tuple[models.ForeignKey, str]]) -> tuple[models.ForeignKey, str]:
+    """The one target ``obj`` points at; a row with none or several cannot be scoped."""
+    set_parents = [(field, via) for field, via in parents if getattr(obj, field.attname) is not None]
+    if len(set_parents) != 1:
+        names = ", ".join(field.name for field, _ in parents)
+        raise ProjectScopeError(f"{type(obj).__name__}: a row must have exactly one of {names}.")
+    return set_parents[0]
 
 
 def fill_project_ids(objs: Iterable[Any]) -> None:
-    """Set ``project_id`` on each unsaved row from its parent, in one query.
+    """Set ``project_id`` on each unsaved row from its parent, in one query per kind of parent.
 
     Every row is filled, overwriting any value already set, so a writer cannot store a
     project other than its parent's. Rows must all be of one model.
@@ -89,26 +105,40 @@ def fill_project_ids(objs: Iterable[Any]) -> None:
     if not objs:
         return
     model = type(objs[0])
-    parent_field, via = _parent(model)
-    parent_ids = {getattr(obj, parent_field.attname) for obj in objs}
-    if None in parent_ids:
-        raise ProjectScopeError(f"{model.__name__}: a row has no {parent_field.name}.")
-    project_ids = project_ids_for(parent_field.related_model, parent_ids, via=via, label=model.__name__)
+    by_parent: dict[str, list[Any]] = {}
+    parents = {field.name: (field, via) for field, via in _parents(model)}
     for obj in objs:
-        obj.project_id = project_ids[getattr(obj, parent_field.attname)]
+        field, _ = _set_parent(obj, list(parents.values()))
+        by_parent.setdefault(field.name, []).append(obj)
+    for name, rows in by_parent.items():
+        parent_field, via = parents[name]
+        parent_ids = {getattr(obj, parent_field.attname) for obj in rows}
+        project_ids = project_ids_for(parent_field.related_model, parent_ids, via=via, label=model.__name__)
+        for obj in rows:
+            obj.project_id = project_ids[getattr(obj, parent_field.attname)]
 
 
 def derived_project_expression(model: type[models.Model]) -> Coalesce:
-    """The project a row of ``model`` should carry, as a database expression (see ``project_ids_for``)."""
-    parent_field, via = _parent(model)
-    path = f"{parent_field.name}__{via}__" if via else f"{parent_field.name}__"
-    return Coalesce(f"{path}project_id", f"{path}deployment__project_id")
+    """The project a row of ``model`` should carry, as a database expression (see ``project_ids_for``).
+
+    For a table with several targets, the unset targets join to nothing, so the one set
+    target's project comes first.
+    """
+    expressions = []
+    for parent_field, via in _parents(model):
+        path = f"{parent_field.name}__{via}__" if via else f"{parent_field.name}__"
+        expressions += [f"{path}project_id", f"{path}deployment__project_id"]
+    return Coalesce(*expressions)
 
 
 def project_scoped_models() -> list[type[models.Model]]:
     from django.apps import apps
 
-    return [model for model in apps.get_models() if getattr(model, "project_parent_path", None)]
+    return [
+        model
+        for model in apps.get_models()
+        if getattr(model, "project_parent_path", None) or getattr(model, "project_parent_paths", None)
+    ]
 
 
 def project_mismatch_counts() -> dict[str, int]:
