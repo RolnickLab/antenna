@@ -4129,6 +4129,30 @@ class TestOccurrenceDetailQueryCount(APITestCase):
         # silent reintroduction of N+1 in the shared serializer base.
         self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
 
+    def test_detail_does_not_load_per_class_score_arrays(self):
+        """The detail view never renders a classification's logits or scores arrays, so it must not select them.
+
+        Each array holds one float per class the model knows; loading them for every frame of a
+        long track made the page take minutes.
+        """
+        from django.test.utils import CaptureQueriesContext
+
+        create_occurrences(deployment=self.deployment, num=2, determination_score=0.9)
+        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # The per-frame prefetch is the query that grows with track length.
+        classification_selects = [
+            q["sql"]
+            for q in ctx.captured_queries
+            if 'FROM "main_classification"' in q["sql"] and '"main_classification"."detection_id" IN (' in q["sql"]
+        ]
+        self.assertTrue(classification_selects, "expected the detail view to prefetch each frame's classifications")
+        for sql in classification_selects:
+            self.assertNotIn('"main_classification"."logits"', sql)
+            self.assertNotIn('"main_classification"."scores"', sql)
+
     def test_detail_query_count_does_not_scale_with_detections(self):
         """Detail with many detections per occurrence must not multiply queries.
 
