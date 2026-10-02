@@ -11,11 +11,13 @@ import dataclasses
 import datetime
 import pathlib
 import tempfile
+from unittest import mock
 
 import numpy as np
 from django.test import TestCase
 
 from ami.main.models import (
+    Classification,
     Detection,
     Identification,
     Occurrence,
@@ -27,11 +29,14 @@ from ami.main.models import (
 )
 from ami.main.models_future.detection_matching import MATCH_EXACT, MATCH_IOU, MATCH_NO_CANDIDATE, bbox_iou
 from ami.main.models_future.embedding_transfer import (
+    SOURCE_CLASSIFIER_FEATURES,
+    SOURCE_EMBEDDING,
     EmbeddingManifest,
     embedding_model,
     export_embeddings,
     import_embeddings,
     read_index,
+    vectors_file,
 )
 from ami.main.models_future.tracks import verify_grouping
 from ami.main.models_future.validated_occurrences import (
@@ -43,6 +48,7 @@ from ami.main.models_future.validated_occurrences import (
     build_bundle,
     import_bundle,
     occurrence_detection_keys,
+    review_model,
 )
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import create_taxa, setup_test_project
@@ -289,14 +295,19 @@ class TestReplayConfirmedOccurrences(ReplayTestCase):
 
 
 class TestEmbeddingTransfer(ReplayTestCase):
+    """Vectors from both stores travel by detection key and land back in their own store."""
+
     def setUp(self) -> None:
         if not pgvector_is_available():
             self.skipTest("pgvector is not installed in this database")
         super().setUp()
         self.algorithm = Algorithm.objects.create(key="replay-test-backbone", name="Replay Test Backbone")
         rng = np.random.default_rng(7)
-        self.vectors = {}
-        for detection in Detection.objects.filter(source_image__project=self.source_project):
+        self.features = {}
+        self.embeddings = {}
+        for index, detection in enumerate(
+            Detection.objects.filter(source_image__project=self.source_project).order_by("source_image__timestamp")
+        ):
             vector = rng.standard_normal(2048).astype(np.float32)
             detection.classifications.create(
                 taxon=self.taxon,
@@ -305,31 +316,140 @@ class TestEmbeddingTransfer(ReplayTestCase):
                 timestamp=detection.timestamp,
                 features_2048=vector.tolist(),
             )
-            self.vectors[detection.source_image.path] = vector
+            self.features[detection.source_image.path] = vector
+            # Where the embeddings table exists, half the detections also carry an extractor vector.
+            if embedding_model() is not None and index < 3:
+                embedding = rng.standard_normal(16).astype(np.float32)
+                self._store_embedding(detection, embedding)
+                self.embeddings[detection.source_image.path] = embedding
 
-    def test_vectors_round_trip_by_detection_key(self):
+    def _store_embedding(self, detection, vector) -> None:
+        model = embedding_model()
+        fields = {f.name for f in model._meta.get_fields()}
+        values = {"detection": detection, "algorithm": self.algorithm, "vector": vector.tolist()}
+        if "key" in fields:
+            values["key"] = "embedding"
+        if "project" in fields:
+            values["project"] = detection.source_image.project
+        model.objects.create(**values)
+
+    def _target_classifications(self) -> None:
+        for detection in Detection.objects.filter(source_image__project=self.target_project):
+            detection.classifications.create(
+                taxon=self.taxon, score=0.4, algorithm=self.algorithm, timestamp=detection.timestamp
+            )
+
+    def test_classifier_features_are_exported_and_put_back_on_the_classification(self):
         self._populate_target()
         with tempfile.TemporaryDirectory() as directory:
             directory = pathlib.Path(directory)
             manifest = export_embeddings(self.source_project, self.algorithm, directory)
 
-            self.assertEqual(
-                (manifest.count, manifest.dimensions, manifest.algorithm_key), (6, 2048, "replay-test-backbone")
-            )
-            self.assertEqual(EmbeddingManifest.read(directory).count, 6)
-            keys = read_index(directory)
-            matrix = np.load(directory / "vectors.npy")
-            for row, key in enumerate(keys):
-                np.testing.assert_array_equal(matrix[row], self.vectors[key.capture_path])
+            self.assertEqual(manifest.sources[SOURCE_CLASSIFIER_FEATURES]["count"], 6)
+            self.assertEqual(manifest.sources[SOURCE_CLASSIFIER_FEATURES]["dimensions"], 2048)
+            self.assertEqual(EmbeddingManifest.read(directory).count, manifest.count)
+            matrix = np.load(directory / vectors_file(SOURCE_CLASSIFIER_FEATURES))
+            for entry in read_index(directory):
+                if entry.source == SOURCE_CLASSIFIER_FEATURES:
+                    np.testing.assert_array_equal(matrix[entry.row], self.features[entry.key.capture_path])
 
-            report = import_embeddings(self.target_project, directory, execute=False)
-            self.assertEqual(report.summary()["detections"], {MATCH_EXACT: 6})
-
-            if embedding_model() is None:
-                with self.assertRaises(RuntimeError):
-                    import_embeddings(self.target_project, directory, execute=True)
-                return
+            # No classification on the target yet: nowhere to put the features, so they are skipped, not lost.
             report = import_embeddings(self.target_project, directory, execute=True)
-            self.assertEqual(report.written, 6)
+            self.assertEqual(report.summary()["detections"][MATCH_EXACT], manifest.count)
+            self.assertEqual(report.skipped_no_classification, 6)
+            self.assertEqual(report.written[SOURCE_CLASSIFIER_FEATURES], 0)
+
+            self._target_classifications()
+            report = import_embeddings(self.target_project, directory, execute=True)
+            self.assertEqual(report.written[SOURCE_CLASSIFIER_FEATURES], 6)
+            stored = Classification.objects.get(
+                detection__source_image=self.target_captures[0], detection__source_image__project=self.target_project
+            )
+            np.testing.assert_array_equal(
+                np.asarray(list(stored.features_2048), dtype=np.float32), self.features[self.target_captures[0].path]
+            )
+
             again = import_embeddings(self.target_project, directory, execute=True)
-            self.assertEqual((again.written, again.skipped_existing), (0, 6))
+            self.assertEqual(
+                (again.written[SOURCE_CLASSIFIER_FEATURES], again.skipped_existing[SOURCE_CLASSIFIER_FEATURES]), (0, 6)
+            )
+
+    def test_embeddings_are_exported_beside_the_features_and_rewritten_as_rows(self):
+        if embedding_model() is None:
+            self.skipTest("This branch has no DetectionEmbedding table")
+        self._populate_target()
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            manifest = export_embeddings(self.source_project, self.algorithm, directory)
+
+            self.assertEqual(manifest.sources[SOURCE_EMBEDDING]["count"], 3)
+            self.assertEqual(manifest.sources[SOURCE_EMBEDDING]["dimensions"], 16)
+            self.assertEqual(
+                manifest.sources[SOURCE_CLASSIFIER_FEATURES]["count"], 6, "both stores, no double counting"
+            )
+            self.assertEqual(manifest.count, 9)
+
+            report = import_embeddings(self.target_project, directory, execute=True)
+            self.assertEqual(report.written[SOURCE_EMBEDDING], 3)
+            rows = embedding_model().objects.filter(
+                detection__source_image__project=self.target_project, algorithm=self.algorithm
+            )
+            self.assertEqual(rows.count(), 3)
+            row = rows.get(detection__source_image=self.target_captures[0])
+            np.testing.assert_array_equal(
+                np.asarray(list(row.vector), dtype=np.float32), self.embeddings[self.target_captures[0].path]
+            )
+
+            again = import_embeddings(self.target_project, directory, execute=True)
+            self.assertEqual((again.written[SOURCE_EMBEDDING], again.skipped_existing[SOURCE_EMBEDDING]), (0, 3))
+
+
+class TestConfirmationNeedsItsReview(ReplayTestCase):
+    """A cached confirmation without its review row is re-confirmed so the review gets written."""
+
+    def test_a_cache_only_confirmation_is_reconfirmed_through_verify_grouping(self):
+        self._populate_target()
+        self._replay(execute=True)
+        rebuilt = self._target_track()
+
+        with mock.patch(
+            "ami.main.models_future.validated_occurrences._has_current_grouping_review", return_value=False
+        ):
+            with mock.patch(
+                "ami.main.models_future.validated_occurrences.verify_grouping", wraps=verify_grouping
+            ) as spied:
+                _, report = self._replay(execute=True)
+
+        spied.assert_called_once_with(rebuilt, self.reviewer, timestamp=CONFIRMED_AT)
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertEqual((track_outcome.outcome, track_outcome.confirmed), (OUTCOME_APPLIED, True))
+        self.assertEqual(self._target_track().grouping_verified_at, CONFIRMED_AT)
+
+    def test_a_confirmation_with_its_review_is_left_alone(self):
+        self._populate_target()
+        self._replay(execute=True)
+
+        with mock.patch("ami.main.models_future.validated_occurrences.verify_grouping") as spied:
+            _, report = self._replay(execute=True)
+
+        spied.assert_not_called()
+        self.assertEqual(report.outcome_counts(), {OUTCOME_UNCHANGED: 2})
+
+    def test_on_a_schema_with_reviews_the_review_row_is_written(self):
+        if review_model() is None:
+            self.skipTest("This branch has no ValidationReview table")
+        self._populate_target()
+        self._replay(execute=True)
+        rebuilt = self._target_track()
+        reviews = review_model().objects.filter(occurrence=rebuilt, aspect="grouping", user=self.reviewer)
+        self.assertEqual(reviews.filter(is_current=True, withdrawn=False, timestamp=CONFIRMED_AT).count(), 1)
+
+        # An occurrence confirmed before reviews existed: the cache is set, no review row.
+        reviews.delete()
+        _, report = self._replay(execute=True)
+
+        self.assertEqual(reviews.filter(is_current=True, withdrawn=False, timestamp=CONFIRMED_AT).count(), 1)
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertTrue(track_outcome.confirmed)
+        _, report = self._replay(execute=True)
+        self.assertEqual(report.outcome_counts(), {OUTCOME_UNCHANGED: 2})

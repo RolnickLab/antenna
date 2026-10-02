@@ -30,6 +30,7 @@ import logging
 from collections import Counter
 from collections.abc import Iterable
 
+from django.apps import apps
 from django.db import transaction
 from django.db.models import Prefetch
 
@@ -417,12 +418,44 @@ def confirm_grouping_as_of(occurrence: Occurrence, user: User, verified_at: date
     verify_grouping(occurrence, user, timestamp=verified_at)
 
 
+def review_model():
+    """The ``ValidationReview`` model, or None on a branch that does not have it yet."""
+    try:
+        return apps.get_model("main", "ValidationReview")
+    except LookupError:
+        return None
+
+
+def _has_current_grouping_review(occurrence: Occurrence, user: User, verified_at: datetime.datetime) -> bool | None:
+    """Whether a standing grouping review by ``user`` at ``verified_at`` exists; None where reviews do not exist."""
+    model = review_model()
+    if model is None:
+        return None
+    return model.objects.filter(
+        occurrence=occurrence,
+        aspect="grouping",
+        user=user,
+        timestamp=verified_at,
+        is_current=True,
+        withdrawn=False,
+    ).exists()
+
+
 def _is_confirmed_as(occurrence: Occurrence, user: User | None, verified_at: datetime.datetime | None) -> bool:
-    return (
-        occurrence.grouping_verified_at == verified_at
-        and user is not None
-        and occurrence.grouping_verified_by_id == user.pk
-    )
+    """Whether the occurrence already carries this confirmation in full.
+
+    The cached ``grouping_verified_at/by`` must match, and where the schema keeps reviews as
+    rows of their own a standing grouping review by that person at that time must exist too.
+    A cache that matches without its review (an occurrence confirmed before reviews existed)
+    is not "confirmed as", so the import re-confirms it through ``verify_grouping`` and the
+    review gets written.
+    """
+    if user is None or verified_at is None:
+        return False
+    if occurrence.grouping_verified_at != verified_at or occurrence.grouping_verified_by_id != user.pk:
+        return False
+    has_review = _has_current_grouping_review(occurrence, user, verified_at)
+    return has_review is None or has_review
 
 
 def _holder_counts(detection_ids: Iterable[int]) -> Counter:

@@ -63,12 +63,14 @@ class Command(BaseCommand):
         summary = report.summary()
         mode = "Applied" if options["execute"] else "Dry run"
         self.stdout.write(
-            f"{mode} on project #{project.pk}: {summary['vectors_total']} vectors, detections {summary['detections']}"
+            f"{mode} on project #{project.pk}: {summary['vectors_total']} vectors {summary['sources']}, "
+            f"detections {summary['detections']}"
         )
         if options["execute"]:
             self.stdout.write(
                 f"  written: {summary['written']}  skipped (already stored): {summary['skipped_existing']}"
                 f"  replaced: {summary['replaced']}"
+                f"  classifier features without a classification on the target: {summary['skipped_no_classification']}"
             )
         else:
             self.stdout.write("Nothing was changed. Re-run with --execute to write the vectors.")

@@ -6,12 +6,18 @@ should follow it. Each vector is written next to the natural key of its detectio
 it; on the way back in, the detections are found again by capture path and box and the
 rows are written under the same algorithm.
 
-Layout of an export directory: ``vectors.npy`` (one row per vector), ``index.csv`` (one line
-per row, the detection's natural key) and ``manifest.json`` (format version, algorithm,
-vector key, dimensions, count, dtype). Vectors are read from ``DetectionEmbedding`` rows
-when that table exists on this branch, otherwise from the classification vectors
-(``Classification.features_2048``) the same algorithm stored, which is all older data has.
-Writing always targets ``DetectionEmbedding`` and refuses when the table does not exist.
+Vectors live in two stores and an export carries both: ``DetectionEmbedding`` rows (an
+extractor's vector for a detection, under a vector key) where that table exists, and the
+backbone features a classifier stored on its own ``Classification`` rows
+(``features_2048``), which is all older data has. The two have different lengths, so each
+source gets its own matrix file; ``index.csv`` says which source every row came from.
+
+Layout of an export directory: ``vectors.<source>.npy`` per source, ``index.csv`` (one line
+per vector: source, row in that source's matrix, the detection's natural key) and
+``manifest.json`` (format version, algorithm, vector key, per-source count and dimensions).
+On import, embeddings become ``DetectionEmbedding`` rows and classifier features go back
+onto the matching classification when the target has one; a feature vector whose detection
+has no classification from that algorithm is reported as skipped.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ import datetime
 import json
 import logging
 import pathlib
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from typing import Any
 
@@ -43,12 +50,27 @@ logger = logging.getLogger(__name__)
 EMBEDDINGS_FORMAT = "antenna-detection-embeddings"
 EMBEDDINGS_VERSION = 1
 DEFAULT_VECTOR_KEY = "embedding"
-VECTORS_FILE = "vectors.npy"
 INDEX_FILE = "index.csv"
 MANIFEST_FILE = "manifest.json"
-INDEX_COLUMNS = ["row", "capture_path", "capture_timestamp", "deployment", "detector", "x1", "y1", "x2", "y2"]
+INDEX_COLUMNS = [
+    "source",
+    "row",
+    "capture_path",
+    "capture_timestamp",
+    "deployment",
+    "detector",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+]
 MATCH_CHUNK = 5000
 WRITE_BATCH = 1000
+
+# Where a vector was read from, and so where it is written back to.
+SOURCE_EMBEDDING = "embedding"  # a DetectionEmbedding row
+SOURCE_CLASSIFIER_FEATURES = "classifier_features"  # Classification.features_2048
+SOURCES = (SOURCE_EMBEDDING, SOURCE_CLASSIFIER_FEATURES)
 
 
 def embedding_model() -> type[Model] | None:
@@ -61,6 +83,10 @@ def embedding_model() -> type[Model] | None:
 
 def _model_field_names(model: type[Model]) -> set[str]:
     return {field.name for field in model._meta.get_fields()}
+
+
+def vectors_file(source: str) -> str:
+    return f"vectors.{source}.npy"
 
 
 def resolve_algorithm(reference: str) -> Algorithm:
@@ -78,10 +104,10 @@ class EmbeddingManifest:
     algorithm_key: str
     algorithm_name: str
     vector_key: str
-    dimensions: int
+    # Per source: {"file": ..., "count": ..., "dimensions": ...}
+    sources: dict[str, dict]
     count: int
     dtype: str
-    source_store: str
     project_name: str | None = None
     exported_at: str = dataclasses.field(default_factory=lambda: datetime.datetime.now().isoformat())
     version: int = EMBEDDINGS_VERSION
@@ -100,23 +126,19 @@ class EmbeddingManifest:
         return cls(**data)
 
 
-def _vector_rows(
-    project: Project, algorithm: Algorithm, vector_key: str
-) -> tuple[str, Iterator[tuple[DetectionKey, Any]]]:
-    """(store name, iterator of (detection key, vector)) for one algorithm's vectors in a project."""
+def _embedding_rows(project: Project, algorithm: Algorithm, vector_key: str) -> Iterator[tuple[DetectionKey, Any]]:
     model = embedding_model()
-    if model is not None:
-        rows = model.objects.filter(detection__source_image__project=project, algorithm=algorithm)
-        if "key" in _model_field_names(model):
-            rows = rows.filter(key=vector_key)
-        rows = rows.select_related("detection__source_image__deployment", "detection__detection_algorithm").order_by(
-            "pk"
-        )
-        return "detection_embedding", (
-            (DetectionKey.for_detection(row.detection), row.vector) for row in rows.iterator()
-        )
+    if model is None:
+        return iter(())
+    rows = model.objects.filter(detection__source_image__project=project, algorithm=algorithm)
+    if "key" in _model_field_names(model):
+        rows = rows.filter(key=vector_key)
+    rows = rows.select_related("detection__source_image__deployment", "detection__detection_algorithm").order_by("pk")
+    return ((DetectionKey.for_detection(row.detection), row.vector) for row in rows.iterator())
 
-    # Older data: the classifier's backbone vector lives on the classification. Newest per detection.
+
+def _classifier_feature_rows(project: Project, algorithm: Algorithm) -> Iterator[tuple[DetectionKey, Any]]:
+    """The newest feature vector the algorithm stored on each detection's classifications."""
     rows = (
         Classification.objects.filter(
             detection__source_image__project=project, algorithm=algorithm, features_2048__isnull=False
@@ -125,9 +147,7 @@ def _vector_rows(
         .order_by("detection_id", "-timestamp", "-pk")
         .distinct("detection_id")
     )
-    return "classification_features", (
-        (DetectionKey.for_detection(row.detection), row.features_2048) for row in rows.iterator()
-    )
+    return ((DetectionKey.for_detection(row.detection), row.features_2048) for row in rows.iterator())
 
 
 def export_embeddings(
@@ -137,64 +157,87 @@ def export_embeddings(
     vector_key: str = DEFAULT_VECTOR_KEY,
     dtype: str = "float32",
 ) -> EmbeddingManifest:
-    """Write one algorithm's vectors for ``project`` to ``directory``; returns the manifest written."""
+    """Write one algorithm's vectors for ``project`` to ``directory``, from both stores.
+
+    A detection with a vector in both stores appears twice in the index, once per source;
+    within a source each detection appears once. Returns the manifest written.
+    """
     directory.mkdir(parents=True, exist_ok=True)
-    store, rows = _vector_rows(project, algorithm, vector_key)
-    vectors: list[np.ndarray] = []
+    readers = {
+        SOURCE_EMBEDDING: _embedding_rows(project, algorithm, vector_key),
+        SOURCE_CLASSIFIER_FEATURES: _classifier_feature_rows(project, algorithm),
+    }
+    sources: dict[str, dict] = {}
     with (directory / INDEX_FILE).open("w", newline="") as index_file:
         writer = csv.writer(index_file)
         writer.writerow(INDEX_COLUMNS)
-        for row, (key, vector) in enumerate(rows):
-            # pgvector returns lists on some versions and arrays on others; np.asarray takes both.
-            vectors.append(np.asarray(list(vector), dtype=dtype))
-            writer.writerow(
-                [
-                    row,
-                    key.capture_path,
-                    key.capture_timestamp or "",
-                    key.deployment or "",
-                    key.detector or "",
-                    *key.bbox,
-                ]
-            )
-    if vectors:
-        lengths = {len(v) for v in vectors}
-        if len(lengths) > 1:
-            raise ValueError(
-                f"Algorithm {algorithm.key} stored vectors of several lengths {sorted(lengths)}; export one at a time."
-            )
-        matrix = np.stack(vectors)
-    else:
-        matrix = np.zeros((0, 0), dtype=dtype)
-    np.save(directory / VECTORS_FILE, matrix)
+        for source, rows in readers.items():
+            vectors: list[np.ndarray] = []
+            for row, (key, vector) in enumerate(rows):
+                # pgvector returns lists on some versions and arrays on others; np.asarray takes both.
+                vectors.append(np.asarray(list(vector), dtype=dtype))
+                writer.writerow(
+                    [
+                        source,
+                        row,
+                        key.capture_path,
+                        key.capture_timestamp or "",
+                        key.deployment or "",
+                        key.detector or "",
+                        *key.bbox,
+                    ]
+                )
+            if not vectors:
+                continue
+            lengths = {len(v) for v in vectors}
+            if len(lengths) > 1:
+                raise ValueError(
+                    f"Algorithm {algorithm.key} stored {source} vectors of several lengths {sorted(lengths)}; "
+                    "export one at a time."
+                )
+            matrix = np.stack(vectors)
+            np.save(directory / vectors_file(source), matrix)
+            sources[source] = {"file": vectors_file(source), "count": len(vectors), "dimensions": int(matrix.shape[1])}
     manifest = EmbeddingManifest(
         algorithm_key=algorithm.key,
         algorithm_name=algorithm.name,
         vector_key=vector_key,
-        dimensions=int(matrix.shape[1]) if matrix.size else 0,
-        count=int(matrix.shape[0]),
+        sources=sources,
+        count=sum(entry["count"] for entry in sources.values()),
         dtype=dtype,
-        source_store=store,
         project_name=project.name,
     )
     (directory / MANIFEST_FILE).write_text(json.dumps(manifest.as_dict(), indent=1))
     return manifest
 
 
-def read_index(directory: pathlib.Path) -> list[DetectionKey]:
-    keys = []
+@dataclasses.dataclass(frozen=True)
+class IndexEntry:
+    source: str
+    row: int
+    key: DetectionKey
+
+
+def read_index(directory: pathlib.Path) -> list[IndexEntry]:
+    entries = []
     with (directory / INDEX_FILE).open(newline="") as index_file:
         for line in csv.DictReader(index_file):
-            keys.append(
-                DetectionKey(
-                    capture_path=line["capture_path"],
-                    bbox=(float(line["x1"]), float(line["y1"]), float(line["x2"]), float(line["y2"])),
-                    capture_timestamp=line["capture_timestamp"] or None,
-                    deployment=line["deployment"] or None,
-                    detector=line["detector"] or None,
+            if line["source"] not in SOURCES:
+                raise ValueError(f"Unknown vector source {line['source']!r} in {INDEX_FILE}.")
+            entries.append(
+                IndexEntry(
+                    source=line["source"],
+                    row=int(line["row"]),
+                    key=DetectionKey(
+                        capture_path=line["capture_path"],
+                        bbox=(float(line["x1"]), float(line["y1"]), float(line["x2"]), float(line["y2"])),
+                        capture_timestamp=line["capture_timestamp"] or None,
+                        deployment=line["deployment"] or None,
+                        detector=line["detector"] or None,
+                    ),
                 )
             )
-    return keys
+    return entries
 
 
 def _chunks(items: list, size: int) -> Iterable[list]:
@@ -204,24 +247,113 @@ def _chunks(items: list, size: int) -> Iterable[list]:
 
 @dataclasses.dataclass
 class EmbeddingImportReport:
+    entries: list[IndexEntry]
     matches: list[DetectionMatch]
-    written: int = 0
-    skipped_existing: int = 0
-    replaced: int = 0
     execute: bool = False
+    written: Counter = dataclasses.field(default_factory=Counter)  # per source
+    skipped_existing: Counter = dataclasses.field(default_factory=Counter)  # per source
+    replaced: Counter = dataclasses.field(default_factory=Counter)  # per source
+    # Classifier features whose detection has no classification from the algorithm on the target.
+    skipped_no_classification: int = 0
 
     def summary(self) -> dict:
-        from collections import Counter
-
-        counts = Counter(match.status for match in self.matches)
         return {
             "mode": "execute" if self.execute else "dry-run",
-            "vectors_total": len(self.matches),
-            "detections": dict(counts),
-            "written": self.written,
-            "skipped_existing": self.skipped_existing,
-            "replaced": self.replaced,
+            "vectors_total": len(self.entries),
+            "sources": dict(Counter(entry.source for entry in self.entries)),
+            "detections": dict(Counter(match.status for match in self.matches)),
+            "written": dict(self.written),
+            "skipped_existing": dict(self.skipped_existing),
+            "replaced": dict(self.replaced),
+            "skipped_no_classification": self.skipped_no_classification,
         }
+
+
+def _load_matrix(directory: pathlib.Path, manifest: EmbeddingManifest, source: str) -> np.ndarray:
+    entry = manifest.sources.get(source)
+    if entry is None:
+        raise ValueError(f"The manifest lists no {source} vectors but {INDEX_FILE} has rows of that source.")
+    matrix = np.load(directory / entry["file"], mmap_mode="r")
+    if matrix.shape[0] != entry["count"]:
+        raise ValueError(f"{entry['file']} has {matrix.shape[0]} rows but the manifest says {entry['count']}.")
+    return matrix
+
+
+def _write_embeddings(
+    project: Project,
+    algorithm: Algorithm,
+    vector_key: str,
+    matrix: np.ndarray,
+    found: list[tuple[int, int]],
+    replace: bool,
+    report: EmbeddingImportReport,
+) -> None:
+    model = embedding_model()
+    if model is None:
+        raise RuntimeError("This branch has no DetectionEmbedding table; embedding vectors cannot be imported here.")
+    fields = _model_field_names(model)
+    for chunk in _chunks(found, WRITE_BATCH):
+        detection_ids = [detection_id for _, detection_id in chunk]
+        existing = model.objects.filter(detection_id__in=detection_ids, algorithm=algorithm)
+        if "key" in fields:
+            existing = existing.filter(key=vector_key)
+        existing_ids = set(existing.values_list("detection_id", flat=True))
+        if replace and existing_ids:
+            existing.delete()
+            report.replaced[SOURCE_EMBEDDING] += len(existing_ids)
+        rows = []
+        for row, detection_id in chunk:
+            if detection_id in existing_ids and not replace:
+                report.skipped_existing[SOURCE_EMBEDDING] += 1
+                continue
+            values: dict[str, Any] = {
+                "detection_id": detection_id,
+                "algorithm": algorithm,
+                "vector": matrix[row].tolist(),
+            }
+            # Fields the settled schema adds; absent on the draft table.
+            if "key" in fields:
+                values["key"] = vector_key
+            if "project" in fields:
+                values["project"] = project
+            rows.append(model(**values))
+        model.objects.bulk_create(rows, batch_size=WRITE_BATCH)
+        report.written[SOURCE_EMBEDDING] += len(rows)
+
+
+def _write_classifier_features(
+    algorithm: Algorithm,
+    matrix: np.ndarray,
+    found: list[tuple[int, int]],
+    replace: bool,
+    report: EmbeddingImportReport,
+) -> None:
+    """Put each feature vector back on the newest classification the algorithm made of its detection."""
+    for chunk in _chunks(found, WRITE_BATCH):
+        detection_ids = [detection_id for _, detection_id in chunk]
+        newest: dict[int, Classification] = {}
+        for classification in (
+            Classification.objects.filter(detection_id__in=detection_ids, algorithm=algorithm)
+            .order_by("detection_id", "-timestamp", "-pk")
+            .distinct("detection_id")
+            .only("pk", "detection_id", "features_2048")
+        ):
+            newest[classification.detection_id] = classification
+        to_update = []
+        for row, detection_id in chunk:
+            classification = newest.get(detection_id)
+            if classification is None:
+                report.skipped_no_classification += 1
+                continue
+            if classification.features_2048 is not None:
+                if not replace:
+                    report.skipped_existing[SOURCE_CLASSIFIER_FEATURES] += 1
+                    continue
+                report.replaced[SOURCE_CLASSIFIER_FEATURES] += 1
+            classification.features_2048 = matrix[row].tolist()
+            to_update.append(classification)
+        Classification.objects.bulk_update(to_update, ["features_2048"], batch_size=WRITE_BATCH)
+        report.written[SOURCE_CLASSIFIER_FEATURES] += len(to_update)
 
 
 def import_embeddings(
@@ -232,57 +364,34 @@ def import_embeddings(
     replace: bool = False,
     algorithm: Algorithm | None = None,
 ) -> EmbeddingImportReport:
-    """Write the vectors in ``directory`` as ``DetectionEmbedding`` rows on ``project``'s detections.
+    """Put the vectors in ``directory`` back on ``project``'s detections, each in its own store.
 
-    Detections are found by natural key. A detection that already has a vector from the
-    same algorithm (and key) is skipped unless ``replace`` is set. A dry run only matches.
+    Detections are found by natural key. A vector the target already holds (an embedding
+    from the same algorithm and key, or a classification that already has features) is
+    skipped unless ``replace`` is set. A dry run only matches.
     """
     manifest = EmbeddingManifest.read(directory)
     algorithm = algorithm or resolve_algorithm(manifest.algorithm_key)
-    keys = read_index(directory)
-    if len(keys) != manifest.count:
-        raise ValueError(f"{INDEX_FILE} has {len(keys)} rows but the manifest says {manifest.count}.")
+    entries = read_index(directory)
+    if len(entries) != manifest.count:
+        raise ValueError(f"{INDEX_FILE} has {len(entries)} rows but the manifest says {manifest.count}.")
     matches: list[DetectionMatch] = []
-    for chunk in _chunks(keys, MATCH_CHUNK):
-        matches.extend(match_detections(project, chunk, iou_threshold))
-    report = EmbeddingImportReport(matches=matches, execute=execute)
+    for chunk in _chunks(entries, MATCH_CHUNK):
+        matches.extend(match_detections(project, [entry.key for entry in chunk], iou_threshold))
+    report = EmbeddingImportReport(entries=entries, matches=matches, execute=execute)
     if not execute:
         return report
 
-    model = embedding_model()
-    if model is None:
-        raise RuntimeError("This branch has no DetectionEmbedding table; vectors cannot be imported here.")
-    fields = _model_field_names(model)
-    matrix = np.load(directory / VECTORS_FILE, mmap_mode="r")
-    if matrix.shape[0] != manifest.count:
-        raise ValueError(f"{VECTORS_FILE} has {matrix.shape[0]} rows but the manifest says {manifest.count}.")
-
-    found = [(row, match.detection_id) for row, match in enumerate(matches) if match.found]
-    for chunk in _chunks(found, WRITE_BATCH):
-        detection_ids = [detection_id for _, detection_id in chunk]
-        existing = model.objects.filter(detection_id__in=detection_ids, algorithm=algorithm)
-        if "key" in fields:
-            existing = existing.filter(key=manifest.vector_key)
-        existing_ids = set(existing.values_list("detection_id", flat=True))
-        if replace and existing_ids:
-            existing.delete()
-            report.replaced += len(existing_ids)
-        rows = []
-        for row, detection_id in chunk:
-            if detection_id in existing_ids and not replace:
-                report.skipped_existing += 1
-                continue
-            values: dict[str, Any] = {
-                "detection_id": detection_id,
-                "algorithm": algorithm,
-                "vector": matrix[row].tolist(),
-            }
-            # Fields the settled schema adds; absent on the draft table.
-            if "key" in fields:
-                values["key"] = manifest.vector_key
-            if "project" in fields:
-                values["project"] = project
-            rows.append(model(**values))
-        model.objects.bulk_create(rows, batch_size=WRITE_BATCH)
-        report.written += len(rows)
+    found_by_source: dict[str, list[tuple[int, int]]] = {source: [] for source in SOURCES}
+    for entry, match in zip(entries, matches):
+        if match.found:
+            found_by_source[entry.source].append((entry.row, match.detection_id))
+    if found_by_source[SOURCE_EMBEDDING]:
+        matrix = _load_matrix(directory, manifest, SOURCE_EMBEDDING)
+        _write_embeddings(
+            project, algorithm, manifest.vector_key, matrix, found_by_source[SOURCE_EMBEDDING], replace, report
+        )
+    if found_by_source[SOURCE_CLASSIFIER_FEATURES]:
+        matrix = _load_matrix(directory, manifest, SOURCE_CLASSIFIER_FEATURES)
+        _write_classifier_features(algorithm, matrix, found_by_source[SOURCE_CLASSIFIER_FEATURES], replace, report)
     return report
