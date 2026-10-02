@@ -37,6 +37,7 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.embeddings import feature_extractors_with_vectors
+from ami.main.models_future.history import add_comment, occurrence_timeline, review_entry
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.merge_candidates import (
     DEFAULT_ADJACENT_CAPTURES,
@@ -117,9 +118,11 @@ from .serializers import (
     OccurrenceAddDetectionsSerializer,
     OccurrenceFrameSerializer,
     OccurrenceGroupingSerializer,
+    OccurrenceHistoryEntrySerializer,
     OccurrenceListSerializer,
     OccurrenceMergeSerializer,
     OccurrencePathFrameSerializer,
+    OccurrenceReviewCreateSerializer,
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
@@ -1680,10 +1683,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     # Actions that open one occurrence. They drop the determination requirement; see
     # get_queryset.
-    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path", "detections")
+    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path", "history", "reviews", "detections")
     # Actions the project's default filters never hide an occurrence from. The session
-    # view selects occurrences with those filters off and draws their paths.
-    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path")
+    # view selects occurrences with those filters off, then draws their paths and histories.
+    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path", "history", "reviews")
 
     def get_queryset(self) -> QuerySet["Occurrence"]:
         """Occurrences this request may see, which is wider outside the list.
@@ -1708,7 +1711,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             "event",
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
-        if self.action != "detections":
+        if self.action not in ("history", "reviews", "detections"):
+            # The history reads identifications itself, with the fields its entries need,
+            # and the detections page serializes frames, not the occurrence.
             qs = qs.with_identifications()  # type: ignore
         if self.action not in self.UNFILTERED_ACTIONS:
             qs = qs.apply_default_filters(  # type: ignore
@@ -1716,8 +1721,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        elif self.action not in ("path", "detections", "merge_candidates", "capture_matches"):
-            # `path` and the track-edit pickers build their own values() queries and never
+        elif self.action not in ("path", "history", "reviews", "detections", "merge_candidates", "capture_matches"):
+            # `path`, `history`, `reviews` and the track-edit pickers build their own queries and never
             # serialize the occurrence, so the detail prefetch would only be waste:
             # measured at 249ms/4 queries against 6ms/2 for the same object without
             # it, on a 37-detection occurrence.
@@ -1843,6 +1848,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         # and only on projects that have opted into tracking.
         if self.action in self.TRACK_EDIT_ACTIONS:
             return [ObjectPermission(), TrackingEnabled()]
+        # Commenting is open to whoever may identify, on any project (see check_custom_permission).
+        if self.action == "reviews":
+            return [ObjectPermission()]
         return super().get_permissions()
 
     def _detection_in_track(self, request: Request, occurrence: Occurrence) -> Detection:
@@ -2118,6 +2126,29 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"detection_ids": str(e)})
         return self._grouping_response(occurrence)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=OccurrenceHistoryEntrySerializer(many=True))
+    @action(detail=True, methods=["get"], name="history", pagination_class=None)
+    def history(self, request: Request, pk=None) -> Response:
+        """Everything that happened to this occurrence, newest first.
+
+        Merges algorithm results, people's reviews (grouping confirmations and comments),
+        identifications and predictions into one list. Visible to whoever can open the
+        occurrence itself.
+        """
+        occurrence = self.get_object()
+        entries = occurrence_timeline(occurrence)
+        return Response(OccurrenceHistoryEntrySerializer(entries, many=True, context={"request": request}).data)
+
+    @extend_schema(request=OccurrenceReviewCreateSerializer, responses={201: OccurrenceHistoryEntrySerializer})
+    @action(detail=True, methods=["post"], name="reviews")
+    def reviews(self, request: Request, pk=None) -> Response:
+        """Leave a comment on this occurrence. It shows in the occurrence's history."""
+        occurrence = self.get_object()
+        body = OccurrenceReviewCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        review = add_comment(occurrence, request.user, body.validated_data["comment"])
+        return Response(OccurrenceHistoryEntrySerializer(review_entry(review)).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=None, responses=OccurrenceGroupingSerializer)
     @action(detail=True, methods=["post"], name="verify-grouping", url_path="verify-grouping")

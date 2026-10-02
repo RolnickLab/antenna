@@ -1771,6 +1771,10 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     event = EventNestedSerializer(read_only=True)
     grouping_verified_by = UserNestedSerializer(read_only=True)
     grouping_summary = serializers.SerializerMethodField()
+    grouping_edited_since_verified = serializers.SerializerMethodField(
+        help_text="Whether the detections changed since the grouping was last confirmed. "
+        "False while it is confirmed, and when it never was."
+    )
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
@@ -1788,11 +1792,18 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "grouping_verified",
             "grouping_verified_at",
             "grouping_verified_by",
+            "grouping_edited_since_verified",
             "grouping_summary",
         ]
         read_only_fields = [
             "determination_score",
         ]
+
+    def get_grouping_edited_since_verified(self, obj: Occurrence) -> bool:
+        from ami.main.models_future.history import edited_since_track_complete_review
+
+        # Editing the detections withdraws the confirmation, so a confirmed grouping is unchanged.
+        return obj.grouping_verified_at is None and edited_since_track_complete_review(obj)
 
     @extend_schema_field(OccurrenceFrameSerializer(many=True))
     def get_detections(self, obj: Occurrence) -> list[dict]:
@@ -2293,6 +2304,67 @@ class OccurrenceAddDetectionsSerializer(serializers.Serializer):
         min_length=1,
         help_text="Detections to move into this occurrence, from wherever they are now.",
     )
+
+
+class HistoryUserSerializer(serializers.Serializer):
+    """A person in an occurrence's history: name and picture only, never an email address."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    image = serializers.ImageField(allow_null=True)
+
+
+class HistoryAlgorithmSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+
+
+class HistoryJobSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class HistoryTaxonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.CharField()
+
+
+class OccurrenceHistoryEntrySerializer(serializers.Serializer):
+    """One entry of an occurrence's history, newest first. ``type`` says which table it came from."""
+
+    type = serializers.ChoiceField(choices=["algorithm_result", "review", "identification", "prediction"])
+    id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
+    timestamp = serializers.DateTimeField()
+    subtype = serializers.CharField(
+        allow_null=True,
+        help_text="An algorithm result's kind (tracking, class_masking, size_filter) "
+        "or a review's aspect (grouping, comment).",
+    )
+    user = HistoryUserSerializer(allow_null=True)
+    algorithm = HistoryAlgorithmSerializer(allow_null=True)
+    job = HistoryJobSerializer(allow_null=True)
+    taxon = HistoryTaxonSerializer(
+        allow_null=True, help_text="The identified or predicted taxon, or the determination after a result."
+    )
+    taxon_before = HistoryTaxonSerializer(allow_null=True, help_text="The determination before a result.")
+    score = serializers.FloatField(allow_null=True, help_text="A prediction's score or a result's value.")
+    payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
+    verdict = serializers.CharField(allow_null=True, help_text="A review's verdict: confirmed, rejected or corrected.")
+    comment = serializers.CharField(allow_blank=True)
+    withdrawn = serializers.BooleanField()
+    is_current = serializers.BooleanField(
+        allow_null=True, help_text="For results and reviews: whether it is the latest of its kind, not replaced."
+    )
+
+
+class OccurrenceReviewCreateSerializer(serializers.Serializer):
+    """A review to add to an occurrence. Only comments are written here; a grouping is
+    confirmed through ``verify-grouping``, which also locks the session."""
+
+    aspect = serializers.ChoiceField(choices=["comment"], default="comment")
+    comment = serializers.CharField(max_length=10000, trim_whitespace=True)
 
 
 class OccurrenceGroupingSerializer(serializers.Serializer):

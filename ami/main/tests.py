@@ -44,6 +44,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    ValidationReview,
     get_media_url,
     group_images_into_events,
 )
@@ -1538,6 +1539,28 @@ class TestRegroupSplitsTracks(TestCase):
         for piece in pieces:
             self.assertEqual(piece.grouping_verified_at, verified_at)
             self.assertEqual(piece.grouping_verified_by_id, self.user.pk)
+
+    def test_each_piece_gets_a_review_of_its_own_detections(self):
+        from ami.main.models_future.history import latest_track_complete_review
+        from ami.main.models_future.tracks import verify_grouping
+
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_track(self.captures)
+        verify_grouping(occurrence, self.user)
+        verified_at = Occurrence.objects.get(pk=occurrence.pk).grouping_verified_at
+
+        self._group(gap_hours=2)
+
+        for piece in Occurrence.objects.filter(deployment=self.deployment):
+            review = latest_track_complete_review(piece)
+            self.assertEqual(review.payload["detection_ids"], sorted(self._detection_ids(piece)))
+            self.assertEqual((review.user_id, review.timestamp), (self.user.pk, verified_at))
+            self.assertEqual(review.payload["split_from_occurrence_id"], occurrence.pk)
+            self.assertTrue(review.is_current)
+            # Re-confirming the piece as it stands changes nothing, so it records nothing.
+            verify_grouping(piece, self.user)
+            self.assertEqual(latest_track_complete_review(piece).pk, review.pk)
+        self.assertEqual(ValidationReview.objects.filter(occurrence=occurrence, is_current=True).count(), 1)
 
     def test_identifications_are_copied_to_every_piece(self):
         self._group(gap_hours=6)
@@ -10110,7 +10133,8 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
     def test_a_multi_frame_merge_does_not_query_per_frame(self):
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
 
-        with self.assertNumQueries(34):
+        # Four of these move the merged track's results and reviews, then cascade-delete them.
+        with self.assertNumQueries(38):
             merge_occurrences(self.occurrence, [other])
 
         self.assertFullyLinked(self.occurrence)
