@@ -1,0 +1,61 @@
+name: Production Image Build
+
+# Checks that the production Django image still builds when its inputs change.
+# The backend test workflow builds the local development image, so this is the
+# only check that exercises compose/production/django/Dockerfile before a
+# deploy. Application code is excluded from the path filter on purpose: the
+# Dockerfile copies it in, but a code change cannot make the build fail, and the
+# backend tests already cover it.
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "compose/production/**"
+      - "requirements/**"
+      - "docker-compose.production.yml"
+      - "docker-compose.worker.yml"
+      - ".dockerignore"
+      - ".github/workflows/build.production.yml"
+
+  push:
+    branches: ["main"]
+    paths:
+      - "compose/production/**"
+      - "requirements/**"
+      - "docker-compose.production.yml"
+      - "docker-compose.worker.yml"
+      - ".dockerignore"
+      - ".github/workflows/build.production.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The worker compose file builds from the same Dockerfile, so this one
+      # build covers both the web and worker images.
+      - name: Build the production Django image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: compose/production/django/Dockerfile
+          push: false
+          load: true
+          tags: antenna-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Catches a dependency that installs but fails to import. The entrypoint
+      # is bypassed because it waits for a database that does not exist here.
+      - name: Check that core dependencies import
+        run: docker run --rm --entrypoint python antenna-backend:ci -c "import django, celery, rest_framework"
