@@ -39,6 +39,7 @@ archived.
 | `planning/stats-list-pattern.md` | Deferred list/paginator pattern for stats endpoints — companion to api-stats-pattern.md |
 | `planning/celery-queue-split-rollout.md` | Rollout plan for the Celery queue split (`feat/celery-queue-split`) |
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
+| `planning/2026-09-30-storage-ui-improvements-plan.md` | Plan: storage-source/deployment UI follow-ups to the rclone gateway docs — prefix field, subdir autocomplete (needs a list-prefixes endpoint), live preview + validation, `create_deployments_from_subdirs` command; survey refs to `storage-details-form.tsx`, `section-source-images.tsx`, `StorageSourceViewSet.test` |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
 
 ## Archive / session snapshots

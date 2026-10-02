@@ -2,9 +2,9 @@ import logging
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
-from ami.main.models import S3StorageSource
+from ami.main.models import S3StorageSource, SourceImage
 from ami.tests.fixtures.main import create_captures_from_files, setup_test_project
 from ami.tests.fixtures.storage import S3_TEST_CONFIG
 from ami.utils import s3
@@ -190,6 +190,75 @@ class TestS3PrefixUtils(TestCase):
         result = s3.make_full_key_uri(self.config, key, with_protocol=False)
         expected = "/test_bucket/test_prefix/subdir/file.txt"
         self.assertEqual(result, expected)
+
+
+class TestCapturePublicUrl(SimpleTestCase):
+    """Capture URLs must keep every segment of the public base URL, with or without a trailing slash."""
+
+    key = "deployment_1/2024-07-01/20240701235959-snapshot.jpg"
+
+    def test_base_with_and_without_trailing_slash_match(self):
+        for base in ("http://h/bucket", "http://h/bucket/"):
+            with self.subTest(base=base):
+                self.assertEqual(SourceImage.build_public_url(base, self.key), f"http://h/bucket/{self.key}")
+
+    def test_base_with_nested_path(self):
+        for base in ("http://h/bucket/sub", "http://h/bucket/sub/"):
+            with self.subTest(base=base):
+                self.assertEqual(SourceImage.build_public_url(base, self.key), f"http://h/bucket/sub/{self.key}")
+
+    def test_host_only_base(self):
+        for base in ("http://h", "http://h/"):
+            with self.subTest(base=base):
+                self.assertEqual(SourceImage.build_public_url(base, self.key), f"http://h/{self.key}")
+
+    def test_key_with_leading_slash(self):
+        self.assertEqual(
+            SourceImage.build_public_url("http://h/bucket", "/" + self.key), f"http://h/bucket/{self.key}"
+        )
+
+
+class TestCapturePublicUrlEncoding(SimpleTestCase):
+    """Keys are stored raw, so characters that are not URL-safe must be percent-encoded in capture URLs."""
+
+    base = "http://h/bucket/"
+
+    def test_plain_ascii_key_unchanged(self):
+        key = "site-1/2024-07-01/20240701235959-snapshot.jpg"
+        self.assertEqual(SourceImage.build_public_url(self.base, key), self.base + key)
+
+    def test_special_characters_are_encoded(self):
+        cases = {
+            "cyprus site 2/snap shot.jpg": "cyprus%20site%202/snap%20shot.jpg",
+            "site/snápshot.jpg": "site/sn%C3%A1pshot.jpg",
+            "site/a+b.jpg": "site/a%2Bb.jpg",
+            "site/a#b.jpg": "site/a%23b.jpg",
+            "site/a?b.jpg": "site/a%3Fb.jpg",
+        }
+        for key, encoded in cases.items():
+            with self.subTest(key=key):
+                self.assertEqual(SourceImage.build_public_url(self.base, key), self.base + encoded)
+
+    def test_literal_percent_in_key_is_encoded_again(self):
+        self.assertEqual(SourceImage.build_public_url(self.base, "site/a%20b.jpg"), self.base + "site/a%2520b.jpg")
+
+
+class TestStorageSourcePublicUrlMatchesCaptures(SimpleTestCase):
+    """The connection test's sample URL must be the URL a synced capture gets, or a broken base URL looks fine."""
+
+    def test_sample_url_matches_capture_url(self):
+        for base in ("http://h/bucket", "http://h"):
+            config = s3.S3Config(
+                endpoint_url="http://h",
+                access_key_id="key",
+                secret_access_key="secret",
+                bucket_name="bucket",
+                prefix="",
+                public_base_url=base,
+            )
+            key = "site 1/20240701235959-snapshot.jpg"
+            with self.subTest(base=base):
+                self.assertEqual(s3.public_url(config, key), SourceImage.build_public_url(base, key))
 
 
 class TestStorageSource(TestCase):

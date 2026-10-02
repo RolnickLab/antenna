@@ -17,7 +17,8 @@ S3_TEST_CONFIG = s3.S3Config(
     bucket_name=settings.S3_TEST_BUCKET,
     region=settings.S3_TEST_REGION,
     prefix="test_prefix",
-    public_base_url=f"http://minio:9000/{settings.S3_TEST_BUCKET}/test_prefix",
+    # Capture paths are full object keys (prefix included), so the base URL points at the bucket root.
+    public_base_url=f"http://minio:9000/{settings.S3_TEST_BUCKET}/",
     # public_base_url="http://minio:9001",
 )
 

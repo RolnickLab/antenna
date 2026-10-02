@@ -99,6 +99,8 @@ services:
       context: ./processing_services/minimal
     volumes:
       - ./processing_services/minimal/:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       default:
         aliases:

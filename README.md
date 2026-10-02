@@ -215,6 +215,8 @@ dot -Tsvg  models.dot > models.svg
 
 ## Project Data Storage
 
+Already have images in a folder, on a network drive, or in a cloud drive? See [Connect images you already have to Antenna](docs/connect-existing-files.md) for serving them to Antenna in place with rclone, including the `local-files` compose profile and tunnel setups for the hosted instance.
+
 Each project manages its own external data storage where the AMI Platform will index and process images. This is most typically a public or private S3 bucket at a cloud provider that is not AWS. For example, the Swift object storage service at Compute Canada or a university's own storage service.
 
 To test the S3 storage backend locally, Minio is configured to run as part of the docker compose stack.

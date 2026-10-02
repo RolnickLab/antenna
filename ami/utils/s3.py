@@ -629,6 +629,17 @@ def read_image(config: S3Config, key: str) -> PIL.Image.Image:
     return img
 
 
+def join_public_url(base_url: str, key: str) -> str:
+    """Build the browser/ML URL for an object from a public base URL and its raw key.
+
+    The base URL is treated as a folder whether or not it ends with "/", so a
+    missing slash cannot drop its last segment (such as the bucket name). The key
+    is always percent-encoded (keeping "/") because paths are stored as the raw
+    keys S3 lists, so a literal "%20" in a filename is encoded again, not decoded.
+    """
+    return base_url.rstrip("/") + "/" + urllib.parse.quote(key.lstrip("/"), safe="/")
+
+
 def public_url(config: S3Config, key: str):
     """
     Return public URL for a given key.
@@ -638,8 +649,8 @@ def public_url(config: S3Config, key: str):
     if not config.public_base_url:
         return get_presigned_url(config, key)
     else:
-        # return urllib.parse.urljoin(config.public_base_url, key.lstrip("/"))
-        return urllib.parse.urljoin(config.public_base_url, make_full_key_uri(config, key, with_protocol=False))
+        # Same builder as capture URLs, so the connection test shows the URL captures will actually get.
+        return join_public_url(config.public_base_url, key_with_prefix(config, key))
 
 
 def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24 * 7) -> str:
