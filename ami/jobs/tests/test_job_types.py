@@ -63,7 +63,9 @@ class TestJobTypesEndpoint(JobTypesTestBase):
         # Exports are made from the exports page; post-processing has no method turned on yet.
         self.assertEqual(set(types), {"ml", "data_storage_sync", "populate_captures_collection", "regroup_events"})
         self.assertFalse(types["ml"]["allowed"])
-        self.assertEqual([s["field"] for s in types["ml"]["scope"]], ["pipeline_id", "source_image_collection_id"])
+        ml_schema = types["ml"]["config_schema"]
+        self.assertEqual(ml_schema["required"], ["pipeline_id"])
+        self.assertEqual(ml_schema["properties"]["source_image_collection_id"]["ami_entity"], "captures/collections")
         self.assertTrue(self.get_types(self.ml_manager)["ml"]["allowed"])
 
     def test_only_methods_turned_on_for_the_project_are_offered(self):
@@ -141,7 +143,7 @@ class TestCreateJobWithParams(JobTypesTestBase):
         response = self.post_job(
             self.superuser,
             job_type_key="populate_captures_collection",
-            source_image_collection_id=self.other_collection.pk,
+            params={"config": {"source_image_collection_id": self.other_collection.pk}},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -155,16 +157,23 @@ class TestCreateJobWithParams(JobTypesTestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("job_type_key", response.json())
 
-    def test_params_are_dropped_for_types_without_settings_and_fixed_after_creation(self):
+    def test_inputs_are_stored_in_params_and_on_job_columns(self):
         response = self.post_job(
             self.superuser,
             job_type_key="populate_captures_collection",
-            source_image_collection_id=self.collection.pk,
-            params={"anything": 1},
+            params={"config": {"source_image_collection_id": self.collection.pk}},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.json())
-        self.assertFalse(Job.objects.get(pk=response.json()["id"]).params)
+        job = Job.objects.get(pk=response.json()["id"])
+        self.assertEqual(job.params, {"config": {"source_image_collection_id": self.collection.pk}})
+        self.assertEqual(job.source_image_collection_id, self.collection.pk)
 
+    def test_an_ml_job_needs_a_pipeline(self):
+        response = self.post_job(self.superuser, job_type_key="ml", params={"config": {}})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("pipeline_id: field required", response.json()["params"]["config"])
+
+    def test_params_are_fixed_after_creation(self):
         job_id = self.post_masking(self.superuser).json()["id"]
         self.client.patch(reverse_with_params("api:job-detail", args=[job_id]), {"params": {}}, format="json")
         self.assertEqual(Job.objects.get(pk=job_id).params["task"], "class_masking")

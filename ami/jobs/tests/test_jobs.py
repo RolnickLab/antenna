@@ -264,13 +264,13 @@ class TestJobView(APITestCase):
         jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
         job_data = {
             "project_id": self.project.pk,
-            "source_image_collection_id": self.source_image_collection.pk,
+            "params": {"config": {"source_image_collection_id": self.source_image_collection.pk}},
             "name": "Test job unauthenticated",
             "delay": 0,
             "job_type_key": SourceImageCollectionPopulateJob.key,
         }
         self.client.force_authenticate(user=None)
-        resp = self.client.post(jobs_create_url, job_data)
+        resp = self.client.post(jobs_create_url, job_data, format="json")
         # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
         self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
@@ -281,12 +281,12 @@ class TestJobView(APITestCase):
         job_data = {
             "project_id": self.job.project.pk,
             "name": name,
-            "source_image_collection_id": self.source_image_collection.pk,
+            "params": {"config": {"source_image_collection_id": self.source_image_collection.pk}},
             "delay": 0,
             "start_now": start_now,
             "job_type_key": SourceImageCollectionPopulateJob.key,
         }
-        resp = self.client.post(jobs_create_url, job_data)
+        resp = self.client.post(jobs_create_url, job_data, format="json")
         self.client.force_authenticate(user=None)
         self.assertEqual(resp.status_code, 201)
         return resp.json()

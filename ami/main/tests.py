@@ -2594,6 +2594,7 @@ class TestRolePermissions(APITestCase):
     def _create_project(self, owner):
         self.project = Project.objects.create(name="Insect Project", description="Test Description", owner=owner)
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        self.pipeline, _ = Pipeline.objects.get_or_create(name="Role test pipeline")
         S3StorageSource.objects.create(name="New source", project=self.project, bucket="Test Bucket")
         create_captures(deployment=self.deployment)
         create_taxa(project=self.project)
@@ -2682,7 +2683,13 @@ class TestRolePermissions(APITestCase):
             "site": {"description": "New Site", "name": "Site 1", "project": self.project.pk},
             "device": {"description": "New Device", "name": "Device 1", "project": self.project.pk},
             "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
-            "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
+            "job": {
+                "delay": 1,
+                "name": "Test Job",
+                "project_id": self.project.pk,
+                "job_type_key": "ml",
+                "params": {"config": {"pipeline_id": self.pipeline.pk}},
+            },
             "identification": {"occurrence_id": occurrence_id, "taxon_id": taxon_id, "comment": "Identifier comment"},
             "project": {"name": "New Project", "description": "This is a test project."},
         }
@@ -2712,6 +2719,8 @@ class TestRolePermissions(APITestCase):
             logger.info(f"entity endpoint : {endpoints[entity]}")
             if entity == "project":
                 response = self.client.post(endpoints[entity], create_data.get(entity, {}), format="multipart")
+            elif entity == "job":
+                response = self.client.post(endpoints[entity], create_data[entity], format="json")
             else:
                 response = self.client.post(endpoints[entity], create_data.get(entity, {}))
             expected_status = status.HTTP_201_CREATED if can_create else status.HTTP_403_FORBIDDEN
@@ -2798,7 +2807,9 @@ class TestRolePermissions(APITestCase):
                     continue
                 if "create" in actions:
                     logger.info(f"Testing {role_class} for create permission on {entity} after role unassignment")
-                    response = self.client.post(endpoints[entity], create_data.get(entity, {}))
+                    response = self.client.post(
+                        endpoints[entity], create_data.get(entity, {}), format="json" if entity == "job" else None
+                    )
                     self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
                 if "update" in actions:
                     logger.info(f"Testing {role_class} for update permission on {entity} after role unassignment")
@@ -3331,8 +3342,8 @@ class TestRunSingleImageJobPermission(APITestCase):
             "delay": 0,
             "name": f"Capture #{self.capture.pk}",
             "project_id": str(self.project.pk),
-            "pipeline_id": str(self.pipeline.pk),
-            "source_image_single_id": str(self.capture.pk),
+            "job_type_key": "ml",
+            "params": {"config": {"pipeline_id": self.pipeline.pk, "source_image_single_id": self.capture.pk}},
         }
         response = self.client.post(run_url, payload, format="json")
         self.assertEqual(

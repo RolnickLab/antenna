@@ -5,31 +5,34 @@ post-processing task shows up there, with a working form, once it declares the a
 No frontend change is needed. Design history: branch `feat/jobs-panel-design`,
 `docs/claude/planning/2026-09-18-jobs-panel-schema-driven-design.md`. PR #1447.
 
+## The contract in one paragraph
+
+Each job type has one pydantic model describing everything a new job of that type takes
+(`JobType.config_schema`; post-processing has one per task). `GET /jobs/types/` serves each model's
+JSON Schema unchanged, wrapped in `JobTypeDescription` (`ami/jobs/schemas.py`). The dialog renders
+the schema as its form and posts `{"name", "delay", "project_id", "job_type_key", "params": {"config":
+{...}}}` (plus `"task"` for post-processing). `JobSerializer.validate` hands `params` to
+`JobType.validate_params`, which parses it with the model and checks every id against the project;
+config fields named in `JOB_COLUMNS` (`pipeline_id`, `source_image_collection_id`, ...) are also set on
+the Job's columns so the jobs list can filter on them.
+
 ## Where things live
 
 | What | File |
 |---|---|
-| `ScopeField` (Job columns), `describe()`, `entity_fields()` | `ami/jobs/descriptors.py` |
-| `JobType` attributes, `validate_params`, project-scope id checks, flag check on re-run | `ami/jobs/models.py` (`JobType`, `PostProcessingJob.enabled_tasks`, `check_entities_in_project`, `Job.check_custom_permission`) |
-| Response builder `describe_job_types`; `params` validation on create | `ami/jobs/serializers.py` (`JobSerializer.validate`) |
+| Per-type input models (`MLJobConfig`, ...) and the response models | `ami/jobs/schemas.py` |
+| `JobType.describe`, `validate_params`, `column_ids`, `describe_job_types`, project-scope id checks | `ami/jobs/models.py` |
+| `params` validation on create | `ami/jobs/serializers.py` (`JobSerializer.validate`) |
 | The gated `types` action | `ami/jobs/views.py` (`JobViewSet.types`) |
 | Per-task feature flags | `ami/main/models.py` (`ProjectFeatureFlags`), `BasePostProcessingTask.feature_flag` |
 | `run_post_processing_job` for ML data managers | `ami/users/roles.py`, `ami/main/migrations/0096_grant_run_post_processing_to_ml_data_manager.py` |
-| Tests | `ami/jobs/tests/test_job_types.py`, `ui/src/components/form/schema-form/tests/` |
+| Form mapping and payload | `ui/src/components/form/schema-form/` (`schema-to-fields.ts`, `build-job-payload.ts`) |
 
 ## Making a job type creatable
 
-On the `JobType` subclass:
-
-- `description`: help text under the job type select. Wrap it in `gettext_lazy`; it falls back to
-  the docstring's first paragraph.
-- `user_creatable = True`: without it the type is not listed and `POST /jobs/` refuses it.
-- `scope_fields`: the Job columns it runs on (`PIPELINE_SCOPE`, `CAPTURE_SET_SCOPE`,
-  `STATION_SCOPE`), sent as top-level serializer fields.
-- `required_fields` / `required_params`: checked on create (same shape as #1407).
-- `config_schema`: a pydantic (v1) model for `params["config"]`, rendered as a form and validated
-  by `JobType.validate_params(project, user, params)`.
-- `variant_key` + `variants(project)`: for types whose work is picked from a registry.
+On the `JobType` subclass: `user_creatable = True`, a `description` (in `gettext_lazy`), and a
+`config_schema` model in `ami/jobs/schemas.py`. Required inputs are pydantic-required fields; Job
+columns are fields named as in `JOB_COLUMNS`.
 
 ## Making a post-processing task appear
 
@@ -38,7 +41,8 @@ add, default off) and a `description`. When a project turns the flag on, ML data
 project managers can run the task with any settings; while it is off the task is hidden, refused on
 create, and its jobs cannot be re-run except by a superuser.
 
-The served schema is `config_schema.schema()` unchanged. Write it for the form:
+The served schema is `config_schema.schema()` unchanged; the same rules apply to the per-type models
+in `ami/jobs/schemas.py`. Write it for the form:
 
 ```python
 source_image_collection_id: int | None = pydantic.Field(
@@ -64,8 +68,8 @@ appearance_weight: float = pydantic.Field(1.0, title=_("Appearance weight"), ami
 ## Where the settings are stored
 
 `Job.params`, validated and filled with every default on create, then fixed: an update cannot
-change it. It is returned on the job detail response, not the list. Job types without a settings
-model store nothing there; their choices are Job columns (pipeline, capture set, station).
+change it. It is returned on the job detail response, not the list. Ids that are also Job columns
+(pipeline, capture set, station, capture) are stored in both places.
 
 ## Gotchas
 

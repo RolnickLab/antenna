@@ -40,8 +40,8 @@ from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobDispatchMode, JobState
-from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer, describe_job_types
+from .models import Job, JobDispatchMode, JobState, describe_job_types
+from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +277,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         user = request.user
         if not (user.is_superuser or project.owner_id == user.pk or project.members.filter(pk=user.pk).exists()):
             raise PermissionDenied("Only members of this project can list its job types.")
-        return Response({"results": describe_job_types(project, user)})
+        return Response({"results": [job_type.dict() for job_type in describe_job_types(project, user)]})
 
     @action(detail=True, methods=["post"], name="run")
     def run(self, request, pk=None):

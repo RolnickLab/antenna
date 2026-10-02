@@ -1,4 +1,5 @@
 import datetime
+import inspect
 import logging
 import random
 import time
@@ -18,7 +19,13 @@ from rest_framework import serializers
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.jobs.descriptors import CAPTURE_SET_SCOPE, PIPELINE_SCOPE, STATION_SCOPE, ScopeField, describe, entity_fields
+from ami.jobs.schemas import (
+    CaptureSetJobConfig,
+    JobTypeDescription,
+    JobTypeVariantDescription,
+    MLJobConfig,
+    StationJobConfig,
+)
 from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
@@ -436,6 +443,19 @@ class JobLogHandler(logging.Handler):
             logger.error(f"Failed to save log for job #{self.job.pk}: {e}")
 
 
+# Config fields that are also stored on a Job column, so the jobs list can filter and join on them.
+JOB_COLUMNS = ("pipeline_id", "source_image_collection_id", "source_image_single_id", "deployment_id")
+
+
+def entity_fields(model: type[pydantic.BaseModel]) -> dict[str, str]:
+    """Map each config field carrying an ``ami_entity`` hint to that entity (an API route)."""
+    return {
+        name: prop["ami_entity"]
+        for name, prop in model.schema().get("properties", {}).items()
+        if isinstance(prop, dict) and "ami_entity" in prop
+    }
+
+
 def pydantic_messages(exc: pydantic.ValidationError) -> list[str]:
     """Flatten a pydantic error into ``"field: message"`` lines for a 400 response."""
     messages = []
@@ -454,6 +474,7 @@ def _entity_queryset(entity: str, project: Project | None):
     scoped = {
         "captures/collections": lambda: SourceImageCollection.objects.filter(project=project),
         "deployments": lambda: Deployment.objects.filter(project=project),
+        "captures": lambda: SourceImage.objects.filter(project=project),
         "events": lambda: Event.objects.filter(project=project),
         "occurrences": lambda: Occurrence.objects.filter(project=project),
         # Public lists belong to no project and may be used by any.
@@ -486,20 +507,14 @@ def check_entities_in_project(values: dict, entities: dict[str, str], project: P
         raise serializers.ValidationError({"params": {"config": errors}})
 
 
-def _validate_config(
-    model_cls: type[pydantic.BaseModel],
-    config,
-    project: Project | None,
-    extra_entities: dict[str, str] | None = None,
-) -> pydantic.BaseModel:
+def _validate_config(model_cls: type[pydantic.BaseModel], config, project: Project | None) -> pydantic.BaseModel:
     if not isinstance(config, dict):
         raise serializers.ValidationError({"params": {"config": "Must be an object."}})
     try:
         model = model_cls(**config)
     except pydantic.ValidationError as exc:
         raise serializers.ValidationError({"params": {"config": pydantic_messages(exc)}})
-    entities = {**entity_fields(model_cls), **(extra_entities or {})}
-    check_entities_in_project(model.dict(), entities, project)
+    check_entities_in_project(model.dict(), entity_fields(model_cls), project)
     return model
 
 
@@ -517,20 +532,12 @@ class JobType:
     # the first paragraph of the class docstring is used.
     description: str = ""
 
-    # What a job of this type cannot run without. The API refuses to create one that is
-    # missing any of these, so a gap is a 400 when the job is made rather than a failure
-    # minutes later when it runs. ``required_params`` are keys inside ``Job.params``;
-    # ``required_fields`` are fields on the job itself.
-    required_fields: tuple[str, ...] = ()
-    required_params: tuple[str, ...] = ()
-
     # Whether a person can start one from the Create Job dialog. The rest are created by
     # the platform for the user: an export from the exports page, for example.
     user_creatable: bool = False
 
-    # What the dialog asks for before the settings, and the pydantic model of the
-    # settings themselves (stored in ``Job.params["config"]``). See ami/jobs/descriptors.py.
-    scope_fields: tuple[ScopeField, ...] = ()
+    # Everything a new job of this type takes, as a pydantic model: the Create Job dialog renders
+    # it and the API validates against it. See ami/jobs/configs.py and ami/jobs/descriptors.py.
     config_schema: type[pydantic.BaseModel] | None = None
 
     # A job type whose work is chosen from a registry (post-processing tasks) names the
@@ -538,27 +545,51 @@ class JobType:
     variant_key: str | None = None
 
     @classmethod
-    def variants(cls, project: Project) -> list[dict]:
+    def help_text(cls) -> str:
+        """``description``, else the first paragraph of the class docstring."""
+        if cls.description:
+            return str(cls.description)
+        return (inspect.getdoc(cls) or "").split("\n\n")[0].replace("\n", " ").strip()
+
+    @classmethod
+    def variants(cls, project: Project) -> list[JobTypeVariantDescription]:
         return []
+
+    @classmethod
+    def describe(cls, project: Project, allowed: bool) -> JobTypeDescription | None:
+        """What the Create Job dialog shows for this type, or None when it has nothing to offer."""
+        variants = cls.variants(project)
+        if cls.variant_key and not variants:
+            return None  # e.g. post-processing with no method turned on for this project
+        return JobTypeDescription(
+            key=cls.key,
+            name=cls.name,
+            description=cls.help_text(),
+            allowed=allowed,
+            config_schema=cls.config_schema.schema() if cls.config_schema else None,
+            variant_key=cls.variant_key,
+            variants=variants,
+        )
+
+    @classmethod
+    def column_ids(cls, params: dict) -> dict[str, int]:
+        """The Job column ids (``pipeline_id``, ...) carried in validated params."""
+        config = params.get("config") or {}
+        return {field: config[field] for field in JOB_COLUMNS if config.get(field) is not None}
 
     @classmethod
     def validate_params(cls, project: Project | None, user, params) -> dict:
         """Check a new job's ``params`` before it is saved and return what should be stored.
 
-        Raises ``serializers.ValidationError`` (a 400) for a bad value. The default keeps
-        only ``config``, validated against ``config_schema`` when the type declares one,
-        plus any ``required_params``; job types that read nothing from params store none.
+        Raises ``serializers.ValidationError`` (a 400) for a bad value. The config is validated
+        against ``config_schema`` and every id in it must belong to the project.
         """
-        if params in (None, {}):
-            params = {}
         if not isinstance(params, dict):
             raise serializers.ValidationError({"params": "Must be an object."})
-        kept = {name: params[name] for name in cls.required_params if name in params}
-        if cls.config_schema is not None:
-            config = params.get("config") or {}
-            model = _validate_config(cls.config_schema, config, project)
-            kept["config"] = model.dict()
-        return kept
+        if cls.config_schema is None:
+            return {}
+        model = _validate_config(cls.config_schema, params.get("config") or {}, project)
+        return {"config": model.dict()}
 
     # @TODO Consider adding custom vocabulary for job types to be used in the UI
     # verb: str = "Sync"
@@ -578,9 +609,7 @@ class MLJob(JobType):
     key = "ml"
     description = _("Run a processing pipeline over a capture set: detect, classify and create occurrences.")
     user_creatable = True
-    # The dialog requires a pipeline, but the API has always accepted an ML job without one
-    # (it fails when run), so required_fields stays empty to keep existing clients working.
-    scope_fields = (PIPELINE_SCOPE, CAPTURE_SET_SCOPE)
+    config_schema = MLJobConfig
 
     @classmethod
     def run(cls, job: "Job"):
@@ -833,8 +862,7 @@ class DataStorageSyncJob(JobType):
     key = "data_storage_sync"
     description = _("Add new captures from a station's data storage, then regroup them into sessions.")
     user_creatable = True
-    required_fields = ("deployment",)
-    scope_fields = (STATION_SCOPE,)
+    config_schema = StationJobConfig
     regroup_stage_key = "regroup_sessions"
     regroup_stage_name = "Regroup sessions"
 
@@ -931,8 +959,7 @@ class SourceImageCollectionPopulateJob(JobType):
     key = "populate_captures_collection"
     description = _("Fill a capture set with the captures its sampling method selects.")
     user_creatable = True
-    required_fields = ("source_image_collection",)
-    scope_fields = (CAPTURE_SET_SCOPE,)
+    config_schema = CaptureSetJobConfig
 
     @classmethod
     def run(cls, job: "Job"):
@@ -1034,14 +1061,14 @@ class PostProcessingJob(JobType):
         return {key: task for key, task in POSTPROCESSING_TASKS.items() if flags and getattr(flags, task.feature_flag)}
 
     @classmethod
-    def variants(cls, project: Project) -> list[dict]:
+    def variants(cls, project: Project) -> list[JobTypeVariantDescription]:
         return [
-            {
-                "key": key,
-                "name": task_cls.name,
-                "description": describe(task_cls),
-                "config_schema": task_cls.config_schema.schema(),
-            }
+            JobTypeVariantDescription(
+                key=key,
+                name=task_cls.name,
+                description=str(task_cls.description),
+                config_schema=task_cls.config_schema.schema(),
+            )
             for key, task_cls in cls.enabled_tasks(project).items()
         ]
 
@@ -1118,8 +1145,7 @@ class RegroupEventsJob(JobType):
     key = "regroup_events"
     description = _("Regroup a station's captures into sessions using the project's session time gap.")
     user_creatable = True
-    required_fields = ("deployment",)
-    scope_fields = (STATION_SCOPE,)
+    config_schema = StationJobConfig
 
     @classmethod
     def run(cls, job: "Job"):
@@ -1166,6 +1192,21 @@ VALID_JOB_TYPES = [
     DataExportJob,
     PostProcessingJob,
 ]
+
+
+def describe_job_types(project: Project, user) -> list[JobTypeDescription]:
+    """The job types ``user`` may pick in the Create Job dialog for ``project``.
+
+    A type the user may not run is still listed with ``allowed=False``, so the dialog can show it
+    disabled. Permissions are read once for the whole list.
+    """
+    perms = set(get_perms(user, project))
+    described = (
+        job_type.describe(project, allowed=user.is_superuser or f"run_{job_type.key}_job" in perms)
+        for job_type in VALID_JOB_TYPES
+        if job_type.user_creatable
+    )
+    return [description for description in described if description]
 
 
 def get_job_type_by_key(key: str) -> type[JobType] | None:
