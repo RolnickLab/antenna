@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections.abc import Callable
 
 import numpy as np
@@ -10,6 +11,9 @@ from django.utils import timezone
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,7 @@ def make_classifications_filtered_by_taxa_list(
     task_logger: logging.Logger = logger,
     on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
@@ -180,6 +185,7 @@ def make_classifications_filtered_by_taxa_list(
                     terminal=True,
                     timestamp=classification.timestamp,
                     applied_to=classification,
+                    job=job,
                     created_at=timestamp,
                     updated_at=timestamp,
                 )
@@ -368,6 +374,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             task_logger=self.logger,
             on_setup=_on_setup,
             on_batch=_on_batch,
+            job=self.job,
         )
         self.report_stage_metrics(metrics)
         self.logger.info(f"=== Completed {self.name} ===")

@@ -31,6 +31,9 @@ from ami.main.models_future.tracks import lock_sessions
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
+
 
 class TrackingConfig(pydantic.BaseModel):
     """Scope and tunables for a tracking run.
@@ -236,7 +239,9 @@ def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algor
     return True
 
 
-def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) -> Classification | None:
+def record_tracking_determination(
+    occurrence: Occurrence, algorithm: Algorithm, job: "Job | None" = None
+) -> Classification | None:
     """Leave a terminal classification, attributed to the tracking algorithm, when a merge
     changed the occurrence's determination, so the history shows what tracking decided.
 
@@ -254,13 +259,17 @@ def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) 
         score=winner.score,
         terminal=True,
         algorithm=algorithm,
+        job=job,
         timestamp=timezone.now(),
         applied_to=winner,
     )
 
 
 def assign_occurrences_from_detection_chains(
-    source_images: list[SourceImage], logger: logging.Logger, record_as: Algorithm | None = None
+    source_images: list[SourceImage],
+    logger: logging.Logger,
+    record_as: Algorithm | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
@@ -387,7 +396,7 @@ def assign_occurrences_from_detection_chains(
             if update_occurrence_determination(keeper, save=False):
                 keeper.save(update_determination=False, update_fields=["determination", "determination_score"])
             if record_as is not None and keeper.determination_id != previous_determination_id:
-                if record_tracking_determination(keeper, record_as) is not None:
+                if record_tracking_determination(keeper, record_as, job=job) is not None:
                     determinations_recorded += 1
             settled.add(keeper.pk)
 
@@ -605,6 +614,7 @@ def assign_occurrences_by_tracking_images(
     config: TrackingConfig,
     progress_cb: typing.Callable[[float], None] | None = None,
     record_as: Algorithm | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
@@ -645,7 +655,7 @@ def assign_occurrences_by_tracking_images(
                 "due to missing image dimensions."
             )
 
-        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as)
+        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as, job=job)
 
     counters["links_created"] = links
     counters["confirmed_tracks_left_unchanged"] = confirmed_tracks
@@ -786,6 +796,7 @@ class TrackingTask(BasePostProcessingTask):
                     algorithm=algorithm,
                     config=self.config,
                     record_as=self.algorithm,
+                    job=self.job,
                     progress_cb=_stage_progress,
                 )
                 totals["events_tracked"] += 1
