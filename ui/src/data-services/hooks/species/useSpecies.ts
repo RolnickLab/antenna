@@ -16,9 +16,9 @@ export const useSpecies = (
   isFetching: boolean
   error?: unknown
 } => {
-  // Only the caller that renders the Example column asks for example occurrences, and
-  // never under a capture-set (collection) filter: on that path the example subqueries
-  // degrade to per-row scans, which is why the backend keeps them opt-in.
+  // Only the caller that renders the Example or peak columns asks for them, and never
+  // under a capture-set (collection) filter: on that path their subqueries degrade to
+  // per-row scans, which is why the backend keeps them opt-in.
   const hasCollectionFilter = params?.filters?.some(
     (filter) => filter.field === 'collection' && filter.value
   )
@@ -26,6 +26,7 @@ export const useSpecies = (
     ...params,
     withExampleOccurrences:
       !!params?.withExampleOccurrences && !hasCollectionFilter,
+    withPeakCounts: !!params?.withPeakCounts && !hasCollectionFilter,
   }
   const fetchUrl = getFetchUrl({
     collection: API_ROUTES.SPECIES,

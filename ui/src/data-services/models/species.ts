@@ -123,6 +123,32 @@ export class Species extends Taxon {
     return this._species.verified_count ?? 0
   }
 
+  get peakCapture():
+    | { id: string; sessionId: string; numDetections: number }
+    | undefined {
+    const peak = this._species.peak_capture
+
+    if (!peak) {
+      return undefined
+    }
+
+    return {
+      id: `${peak.id}`,
+      sessionId: `${peak.event_id}`,
+      numDetections: peak.detections_count,
+    }
+  }
+
+  get peakSession(): { id: string; numOccurrences: number } | undefined {
+    const peak = this._species.peak_event
+
+    if (!peak) {
+      return undefined
+    }
+
+    return { id: `${peak.id}`, numOccurrences: peak.occurrences_count }
+  }
+
   get score(): number | undefined {
     const score = this._species.best_determination_score
 

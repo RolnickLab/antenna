@@ -170,6 +170,57 @@ export const columns: (project: {
     ),
   },
   {
+    id: 'peak-session',
+    name: translate(STRING.FIELD_LABEL_PEAK_SESSION),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) =>
+      item.peakSession ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId,
+              sessionId: item.peakSession.id,
+            }),
+          })}
+        >
+          <BasicTableCell
+            value={item.peakSession.numOccurrences}
+            theme={CellTheme.Bubble}
+          />
+        </Link>
+      ) : (
+        <BasicTableCell />
+      ),
+  },
+  {
+    id: 'peak-capture',
+    name: translate(STRING.FIELD_LABEL_PEAK_CAPTURE),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) =>
+      item.peakCapture ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId,
+              sessionId: item.peakCapture.sessionId,
+            }),
+            filters: { capture: item.peakCapture.id },
+          })}
+        >
+          <BasicTableCell
+            value={item.peakCapture.numDetections}
+            theme={CellTheme.Bubble}
+          />
+        </Link>
+      ) : (
+        <BasicTableCell />
+      ),
+  },
+  {
     id: 'best-determination-score',
     name: translate(STRING.FIELD_LABEL_BEST_SCORE),
     sortField: 'best_determination_score',

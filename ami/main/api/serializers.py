@@ -641,6 +641,21 @@ class ExampleOccurrenceSerializer(serializers.Serializer):
         return get_media_url(path) if path else None
 
 
+class TaxonPeakEventSerializer(serializers.Serializer):
+    """The session in which a taxon had the most occurrences."""
+
+    id = serializers.IntegerField()
+    occurrences_count = serializers.IntegerField()
+
+
+class TaxonPeakCaptureSerializer(serializers.Serializer):
+    """The capture in which a taxon had the most detections at once."""
+
+    id = serializers.IntegerField()
+    event_id = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
@@ -653,6 +668,9 @@ class TaxonListSerializer(DefaultSerializer):
     example_occurrence = serializers.SerializerMethodField()
     best_scoring_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
     last_detected_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
+    # Where the taxon peaked. NULL unless the request sets ?with_peak_counts=true.
+    peak_event = TaxonPeakEventSerializer(read_only=True, allow_null=True)
+    peak_capture = TaxonPeakCaptureSerializer(read_only=True, allow_null=True)
 
     def get_tags(self, obj):
         tag_list = getattr(obj, "prefetched_tags", [])
@@ -680,6 +698,8 @@ class TaxonListSerializer(DefaultSerializer):
             "example_occurrence",
             "best_scoring_occurrence_id",
             "last_detected_occurrence_id",
+            "peak_event",
+            "peak_capture",
             "tags",
             "last_detected",
             "best_determination_score",
@@ -1027,6 +1047,8 @@ class TaxonSerializer(DefaultSerializer):
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     tags = serializers.SerializerMethodField()
     summary_data = serializers.SerializerMethodField()
+    peak_event = TaxonPeakEventSerializer(read_only=True, allow_null=True)
+    peak_capture = TaxonPeakCaptureSerializer(read_only=True, allow_null=True)
 
     def get_tags(self, obj):
         # Use prefetched tags
@@ -1061,6 +1083,8 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_credit",
             "summary_data",
             "common_name_en",
+            "peak_event",
+            "peak_capture",
         ]
 
 

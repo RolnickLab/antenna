@@ -22,7 +22,7 @@ from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, JSONObject
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
@@ -4197,6 +4197,78 @@ class TaxonQuerySet(BaseQuerySet):
                 default=models.Subquery(best_unverified, output_field=models.IntegerField()),
                 output_field=models.IntegerField(),
             ),
+        )
+
+    def with_peak_counts(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        occurrence_filters: models.Q,
+        detection_occurrence_filters: models.Q,
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
+    ):
+        """Annotate where each taxon peaked: ``peak_event`` is the session with the most
+        occurrences of it (``{"id", "occurrences_count"}``) and ``peak_capture`` the capture
+        with the most detections of it (``{"id", "event_id", "detections_count"}``). Both are
+        NULL for a taxon with no matching occurrences.
+
+        Sessions count occurrences because one individual spans many captures; captures
+        count detections because that is how many were in the frame at once. Both match by
+        exact determination and apply the project's default filters, like the
+        observation-count columns.
+
+        Two correlated subqueries per row, index-served on the default path. Measured on a
+        234k-occurrence project they add ~0.6 s to a worst-case first page of the taxa list,
+        so the view runs them on detail views and only on request for lists.
+        """
+        occurrence_q = models.Q(
+            occurrence_filters, determination_id=OuterRef("id")
+        ) & build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        peak_event = (
+            Occurrence.objects.filter(occurrence_q)
+            .values("event_id")
+            .annotate(occurrences_count=models.Count("id"))
+            .order_by("-occurrences_count", "event_id")
+            .annotate(peak=JSONObject(id=models.F("event_id"), occurrences_count=models.F("occurrences_count")))
+            .values("peak")[:1]
+        )
+
+        detection_q = models.Q(
+            detection_occurrence_filters, occurrence__determination_id=OuterRef("id")
+        ) & build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="occurrence",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        peak_capture = (
+            Detection.objects.filter(detection_q)
+            .values("source_image_id")
+            # Every detection in a capture shares the capture's session, so Max is just a
+            # way to select event_id without adding it to the GROUP BY.
+            .annotate(detections_count=models.Count("id"), event_id=models.Max("occurrence__event_id"))
+            .order_by("-detections_count", "source_image_id")
+            .annotate(
+                peak=JSONObject(
+                    id=models.F("source_image_id"),
+                    event_id=models.F("event_id"),
+                    detections_count=models.F("detections_count"),
+                )
+            )
+            .values("peak")[:1]
+        )
+        return self.annotate(
+            peak_event=models.Subquery(peak_event, output_field=models.JSONField()),
+            peak_capture=models.Subquery(peak_capture, output_field=models.JSONField()),
         )
 
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
