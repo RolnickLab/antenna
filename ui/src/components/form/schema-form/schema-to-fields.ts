@@ -1,4 +1,5 @@
 import { ServerConfigSchema } from 'data-services/models/job-type'
+import { STRING, translate } from 'utils/language'
 
 export type FieldKind =
   | 'integer'
@@ -102,22 +103,26 @@ export const validateNumber = (
   }
   const value = Number(raw)
   if (Number.isNaN(value)) {
-    return 'Enter a number'
+    return translate(STRING.MESSAGE_ENTER_NUMBER)
   }
   if (field.kind === 'integer' && !Number.isInteger(value)) {
-    return 'Enter a whole number'
+    return translate(STRING.MESSAGE_ENTER_WHOLE_NUMBER)
   }
   if (field.min !== undefined && value < field.min) {
-    return `Must be at least ${field.min}`
+    return translate(STRING.MESSAGE_VALUE_AT_LEAST, { value: field.min })
   }
   if (field.max !== undefined && value > field.max) {
-    return `Must be at most ${field.max}`
+    return translate(STRING.MESSAGE_VALUE_AT_MOST, { value: field.max })
   }
   if (field.exclusiveMin !== undefined && value <= field.exclusiveMin) {
-    return `Must be greater than ${field.exclusiveMin}`
+    return translate(STRING.MESSAGE_VALUE_GREATER_THAN, {
+      value: field.exclusiveMin,
+    })
   }
   if (field.exclusiveMax !== undefined && value >= field.exclusiveMax) {
-    return `Must be less than ${field.exclusiveMax}`
+    return translate(STRING.MESSAGE_VALUE_LESS_THAN, {
+      value: field.exclusiveMax,
+    })
   }
   return undefined
 }

@@ -87,6 +87,13 @@ const CreateJobForm = ({
     })
 
   const typeKey = watch('typeKey')
+  // A refetch can drop the selected type (for example a method turned off).
+  useEffect(() => {
+    if (!jobTypes.some((t) => t.key === typeKey)) {
+      setValue('typeKey', getDefaultTypeKey(jobTypes))
+      setValue('variantKey', '')
+    }
+  }, [jobTypes])
   const variantKey = watch('variantKey')
   const jobType = jobTypes.find((t) => t.key === typeKey)
   const variant = jobType?.variants.find((v) => v.key === variantKey)

@@ -1,3 +1,10 @@
+// A row from any list endpoint an entity picker pages through.
+export interface ServerEntityOption {
+  id: number | string
+  name?: string
+  source_images_count?: number
+}
+
 export interface ServerConfigSchemaProperty {
   title?: string
   description?: string

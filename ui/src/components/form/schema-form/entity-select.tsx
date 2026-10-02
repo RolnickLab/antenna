@@ -1,5 +1,6 @@
 import { API_URL } from 'data-services/constants'
 import { useAuthorizedQuery } from 'data-services/hooks/auth/useAuthorizedQuery'
+import { ServerEntityOption } from 'data-services/models/job-type'
 import { Select } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
@@ -11,7 +12,7 @@ interface EntityOption {
   label: string
 }
 
-const getLabel = (record: any): string => {
+const getLabel = (record: ServerEntityOption): string => {
   const name = record.name ?? `${record.id}`
   return typeof record.source_images_count === 'number'
     ? `${name} (${record.source_images_count.toLocaleString()})`
@@ -40,7 +41,9 @@ export const EntitySelect = ({
       Object.entries(entityFilters ?? {}).map(([k, v]) => [k, `${v}`])
     ),
   })
-  const { data, isLoading } = useAuthorizedQuery<{ results: any[] }>({
+  const { data, isLoading } = useAuthorizedQuery<{
+    results: ServerEntityOption[]
+  }>({
     queryKey: [entity, 'options', params.toString()],
     url: `${API_URL}/${entity}/?${params.toString()}`,
   })
