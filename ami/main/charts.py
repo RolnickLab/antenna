@@ -570,3 +570,34 @@ def relative_occurrences_per_month(project_pk: int, taxon_pk: int, request=None)
         "data": {"x": labels, "y": counts, "tickvals": tickvals},
         "type": "bar",
     }
+
+
+def event_detections_per_capture(event_pk: int):
+    """
+    Histogram of how many captures in a session had 0, 1, 2, ... detections, so a
+    reviewer can see at a glance whether the sheet was mostly empty or mostly crowded.
+
+    Uses the cached ``SourceImage.detections_count`` (project default filters applied);
+    captures without a computed count are skipped. Bins are contiguous from 0 to the
+    busiest capture so gaps show as empty bars rather than disappearing.
+    """
+    SourceImage = apps.get_model("main", "SourceImage")
+
+    captures_per_count = dict(
+        SourceImage.objects.filter(event_id=event_pk, detections_count__isnull=False)
+        .values_list("detections_count")
+        .annotate(num_captures=models.Count("id"))
+        .order_by("detections_count")
+    )
+
+    if captures_per_count:
+        counts = list(range(max(captures_per_count) + 1))
+        captures = [captures_per_count.get(count, 0) for count in counts]
+    else:
+        counts, captures = [], []
+
+    return {
+        "title": "Captures by number of detections",
+        "data": {"x": counts, "y": captures},
+        "type": "bar",
+    }
