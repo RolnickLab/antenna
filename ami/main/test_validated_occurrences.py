@@ -1,0 +1,352 @@
+"""Replaying confirmed occurrences and identifications onto another project.
+
+Every test exports from one project and imports into a second one that holds the same
+captures and boxes but, as a pipeline leaves them, one occurrence per detection and no
+confirmations. What a replay must preserve: the reviewer and time of each confirmation,
+the user and time of each identification, and the rule that a partially found occurrence
+is never confirmed.
+"""
+
+import dataclasses
+import datetime
+from unittest import mock
+
+from django.test import TestCase
+
+from ami.main.models import (
+    Detection,
+    Identification,
+    Occurrence,
+    SourceImage,
+    Taxon,
+    TaxonRank,
+    User,
+    group_images_into_events,
+)
+from ami.main.models_future.detection_matching import MATCH_EXACT, MATCH_IOU, MATCH_NO_CANDIDATE, bbox_iou
+from ami.main.models_future.tracks import verify_grouping
+from ami.main.models_future.validated_occurrences import (
+    OUTCOME_APPLIED,
+    OUTCOME_PARTIAL,
+    OUTCOME_UNCHANGED,
+    Bundle,
+    ImportOptions,
+    build_bundle,
+    grouping_reviews_supported,
+    import_bundle,
+    occurrence_detection_keys,
+    review_model,
+)
+from ami.tests.fixtures.main import create_taxa, setup_test_project
+
+CONFIRMED_AT = datetime.datetime(2024, 6, 10, 9, 30, 0)
+IDENTIFIED_AT = datetime.datetime(2024, 6, 9, 8, 0, 0)
+WITHDRAWN_AT = datetime.datetime(2024, 6, 8, 8, 0, 0)
+TRACK_BOX = [10.0, 10.0, 40.0, 40.0]
+OTHER_BOX = [100.0, 100.0, 140.0, 140.0]
+
+
+class ReplayTestCase(TestCase):
+    def setUp(self) -> None:
+        self.source_project, self.source_deployment = setup_test_project(reuse=False)
+        self.target_project, self.target_deployment = setup_test_project(reuse=False)
+        create_taxa(self.source_project)
+        self.taxon, self.other_taxon = list(
+            Taxon.objects.filter(rank=TaxonRank.SPECIES.name, projects=self.source_project).order_by("pk")[:2]
+        )
+        self.reviewer = User.objects.create_user(email="reviewer@example.org", name="Reviewer")  # type: ignore
+        self.identifier = User.objects.create_user(email="identifier@example.org")  # type: ignore[attr-defined]
+        self.source_captures = self._make_captures(self.source_deployment)
+        self.target_captures = self._make_captures(self.target_deployment)
+        self.track, self.identified = self._make_source_occurrences()
+
+    def _make_captures(self, deployment) -> list[SourceImage]:
+        start = datetime.datetime(2024, 6, 1, 22, 0)
+        captures = [
+            SourceImage.objects.create(
+                deployment=deployment,
+                project=deployment.project,
+                timestamp=start + datetime.timedelta(minutes=i),
+                path=f"replay/capture-{i}.jpg",
+                width=640,
+                height=480,
+            )
+            for i in range(6)
+        ]
+        group_images_into_events(deployment)
+        for capture in captures:
+            capture.refresh_from_db()
+        return captures
+
+    def _make_source_occurrences(self) -> tuple[Occurrence, Occurrence]:
+        """A confirmed four-frame track with two identifications, and an identified two-frame occurrence."""
+        track = self._occurrence_with_boxes(self.source_project, self.source_captures[:4], TRACK_BOX)
+        Identification.objects.create(occurrence=track, user=self.identifier, taxon=self.other_taxon)
+        Identification.objects.filter(occurrence=track).update(created_at=WITHDRAWN_AT, updated_at=WITHDRAWN_AT)
+        Identification.objects.create(occurrence=track, user=self.identifier, taxon=self.taxon, comment="sure")
+        Identification.objects.filter(occurrence=track, taxon=self.taxon).update(
+            created_at=IDENTIFIED_AT, updated_at=IDENTIFIED_AT
+        )
+        verify_grouping(track, self.reviewer, timestamp=CONFIRMED_AT)
+
+        identified = self._occurrence_with_boxes(self.source_project, self.source_captures[4:], OTHER_BOX)
+        Identification.objects.create(occurrence=identified, user=self.reviewer, taxon=self.taxon)
+        Identification.objects.filter(occurrence=identified).update(created_at=IDENTIFIED_AT, updated_at=IDENTIFIED_AT)
+        return Occurrence.objects.get(pk=track.pk), Occurrence.objects.get(pk=identified.pk)
+
+    def _occurrence_with_boxes(self, project, captures, bbox) -> Occurrence:
+        occurrence = Occurrence.objects.create(
+            event=captures[0].event, deployment=captures[0].deployment, project=project
+        )
+        for capture in captures:
+            Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=bbox, occurrence=occurrence
+            )
+        occurrence.save()
+        return occurrence
+
+    def _populate_target(self, shift: float = 0.0, skip_capture_index: int | None = None) -> None:
+        """One occurrence per detection, the way a detector run leaves a project."""
+        for index, capture in enumerate(self.target_captures):
+            if index == skip_capture_index:
+                continue
+            bbox = [coordinate + shift for coordinate in (TRACK_BOX if index < 4 else OTHER_BOX)]
+            self._occurrence_with_boxes(self.target_project, [capture], bbox)
+
+    def _replay(self, **options) -> tuple[Bundle, object]:
+        bundle = Bundle.from_dict(build_bundle(self.source_project).as_dict())
+        return bundle, import_bundle(self.target_project, bundle, ImportOptions(**options))
+
+    def _target_track(self) -> Occurrence:
+        return Occurrence.objects.get(project=self.target_project, grouping_verified_at__isnull=False)
+
+
+class TestReplayConfirmedOccurrences(ReplayTestCase):
+    def test_the_bundle_names_detections_by_capture_and_box_only(self):
+        bundle = build_bundle(self.source_project)
+
+        self.assertEqual({record.ref for record in bundle.occurrences}, {str(self.track.pk), str(self.identified.pk)})
+        track = next(record for record in bundle.occurrences if record.ref == str(self.track.pk))
+        self.assertEqual([key.capture_path for key in track.detections], [c.path for c in self.source_captures[:4]])
+        self.assertEqual(track.detections[0].bbox, tuple(TRACK_BOX))
+        self.assertEqual(track.confirmation.user_email, self.reviewer.email)
+        self.assertEqual(track.confirmation.verified_at, CONFIRMED_AT.isoformat())
+        self.assertEqual(len(track.identifications), 2)
+
+    def test_a_round_trip_rebuilds_the_track_under_the_original_reviewer_and_time(self):
+        self._populate_target()
+
+        _, report = self._replay(execute=True)
+
+        self.assertEqual(report.summary()["detections"], {MATCH_EXACT: 6})
+        self.assertEqual(report.outcome_counts(), {OUTCOME_APPLIED: 2})
+        rebuilt = self._target_track()
+        self.assertEqual(
+            [key.capture_path for key in occurrence_detection_keys(rebuilt)],
+            [c.path for c in self.target_captures[:4]],
+        )
+        self.assertEqual(rebuilt.grouping_verified_at, CONFIRMED_AT, "The confirmation keeps the exported time")
+        self.assertEqual(rebuilt.grouping_verified_by, self.reviewer)
+        self.assertEqual(Occurrence.objects.filter(project=self.target_project).count(), 3, "4 singles became 1 track")
+
+    def test_verify_grouping_accepts_the_time_of_a_confirmation_made_elsewhere(self):
+        occurrence = self._occurrence_with_boxes(self.target_project, self.target_captures[:1], TRACK_BOX)
+
+        verify_grouping(occurrence, self.reviewer, timestamp=CONFIRMED_AT)
+
+        occurrence.refresh_from_db()
+        self.assertEqual(
+            (occurrence.grouping_verified_at, occurrence.grouping_verified_by), (CONFIRMED_AT, self.reviewer)
+        )
+
+    def test_identifications_keep_their_user_time_and_withdrawn_state(self):
+        self._populate_target()
+
+        self._replay(execute=True)
+
+        rebuilt = self._target_track()
+        current = Identification.objects.get(occurrence=rebuilt, withdrawn=False)
+        self.assertEqual(
+            (current.user, current.taxon, current.created_at, current.comment),
+            (self.identifier, self.taxon, IDENTIFIED_AT, "sure"),
+        )
+        withdrawn = Identification.objects.get(occurrence=rebuilt, withdrawn=True)
+        self.assertEqual((withdrawn.taxon, withdrawn.created_at), (self.other_taxon, WITHDRAWN_AT))
+        self.assertEqual(rebuilt.determination, self.taxon)
+        other = Identification.objects.get(user=self.reviewer, occurrence__project=self.target_project)
+        self.assertEqual(other.occurrence.detections.first().source_image.path, self.target_captures[4].path)
+        self.assertIsNone(other.occurrence.grouping_verified_at, "An identified-only occurrence is not confirmed")
+
+    def test_boxes_that_moved_a_little_match_by_overlap(self):
+        self._populate_target(shift=2.0)
+        self.assertGreater(bbox_iou(TRACK_BOX, [c + 2.0 for c in TRACK_BOX]), 0.7)
+
+        _, report = self._replay(execute=True)
+
+        self.assertEqual(report.summary()["detections"], {MATCH_IOU: 6})
+        self.assertEqual(self._target_track().grouping_verified_at, CONFIRMED_AT)
+
+    def test_a_stricter_overlap_threshold_leaves_moved_boxes_unmatched(self):
+        self._populate_target(shift=2.0)
+
+        _, report = self._replay(execute=True, iou_threshold=0.9)
+
+        self.assertEqual(report.summary()["detections"], {MATCH_NO_CANDIDATE: 6})
+        self.assertEqual(report.outcome_counts(), {OUTCOME_PARTIAL: 2})
+        self.assertFalse(
+            Occurrence.objects.filter(project=self.target_project, grouping_verified_at__isnull=False).exists()
+        )
+
+    def test_an_occurrence_with_a_missing_detection_is_reported_partial_and_not_confirmed(self):
+        self._populate_target(skip_capture_index=2)
+
+        _, report = self._replay(execute=True)
+
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertEqual(track_outcome.outcome, OUTCOME_PARTIAL)
+        self.assertEqual(track_outcome.match_counts, {MATCH_EXACT: 3, MATCH_NO_CANDIDATE: 1})
+        self.assertFalse(track_outcome.confirmed)
+        self.assertFalse(
+            Occurrence.objects.filter(project=self.target_project, grouping_verified_at__isnull=False).exists()
+        )
+        self.assertEqual(
+            Occurrence.objects.filter(project=self.target_project).count(), 5, "The grouping was left alone"
+        )
+        self.assertEqual(
+            track_outcome.identifications_applied, 2, "What people said still lands on the nearest occurrence"
+        )
+
+    def test_a_hand_drawn_box_can_be_recreated_on_its_capture(self):
+        self._populate_target(skip_capture_index=2)
+
+        _, report = self._replay(execute=True, create_missing_detections=True)
+
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertEqual((track_outcome.outcome, track_outcome.created), (OUTCOME_APPLIED, 1))
+        rebuilt = self._target_track()
+        self.assertEqual(rebuilt.detections.count(), 4)
+        recreated = rebuilt.detections.get(source_image=self.target_captures[2])
+        self.assertEqual((recreated.bbox, recreated.timestamp), (TRACK_BOX, self.target_captures[2].timestamp))
+
+    def test_rerunning_the_import_changes_nothing(self):
+        self._populate_target()
+        self._replay(execute=True)
+        before = (
+            Occurrence.objects.filter(project=self.target_project).count(),
+            Identification.objects.filter(occurrence__project=self.target_project).count(),
+            self._target_track().grouping_verified_at,
+        )
+
+        _, report = self._replay(execute=True)
+
+        self.assertEqual(report.outcome_counts(), {OUTCOME_UNCHANGED: 2})
+        self.assertEqual(report.summary()["identifications_skipped"], 3)
+        self.assertEqual(report.summary()["identifications_applied"], 0)
+        after = (
+            Occurrence.objects.filter(project=self.target_project).count(),
+            Identification.objects.filter(occurrence__project=self.target_project).count(),
+            self._target_track().grouping_verified_at,
+        )
+        self.assertEqual(before, after)
+
+    def test_a_dry_run_reports_the_plan_and_writes_nothing(self):
+        self._populate_target()
+
+        _, report = self._replay(execute=False)
+
+        self.assertEqual(report.outcome_counts(), {OUTCOME_APPLIED: 2})
+        self.assertEqual(report.summary()["detections"], {MATCH_EXACT: 6})
+        self.assertTrue(next(o for o in report.outcomes if o.ref == str(self.track.pk)).confirmed, "would confirm")
+        self.assertEqual(Occurrence.objects.filter(project=self.target_project).count(), 6)
+        self.assertFalse(Identification.objects.filter(occurrence__project=self.target_project).exists())
+
+    def test_a_missing_reviewer_or_taxon_is_reported_and_skipped(self):
+        self._populate_target()
+        bundle = build_bundle(self.source_project)
+        track = next(record for record in bundle.occurrences if record.ref == str(self.track.pk))
+        track.confirmation.user_email = "nobody@example.org"
+        first = track.identifications[0]
+        track.identifications[0] = dataclasses.replace(
+            first, taxon=dataclasses.replace(first.taxon, name="Not a real taxon", gbif_taxon_key=None)
+        )
+
+        report = import_bundle(self.target_project, bundle, ImportOptions(execute=True))
+
+        self.assertEqual(report.missing_users, ["nobody@example.org"])
+        self.assertEqual([t["name"] for t in report.missing_taxa], ["Not a real taxon"])
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertFalse(track_outcome.confirmed)
+        self.assertEqual((track_outcome.identifications_applied, track_outcome.identifications_skipped), (1, 1))
+
+
+class TestConfirmationNeedsItsReview(ReplayTestCase):
+    """A cached confirmation without its review row is re-confirmed so the review gets written."""
+
+    def test_a_cache_only_confirmation_is_reconfirmed_through_verify_grouping(self):
+        self._populate_target()
+        self._replay(execute=True)
+        rebuilt = self._target_track()
+
+        with mock.patch(
+            "ami.main.models_future.validated_occurrences._has_current_grouping_review", return_value=False
+        ):
+            with mock.patch(
+                "ami.main.models_future.validated_occurrences.verify_grouping", wraps=verify_grouping
+            ) as spied:
+                _, report = self._replay(execute=True)
+
+        spied.assert_called_once_with(rebuilt, self.reviewer, timestamp=CONFIRMED_AT)
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertEqual((track_outcome.outcome, track_outcome.confirmed), (OUTCOME_APPLIED, True))
+        self.assertEqual(self._target_track().grouping_verified_at, CONFIRMED_AT)
+
+    def test_a_confirmation_with_its_review_is_left_alone(self):
+        self._populate_target()
+        self._replay(execute=True)
+
+        with mock.patch("ami.main.models_future.validated_occurrences.verify_grouping") as spied:
+            _, report = self._replay(execute=True)
+
+        spied.assert_not_called()
+        self.assertEqual(report.outcome_counts(), {OUTCOME_UNCHANGED: 2})
+
+    def test_a_review_table_without_the_grouping_aspect_falls_back_to_the_cache(self):
+        class aspect_field:
+            choices = [("identification", "Identification"), ("comment", "Comment")]
+
+        class meta:
+            @staticmethod
+            def get_field(name):
+                return aspect_field
+
+        class review_table:
+            _meta = meta
+
+        with mock.patch("ami.main.models_future.validated_occurrences.review_model", return_value=review_table):
+            self.assertFalse(grouping_reviews_supported())
+            self._populate_target()
+            self._replay(execute=True)
+            with mock.patch("ami.main.models_future.validated_occurrences.verify_grouping") as spied:
+                _, report = self._replay(execute=True)
+
+        spied.assert_not_called()
+        self.assertEqual(report.outcome_counts(), {OUTCOME_UNCHANGED: 2})
+
+    def test_on_a_schema_with_grouping_reviews_the_review_row_is_written(self):
+        if not grouping_reviews_supported():
+            self.skipTest("This branch does not keep grouping confirmations as reviews")
+        self._populate_target()
+        self._replay(execute=True)
+        rebuilt = self._target_track()
+        reviews = review_model().objects.filter(occurrence=rebuilt, aspect="grouping", user=self.reviewer)
+        self.assertEqual(reviews.filter(is_current=True, withdrawn=False, timestamp=CONFIRMED_AT).count(), 1)
+
+        # An occurrence confirmed before reviews existed: the cache is set, no review row.
+        reviews.delete()
+        _, report = self._replay(execute=True)
+
+        self.assertEqual(reviews.filter(is_current=True, withdrawn=False, timestamp=CONFIRMED_AT).count(), 1)
+        track_outcome = next(o for o in report.outcomes if o.ref == str(self.track.pk))
+        self.assertTrue(track_outcome.confirmed)
+        _, report = self._replay(execute=True)
+        self.assertEqual(report.outcome_counts(), {OUTCOME_UNCHANGED: 2})
