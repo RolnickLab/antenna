@@ -17,7 +17,9 @@ per vector: source, row in that source's matrix, the detection's natural key) an
 ``manifest.json`` (format version, algorithm, vector key, per-source count and dimensions).
 On import, embeddings become ``DetectionEmbedding`` rows and classifier features go back
 onto the matching classification when the target has one; a feature vector whose detection
-has no classification from that algorithm is reported as skipped.
+has no classification from that algorithm is reported as skipped. Both stores are optional
+per branch: an export notes the ones it could not read in its manifest, and an import counts
+rows it has nowhere to put instead of failing.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from typing import Any
 
 import numpy as np
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Model
 
 from ami.main.models import Classification, Project
@@ -71,6 +74,7 @@ WRITE_BATCH = 1000
 SOURCE_EMBEDDING = "embedding"  # a DetectionEmbedding row
 SOURCE_CLASSIFIER_FEATURES = "classifier_features"  # Classification.features_2048
 SOURCES = (SOURCE_EMBEDDING, SOURCE_CLASSIFIER_FEATURES)
+CLASSIFIER_FEATURES_FIELD = "features_2048"
 
 
 def embedding_model() -> type[Model] | None:
@@ -83,6 +87,15 @@ def embedding_model() -> type[Model] | None:
 
 def _model_field_names(model: type[Model]) -> set[str]:
     return {field.name for field in model._meta.get_fields()}
+
+
+def classifier_features_available() -> bool:
+    """Whether classifications on this branch carry a feature vector (``features_2048``)."""
+    try:
+        Classification._meta.get_field(CLASSIFIER_FEATURES_FIELD)
+    except FieldDoesNotExist:
+        return False
+    return True
 
 
 def vectors_file(source: str) -> str:
@@ -108,6 +121,8 @@ class EmbeddingManifest:
     sources: dict[str, dict]
     count: int
     dtype: str
+    # Sources the exporting branch could not read, with the reason, so an empty source is not a surprise.
+    skipped_sources: dict[str, str] = dataclasses.field(default_factory=dict)
     project_name: str | None = None
     exported_at: str = dataclasses.field(default_factory=lambda: datetime.datetime.now().isoformat())
     version: int = EMBEDDINGS_VERSION
@@ -163,10 +178,18 @@ def export_embeddings(
     within a source each detection appears once. Returns the manifest written.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    readers = {
-        SOURCE_EMBEDDING: _embedding_rows(project, algorithm, vector_key),
-        SOURCE_CLASSIFIER_FEATURES: _classifier_feature_rows(project, algorithm),
-    }
+    readers: dict[str, Iterator[tuple[DetectionKey, Any]]] = {}
+    skipped: dict[str, str] = {}
+    if embedding_model() is not None:
+        readers[SOURCE_EMBEDDING] = _embedding_rows(project, algorithm, vector_key)
+    else:
+        skipped[SOURCE_EMBEDDING] = "this branch has no DetectionEmbedding table"
+    if classifier_features_available():
+        readers[SOURCE_CLASSIFIER_FEATURES] = _classifier_feature_rows(project, algorithm)
+    else:
+        skipped[
+            SOURCE_CLASSIFIER_FEATURES
+        ] = f"classifications on this branch have no {CLASSIFIER_FEATURES_FIELD} field"
     sources: dict[str, dict] = {}
     with (directory / INDEX_FILE).open("w", newline="") as index_file:
         writer = csv.writer(index_file)
@@ -205,6 +228,7 @@ def export_embeddings(
         sources=sources,
         count=sum(entry["count"] for entry in sources.values()),
         dtype=dtype,
+        skipped_sources=skipped,
         project_name=project.name,
     )
     (directory / MANIFEST_FILE).write_text(json.dumps(manifest.as_dict(), indent=1))
@@ -255,6 +279,8 @@ class EmbeddingImportReport:
     replaced: Counter = dataclasses.field(default_factory=Counter)  # per source
     # Classifier features whose detection has no classification from the algorithm on the target.
     skipped_no_classification: int = 0
+    # Rows of a source the target branch has no column or table for.
+    skipped_no_field: Counter = dataclasses.field(default_factory=Counter)  # per source
 
     def summary(self) -> dict:
         return {
@@ -266,6 +292,7 @@ class EmbeddingImportReport:
             "skipped_existing": dict(self.skipped_existing),
             "replaced": dict(self.replaced),
             "skipped_no_classification": self.skipped_no_classification,
+            "skipped_no_field": dict(self.skipped_no_field),
         }
 
 
@@ -288,11 +315,33 @@ def _write_embeddings(
     replace: bool,
     report: EmbeddingImportReport,
 ) -> None:
+    """Store embedding rows, through the model's own insert-mostly writer where it has one.
+
+    ``DetectionEmbedding.objects.store`` (the settled schema) leaves a row holding the same
+    vector alone and replaces one holding a different vector, so ``replace`` is implied there.
+    The draft table has no such writer; rows are compared by hand and ``replace`` decides.
+    """
     model = embedding_model()
     if model is None:
         raise RuntimeError("This branch has no DetectionEmbedding table; embedding vectors cannot be imported here.")
     fields = _model_field_names(model)
+
+    def build(row: int, detection_id: int):
+        values: dict[str, Any] = {"detection_id": detection_id, "algorithm": algorithm, "vector": matrix[row].tolist()}
+        # Fields the settled schema has; absent on the draft table.
+        if "key" in fields:
+            values["key"] = vector_key
+        if "project" in fields:
+            values["project"] = project
+        return model(**values)
+
+    store = getattr(model.objects, "store", None)
     for chunk in _chunks(found, WRITE_BATCH):
+        if store is not None:
+            inserted, unchanged = store(build(row, detection_id) for row, detection_id in chunk)
+            report.written[SOURCE_EMBEDDING] += inserted
+            report.skipped_existing[SOURCE_EMBEDDING] += unchanged
+            continue
         detection_ids = [detection_id for _, detection_id in chunk]
         existing = model.objects.filter(detection_id__in=detection_ids, algorithm=algorithm)
         if "key" in fields:
@@ -301,22 +350,8 @@ def _write_embeddings(
         if replace and existing_ids:
             existing.delete()
             report.replaced[SOURCE_EMBEDDING] += len(existing_ids)
-        rows = []
-        for row, detection_id in chunk:
-            if detection_id in existing_ids and not replace:
-                report.skipped_existing[SOURCE_EMBEDDING] += 1
-                continue
-            values: dict[str, Any] = {
-                "detection_id": detection_id,
-                "algorithm": algorithm,
-                "vector": matrix[row].tolist(),
-            }
-            # Fields the settled schema adds; absent on the draft table.
-            if "key" in fields:
-                values["key"] = vector_key
-            if "project" in fields:
-                values["project"] = project
-            rows.append(model(**values))
+        rows = [build(row, detection_id) for row, detection_id in chunk if detection_id not in existing_ids or replace]
+        report.skipped_existing[SOURCE_EMBEDDING] += len(chunk) - len(rows)
         model.objects.bulk_create(rows, batch_size=WRITE_BATCH)
         report.written[SOURCE_EMBEDDING] += len(rows)
 
@@ -368,7 +403,8 @@ def import_embeddings(
 
     Detections are found by natural key. A vector the target already holds (an embedding
     from the same algorithm and key, or a classification that already has features) is
-    skipped unless ``replace`` is set. A dry run only matches.
+    skipped unless ``replace`` is set. Rows of a source this branch has no table or column
+    for are counted as ``skipped_no_field``. A dry run only matches.
     """
     manifest = EmbeddingManifest.read(directory)
     algorithm = algorithm or resolve_algorithm(manifest.algorithm_key)
@@ -393,11 +429,17 @@ def import_embeddings(
         if match.found:
             found_by_source[entry.source].append((entry.row, match.detection_id))
     if found_by_source[SOURCE_EMBEDDING]:
-        matrix = _load_matrix(directory, manifest, SOURCE_EMBEDDING)
-        _write_embeddings(
-            project, algorithm, manifest.vector_key, matrix, found_by_source[SOURCE_EMBEDDING], replace, report
-        )
+        if embedding_model() is None:
+            report.skipped_no_field[SOURCE_EMBEDDING] += len(found_by_source[SOURCE_EMBEDDING])
+        else:
+            matrix = _load_matrix(directory, manifest, SOURCE_EMBEDDING)
+            _write_embeddings(
+                project, algorithm, manifest.vector_key, matrix, found_by_source[SOURCE_EMBEDDING], replace, report
+            )
     if found_by_source[SOURCE_CLASSIFIER_FEATURES]:
-        matrix = _load_matrix(directory, manifest, SOURCE_CLASSIFIER_FEATURES)
-        _write_classifier_features(algorithm, matrix, found_by_source[SOURCE_CLASSIFIER_FEATURES], replace, report)
+        if not classifier_features_available():
+            report.skipped_no_field[SOURCE_CLASSIFIER_FEATURES] += len(found_by_source[SOURCE_CLASSIFIER_FEATURES])
+        else:
+            matrix = _load_matrix(directory, manifest, SOURCE_CLASSIFIER_FEATURES)
+            _write_classifier_features(algorithm, matrix, found_by_source[SOURCE_CLASSIFIER_FEATURES], replace, report)
     return report

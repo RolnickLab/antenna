@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 BUNDLE_FORMAT = "antenna-validated-occurrences"
 BUNDLE_VERSION = 1
+GROUPING_ASPECT = "grouping"
 
 
 # -- Bundle schema ------------------------------------------------------------------------
@@ -426,19 +427,35 @@ def review_model():
         return None
 
 
-def _has_current_grouping_review(occurrence: Occurrence, user: User, verified_at: datetime.datetime) -> bool | None:
-    """Whether a standing grouping review by ``user`` at ``verified_at`` exists; None where reviews do not exist."""
+def grouping_reviews_supported() -> bool:
+    """Whether this branch records grouping confirmations as reviews.
+
+    The review table arrives before the tracking code that adds its ``grouping`` aspect, so
+    the table alone does not mean confirmations are kept there.
+    """
     model = review_model()
     if model is None:
+        return False
+    choices = model._meta.get_field("aspect").choices or []
+    return GROUPING_ASPECT in {value for value, _label in choices}
+
+
+def _has_current_grouping_review(occurrence: Occurrence, user: User, verified_at: datetime.datetime) -> bool | None:
+    """Whether a standing grouping review by ``user`` at ``verified_at`` exists; None where grouping reviews do not."""
+    if not grouping_reviews_supported():
         return None
-    return model.objects.filter(
-        occurrence=occurrence,
-        aspect="grouping",
-        user=user,
-        timestamp=verified_at,
-        is_current=True,
-        withdrawn=False,
-    ).exists()
+    return (
+        review_model()
+        .objects.filter(
+            occurrence=occurrence,
+            aspect=GROUPING_ASPECT,
+            user=user,
+            timestamp=verified_at,
+            is_current=True,
+            withdrawn=False,
+        )
+        .exists()
+    )
 
 
 def _is_confirmed_as(occurrence: Occurrence, user: User | None, verified_at: datetime.datetime | None) -> bool:

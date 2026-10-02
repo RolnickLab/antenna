@@ -72,5 +72,9 @@ class Command(BaseCommand):
                 f"  replaced: {summary['replaced']}"
                 f"  classifier features without a classification on the target: {summary['skipped_no_classification']}"
             )
+            if summary["skipped_no_field"]:
+                self.stdout.write(
+                    self.style.WARNING(f"  rows this branch has no table or column for: {summary['skipped_no_field']}")
+                )
         else:
             self.stdout.write("Nothing was changed. Re-run with --execute to write the vectors.")
