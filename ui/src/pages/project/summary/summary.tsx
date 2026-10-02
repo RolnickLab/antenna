@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { UserPermission } from 'utils/user/types'
 import { DeploymentsMap } from './deployments-map'
 import { ListItem } from './list-item'
@@ -176,9 +177,7 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
           <ListItem
             item={{
               image: { src: user.image, variant: 'user' },
-              title: user.name?.length
-                ? user.name
-                : translate(STRING.ANONYMOUS_USER),
+              title: getUserLabel(user),
             }}
             count={user.identification_count}
           />

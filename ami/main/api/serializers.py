@@ -1182,7 +1182,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
     has_features = serializers.BooleanField(
         read_only=True,
         allow_null=True,
-        help_text="Whether a feature embedding was stored for this classification.",
+        help_text="Whether this classification's algorithm stored a feature vector for its detection.",
     )
 
     def get_permissions(self, instance, instance_data):
@@ -1392,7 +1392,7 @@ class SourceImageSerializer(SourceImageListSerializer):
     )
     detections_with_features = serializers.IntegerField(
         read_only=True,
-        help_text="Valid detections with at least one classification that stored a feature embedding.",
+        help_text="Valid detections with a stored feature vector, as an embedding or on a classification.",
     )
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
@@ -1771,6 +1771,10 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     event = EventNestedSerializer(read_only=True)
     grouping_verified_by = UserNestedSerializer(read_only=True)
     grouping_summary = serializers.SerializerMethodField()
+    grouping_edited_since_verified = serializers.SerializerMethodField(
+        help_text="Whether the detections changed since the grouping was last confirmed. "
+        "False while it is confirmed, and when it never was."
+    )
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
@@ -1788,11 +1792,18 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "grouping_verified",
             "grouping_verified_at",
             "grouping_verified_by",
+            "grouping_edited_since_verified",
             "grouping_summary",
         ]
         read_only_fields = [
             "determination_score",
         ]
+
+    def get_grouping_edited_since_verified(self, obj: Occurrence) -> bool:
+        from ami.main.models_future.history import edited_since_track_complete_review
+
+        # Editing the detections withdraws the confirmation, so a confirmed grouping is unchanged.
+        return obj.grouping_verified_at is None and edited_since_track_complete_review(obj)
 
     @extend_schema_field(OccurrenceFrameSerializer(many=True))
     def get_detections(self, obj: Occurrence) -> list[dict]:
@@ -2307,6 +2318,52 @@ class OccurrenceGroupingSerializer(serializers.Serializer):
     grouping_verified_by = serializers.CharField(allow_null=True)
 
 
+class HistoryUserSerializer(serializers.Serializer):
+    """A person in an occurrence's history: name and picture only, never an email address."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    image = serializers.ImageField(allow_null=True)
+
+
+class HistoryAlgorithmSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+
+
+class HistoryJobSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class HistoryTaxonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.CharField()
+
+
+class OccurrenceHistoryEntrySerializer(serializers.Serializer):
+    """One entry of an occurrence's history, newest first. ``type`` says which table it came from."""
+
+    type = serializers.ChoiceField(choices=["algorithm_result", "review", "identification", "prediction"])
+    id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
+    timestamp = serializers.DateTimeField()
+    subtype = serializers.CharField(
+        allow_null=True,
+        help_text="For algorithm results and reviews: tracking, class_masking, size_filter or track_complete.",
+    )
+    user = HistoryUserSerializer(allow_null=True)
+    algorithm = HistoryAlgorithmSerializer(allow_null=True)
+    job = HistoryJobSerializer(allow_null=True)
+    taxon = HistoryTaxonSerializer(
+        allow_null=True, help_text="The identified or predicted taxon, or the determination after a result."
+    )
+    taxon_before = HistoryTaxonSerializer(allow_null=True, help_text="The determination before a result.")
+    score = serializers.FloatField(allow_null=True)
+    payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
+
+
 class OccurrencePathCaptureSerializer(serializers.Serializer):
     """The capture one frame of a path was measured against."""
 
@@ -2504,3 +2561,20 @@ class CaptureMatchesResponseSerializer(serializers.Serializer):
         "and then every score is null.",
     )
     detections = CaptureMatchSerializer(many=True)
+
+
+class SessionFeatureExtractorSerializer(serializers.Serializer):
+    """A feature extractor with vectors stored for a session's detections."""
+
+    id = serializers.IntegerField(source="algorithm.pk")
+    name = serializers.CharField(source="algorithm.name")
+    key = serializers.CharField(source="algorithm.key")
+    task_type = serializers.CharField(source="algorithm.task_type", allow_null=True)
+    embedding_dimensions = serializers.IntegerField(source="algorithm.embedding_dimensions", allow_null=True)
+    embeddings_count = serializers.IntegerField(help_text="Detections with a stored embedding from it.")
+    classification_vectors_count = serializers.IntegerField(
+        help_text="Classifications from it that carry a vector (data processed before embeddings were stored)."
+    )
+    is_default = serializers.BooleanField(
+        help_text="Whether tracking compares this extractor's vectors when none is chosen."
+    )
