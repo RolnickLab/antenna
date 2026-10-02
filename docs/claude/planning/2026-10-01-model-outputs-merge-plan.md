@@ -83,3 +83,31 @@ drop of the old table; the phase 1 migration handles the table drop, not the mig
   second must drop its copy, or the migration graph forks in two apps.
 - The pgvector extension version on managed databases is an operations task that gates phase
   1's `halfvec` column; confirm before opening the phase 1 PR for review.
+
+## Databases that already ran the draft schema (reported by the tracking session, 2026-10-01)
+
+| Database | Applied | Holds | Path |
+|---|---|---|---|
+| partner demo copy | `main/0100–0104` (draft `DetectionEmbedding`, `OccurrenceHistoryRecord`, the any-length repair) | ~55k detections with BioCLIP vectors at 100 % coverage (GPU time to recompute), tracking runs and their history; in use by the experiments session; a full dump exists | **data-preserving upgrade, never a backwards migrate** |
+| overnight demo stack | `main/0100–0103` | demo state | probably disposable; owner to confirm |
+| main development stack (production copy) | `main/0100` plus a stale `0101_detection_embedding` row from an old branch numbering; 113 embedding rows | nothing worth keeping (owner to confirm) | drop the table and the stale migration row, then migrate |
+| CI and test databases | various | nothing | drop and re-migrate |
+
+Consequences for the phase 1 and phase 2 migrations:
+
+- **New migration names**, not the draft's (`0102_detection_embedding`, `0103_occurrence_history`,
+  `0104_…`): a database that has those names applied would skip a same-named migration and keep
+  the old shape. Stale `django_migrations` rows for files that no longer exist are ignored by
+  Django; they can be deleted by hand on the development stack.
+- **Conditional SQL, upgrading in place.** Phase 1's migration wraps its DDL in `DO $$ … $$`
+  blocks (or `RunSQL` with `IF NOT EXISTS`) and `SeparateDatabaseAndState`: if
+  `main_detectionembedding` exists, add `job`, `project`, `key` (backfilled: `project` from the
+  detection's capture, `key = 'embedding'`, `job` from the existing `job_id` column), alter
+  `vector` to `halfvec`, add the new unique constraint and drop the old one; else create the
+  table in its final shape. The same pattern for phase 2: if `main_occurrencehistoryrecord`
+  exists, convert its `algorithm_result` rows into `AlgorithmResult` and its `review` rows into
+  `ValidationReview`, then drop it; else create the new tables only.
+- Test the upgrade path on a restore of the partner demo dump before the phase 1 PR leaves
+  draft, and on the overnight demo stack if it is kept.
+- The local-only branch `integration/tracking-demo-2` carries the old migrations and is rebuilt
+  on the new PRs rather than merged.
