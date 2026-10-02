@@ -23,9 +23,9 @@ def _pipeline():
     return pydantic.Field(..., title=_("Pipeline"), ami_widget="entity", ami_entity="ml/pipelines")
 
 
-def _capture_set(required: bool = True):
+def _capture_set():
     return pydantic.Field(
-        ... if required else None,
+        ...,
         title=_("Capture set"),
         ami_widget="entity",
         ami_entity="captures/collections",
@@ -38,10 +38,22 @@ def _station():
 
 class MLJobConfig(pydantic.BaseModel):
     pipeline_id: int = _pipeline()
-    source_image_collection_id: int | None = _capture_set(required=False)
+    source_image_collection_id: int | None = pydantic.Field(
+        None,
+        title=_("Capture set"),
+        description=_("The captures to process."),
+        ami_widget="entity",
+        ami_entity="captures/collections",
+    )
     # Set by other entry points (a single capture's "Process now", a station), not by the dialog.
     source_image_single_id: int | None = pydantic.Field(None, ami_widget="hidden", ami_entity="captures")
     deployment_id: int | None = pydantic.Field(None, ami_widget="hidden", ami_entity="deployments")
+
+    @pydantic.root_validator(skip_on_failure=True)
+    def _needs_captures(cls, values: dict) -> dict:
+        if not any(values.get(f) for f in ("source_image_collection_id", "source_image_single_id", "deployment_id")):
+            raise ValueError("Choose a capture set to process.")
+        return values
 
     class Config:
         extra = "forbid"

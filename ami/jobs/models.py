@@ -470,11 +470,14 @@ def _entity_queryset(entity: str, project: Project | None):
     from django.db.models import Q
 
     from ami.main.models import Event, Occurrence, TaxaList
+    from ami.ml.models import Algorithm
 
     scoped = {
         "captures/collections": lambda: SourceImageCollection.objects.filter(project=project),
         "deployments": lambda: Deployment.objects.filter(project=project),
         "captures": lambda: SourceImage.objects.filter(project=project),
+        # Algorithms are shared catalogue rows: any existing one may be named.
+        "ml/algorithms": lambda: Algorithm.objects.all(),
         # A pipeline is shared; a job may use the ones its project has enabled.
         "ml/pipelines": lambda: Pipeline.objects.filter(
             project_pipeline_configs__project=project, project_pipeline_configs__enabled=True

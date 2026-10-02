@@ -141,6 +141,10 @@ class TestCreateJobWithParams(JobTypesTestBase):
         response = self.post_masking(self.ml_manager, source_image_collection_id=self.other_collection.pk)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("source_image_collection_id", str(response.json()))
+        # Shared rows such as algorithms must at least exist.
+        response = self.post_masking(self.ml_manager, algorithm_id=999999)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("algorithm_id", str(response.json()))
         response = self.post_job(
             self.superuser,
             job_type_key="populate_captures_collection",
@@ -150,7 +154,11 @@ class TestCreateJobWithParams(JobTypesTestBase):
         # A pipeline the project has not enabled (or has switched off) counts as another project's.
         pipeline = Pipeline.objects.create(name="Not enabled here")
         ProjectPipelineConfig.objects.create(project=self.project, pipeline=pipeline, enabled=False)
-        response = self.post_job(self.superuser, job_type_key="ml", params={"config": {"pipeline_id": pipeline.pk}})
+        response = self.post_job(
+            self.superuser,
+            job_type_key="ml",
+            params={"config": {"pipeline_id": pipeline.pk, "source_image_collection_id": self.collection.pk}},
+        )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("pipeline_id", str(response.json()))
 
@@ -180,10 +188,24 @@ class TestCreateJobWithParams(JobTypesTestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("pipeline_id: field required", response.json()["params"]["config"])
 
-    def test_params_are_fixed_after_creation(self):
+    def test_an_ml_job_needs_something_to_process(self):
+        pipeline = Pipeline.objects.create(name="Enabled here")
+        pipeline.projects.add(self.project)
+        response = self.post_job(self.superuser, job_type_key="ml", params={"config": {"pipeline_id": pipeline.pk}})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Choose a capture set to process.", response.json()["params"]["config"])
+
+    def test_project_type_and_params_are_fixed_after_creation(self):
         job_id = self.post_masking(self.superuser).json()["id"]
-        self.client.patch(reverse_with_params("api:job-detail", args=[job_id]), {"params": {}}, format="json")
+        detail = reverse_with_params("api:job-detail", args=[job_id])
+        self.client.patch(detail, {"params": {}}, format="json")
         self.assertEqual(Job.objects.get(pk=job_id).params["task"], "class_masking")
+        # The viewset also scopes its lookup by a posted project_id, so a move may 404 first.
+        response = self.client.patch(detail, {"project_id": self.other_project.pk}, format="json")
+        self.assertIn(response.status_code, (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND))
+        self.assertEqual(Job.objects.get(pk=job_id).project_id, self.project.pk)
+        response = self.client.patch(detail, {"job_type_key": "ml"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_turning_a_method_off_stops_members_re_running_its_jobs(self):
         job = Job.objects.get(pk=self.post_masking(self.ml_manager).json()["id"])

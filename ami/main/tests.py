@@ -2689,7 +2689,7 @@ class TestRolePermissions(APITestCase):
                 "name": "Test Job",
                 "project_id": self.project.pk,
                 "job_type_key": "ml",
-                "params": {"config": {"pipeline_id": self.pipeline.pk}},
+                "params": {"config": {"pipeline_id": self.pipeline.pk, "deployment_id": self.deployment.pk}},
             },
             "identification": {"occurrence_id": occurrence_id, "taxon_id": taxon_id, "comment": "Identifier comment"},
             "project": {"name": "New Project", "description": "This is a test project."},

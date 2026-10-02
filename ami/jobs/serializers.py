@@ -166,7 +166,11 @@ class JobSerializer(JobListSerializer):
     def validate(self, attrs: dict) -> dict:
         attrs = super().validate(attrs)
         if self.instance is not None:
-            # Settings are fixed once the job exists.
+            # A job's project, type and settings are fixed once it exists: they were validated
+            # together, and the worker reads the settings against that project.
+            for field in ("project", "job_type_key"):
+                if field in attrs and attrs[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError({field: "Cannot be changed after the job is created."})
             attrs.pop("params", None)
             return attrs
 
