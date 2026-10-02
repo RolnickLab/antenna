@@ -1263,3 +1263,19 @@ correction in `payload` or via `identification`; `is_current` holds one active r
 `(target, aspect, user)`, history kept through `withdrawn`. Evaluation is then a symmetric join,
 `AlgorithmResult × ValidationReview` on the same target column with `kind = aspect`. Every earlier
 mention of `OccurrenceReview` reads as `ValidationReview`.
+
+### C.5 Amendment: sets as tags; `ResultsBatch` is a model
+
+Occurrence sets (symmetrical with capture sets) are coming, likely as tags, with tags on
+occurrences and taxa as well. Consequences: #1407's evaluation and training-set membership,
+cluster membership and "bulk annotate this cluster" become one mechanism (a tag applied to
+occurrences, carrying `job` when a run applied it and `user` when a person did); no cluster
+membership table is designed; "taxa in a list" filters for zero-shot become "taxa with a tag".
+The frozen detection-id snapshot inside a grouping review stays in the review payload.
+
+`ResultsBatch` is a real model in the `jobs` app, one row per batch per job: `job`, `batch_index`,
+`project`, `object_key`, `sha256`, `bytes`, `image_ids`, `status` (expected → written → ingested →
+failed), `ingested_at`, `keep`. The row is what makes ingest retryable per batch, lets a lost
+notification be recovered by listing rows still expected, stores the object key once instead of
+on every classification, and is what the admin metrics on kept and missing files count.
+`Classification.results_batch` + `results_index` point into it.
