@@ -6,13 +6,23 @@ extractor's vectors to compare. See #1417 for the original design.
 
 ## Storage
 
-- `DetectionEmbedding` (`ami/main/models.py`, migration `main/0102_detection_embedding.py`;
-  `main/0104` re-runs `ALTER COLUMN vector TYPE vector` for databases that applied an earlier
-  0102 draft with `vector(2048)`, which Django state cannot see):
-  one row per (detection, algorithm), unique constraint `unique_detection_embedding_per_algorithm`
-  (its index leads with `detection_id` and serves reads). `vector` is a pgvector column with
-  **no fixed dimension**: extractors differ (2048 for the moth classifier backbones, 1024 for BioCLIP).
-  `job` FK (SET_NULL) records the job that last stored the vector.
+- `DetectionEmbedding` (`ami/main/models.py`, migration `main/0102_detection_embeddings_and_output_jobs.py`):
+  concrete table under two abstract bases, `AlgorithmOutput` (algorithm, job, timestamp) and
+  `Embedding` (project, key, vector, `EmbeddingQuerySet`). One row per (detection, algorithm, key),
+  unique constraint `main_detectionembedding_unique_detection_algorithm_key` (its index leads with
+  `detection_id` and serves reads). `key` defaults to `embedding` (the backbone vector); vectors
+  are comparable only within one (algorithm, key). `vector` is an unsized pgvector `halfvec`
+  with `STORAGE EXTERNAL` (needs pgvector >= 0.7): extractors differ (2048 for the moth classifier
+  backbones, 1024 for BioCLIP). `job` FK is `RESTRICT` (a job with vectors cannot be deleted on
+  its own; `JobViewSet.perform_destroy` answers 409) and nullable because `save_results` can run
+  without a job. `project` is NOT NULL, filled from the detection's capture by
+  `fill_project_ids` (`ami/main/models_future/project_scope.py`) in `save()` and in
+  `EmbeddingQuerySet.bulk_create`; `project_mismatch_counts()` reports drift.
+- Draft databases that applied the earlier `main/0102_detection_embedding` (and `0103`/`0104`)
+  are rebuilt, not upgraded: drop `main_detectionembedding`, delete those `django_migrations`
+  rows, migrate, then replay the feature-only job.
+- `Detection.job` and `Classification.job` (nullable, SET_NULL, indexed, same migration): the job
+  whose results saved the row; null for older rows and jobless saves.
 - `Algorithm.embedding_dimensions` (`ami/ml/models/algorithm.py`, migration `ml/0029`): the one
   length an algorithm's vectors have. Set from `/info` (`AlgorithmConfigResponse.embedding_dimensions`,
   optional) in `get_or_create_algorithm_and_category_map`, or from the first vector stored
@@ -51,8 +61,12 @@ extractor's vectors to compare. See #1417 for the original design.
   `DetectionEmbedding` rows: no detection, classification, occurrence, determination, null
   marker or calculated-field update.
 - Regular pipelines: `create_detection_embeddings` runs after `create_detections` and before
-  classifications, same matching key. Both use `bulk_create(update_conflicts=True)` on
-  (detection, algorithm), so re-delivery is idempotent and the newest vector wins.
+  classifications, same matching key. Both write through `EmbeddingQuerySet.store`, which is
+  insert-mostly: an identical vector (compared at half precision) is left alone, a different
+  one is deleted and inserted, a row is never updated. Vectors with a non-finite value at half
+  precision (NaN, infinity, beyond 65504) are skipped with a warning.
+- `save_results` records the job on new detections, classifications and embeddings; the size
+  filter, class masking and tracking record theirs on the classifications they add.
 
 ## The extract-features job
 
@@ -71,8 +85,10 @@ detection again.
 ## Read path
 
 `ami/main/models_future/embeddings.py`:
-- `latest_vectors` / `vectors_for_detections(ids, algorithm_id)`: one UNION ALL query over
-  embeddings and classification vectors, embedding preferred. Always one algorithm.
+- `latest_vectors` / `vectors_for_detections(ids, algorithm_id, key="embedding")`: one UNION ALL
+  query over embeddings and classification vectors, embedding preferred (the halfvec column is
+  cast to `vector` so both sides share a type). Always one (algorithm, key); classification
+  vectors count only for the `embedding` key.
   `vectors_for_detections` also keeps only the most common vector length, so an algorithm with
   both a 1024 embedding and a 2048 classification vector never mixes them.
 - `cosine_similarity` (`ami/ml/post_processing/tracking_task.py`) raises on a shape mismatch.
