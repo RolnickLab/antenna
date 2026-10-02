@@ -163,6 +163,41 @@ export const SpeciesDetails = ({
                     })}
                   />
                 </InfoBlockField>
+                <InfoBlockField
+                  label={translate(STRING.FIELD_LABEL_PEAK_SESSION)}
+                >
+                  <InfoBlockFieldValue
+                    value={species.peakSession?.numOccurrences}
+                    to={
+                      species.peakSession
+                        ? getAppRoute({
+                            to: APP_ROUTES.SESSION_DETAILS({
+                              projectId: projectId as string,
+                              sessionId: species.peakSession.id,
+                            }),
+                          })
+                        : undefined
+                    }
+                  />
+                </InfoBlockField>
+                <InfoBlockField
+                  label={translate(STRING.FIELD_LABEL_PEAK_CAPTURE)}
+                >
+                  <InfoBlockFieldValue
+                    value={species.peakCapture?.numDetections}
+                    to={
+                      species.peakCapture
+                        ? getAppRoute({
+                            to: APP_ROUTES.SESSION_DETAILS({
+                              projectId: projectId as string,
+                              sessionId: species.peakCapture.sessionId,
+                            }),
+                            filters: { capture: species.peakCapture.id },
+                          })
+                        : undefined
+                    }
+                  />
+                </InfoBlockField>
                 <InfoBlockField label="Verification">
                   <InfoBlockFieldValue
                     value={`Verified: ${species.numVerified}`}
