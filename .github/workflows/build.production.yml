@@ -1,32 +1,19 @@
 name: Production Image Build
 
-# Checks that the production Django image still builds when its inputs change.
-# Application code is left out of the path filter on purpose. The build does
-# load Django while compiling translations, so a broken import can fail it, but
-# the backend tests already catch that on every code change.
+# Checks that the production Django image still builds and loads. The build
+# loads Django settings while compiling translations, so a settings or code
+# change can break it even when the backend tests pass with their own
+# environment. Only docs and frontend changes are skipped, matching the
+# backend test workflow.
 
 on:
   pull_request:
     branches: ["main"]
-    paths:
-      - "compose/production/**"
-      - "requirements/**"
-      - "locale/**"
-      - "docker-compose.production.yml"
-      - "docker-compose.worker.yml"
-      - ".dockerignore"
-      - ".github/workflows/build.production.yml"
+    paths-ignore: ["docs/**", "ui/**"]
 
   push:
     branches: ["main"]
-    paths:
-      - "compose/production/**"
-      - "requirements/**"
-      - "locale/**"
-      - "docker-compose.production.yml"
-      - "docker-compose.worker.yml"
-      - ".dockerignore"
-      - ".github/workflows/build.production.yml"
+    paths-ignore: ["docs/**", "ui/**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
