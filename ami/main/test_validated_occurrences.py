@@ -396,8 +396,11 @@ class TestEmbeddingTransfer(ReplayTestCase):
             )
             self.assertEqual(rows.count(), 3)
             row = rows.get(detection__source_image=self.target_captures[0])
-            np.testing.assert_array_equal(
-                np.asarray(list(row.vector), dtype=np.float32), self.embeddings[self.target_captures[0].path]
+            # The settled schema stores half precision; compare at that precision.
+            np.testing.assert_allclose(
+                np.asarray(list(row.vector), dtype=np.float32),
+                self.embeddings[self.target_captures[0].path],
+                rtol=2e-3,
             )
 
             again = import_embeddings(self.target_project, directory, execute=True)

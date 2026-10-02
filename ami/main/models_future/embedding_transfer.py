@@ -375,9 +375,15 @@ def import_embeddings(
     entries = read_index(directory)
     if len(entries) != manifest.count:
         raise ValueError(f"{INDEX_FILE} has {len(entries)} rows but the manifest says {manifest.count}.")
-    matches: list[DetectionMatch] = []
-    for chunk in _chunks(entries, MATCH_CHUNK):
-        matches.extend(match_detections(project, [entry.key for entry in chunk], iou_threshold))
+    # A detection with a vector in both stores appears twice in the index under one key. Match each
+    # key once: the matcher claims a target detection for one key only, which is right between
+    # different boxes and wrong between two rows of the same box.
+    unique_keys = list(dict.fromkeys(entry.key for entry in entries))
+    match_by_key: dict[DetectionKey, DetectionMatch] = {}
+    for chunk in _chunks(unique_keys, MATCH_CHUNK):
+        for match in match_detections(project, chunk, iou_threshold):
+            match_by_key[match.key] = match
+    matches = [match_by_key[entry.key] for entry in entries]
     report = EmbeddingImportReport(entries=entries, matches=matches, execute=execute)
     if not execute:
         return report
