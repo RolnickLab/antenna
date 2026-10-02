@@ -230,11 +230,13 @@ const CreateJobForm = ({
         <>
           {configFields.length ? (
             <>
-              <Divider
-                label={translate(STRING.JOB_SETTINGS_DIVIDER, {
-                  method: variant?.name ?? jobType?.name ?? '',
-                })}
-              />
+              {variant ? (
+                <Divider
+                  label={translate(STRING.JOB_SETTINGS_DIVIDER, {
+                    method: variant.name,
+                  })}
+                />
+              ) : null}
               {mainFields.map((field) => renderField(field))}
               {moreFields.length ? (
                 <div className="flex flex-col gap-6">
