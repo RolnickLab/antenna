@@ -55,7 +55,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Catches a dependency that installs but fails to import. The entrypoint
-      # is bypassed because it waits for a database that does not exist here.
-      - name: Check that core dependencies import
-        run: docker run --rm --entrypoint python antenna-backend:dependency-check -c "import django, celery, rest_framework"
+      # Loads every installed app, model and URL route inside the built image,
+      # which catches a dependency that installs but fails to import. It uses
+      # the same minimal test settings as the Dockerfile's compilemessages
+      # step, and bypasses the entrypoint, which waits for a database.
+      - name: Run Django system checks
+        run: >-
+          docker run --rm --network none
+          -e DATABASE_URL=""
+          -e CELERY_BROKER_URL=""
+          -e DJANGO_SETTINGS_MODULE=config.settings.test
+          --entrypoint python
+          antenna-backend:dependency-check
+          manage.py check
