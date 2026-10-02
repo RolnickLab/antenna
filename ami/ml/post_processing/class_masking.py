@@ -8,7 +8,8 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.main.models import AlgorithmResult, Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.main.schemas import ClassMaskingResultData
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -79,6 +80,9 @@ def make_classifications_filtered_by_taxa_list(
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
 
+    Every occurrence with a re-scored classification gets one algorithm result, written
+    once the run is done so an occurrence spanning batches is recorded once.
+
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
     taxa_in_list = set(taxa_list.taxa.all())
@@ -118,6 +122,9 @@ def make_classifications_filtered_by_taxa_list(
     occurrences_to_update: set[Occurrence] = set()
     # Tracks occurrences whose determination actually changed across all batches.
     changed_occurrence_ids: set[int] = set()
+    # Occurrence id -> (determination before the run, re-scored detection ids).
+    rescored_by_occurrence: dict[int, tuple[int | None, set[int]]] = {}
+    determinations_after: dict[int, int | None] = {}
 
     timestamp = timezone.now()
     masked_count = 0
@@ -195,7 +202,12 @@ def make_classifications_filtered_by_taxa_list(
 
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
-                    occurrences_to_update.add(detection.occurrence)
+                    occurrence = detection.occurrence
+                    occurrences_to_update.add(occurrence)
+                    _, rescored = rescored_by_occurrence.setdefault(
+                        occurrence.pk, (occurrence.determination_id, set())
+                    )
+                    rescored.add(detection.pk)
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
@@ -215,6 +227,7 @@ def make_classifications_filtered_by_taxa_list(
                     occurrence.save(update_determination=True)
                     if occurrence.pk is not None and occurrence.determination_id != prev:
                         changed_occurrence_ids.add(occurrence.pk)
+                    determinations_after[occurrence.pk] = occurrence.determination_id
 
             classifications_to_demote.clear()
             classifications_to_add.clear()
@@ -230,6 +243,23 @@ def make_classifications_filtered_by_taxa_list(
                     }
                 )
 
+    AlgorithmResult.objects.record_many(
+        AlgorithmResult(
+            occurrence_id=occurrence_id,
+            algorithm=new_algorithm,
+            job=job,
+            kind=AlgorithmResult.Kind.CLASS_MASKING,
+            timestamp=timestamp,
+            data=ClassMaskingResultData(
+                taxa_list_id=taxa_list.pk,
+                source_algorithm_id=algorithm.pk,
+                detection_ids=sorted(detection_ids),
+                taxon_before_id=taxon_before_id,
+                taxon_after_id=determinations_after.get(occurrence_id),
+            ).dict(),
+        )
+        for occurrence_id, (taxon_before_id, detection_ids) in rescored_by_occurrence.items()
+    )
     task_logger.info(
         f"Re-scored {masked_count} of {total} classifications; updated {len(changed_occurrence_ids)} occurrences."
     )

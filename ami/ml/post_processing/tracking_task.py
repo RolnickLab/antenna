@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import logging
 import math
 import typing
@@ -11,6 +12,7 @@ from django.db.models import Count, Exists, OuterRef
 from django.utils import timezone
 
 from ami.main.models import (
+    AlgorithmResult,
     Classification,
     Detection,
     Event,
@@ -26,8 +28,10 @@ from ami.main.models_future.embeddings import (
     default_feature_algorithm_id,
     vectors_for_detections,
 )
+from ami.main.models_future.history import move_history
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.main.models_future.tracks import lock_sessions
+from ami.main.schemas import TrackingResultData
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -265,11 +269,47 @@ def record_tracking_determination(
     )
 
 
+@dataclasses.dataclass
+class TrackingResults:
+    """What a tracking run records, as an ``AlgorithmResult``, on each occurrence it changes."""
+
+    algorithm: Algorithm
+    settings: dict
+    feature_algorithm_id: int | None = None
+    job: "Job | None" = None
+    # Detection id -> cost of the link this run made from it to its next detection.
+    link_costs: dict[int, float] = dataclasses.field(default_factory=dict)
+
+    def build(
+        self, occurrence: Occurrence, chain: list[Detection], merged: Iterable[int], taxon_before_id: int | None
+    ) -> AlgorithmResult:
+        costs = [self.link_costs[d.pk] for d in chain[:-1] if d.pk in self.link_costs]
+        data = TrackingResultData(
+            settings=self.settings,
+            feature_algorithm_id=self.feature_algorithm_id,
+            detections_count=len(chain),
+            frames_linked=len(costs),
+            occurrences_merged=sorted(merged),
+            cost_mean=sum(costs) / len(costs) if costs else None,
+            cost_max=max(costs, default=None),
+            taxon_before_id=taxon_before_id,
+            taxon_after_id=occurrence.determination_id,
+        )
+        return AlgorithmResult(
+            occurrence=occurrence,
+            algorithm=self.algorithm,
+            job=self.job,
+            kind=AlgorithmResult.Kind.TRACKING,
+            data=data.dict(),
+        )
+
+
 def assign_occurrences_from_detection_chains(
     source_images: list[SourceImage],
     logger: logging.Logger,
     record_as: Algorithm | None = None,
     job: "Job | None" = None,
+    results: TrackingResults | None = None,
 ) -> dict[str, int]:
     """
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
@@ -287,6 +327,8 @@ def assign_occurrences_from_detection_chains(
       confirmed detections out of linking, so only a link stored earlier leads here.
     - Store the track statistics of every occurrence the chains settle on, so the list
       can sort by them (see ``track_stats.refresh_track_stats_for_ids``).
+    - With ``results`` set, record one tracking result on each occurrence a chain changed;
+      a chain that was already one occurrence gets none.
 
     Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
     can reuse this primitive for prepend/append: keeper survives, new detections fold in.
@@ -300,6 +342,7 @@ def assign_occurrences_from_detection_chains(
     identifications_moved = 0
     determinations_recorded = 0
     confirmed_chains_skipped = 0
+    recorded: list[AlgorithmResult] = []
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     # A chain ends at a session boundary. A regroup that splits a track keeps the link
@@ -384,6 +427,7 @@ def assign_occurrences_from_detection_chains(
                 identifications_moved += Identification.objects.filter(occurrence_id__in=doomed).update(
                     occurrence=keeper
                 )
+                move_history(doomed, keeper)
             for occ_id in doomed:
                 try:
                     Occurrence.objects.filter(id=occ_id).delete()
@@ -398,7 +442,11 @@ def assign_occurrences_from_detection_chains(
             if record_as is not None and keeper.determination_id != previous_determination_id:
                 if record_tracking_determination(keeper, record_as, job=job) is not None:
                     determinations_recorded += 1
+            if results is not None:
+                recorded.append(results.build(keeper, chain, doomed, previous_determination_id))
             settled.add(keeper.pk)
+
+    AlgorithmResult.objects.record_many(recorded)
 
     # Stored once every determination is settled, since id_agreement is measured against
     # it, and in batches for the whole event rather than three queries per chain.
@@ -615,6 +663,7 @@ def assign_occurrences_by_tracking_images(
     progress_cb: typing.Callable[[float], None] | None = None,
     record_as: Algorithm | None = None,
     job: "Job | None" = None,
+    results: TrackingResults | None = None,
 ) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
@@ -646,6 +695,8 @@ def assign_occurrences_by_tracking_images(
             else:
                 save_links(proposed, logger)
                 links += len(proposed)
+                if results is not None:
+                    results.link_costs.update((det.pk, cost) for det, _, cost in proposed)
             if progress_cb:
                 progress_cb((i + 1) / transitions)
 
@@ -655,7 +706,9 @@ def assign_occurrences_by_tracking_images(
                 "due to missing image dimensions."
             )
 
-        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as, job=job)
+        counters = assign_occurrences_from_detection_chains(
+            source_images, logger, record_as=record_as, job=job, results=results
+        )
 
     counters["links_created"] = links
     counters["confirmed_tracks_left_unchanged"] = confirmed_tracks
@@ -798,6 +851,12 @@ class TrackingTask(BasePostProcessingTask):
                     record_as=self.algorithm,
                     job=self.job,
                     progress_cb=_stage_progress,
+                    results=TrackingResults(
+                        algorithm=self.algorithm,
+                        settings=self.config.dict(exclude={"source_image_collection_id", "event_ids"}),
+                        feature_algorithm_id=algorithm.pk if algorithm is not None else None,
+                        job=self.job,
+                    ),
                 )
                 totals["events_tracked"] += 1
                 tracked_event_ids.append(event.pk)

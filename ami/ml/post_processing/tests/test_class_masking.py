@@ -16,6 +16,7 @@ import uuid
 from django.test import TestCase
 
 from ami.main.models import (
+    AlgorithmResult,
     Classification,
     Detection,
     Occurrence,
@@ -358,6 +359,36 @@ class TestPostProcessingClassMasking(TestCase):
         new_clf = Classification.objects.filter(detection=det, terminal=True).exclude(algorithm=self.algorithm).first()
         self.assertIsNotNone(new_clf)
         self.assertEqual(new_clf.taxon, self.species_taxa[0])
+
+    def test_a_rescored_occurrence_gets_one_algorithm_result_per_run(self):
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name="History list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        det, occ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+        occ.save()
+
+        for _ in range(2):
+            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertTrue(result.algorithm.key.startswith(f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"))
+        self.assertEqual(result.data["detection_ids"], [det.pk])
+        self.assertEqual(result.data["taxa_list_id"], taxa_list.pk)
+        self.assertEqual(result.data["source_algorithm_id"], self.algorithm.pk)
+        self.assertEqual(result.data["taxon_before_id"], self.species_taxa[2].pk)
+        self.assertEqual(result.data["taxon_after_id"], self.species_taxa[0].pk)
+
+    def test_an_occurrence_masking_does_not_change_gets_no_algorithm_result(self):
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name="Keeps everything")
+        taxa_list.taxa.set(self.species_taxa)
+        det, occ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=occ).exists())
 
     # ----- batched commit + heartbeat -------------------------------------
 
