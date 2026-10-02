@@ -136,11 +136,13 @@ export const OccurrenceGallery = ({
                     className={classNames(
                       'body-base font-medium text-primary',
                       {
-                        italic: isGenusOrBelow(item.determinationTaxon),
+                        italic:
+                          !!item.determinationTaxon &&
+                          isGenusOrBelow(item.determinationTaxon),
                       }
                     )}
                   >
-                    {item.determinationTaxon.name}
+                    {item.determinationLabel}
                   </span>
                 </Link>
                 <OccurrenceActions

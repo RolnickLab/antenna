@@ -6,13 +6,14 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
+import { Export, getExportTypes } from 'data-services/models/export'
 import { InputContent, SaveButton, Select } from 'nova-ui-kit'
 import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
@@ -134,17 +135,21 @@ export const TypePicker = ({
 }: {
   value?: string
   onValueChange: (value?: string) => void
-}) => (
-  <Select.Root onValueChange={onValueChange} value={value ?? ''}>
-    <Select.Trigger>
-      <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
-    </Select.Trigger>
-    <Select.Content>
-      {SERVER_EXPORT_TYPES.map((key) => (
-        <Select.Item key={key} value={key}>
-          {Export.getExportTypeInfo(key).label}
-        </Select.Item>
-      ))}
-    </Select.Content>
-  </Select.Root>
-)
+}) => {
+  const trackingEnabled = useProjectFeature('tracking')
+
+  return (
+    <Select.Root onValueChange={onValueChange} value={value ?? ''}>
+      <Select.Trigger>
+        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
+      </Select.Trigger>
+      <Select.Content>
+        {getExportTypes({ trackingEnabled }).map((key) => (
+          <Select.Item key={key} value={key}>
+            {Export.getExportTypeInfo(key).label}
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
+  )
+}
