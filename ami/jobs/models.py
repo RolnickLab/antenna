@@ -537,7 +537,7 @@ class JobType:
     user_creatable: bool = False
 
     # Everything a new job of this type takes, as a pydantic model: the Create Job dialog renders
-    # it and the API validates against it. See ami/jobs/configs.py and ami/jobs/descriptors.py.
+    # it and the API validates against it. See ami/jobs/schemas.py.
     config_schema: type[pydantic.BaseModel] | None = None
 
     # A job type whose work is chosen from a registry (post-processing tasks) names the
