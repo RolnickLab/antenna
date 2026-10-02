@@ -566,11 +566,12 @@ the taxa filter) Â· `GET /jobs/{id}/batches/` and a re-ingest action (phase 3) Â
 ## 9. Migration
 
 1. **Phase 1 schema**: `DetectionEmbedding`, `job` on `Classification` and `Detection`,
-   `Algorithm.feature_extractor`; #1439's `DetectionEmbedding` migrations replaced by new, differently named ones that **upgrade
-   in place** where the draft table exists (a partner demo database holds ~55k vectors and the
-   tracking history under the draft schema; see the merge plan) and create the final shape
-   elsewhere; #1407 drops its copy. Soft-delete and snapshot columns on `Job` (phase 2).
-2. **Phase 2 data**: #1439's history rows become `AlgorithmResult` (empty outside development);
+   `Algorithm.feature_extractor`; #1439's `DetectionEmbedding` migrations replaced by new,
+   differently named ones that create the final shape directly. Development databases that ran
+   the draft schema are rebuilt and refilled by replay, not upgraded in place (owner decision,
+   2026-10-01; see the merge plan). #1407 drops its copy. Soft-delete and snapshot columns on
+   `Job` (phase 2).
+2. **Phase 2 data**: no conversion of #1439's draft history rows (replayed, see above);
    one `ValidationReview` per `Identification` (16,642 rows) and per `grouping_verified_at`.
 3. **Phase 3 data**: dual-write arrays and files for one release; export the 307,968 rows with
    logits to batch files (scores only where not softmax, the 1,416 scores-only rows as they

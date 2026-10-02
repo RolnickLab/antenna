@@ -59,8 +59,9 @@ extractor's key.
 
 `main` is at `main/0095`, `ml/0028`, `jobs/0023`. #1272 takes `main/0096–0101`. Phase 1 takes
 `main/0102` (+ `ml/0029` for `feature_extractor`). #1407 renumbers behind those. Development
-databases that applied an earlier `main/0102` or #1407's `ml/0029` need `migrate --fake` or a
-drop of the old table; the phase 1 migration handles the table drop, not the migration history.
+databases that applied an earlier `main/0102` or #1407's `ml/0029` are rebuilt by hand (drop the
+draft tables and their migration rows, migrate, replay); the phase 1 migration itself is a plain
+create and drops nothing. See the last section.
 
 ## What each tracking session must change in its branches
 
@@ -84,30 +85,28 @@ drop of the old table; the phase 1 migration handles the table drop, not the mig
 - The pgvector extension version on managed databases is an operations task that gates phase
   1's `halfvec` column; confirm before opening the phase 1 PR for review.
 
-## Databases that already ran the draft schema (reported by the tracking session, 2026-10-01)
+## Databases that already ran the draft schema (owner decision 2026-10-01: replay, not upgrade)
 
-| Database | Applied | Holds | Path |
+| Database | Applied | Holds | Decision |
 |---|---|---|---|
-| partner demo copy | `main/0100–0104` (draft `DetectionEmbedding`, `OccurrenceHistoryRecord`, the any-length repair) | ~55k detections with BioCLIP vectors at 100 % coverage (GPU time to recompute), tracking runs and their history; in use by the experiments session; a full dump exists | **data-preserving upgrade, never a backwards migrate** |
-| overnight demo stack | `main/0100–0103` | demo state | probably disposable; owner to confirm |
-| main development stack (production copy) | `main/0100` plus a stale `0101_detection_embedding` row from an old branch numbering; 113 embedding rows | nothing worth keeping (owner to confirm) | drop the table and the stale migration row, then migrate |
+| partner demo copy | `main/0100–0104` (draft `DetectionEmbedding`, `OccurrenceHistoryRecord`, the any-length repair) | ~55k detections with BioCLIP vectors, tracking runs and their history; a full dump from 2026-09-30 exists | rebuild on the new migrations and refill by replay (the tracking session's replay command re-runs the feature-only and tracking jobs; the dump is the fallback and the vector source if GPU time is short) |
+| overnight demo stack | `main/0100–0103` | demo state | disposable; rebuild |
+| main development stack (production copy) | `main/0100` plus a stale `0101_detection_embedding` row from an old branch numbering; 113 embedding rows | nothing worth keeping | drop the table and the stale migration row, then migrate |
 | CI and test databases | various | nothing | drop and re-migrate |
 
 Consequences for the phase 1 and phase 2 migrations:
 
+- **Plain migrations that create the final shape.** No `DO $$ … $$` blocks, no `IF NOT EXISTS`,
+  no `SeparateDatabaseAndState` upgrade path, no conversion of draft history rows. A migration
+  that only creates tables is testable by `makemigrations --check` and `migrate` on an empty
+  database, which is what CI runs.
 - **New migration names**, not the draft's (`0102_detection_embedding`, `0103_occurrence_history`,
   `0104_…`): a database that has those names applied would skip a same-named migration and keep
   the old shape. Stale `django_migrations` rows for files that no longer exist are ignored by
-  Django; they can be deleted by hand on the development stack.
-- **Conditional SQL, upgrading in place.** Phase 1's migration wraps its DDL in `DO $$ … $$`
-  blocks (or `RunSQL` with `IF NOT EXISTS`) and `SeparateDatabaseAndState`: if
-  `main_detectionembedding` exists, add `job`, `project`, `key` (backfilled: `project` from the
-  detection's capture, `key = 'embedding'`, `job` from the existing `job_id` column), alter
-  `vector` to `halfvec`, add the new unique constraint and drop the old one; else create the
-  table in its final shape. The same pattern for phase 2: if `main_occurrencehistoryrecord`
-  exists, convert its `algorithm_result` rows into `AlgorithmResult` and its `review` rows into
-  `ValidationReview`, then drop it; else create the new tables only.
-- Test the upgrade path on a restore of the partner demo dump before the phase 1 PR leaves
-  draft, and on the overnight demo stack if it is kept.
+  Django; delete them by hand on the development stack before migrating.
+- **Rebuild procedure for a database on the draft schema**: drop the draft tables
+  (`main_detectionembedding`, `main_occurrencehistoryrecord`), delete their `django_migrations`
+  rows, `migrate`, then replay the feature-only job and the tracking jobs. Never migrate
+  backwards past the draft migrations on a database whose data matters; drop forward instead.
 - The local-only branch `integration/tracking-demo-2` carries the old migrations and is rebuilt
   on the new PRs rather than merged.
