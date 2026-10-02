@@ -281,13 +281,18 @@ class TrackingResults:
     link_costs: dict[int, float] = dataclasses.field(default_factory=dict)
 
     def build(
-        self, occurrence: Occurrence, chain: list[Detection], merged: Iterable[int], taxon_before_id: int | None
+        self,
+        occurrence: Occurrence,
+        chains: list[list[Detection]],
+        merged: Iterable[int],
+        taxon_before_id: int | None,
     ) -> AlgorithmResult:
-        costs = [self.link_costs[d.pk] for d in chain[:-1] if d.pk in self.link_costs]
+        """One result for ``occurrence``, covering every chain the run folded into it."""
+        costs = [self.link_costs[d.pk] for chain in chains for d in chain[:-1] if d.pk in self.link_costs]
         data = TrackingResultData(
             settings=self.settings,
             feature_algorithm_id=self.feature_algorithm_id,
-            detections_count=len(chain),
+            detections_count=sum(len(chain) for chain in chains),
             frames_linked=len(costs),
             occurrences_merged=sorted(merged),
             cost_mean=sum(costs) / len(costs) if costs else None,
@@ -342,7 +347,9 @@ def assign_occurrences_from_detection_chains(
     identifications_moved = 0
     determinations_recorded = 0
     confirmed_chains_skipped = 0
-    recorded: list[AlgorithmResult] = []
+    # Keeper id -> (keeper, its chains, occurrences merged into it, determination before the run).
+    # Two chains can settle on one keeper when it already held detections of both.
+    changed: dict[int, tuple[Occurrence, list[list[Detection]], set[int], int | None]] = {}
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     # A chain ends at a session boundary. A regroup that splits a track keeps the link
@@ -443,12 +450,18 @@ def assign_occurrences_from_detection_chains(
                 if record_tracking_determination(keeper, record_as, job=job) is not None:
                     determinations_recorded += 1
             if results is not None:
-                recorded.append(results.build(keeper, chain, doomed, previous_determination_id))
+                _, chains, merged_ids, taxon_before_id = changed.get(
+                    keeper.pk, (keeper, [], set(), previous_determination_id)
+                )
+                changed[keeper.pk] = (keeper, [*chains, chain], merged_ids | doomed, taxon_before_id)
             settled.add(keeper.pk)
 
     # A later chain can absorb an earlier chain's keeper, so only keepers that remain get a result.
-    remaining = set(Occurrence.objects.filter(pk__in=[r.occurrence_id for r in recorded]).values_list("pk", flat=True))
-    AlgorithmResult.objects.record_many(r for r in recorded if r.occurrence_id in remaining)
+    if results is not None and changed:
+        remaining = set(Occurrence.objects.filter(pk__in=list(changed)).values_list("pk", flat=True))
+        AlgorithmResult.objects.record_many(
+            results.build(*entry) for keeper_id, entry in changed.items() if keeper_id in remaining
+        )
 
     # Stored once every determination is settled, since id_agreement is measured against
     # it, and in batches for the whole event rather than three queries per chain.

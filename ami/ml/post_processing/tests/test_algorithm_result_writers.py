@@ -11,7 +11,11 @@ from ami.jobs.models import Job
 from ami.main.models import AlgorithmResult, Detection, Occurrence, SourceImage, Taxon, ValidationReview
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
-from ami.ml.post_processing.tracking_task import TrackingTask
+from ami.ml.post_processing.tracking_task import (
+    TrackingResults,
+    TrackingTask,
+    assign_occurrences_from_detection_chains,
+)
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)
@@ -70,6 +74,28 @@ class TrackingHistoryTestCase(HistoryWriterFixture):
         self.assertLessEqual(payload["cost_mean"], payload["cost_max"])
         self.assertEqual(payload["taxon_before_id"], self.taxon.pk)
         self.assertEqual(payload["taxon_after_id"], self.taxon.pk)
+
+    def test_two_chains_settling_on_one_occurrence_give_it_one_record(self):
+        """An occurrence that already held detections of two chains keeps both; it gets one result, not two."""
+        keeper = self._singleton(self.captures[0], [100, 100, 150, 150])
+        first = keeper.detections.get()
+        second_on_keeper = Detection.objects.create(
+            source_image=self.captures[1], bbox=[500, 500, 550, 550], timestamp=self.captures[1].timestamp
+        )
+        Detection.objects.filter(pk=second_on_keeper.pk).update(occurrence=keeper)
+        joined = [self._singleton(capture, [100, 100, 150, 150]) for capture in self.captures[1:]]
+        Detection.objects.filter(pk=first.pk).update(next_detection=joined[0].detections.get())
+        Detection.objects.filter(pk=second_on_keeper.pk).update(next_detection=joined[1].detections.get())
+        tracking = Algorithm.objects.create(name="Tracking", key="tracking-two-chains-test")
+
+        assign_occurrences_from_detection_chains(
+            self.captures, logger, results=TrackingResults(algorithm=tracking, settings={})
+        )
+
+        record = self.records("tracking").get()
+        self.assertEqual(record.occurrence_id, keeper.pk)
+        self.assertEqual(record.data["detections_count"], 4)
+        self.assertEqual(record.data["occurrences_merged"], sorted(o.pk for o in joined))
 
     def test_a_run_that_changes_nothing_writes_nothing(self):
         for capture in self.captures:
