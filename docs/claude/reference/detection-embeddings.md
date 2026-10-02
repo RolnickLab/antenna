@@ -15,7 +15,8 @@ extractor's vectors to compare. See #1417 for the original design.
   with `STORAGE EXTERNAL` (needs pgvector >= 0.7): extractors differ (2048 for the moth classifier
   backbones, 1024 for BioCLIP). `job` FK is `RESTRICT` (a job with vectors cannot be deleted on
   its own; `JobViewSet.perform_destroy` answers 409) and nullable because `save_results` can run
-  without a job. `project` is NOT NULL, filled from the detection's capture by
+  without a job. `Job.deployment` is SET_NULL (`jobs/0024_job_deployment_set_null.py`, state only),
+  since a CASCADE from a deleted station would hit that RESTRICT and fail the delete. `project` is NOT NULL, filled from the detection's capture by
   `fill_project_ids` (`ami/main/models_future/project_scope.py`) in `save()` and in
   `EmbeddingQuerySet.bulk_create`; `project_mismatch_counts()` reports drift.
 - Draft databases that applied the earlier `main/0102_detection_embedding` (and `0103`/`0104`)
