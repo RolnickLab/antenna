@@ -11468,6 +11468,28 @@ class FeatureVectorPresenceTestCase(APITestCase):
         )
         self.assertEqual(flags, {embedder.pk: True, moth_filter.pk: False})
 
+    def test_the_capture_counts_ride_on_the_capture_row(self):
+        """Both counts are subqueries on the capture's own SELECT: five detections, one query."""
+        from cachalot.api import cachalot_disabled
+
+        capture = self.captures[0]
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for with_vector in [True, False, True, False, True]:
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+            detection.classifications.create(
+                taxon=self.taxon,
+                score=0.9,
+                timestamp=capture.timestamp,
+                features_2048=self.vector if with_vector else None,
+            )
+
+        with cachalot_disabled(), self.assertNumQueries(1):
+            annotated = SourceImage.objects.filter(pk=capture.pk).with_detections_with_features().get()
+            self.assertEqual(annotated.detections_valid, 5)  # type: ignore[attr-defined]
+            self.assertEqual(annotated.detections_with_features, 3)  # type: ignore[attr-defined]
+
 
 class DetectionVectorReadTestCase(TestCase):
     """Reading a detection's feature vector from whichever of the two stores holds it.
@@ -11544,25 +11566,3 @@ class DetectionVectorReadTestCase(TestCase):
         with cachalot_disabled(), self.assertNumQueries(1):
             vectors = vectors_for_detections([d.pk for d in detections], self.extractor.pk)
         self.assertEqual(len(vectors), len(detections))
-
-    def test_the_capture_counts_ride_on_the_capture_row(self):
-        """Both counts are subqueries on the capture's own SELECT: five detections, one query."""
-        from cachalot.api import cachalot_disabled
-
-        capture = self.captures[0]
-        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
-        for with_vector in [True, False, True, False, True]:
-            detection = Detection.objects.create(
-                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
-            )
-            detection.classifications.create(
-                taxon=self.taxon,
-                score=0.9,
-                timestamp=capture.timestamp,
-                features_2048=self.vector if with_vector else None,
-            )
-
-        with cachalot_disabled(), self.assertNumQueries(1):
-            annotated = SourceImage.objects.filter(pk=capture.pk).with_detections_with_features().get()
-            self.assertEqual(annotated.detections_valid, 5)  # type: ignore[attr-defined]
-            self.assertEqual(annotated.detections_with_features, 3)  # type: ignore[attr-defined]
