@@ -18,15 +18,7 @@ from rest_framework import serializers
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.jobs.descriptors import (
-    CAPTURE_SET_SCOPE,
-    PIPELINE_SCOPE,
-    STATION_SCOPE,
-    ScopeField,
-    config_schema,
-    describe,
-    entity_fields,
-)
+from ami.jobs.descriptors import CAPTURE_SET_SCOPE, PIPELINE_SCOPE, STATION_SCOPE, ScopeField, describe, entity_fields
 from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
@@ -1048,7 +1040,7 @@ class PostProcessingJob(JobType):
                 "key": key,
                 "name": task_cls.name,
                 "description": describe(task_cls),
-                "config_schema": config_schema(task_cls.config_schema),
+                "config_schema": task_cls.config_schema.schema(),
             }
             for key, task_cls in cls.enabled_tasks(project).items()
         ]

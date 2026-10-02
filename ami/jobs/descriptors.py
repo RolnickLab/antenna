@@ -4,16 +4,15 @@ Describe job types to the Create Job dialog, so a form can be generated for any 
 A job type's settings are a pydantic model; the dialog renders its JSON Schema as is. Labels and
 help text are the fields' ``title`` and ``description`` (wrap them in ``gettext_lazy`` and they are
 served in the request's language), and a picker is requested with extra ``Field`` keywords, which
-pydantic copies into the schema. See ``docs/claude/reference/jobs-panel.md``.
+pydantic copies into the schema. Use ``typing.Literal`` for choices: pydantic inlines it as an
+``enum``, whereas an ``Enum`` class becomes a ``$ref`` the dialog does not follow. See
+``docs/claude/reference/jobs-panel.md``.
 """
 
 import dataclasses
 import inspect
 
 import pydantic
-
-# Bumped when the shape of a served schema changes, so a deployed client can tell.
-SCHEMA_VERSION = 1
 
 # Extra ``pydantic.Field`` keywords the dialog reads. ``ami_widget="entity"`` with
 # ``ami_entity="<api route>"`` renders a picker over that list endpoint, and the server checks the
@@ -51,15 +50,6 @@ def describe(obj) -> str:
         return description
     doc = inspect.getdoc(obj) or ""
     return doc.split("\n\n")[0].replace("\n", " ").strip()
-
-
-def config_schema(model: type[pydantic.BaseModel]) -> dict:
-    """The JSON Schema the dialog renders for a settings model, exactly as pydantic produces it.
-
-    Use ``typing.Literal`` for choices: pydantic inlines it as an ``enum``, whereas an ``Enum``
-    class becomes a ``$ref`` the dialog does not follow.
-    """
-    return {**model.schema(), "x-ami-schema-version": SCHEMA_VERSION}
 
 
 def entity_fields(model: type[pydantic.BaseModel]) -> dict[str, str]:

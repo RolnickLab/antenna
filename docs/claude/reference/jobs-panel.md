@@ -9,7 +9,7 @@ No frontend change is needed. Design history: branch `feat/jobs-panel-design`,
 
 | What | File |
 |---|---|
-| `ScopeField` (Job columns), `config_schema()`, `describe()`, `entity_fields()` | `ami/jobs/descriptors.py` |
+| `ScopeField` (Job columns), `describe()`, `entity_fields()` | `ami/jobs/descriptors.py` |
 | `JobType` attributes, `validate_params`, project-scope id checks, flag check on re-run | `ami/jobs/models.py` (`JobType`, `PostProcessingJob.enabled_tasks`, `check_entities_in_project`, `Job.check_custom_permission`) |
 | Response builder `describe_job_types`; `params` validation on create | `ami/jobs/serializers.py` (`JobSerializer.validate`) |
 | The gated `types` action | `ami/jobs/views.py` (`JobViewSet.types`) |
@@ -71,5 +71,5 @@ model store nothing there; their choices are Job columns (pipeline, capture set,
 
 - `ObjectPermission.has_permission` returns True for every request, and a `detail=False` action
   never reaches the object check. `types` gates itself (authenticated project member or superuser).
-- Pydantic is v1 here (`Model.schema()`); `x-ami-schema-version` marks the served shape.
+- Pydantic is v1 here (`Model.schema()`). A move to v2 changes the served shape (`$defs`, `anyOf` for optionals); update the frontend mapping with it.
 - `assertNumQueries` for `types` counts the request's savepoint pair (6 total).

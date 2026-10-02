@@ -15,7 +15,7 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .descriptors import config_schema, describe
+from .descriptors import describe
 from .models import (
     JOB_LOGS_DEFAULT_LIMIT,
     VALID_JOB_TYPES,
@@ -77,7 +77,7 @@ def describe_job_types(project: Project, user) -> list[dict]:
                 "scope": [field.as_dict() for field in job_type.scope_fields],
                 "required_fields": list(job_type.required_fields),
                 "required_params": list(job_type.required_params),
-                "config_schema": config_schema(job_type.config_schema) if job_type.config_schema else None,
+                "config_schema": job_type.config_schema.schema() if job_type.config_schema else None,
                 "variant_key": job_type.variant_key,
                 "variants": variants,
             }
