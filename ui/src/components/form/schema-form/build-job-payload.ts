@@ -14,6 +14,7 @@ export interface CreateJobState {
   jobType: ServerJobType
   variant?: ServerJobTypeVariant
   scopeValues: { [field: string]: unknown }
+  // Names of the chosen pickers' rows, used for the default job name.
   scopeLabels?: { [field: string]: string }
   configValues: { [field: string]: unknown }
   name?: string
@@ -58,39 +59,11 @@ const collect = (
   return result
 }
 
-const getScopeFields = (state: CreateJobState) => {
-  const { jobType, variant } = state
-  return [
-    ...scopeToFields(jobType.scope),
-    ...scopeToFields(variant?.scope ?? [], {
-      optional: variant?.scope_rule === 'exactly_one',
-    }),
-  ]
-}
-
 export const buildJobPayload = (state: CreateJobState) => {
   const { jobType, variant, projectId } = state
-  const scopeItems = [
-    ...jobType.scope.map((item) => ({ ...item })),
-    ...(variant?.scope ?? []),
-  ]
-  const scopeFields = getScopeFields(state)
-  const scopeValues = collect(scopeFields, state.scopeValues)
-
-  const jobScope: { [field: string]: unknown } = {}
-  const configScope: { [field: string]: unknown } = {}
-  scopeItems.forEach((item) => {
-    if (item.field in scopeValues) {
-      const target = item.target === 'config' ? configScope : jobScope
-      target[item.field] = scopeValues[item.field]
-    }
-  })
-
+  const jobScope = collect(scopeToFields(jobType.scope), state.scopeValues)
   const schema = variant?.config_schema ?? jobType.config_schema
-  const config = {
-    ...collect(schemaToFields(schema), state.configValues),
-    ...configScope,
-  }
+  const config = collect(schemaToFields(schema), state.configValues)
 
   let params: { [key: string]: unknown } | undefined
   if (jobType.variant_key && variant) {

@@ -80,24 +80,20 @@ describe('schemaToFields', () => {
 })
 
 describe('scopeToFields', () => {
-  const scope = [
-    {
-      field: 'event_ids',
-      label: 'Sessions',
-      entity: 'events',
+  test('a job column becomes a required entity picker', () => {
+    const [field] = scopeToFields([
+      {
+        field: 'deployment_id',
+        label: 'Station',
+        entity: 'deployments',
+        required: true,
+      },
+    ])
+    expect(field).toMatchObject({
+      kind: 'entity',
       required: true,
-      many: true,
-      target: 'config' as const,
-      entity_filters: {},
-    },
-  ]
-
-  test('many scope becomes an integer list, optional on request', () => {
-    expect(scopeToFields(scope)[0]).toMatchObject({
-      kind: 'integer-list',
-      required: true,
+      entity: 'deployments',
     })
-    expect(scopeToFields(scope, { optional: true })[0].required).toBe(false)
   })
 })
 
@@ -123,7 +119,7 @@ describe('getInitialValue / validateNumber', () => {
   })
 })
 
-describe('empty defaults and staff-only settings', () => {
+describe('empty defaults, hidden and advanced settings', () => {
   const fields = schemaToFields({
     type: 'object',
     properties: {
@@ -133,7 +129,7 @@ describe('empty defaults and staff-only settings', () => {
         title: 'Gate',
         type: 'string',
         default: 'off',
-        ami_staff_only: true,
+        ami_advanced: true,
       },
     },
     required: [],
@@ -145,7 +141,22 @@ describe('empty defaults and staff-only settings', () => {
     expect(getInitialValue(fields[2])).toBe('off')
   })
 
-  it('carries the staff-only hint', () => {
-    expect(fields.map((f) => !!f.staffOnly)).toEqual([false, false, true])
+  it('carries the advanced hint', () => {
+    expect(fields.map((f) => !!f.advanced)).toEqual([false, false, true])
+  })
+
+  it('leaves hidden fields out, and an id list with a picker hint stays a list', () => {
+    const [ids] = schemaToFields({
+      properties: {
+        occurrence_id: { type: 'integer', ami_widget: 'hidden' },
+        event_ids: {
+          type: 'array',
+          items: { type: 'integer' },
+          ami_widget: 'entity',
+          ami_entity: 'events',
+        },
+      },
+    })
+    expect(ids).toMatchObject({ name: 'event_ids', kind: 'integer-list' })
   })
 })

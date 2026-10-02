@@ -9,9 +9,6 @@ const scope = (
   label: field,
   entity: 'x',
   required: true,
-  many: false,
-  target: 'job',
-  entity_filters: {},
   ...overrides,
 })
 
@@ -37,12 +34,15 @@ const postProcessing: ServerJobType = {
     {
       key: 'class_masking',
       name: 'Class masking',
-      allowed: true,
-      scope: [scope('source_image_collection_id', { target: 'config' })],
-      scope_rule: 'all_required',
       config_schema: {
         required: ['taxa_list_id'],
         properties: {
+          source_image_collection_id: {
+            type: 'integer',
+            ami_widget: 'entity',
+            ami_entity: 'captures/collections',
+          },
+          occurrence_id: { type: 'integer', ami_widget: 'hidden' },
           taxa_list_id: {
             type: 'integer',
             ami_widget: 'entity',
@@ -79,13 +79,19 @@ describe('buildJobPayload', () => {
     expect(startNow).toBe(true)
   })
 
-  test('post processing nests variant, config values and config-target scope', () => {
+  test('post processing nests the method and its settings, hidden fields left out', () => {
     const { body } = buildJobPayload({
       projectId: '7',
       jobType: postProcessing,
       variant: postProcessing.variants[0],
-      scopeValues: { source_image_collection_id: '12' },
-      configValues: { taxa_list_id: '4', reweight: true, note: '' },
+      scopeValues: {},
+      configValues: {
+        source_image_collection_id: '12',
+        occurrence_id: '9',
+        taxa_list_id: '4',
+        reweight: true,
+        note: '',
+      },
     })
     expect(body.params).toEqual({
       task: 'class_masking',

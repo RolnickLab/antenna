@@ -7,7 +7,7 @@ export enum STRING {
   JOB_START_IMMEDIATELY,
   JOB_NOT_PERMITTED,
   JOB_LOADING_TYPES,
-  JOB_STAFF_SETTINGS,
+  JOB_MORE_SETTINGS,
   JOB_START_NOW,
   JOB_VALUE_NOT_SET,
   /* BUTTON */
@@ -401,7 +401,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.JOB_START_IMMEDIATELY]: 'Start immediately',
   [STRING.JOB_NOT_PERMITTED]: 'Not permitted for your role',
   [STRING.JOB_LOADING_TYPES]: 'Loading job types',
-  [STRING.JOB_STAFF_SETTINGS]: 'Advanced (staff)',
+  [STRING.JOB_MORE_SETTINGS]: 'More settings',
   [STRING.JOB_START_NOW]: 'Start now',
   [STRING.JOB_VALUE_NOT_SET]: 'Not set',
   /* BUTTON */

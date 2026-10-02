@@ -73,7 +73,7 @@ const CreateJobForm = ({
   )
   const [generalErrors, setGeneralErrors] = useState<string[]>([])
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [staffOpen, setStaffOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const { control, handleSubmit, watch, setValue, setError } =
     useForm<FormValues>({
@@ -95,20 +95,15 @@ const CreateJobForm = ({
   const variant = jobType?.variants.find((v) => v.key === variantKey)
 
   const scopeFields = useMemo(
-    () => [
-      ...scopeToFields(jobType?.scope ?? []),
-      ...scopeToFields(variant?.scope ?? [], {
-        optional: variant?.scope_rule === 'exactly_one',
-      }),
-    ],
-    [jobType, variant]
+    () => scopeToFields(jobType?.scope ?? []),
+    [jobType]
   )
   const configFields = useMemo(
     () => schemaToFields(variant?.config_schema ?? jobType?.config_schema),
     [jobType, variant]
   )
-  const memberFields = configFields.filter((field) => !field.staffOnly)
-  const staffFields = configFields.filter((field) => field.staffOnly)
+  const mainFields = configFields.filter((field) => !field.advanced)
+  const moreFields = configFields.filter((field) => field.advanced)
 
   // Scope and settings belong to the selected type and method, so they start
   // fresh (with schema defaults) whenever either changes.
@@ -172,14 +167,8 @@ const CreateJobForm = ({
       field={field}
       formName={`${prefix}.${field.name}`}
       projectId={projectId}
-      onLabelChange={
-        prefix === 'scope'
-          ? (label) =>
-              setScopeLabels((labels) => ({
-                ...labels,
-                [field.name]: label ?? '',
-              }))
-          : undefined
+      onLabelChange={(label) =>
+        setScopeLabels((labels) => ({ ...labels, [field.name]: label ?? '' }))
       }
     />
   )
@@ -239,10 +228,8 @@ const CreateJobForm = ({
             </Select.Trigger>
             <Select.Content>
               {jobType.variants.map((v) => (
-                <Select.Item key={v.key} value={v.key} disabled={!v.allowed}>
-                  {v.allowed
-                    ? v.name
-                    : `${v.name} (${translate(STRING.JOB_NOT_PERMITTED)})`}
+                <Select.Item key={v.key} value={v.key}>
+                  {v.name}
                 </Select.Item>
               ))}
             </Select.Content>
@@ -259,20 +246,19 @@ const CreateJobForm = ({
                   method: variant?.name ?? jobType?.name ?? '',
                 })}
               />
-              {memberFields.map((field) => renderField(field, 'config'))}
-              {staffFields.length ? (
+              {mainFields.map((field) => renderField(field, 'config'))}
+              {moreFields.length ? (
                 <div className="flex flex-col gap-6">
                   <button
                     type="button"
                     className="text-left body-small font-semibold text-primary"
-                    onClick={() => setStaffOpen((open) => !open)}
-                    aria-expanded={staffOpen}
+                    onClick={() => setMoreOpen((open) => !open)}
+                    aria-expanded={moreOpen}
                   >
-                    {translate(STRING.JOB_STAFF_SETTINGS)}{' '}
-                    {staffOpen ? '▾' : '▸'}
+                    {translate(STRING.JOB_MORE_SETTINGS)} {moreOpen ? '▾' : '▸'}
                   </button>
-                  {staffOpen
-                    ? staffFields.map((field) => renderField(field, 'config'))
+                  {moreOpen
+                    ? moreFields.map((field) => renderField(field, 'config'))
                     : null}
                 </div>
               ) : null}

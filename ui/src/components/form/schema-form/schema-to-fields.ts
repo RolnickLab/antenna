@@ -27,66 +27,65 @@ export interface FieldDescriptor {
   options?: (string | number)[]
   entity?: string
   entityFilters?: { [key: string]: string | number | boolean }
-  staffOnly?: boolean
+  advanced?: boolean
 }
 
+// Fields the schema marks ami_widget: "hidden" are left out of the form.
 export const schemaToFields = (
   schema?: ServerConfigSchema | null
 ): FieldDescriptor[] =>
-  Object.entries(schema?.properties ?? {}).map(([name, prop]) => {
-    const base = {
-      name,
-      label: prop.title ?? name,
-      description: prop.description,
-      required: !!schema?.required?.includes(name),
-      defaultValue: prop.default,
-      staffOnly: !!prop.ami_staff_only,
-    }
-
-    if (prop.ami_widget === 'entity' && prop.ami_entity) {
-      return {
-        ...base,
-        kind: 'entity',
-        entity: prop.ami_entity,
-        entityFilters: prop.ami_entity_filters,
+  Object.entries(schema?.properties ?? {})
+    .filter(([, prop]) => prop.ami_widget !== 'hidden')
+    .map(([name, prop]) => {
+      const base = {
+        name,
+        label: prop.title ?? name,
+        description: prop.description,
+        required: !!schema?.required?.includes(name),
+        defaultValue: prop.default,
+        advanced: !!prop.ami_advanced,
       }
-    }
-    if (prop.type === 'boolean') {
-      return { ...base, kind: 'boolean' }
-    }
-    if (prop.type === 'integer' || prop.type === 'number') {
-      return {
-        ...base,
-        kind: prop.type,
-        min: prop.minimum,
-        max: prop.maximum,
-        exclusiveMin: prop.exclusiveMinimum,
-        exclusiveMax: prop.exclusiveMaximum,
-      }
-    }
-    if (prop.type === 'string' && prop.enum?.length) {
-      return { ...base, kind: 'select', options: prop.enum }
-    }
-    if (prop.type === 'string') {
-      return { ...base, kind: 'text' }
-    }
-    if (prop.type === 'array' && prop.items?.type === 'integer') {
-      return { ...base, kind: 'integer-list' }
-    }
-    return { ...base, kind: 'json' }
-  })
 
-export const scopeToFields = (
-  scope: ServerScopeField[],
-  { optional }: { optional?: boolean } = {}
-): FieldDescriptor[] =>
+      if (prop.type === 'array' && prop.items?.type === 'integer') {
+        return { ...base, kind: 'integer-list' }
+      }
+      if (prop.ami_widget === 'entity' && prop.ami_entity) {
+        return {
+          ...base,
+          kind: 'entity',
+          entity: prop.ami_entity,
+          entityFilters: prop.ami_entity_filters,
+        }
+      }
+      if (prop.type === 'boolean') {
+        return { ...base, kind: 'boolean' }
+      }
+      if (prop.type === 'integer' || prop.type === 'number') {
+        return {
+          ...base,
+          kind: prop.type,
+          min: prop.minimum,
+          max: prop.maximum,
+          exclusiveMin: prop.exclusiveMinimum,
+          exclusiveMax: prop.exclusiveMaximum,
+        }
+      }
+      if (prop.type === 'string' && prop.enum?.length) {
+        return { ...base, kind: 'select', options: prop.enum }
+      }
+      if (prop.type === 'string') {
+        return { ...base, kind: 'text' }
+      }
+      return { ...base, kind: 'json' }
+    })
+
+export const scopeToFields = (scope: ServerScopeField[]): FieldDescriptor[] =>
   scope.map((item) => ({
     name: item.field,
     label: item.label,
-    kind: item.many ? 'integer-list' : 'entity',
-    required: item.required && !optional,
+    kind: 'entity',
+    required: item.required,
     entity: item.entity,
-    entityFilters: item.entity_filters,
   }))
 
 const isEmptyDefault = (value: unknown) =>
