@@ -446,7 +446,9 @@ def assign_occurrences_from_detection_chains(
                 recorded.append(results.build(keeper, chain, doomed, previous_determination_id))
             settled.add(keeper.pk)
 
-    AlgorithmResult.objects.record_many(recorded)
+    # A later chain can absorb an earlier chain's keeper, so only keepers that remain get a result.
+    remaining = set(Occurrence.objects.filter(pk__in=[r.occurrence_id for r in recorded]).values_list("pk", flat=True))
+    AlgorithmResult.objects.record_many(r for r in recorded if r.occurrence_id in remaining)
 
     # Stored once every determination is settled, since id_agreement is measured against
     # it, and in batches for the whole event rather than three queries per chain.
