@@ -33,6 +33,7 @@ from rest_framework.request import Request
 
 import ami.tasks
 import ami.utils
+from ami.base.aggregates import Percentile
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
@@ -1308,16 +1309,31 @@ class Event(BaseModel):
             .count()
         )
 
-    def stats(self) -> dict[str, int | None]:
-        return (
-            SourceImage.objects.filter(event=self)
-            .annotate(count=models.Count("detections"))
-            .aggregate(
-                detections_max_count=models.Max("count"),
-                detections_min_count=models.Min("count"),
-                # detections_avg_count=models.Avg("count"),
-            )
+    def stats(self) -> dict[str, typing.Any]:
+        """
+        How crowded the captures of this session got: the distribution of detections per
+        capture (min, quartiles, max) and the busiest capture, so reviewers can jump to it.
+
+        Reads the cached ``SourceImage.detections_count``, which already applies the
+        project's default filters and excludes null-marker detections. Captures whose count
+        has not been computed yet are left out rather than counted as zero.
+        """
+        captures = SourceImage.objects.filter(event=self, detections_count__isnull=False)
+        stats = captures.aggregate(
+            captures_count=models.Count("id"),
+            detections_min_count=models.Min("detections_count"),
+            detections_max_count=models.Max("detections_count"),
+            detections_q1_count=Percentile("detections_count", 0.25),
+            detections_median_count=Percentile("detections_count", 0.5),
+            detections_q3_count=Percentile("detections_count", 0.75),
         )
+        # Ties go to the earliest capture so the link is stable between requests.
+        stats["busiest_capture"] = (
+            captures.order_by("-detections_count", "timestamp", "pk")
+            .values("id", "timestamp", "detections_count")
+            .first()
+        )
+        return stats
 
     def taxa_count(self, classification_threshold: float = 0) -> int:
         # Move this to a pre-calculated field or prefetch_related in the view
@@ -1353,6 +1369,7 @@ class Event(BaseModel):
         plots = []
 
         plots.append(charts.event_detections_per_hour(event_pk=self.pk))
+        plots.append(charts.event_detections_per_capture(event_pk=self.pk))
         plots.append(charts.event_top_taxa(event_pk=self.pk))
 
         return plots
