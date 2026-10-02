@@ -12,7 +12,15 @@ from django.test import TestCase
 from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, DetectionEmbedding, Occurrence, Project, SourceImage
+from ami.main.models import (
+    AlgorithmResult,
+    Classification,
+    Detection,
+    DetectionEmbedding,
+    Occurrence,
+    Project,
+    SourceImage,
+)
 from ami.main.models_future.embeddings import algorithm_ids_with_vectors, vectors_for_detections
 from ami.main.models_future.project_scope import ProjectScopeError, project_mismatch_counts
 from ami.ml.exceptions import FeatureResultsStoredNothing
@@ -137,6 +145,35 @@ class TestEmbeddingWrites(FeatureOnlyFixture, TestCase):
         self.project.delete()
         self.assertFalse(DetectionEmbedding.objects.exists())
         self.assertFalse(Job.objects.filter(pk=job.pk).exists())
+
+
+class TestStationDeleteKeepsJobs(FeatureOnlyFixture, TestCase):
+    """A job whose outputs restrict its deletion must not be cascade-deleted with its station."""
+
+    def setUp(self) -> None:
+        self._set_up_project(images=1, boxes_per_image=1)
+
+    def test_deleting_a_station_keeps_the_job_that_stored_vectors_for_its_captures(self):
+        job = Job.objects.create(
+            project=self.project, deployment=self.deployment, name="Feature job", pipeline=self.pipeline
+        )
+        DetectionEmbedding.objects.create(
+            detection=Detection.objects.filter(bbox__isnull=False).first(),
+            algorithm=self.extractor,
+            vector=[0.5] * 4,
+            job=job,
+        )
+        AlgorithmResult.objects.record(
+            occurrence=Occurrence.objects.filter(project=self.project).first(),
+            algorithm=self.extractor,
+            job=job,
+            kind="station_delete_test",
+            value=1.0,
+        )
+        self.deployment.delete()
+        job.refresh_from_db()
+        self.assertIsNone(job.deployment_id)
+        self.assertEqual(DetectionEmbedding.objects.get().job_id, job.pk)
 
 
 class TestJobDeleteEndpoint(FeatureOnlyFixture, APITestCase):

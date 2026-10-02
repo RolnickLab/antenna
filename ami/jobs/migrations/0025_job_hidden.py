@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("jobs", "0023_alter_job_job_type_key"),
+        ("jobs", "0024_job_deployment_set_null"),
     ]
 
     operations = [

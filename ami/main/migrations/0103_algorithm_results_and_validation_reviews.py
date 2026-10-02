@@ -9,7 +9,7 @@ import django.utils.timezone
 class Migration(migrations.Migration):
     dependencies = [
         ("ml", "0029_algorithm_embedding_dimensions"),
-        ("jobs", "0024_job_hidden"),
+        ("jobs", "0025_job_hidden"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("main", "0102_detection_embeddings_and_output_jobs"),
     ]
