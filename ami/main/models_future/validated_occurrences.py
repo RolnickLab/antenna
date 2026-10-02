@@ -410,13 +410,11 @@ def _parse_datetime(value: str) -> datetime.datetime:
 def confirm_grouping_as_of(occurrence: Occurrence, user: User, verified_at: datetime.datetime) -> None:
     """Record a grouping confirmation made by ``user`` at ``verified_at`` on another database.
 
-    The one place the import writes a confirmation. ``verify_grouping`` stamps the current
-    time, so the exported time is written over it afterwards to keep the provenance. When
-    confirmations become review rows of their own, this function changes and nothing else does.
+    The one place the import writes a confirmation, through the same function the review
+    interface uses, so whatever ``verify_grouping`` records (today the cached fields, later a
+    review row as well) is recorded here too, under the original time.
     """
-    verify_grouping(occurrence, user)
-    occurrence.grouping_verified_at = verified_at
-    Occurrence.objects.filter(pk=occurrence.pk).update(grouping_verified_at=verified_at)
+    verify_grouping(occurrence, user, timestamp=verified_at)
 
 
 def _is_confirmed_as(occurrence: Occurrence, user: User | None, verified_at: datetime.datetime | None) -> bool:

@@ -614,14 +614,15 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
 
 
 @transaction.atomic
-def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
+def verify_grouping(occurrence: Occurrence, user: User, timestamp: datetime.datetime | None = None) -> Occurrence:
     """Record that a person confirmed this occurrence holds the right detections.
 
     This is the label the tracking methods are scored against, so it is deliberately
-    an explicit act — no operation in this module sets it as a side effect.
+    an explicit act — no operation in this module sets it as a side effect. ``timestamp``
+    is for replaying a confirmation made elsewhere; a live confirmation is stamped now.
     """
     _lock_for_edit(occurrence)
-    occurrence.grouping_verified_at = timezone.now()
+    occurrence.grouping_verified_at = timestamp or timezone.now()
     occurrence.grouping_verified_by = user
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])
     return occurrence

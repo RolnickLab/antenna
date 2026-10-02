@@ -96,8 +96,7 @@ class ReplayTestCase(TestCase):
         Identification.objects.filter(occurrence=track, taxon=self.taxon).update(
             created_at=IDENTIFIED_AT, updated_at=IDENTIFIED_AT
         )
-        verify_grouping(track, self.reviewer)
-        Occurrence.objects.filter(pk=track.pk).update(grouping_verified_at=CONFIRMED_AT)
+        verify_grouping(track, self.reviewer, timestamp=CONFIRMED_AT)
 
         identified = self._occurrence_with_boxes(self.source_project, self.source_captures[4:], OTHER_BOX)
         Identification.objects.create(occurrence=identified, user=self.reviewer, taxon=self.taxon)
@@ -158,6 +157,16 @@ class TestReplayConfirmedOccurrences(ReplayTestCase):
         self.assertEqual(rebuilt.grouping_verified_at, CONFIRMED_AT, "The confirmation keeps the exported time")
         self.assertEqual(rebuilt.grouping_verified_by, self.reviewer)
         self.assertEqual(Occurrence.objects.filter(project=self.target_project).count(), 3, "4 singles became 1 track")
+
+    def test_verify_grouping_accepts_the_time_of_a_confirmation_made_elsewhere(self):
+        occurrence = self._occurrence_with_boxes(self.target_project, self.target_captures[:1], TRACK_BOX)
+
+        verify_grouping(occurrence, self.reviewer, timestamp=CONFIRMED_AT)
+
+        occurrence.refresh_from_db()
+        self.assertEqual(
+            (occurrence.grouping_verified_at, occurrence.grouping_verified_by), (CONFIRMED_AT, self.reviewer)
+        )
 
     def test_identifications_keep_their_user_time_and_withdrawn_state(self):
         self._populate_target()
