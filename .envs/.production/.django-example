@@ -57,6 +57,8 @@ DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 SENDGRID_API_KEY=
 # Credentials for the mandrill email provider, used if DJANGO_EMAIL_BACKEND indicates it.
 # MANDRILL_API_KEY=
+# From address for sent emails.
+DJANGO_DEFAULT_FROM_EMAIL=
 
 # Newrelic
 # ------------------------------------------------------------------------------
