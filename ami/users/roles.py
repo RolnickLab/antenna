@@ -146,6 +146,9 @@ class MLDataManager(Role):
         Project.Permissions.SYNC_DEPLOYMENT,
         Project.Permissions.RUN_REGROUP_EVENTS_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
+        # Can start an export, not only run/retry its job, as the description promises.
+        Project.Permissions.CREATE_DATA_EXPORT,
+        Project.Permissions.DELETE_DATA_EXPORT,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
         Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,

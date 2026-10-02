@@ -3204,6 +3204,39 @@ class TestSyncDeploymentBackfillMigration(APITestCase):
         self.assertEqual(granted.status_code, status.HTTP_200_OK)
 
 
+class TestMLDataManagerCanExport(APITestCase):
+    """An ML data manager can create exports, which the exports page reads from user_permissions.
+
+    Role permissions are re-synced for every project by create_roles_for_project (also run on
+    post_migrate), so existing projects pick the grant up without a data migration.
+    """
+
+    def test_ml_data_manager_is_offered_export_creation(self):
+        project = Project.objects.create(name="Export Role Project")
+        create_roles_for_project(project)
+        ml_user = User.objects.create_user(email="ml-export@insectai.org", password="password123")
+        MLDataManager.assign_user(ml_user, project)
+
+        self.assertIn(Project.Permissions.CREATE_DATA_EXPORT, get_perms(ml_user, project))
+        self.client.force_authenticate(ml_user)
+        response = self.client.get(f"/api/v2/exports/?project_id={project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("create", response.json()["user_permissions"])
+
+    def test_resync_grants_export_creation_on_existing_projects(self):
+        from django.contrib.auth.models import Group
+
+        project = Project.objects.create(name="Export Resync Project")
+        create_roles_for_project(project)
+        group = Group.objects.get(name=f"{project.pk}_{project.name}_MLDataManager")
+        remove_perm(Project.Permissions.CREATE_DATA_EXPORT, group, project)
+        self.assertNotIn(Project.Permissions.CREATE_DATA_EXPORT, get_perms(group, project))
+
+        create_roles_for_project(project)
+
+        self.assertIn(Project.Permissions.CREATE_DATA_EXPORT, get_perms(group, project))
+
+
 class TestFineGrainedJobRunPermission(APITestCase):
     def setUp(self):
         super().setUp()
