@@ -15,6 +15,7 @@ import typing
 import uuid
 from urllib.parse import urljoin
 
+import numpy as np
 import pydantic
 import requests
 from django.db import models
@@ -36,6 +37,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    as_half_precision,
     bbox_is_null,
     update_calculated_fields_for_events,
     update_occurrence_determination,
@@ -670,6 +672,7 @@ def get_or_create_detection(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Detection, bool]:
     """
     Create a Detection object from a DetectionResponse, or update an existing one.
@@ -763,6 +766,7 @@ def get_or_create_detection(
             path=crop_url,
             detection_time=detection_resp.timestamp,
             detection_algorithm=detection_algo,
+            job_id=job_id,
         )
         if save:
             new_detection.save()
@@ -780,6 +784,7 @@ def create_detections(
     detections: list[DetectionResponse],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> list[Detection]:
     """
     Efficiently create multiple Detection objects from a list of DetectionResponse objects, grouped by source image.
@@ -810,6 +815,7 @@ def create_detections(
             algorithms_known=algorithms_known,
             save=False,
             logger=logger,
+            job_id=job_id,
         )
         if created:
             new_detections.append(detection)
@@ -826,8 +832,6 @@ def create_detections(
     return existing_detections + new_detections
 
 
-# A vector is roughly 40 KB of SQL text (estimate), so this keeps each INSERT to a few MB.
-EMBEDDING_BATCH_SIZE = 200
 # Boxes are matched to responses at this precision, so a service that re-serialises the
 # coordinates it was sent still lands its vectors on the same detections.
 BOX_MATCH_DECIMALS = 3
@@ -897,11 +901,12 @@ def create_detection_embeddings(
     job_id: int | None = None,
 ) -> StoredEmbeddings:
     """
-    Store the feature vectors sent with each detection, one row per (detection, algorithm).
+    Store the feature vectors sent with each detection, one row per (detection, algorithm, key).
 
-    A vector already stored for the pair is replaced, so saving the same results twice
-    changes nothing. Only ``DetectionEmbedding`` rows are written, never a classification,
-    so no determination can change.
+    Writes are insert-mostly (see ``EmbeddingQuerySet.store``): saving the same results twice
+    changes nothing, and a new vector for a pair replaces the old row. Only ``DetectionEmbedding``
+    rows are written, never a classification, so no determination can change. A vector with a
+    value half precision cannot hold (NaN, infinity, beyond 65504) is skipped with a warning.
 
     Responses are matched to ``detections`` by image and box (see ``BOX_MATCH_DECIMALS``),
     the key ``get_or_create_detection`` reuses detections by. A returned box with no match is
@@ -918,6 +923,7 @@ def create_detection_embeddings(
     embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
     lengths_by_algorithm: dict[str, set[int]] = collections.defaultdict(set)
     unmatched: list[DetectionResponse] = []
+    not_finite = 0
     for detection_resp in detection_responses:
         if detection_resp.bbox is None:
             continue
@@ -934,6 +940,9 @@ def create_detection_embeddings(
                     "The processing service must declare it in the /info endpoint. "
                     f"Known algorithms: {list(algorithms_known.keys())}"
                 ) from err
+            if not np.isfinite(as_half_precision(embedding_resp.features)).all():
+                not_finite += 1
+                continue
             lengths_by_algorithm[algorithm.key].add(len(embedding_resp.features))
             embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
                 detection=detection, algorithm=algorithm, vector=embedding_resp.features, job_id=job_id
@@ -947,14 +956,10 @@ def create_detection_embeddings(
             f"Skipped {len(unmatched)} returned boxes that match no stored detection, "
             f"for example: {_describe_boxes(unmatched)}"
         )
-    DetectionEmbedding.objects.bulk_create(
-        list(embeddings.values()),
-        update_conflicts=True,
-        unique_fields=["detection", "algorithm"],
-        update_fields=["vector", "job", "updated_at"],
-        batch_size=EMBEDDING_BATCH_SIZE,
-    )
-    logger.info(f"Stored {len(embeddings)} detection embeddings for {len(detections)} detections.")
+    if not_finite:
+        logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
+    inserted, unchanged = DetectionEmbedding.objects.store(embeddings.values())
+    logger.info(f"Stored {inserted} detection embeddings ({unchanged} unchanged) for {len(detections)} detections.")
     return StoredEmbeddings(embeddings=list(embeddings.values()), unmatched=unmatched)
 
 
@@ -1090,6 +1095,7 @@ def create_classification(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Classification, bool]:
     """
     Create a Classification object from a ClassificationResponse, or update an existing one.
@@ -1181,6 +1187,7 @@ def create_classification(
             features_2048=classification_resp.features,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
+            job_id=job_id,
         )
         classification = new_classification
 
@@ -1199,6 +1206,7 @@ def create_classifications(
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
+    job_id: int | None = None,
 ) -> list[Classification]:
     """
     Efficiently create multiple Classification objects from a list of ClassificationResponse objects,
@@ -1223,6 +1231,7 @@ def create_classifications(
                 algorithms_known=algorithms_known,
                 save=False,
                 logger=logger,
+                job_id=job_id,
             )
             if created:
                 new_classifications.append(classification)
@@ -1439,6 +1448,7 @@ def save_results(
         detections=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     # Before classifications, so an unregistered embedding algorithm stops the batch at the
@@ -1456,6 +1466,7 @@ def save_results(
         detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     # Create a new occurrence for each detection (no tracking yet)

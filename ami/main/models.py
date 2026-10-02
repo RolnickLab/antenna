@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import numpy as np
 import pgvector.django
 import PIL.Image
 import pydantic
@@ -3098,7 +3099,11 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 
 @final
 class Classification(BaseModel):
-    """The output of a classifier"""
+    """A taxon classification: a classifier's prediction of the taxon a detection shows.
+
+    Every row names a taxon, and the occurrence determination is chosen among these rows,
+    so outputs that are not taxa (scores, flags, vectors) are stored elsewhere.
+    """
 
     project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
@@ -3135,7 +3140,10 @@ class Classification(BaseModel):
         null=True,
         related_name="classifications",
     )
-    # job = models.CharField(max_length=255, null=True)
+    # The job that saved this classification; null for rows saved outside a job or before jobs were recorded.
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="classifications"
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -3269,16 +3277,19 @@ class DetectionQuerySet(BaseQuerySet):
         """
         return self.filter(NULL_DETECTIONS_FILTER)
 
-    def has_vector(self, algorithm=None):
-        """Detections with a stored feature vector: a ``DetectionEmbedding``, or a
+    def has_vector(self, algorithm=None, key: str = "embedding"):
+        """Detections with a stored feature vector: a ``DetectionEmbedding`` under ``key``, or a
         classification's ``features_2048``. Pass ``algorithm`` to count only that
         algorithm's vectors. Tested with EXISTS, so no vector is ever loaded.
         """
-        embeddings = DetectionEmbedding.objects.filter(detection_id=OuterRef("pk"))
+        embeddings = DetectionEmbedding.objects.filter(detection_id=OuterRef("pk"), key=key)
         classifications = Classification.objects.filter(detection_id=OuterRef("pk"), features_2048__isnull=False)
         if algorithm is not None:
             embeddings = embeddings.filter(algorithm=algorithm)
             classifications = classifications.filter(algorithm=algorithm)
+        if key != "embedding":
+            # A classification's vector is the backbone embedding, never another key.
+            return self.filter(Exists(embeddings))
         return self.filter(Exists(embeddings) | Exists(classifications))
 
 
@@ -3341,11 +3352,8 @@ class Detection(BaseModel):
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
-    # detection_job = models.ForeignKey(
-    #     "Job",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    # )
+    # The job that saved this detection; null for rows saved outside a job or before jobs were recorded.
+    job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="detections")
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
@@ -3503,36 +3511,149 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
+class AlgorithmOutput(BaseModel):
+    """Something an algorithm produced in a job, about one target row.
+
+    Concrete tables add the target. ``job`` records the run (``Job`` is the run record); it
+    is null only for results saved outside a job. See the model outputs design, #1453.
+    """
+
+    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="%(class)ss")
+    # RESTRICT, not PROTECT: a job with outputs cannot be deleted on its own, but still goes
+    # when its project (and so its outputs) is deleted in the same operation.
+    job = models.ForeignKey("jobs.Job", on_delete=models.RESTRICT, null=True, blank=True, related_name="%(class)ss")
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        abstract = True
+
+
+class EmbeddingQuerySet(BaseQuerySet):
+    def for_algorithm(self, algorithm, key: str = "embedding"):
+        """Vectors of one kind from one algorithm: the only set whose vectors may be compared."""
+        return self.filter(algorithm=algorithm, key=key)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        from ami.main.models_future.project_scope import fill_project_ids
+
+        objs = list(objs)
+        fill_project_ids(objs)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def store(self, objs) -> tuple[int, int]:
+        """Write vectors insert-mostly; returns (inserted, unchanged).
+
+        A row whose (target, algorithm, key) already holds the same vector is left alone; one
+        holding another vector is deleted and the new row inserted, so a row is never updated.
+        """
+        objs = list(objs)
+        if not objs:
+            return 0, 0
+        target = self.model.project_parent_path.partition("__")[0]
+        target_attname = self.model._meta.get_field(target).attname
+
+        def pair(obj) -> tuple:
+            return getattr(obj, target_attname), obj.algorithm_id, obj.key
+
+        existing = {
+            (target_id, algorithm_id, key): (pk, vector)
+            for pk, target_id, algorithm_id, key, vector in self.filter(
+                **{f"{target_attname}__in": {getattr(obj, target_attname) for obj in objs}},
+                algorithm_id__in={obj.algorithm_id for obj in objs},
+                key__in={obj.key for obj in objs},
+            )
+            .order_by()
+            .values_list("pk", target_attname, "algorithm_id", "key", "vector")
+        }
+        to_insert, to_delete = [], []
+        for obj in objs:
+            stored = existing.get(pair(obj))
+            if stored is not None and same_vector(stored[1], obj.vector):
+                continue
+            if stored is not None:
+                to_delete.append(stored[0])
+            to_insert.append(obj)
+        if to_insert:
+            with transaction.atomic():
+                if to_delete:
+                    self.filter(pk__in=to_delete).delete()
+                # A concurrent writer may have inserted the same pair; its row stands.
+                self.bulk_create(to_insert, ignore_conflicts=True, batch_size=EMBEDDING_BATCH_SIZE)
+        return len(to_insert), len(objs) - len(to_insert)
+
+
+# A 2048-d vector is roughly 20 KB of SQL text (estimate), so this keeps each INSERT to a few MB.
+EMBEDDING_BATCH_SIZE = 200
+
+
+def as_half_precision(vector) -> np.ndarray:
+    """A vector as the half-precision array the ``halfvec`` column stores."""
+    if isinstance(vector, pgvector.HalfVector):
+        return vector.to_numpy()
+    # A value beyond half precision's range becomes infinity, which writers then refuse.
+    with np.errstate(over="ignore"):
+        return np.asarray(vector, dtype=np.float16)
+
+
+def same_vector(stored, new) -> bool:
+    return bool(np.array_equal(as_half_precision(stored), as_half_precision(new)))
+
+
+class Embedding(AlgorithmOutput):
+    """A feature vector an algorithm produced for one target.
+
+    Vectors are comparable only within one ``(algorithm, key)``. ``key`` names the output when
+    one forward pass yields several (the default ``embedding`` is the backbone vector). The
+    column is an unsized ``halfvec``: extractors differ in length, and each algorithm keeps one
+    (``Algorithm.embedding_dimensions``).
+    """
+
+    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="%(class)ss")
+    key = models.CharField(max_length=255, default="embedding")
+    vector = pgvector.django.HalfVectorField(help_text="The feature vector, in half precision.")
+
+    # The path to the row whose project this one copies (see ami.main.models_future.project_scope).
+    project_parent_path: str
+    project_accessor = "project"
+
+    objects = EmbeddingQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+        constraints = [
+            models.CheckConstraint(check=~models.Q(key=""), name="%(app_label)s_%(class)s_key_not_empty"),
+        ]
+
+    def save(self, *args, **kwargs):
+        from ami.main.models_future.project_scope import fill_project_ids
+
+        fill_project_ids([self])
+        super().save(*args, **kwargs)
+
+
 @final
-class DetectionEmbedding(BaseModel):
-    """A feature vector for one detection from one algorithm, used to compare detections by appearance.
+class DetectionEmbedding(Embedding):
+    """A feature vector for one detection, used to compare detections by appearance.
 
     Kept apart from classifications so every detection can have one, including those the
     moth/non-moth filter rejected, without adding a prediction that could change a
-    determination. Vectors are only comparable within one algorithm. See #1417.
+    determination. See #1417.
     """
-
-    project_accessor = "detection__source_image__project"
 
     # No separate index: the unique constraint's index leads with detection_id.
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
-    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings")
-    # No fixed length: extractors differ. Each algorithm keeps one (Algorithm.embedding_dimensions).
-    vector = pgvector.django.VectorField(
-        help_text="Feature embedding from the model backbone. Its length is the algorithm's own.",
-    )
-    # The job whose results stored this vector; kept when the job is deleted, since the vector stays valid.
-    job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
 
-    class Meta:
-        constraints = [
+    project_parent_path = "detection__source_image"
+
+    class Meta(Embedding.Meta):
+        constraints = Embedding.Meta.constraints + [
             models.UniqueConstraint(
-                fields=["detection", "algorithm"], name="unique_detection_embedding_per_algorithm"
+                fields=["detection", "algorithm", "key"], name="%(app_label)s_%(class)s_unique_detection_algorithm_key"
             ),
         ]
 
     def __str__(self) -> str:
-        return f"#{self.pk} vector for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
+        return f"#{self.pk} {self.key} for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
 
 
 class OccurrenceQuerySet(BaseQuerySet):

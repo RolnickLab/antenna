@@ -2530,21 +2530,29 @@ class TestDetectionEmbeddings(TestCase):
         self._save(self._rejected(image, _embedding_payload(self.HIGH)))
         self.assertEqual(self._stored(image), {(0.0, EMBEDDING_SPECIES.key): self.HIGH})
 
-    def test_each_vector_records_the_job_that_last_stored_it_and_outlives_that_job(self):
+    def test_each_row_records_the_job_that_saved_it_and_the_job_cannot_be_deleted_under_its_vectors(self):
+        from django.db.models import RestrictedError
+
         from ami.jobs.models import Job
 
         image = self._image()
         first, second = (
             Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline) for n in (1, 2)
         )
-        self._save(self._rejected(image, _embedding_payload(self.LOW)), job_id=first.pk)
-        self._save(self._rejected(image, _embedding_payload(self.HIGH)), job_id=second.pk)
-        self.assertEqual(DetectionEmbedding.objects.get(detection__source_image=image).job_id, second.pk)
+        self._save(self._moth(image, _embedding_payload(self.LOW)), job_id=first.pk)
+        self._save(self._moth(image, _embedding_payload(self.HIGH)), job_id=second.pk)
 
-        second.delete()
-        embedding = DetectionEmbedding.objects.get(detection__source_image=image)
-        self.assertIsNone(embedding.job_id)
-        self.assertEqual(list(embedding.vector), self.HIGH)
+        detection = Detection.objects.get(source_image=image)
+        self.assertEqual(detection.job_id, first.pk, "The detection keeps the job that created it")
+        self.assertEqual(set(detection.classifications.values_list("job_id", flat=True)), {first.pk})
+        self.assertEqual(DetectionEmbedding.objects.get(detection=detection).job_id, second.pk)
+
+        with self.assertRaises(RestrictedError):
+            second.delete()
+        first.delete()
+        detection.refresh_from_db()
+        self.assertIsNone(detection.job_id)
+        self.assertEqual(list(DetectionEmbedding.objects.get(detection=detection).vector), self.HIGH)
 
     def test_a_vector_lands_on_its_own_detection_when_some_detections_already_exist(self):
         """Detection creation returns existing detections ahead of new ones, so pairing responses
@@ -2570,14 +2578,30 @@ class TestDetectionEmbeddings(TestCase):
         self.assertFalse(DetectionEmbedding.objects.exists())
         self.assertFalse(Classification.objects.filter(detection__source_image=image).exists())
 
-    def test_storing_vectors_takes_one_query_however_many_detections(self):
+    def test_storing_vectors_takes_the_same_queries_however_many_detections(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
         image = self._image()
-        responses = [self._rejected(image, _embedding_payload(self.LOW), box=float(20 * i)) for i in range(5)]
-        self._save(*responses)
-        detections = list(Detection.objects.filter(source_image=image))
-        parsed = [DetectionResponse.parse_obj(response) for response in responses]
+        boxes = [float(20 * i) for i in range(5)]
+        self._save(*[self._rejected(image, box=box) for box in boxes])
+        detections = list(Detection.objects.filter(source_image=image).order_by("bbox"))
+        parsed = [
+            DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=box)) for box in boxes
+        ]
         algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
 
-        with self.assertNumQueries(1):
+        # The first vector records the algorithm's length; measure after that, on other
+        # detections so no read is served from the query cache.
+        create_detection_embeddings(detections[:1], parsed[:1], algorithms_known)
+        DetectionEmbedding.objects.all().delete()
+        with CaptureQueriesContext(connection) as one:
+            create_detection_embeddings(detections[1:2], parsed[1:2], algorithms_known)
+        DetectionEmbedding.objects.all().delete()
+        with CaptureQueriesContext(connection) as five:
             stored = create_detection_embeddings(detections, parsed, algorithms_known)
+        self.assertEqual(len(five), len(one))
         self.assertEqual(len(stored.embeddings), 5)
+
+        with self.assertNumQueries(1):
+            create_detection_embeddings(detections, parsed, algorithms_known)
