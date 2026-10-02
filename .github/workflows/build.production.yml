@@ -1,9 +1,7 @@
 name: Production Image Build
 
 # Checks that the production Django image still builds when its inputs change.
-# The backend test workflow builds the local development image, so this is the
-# only check that exercises compose/production/django/Dockerfile before a
-# deploy. Application code is excluded from the path filter on purpose: the
+# Application code is excluded from the path filter on purpose: the
 # Dockerfile copies it in, but a code change cannot make the build fail, and the
 # backend tests already cover it.
 
