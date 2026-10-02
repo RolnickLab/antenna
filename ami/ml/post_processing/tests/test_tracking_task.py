@@ -370,7 +370,7 @@ class TestConfirmedTracksAreFrozen(TestCase):
         params = self._run()
 
         self.assertEqual(Occurrence.objects.filter(event=self.event).count(), 1)
-        self.assertEqual(params["Confirmed tracks left unchanged"], 0)
+        self.assertEqual(params["Confirmed occurrences left unchanged"], 0)
         self.assertEqual(params["Result"], "Tracked 1 session(s).")
 
     def test_a_confirmed_occurrence_is_left_as_it_is(self):
@@ -393,8 +393,8 @@ class TestConfirmedTracksAreFrozen(TestCase):
                 self.assertFalse(
                     Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).exists()
                 )
-                self.assertEqual(params["Confirmed tracks left unchanged"], 1)
-                self.assertEqual(params["Result"], "Tracked 1 session(s). Left 1 confirmed track(s) unchanged.")
+                self.assertEqual(params["Confirmed occurrences left unchanged"], 1)
+                self.assertEqual(params["Result"], "Tracked 1 session(s). Left 1 confirmed occurrence(s) unchanged.")
 
 
 class TestRunsAndEditsShareTheSessionLock(TestCase):
@@ -735,7 +735,7 @@ class TestIdentificationsSurviveMerging(TestCase):
         TrackingTask(job=job, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5).run()
 
         params = self._stage_params(job)
-        self.assertEqual(params["Events tracked"], 0)
+        self.assertEqual(params["Sessions tracked"], 0)
         self.assertEqual(
             params["Result"], "Nothing was tracked: 1 session(s) skipped (1 because it has human identifications)."
         )
@@ -758,5 +758,5 @@ class TestIdentificationsSurviveMerging(TestCase):
         ).run()
 
         params = self._stage_params(job)
-        self.assertEqual(params["Events tracked"], 1)
+        self.assertEqual(params["Sessions tracked"], 1)
         self.assertEqual(params["Result"], "Tracked 1 session(s).")

@@ -167,7 +167,7 @@ def resolve_feature_algorithm(
                 None,
                 False,
                 f"Configured feature_extraction_algorithm_id="
-                f"{config.feature_extraction_algorithm_id} not found; skipping event {event.pk}.",
+                f"{config.feature_extraction_algorithm_id} not found; skipping session {event.pk}.",
             )
         return algorithm, True, ""
 
@@ -179,12 +179,12 @@ def resolve_feature_algorithm(
     if candidates:
         candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
         message = (
-            f"Event {event.pk}: detections classified by {len(candidates)} different "
+            f"Session {event.pk}: detections classified by {len(candidates)} different "
             f"feature-extraction algorithms ({candidate_names}). Pass "
             "feature_extraction_algorithm_id in the job config to disambiguate."
         )
     else:
-        message = f"Event {event.pk}: no detections carry feature embeddings."
+        message = f"Session {event.pk}: no detections carry feature embeddings."
 
     if config.require_features:
         return None, False, f"{message} Skipping."
@@ -228,7 +228,7 @@ def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algor
         .count()
     )
     if processed < total:
-        logger.info(f"Event {event.pk} not fully processed: {processed}/{total} captures")
+        logger.info(f"Session {event.pk} not fully processed: {processed}/{total} captures")
         return False
     return True
 
@@ -579,7 +579,7 @@ def iter_transition_links(
         if not cur.width or not cur.height:
             logger.warning(
                 f"Image {cur.pk} has no dimensions; skipping transition {i + 1}/{transitions} "
-                f"for event {cur.event_id}."
+                f"for session {cur.event_id}."
             )
             yield None
             continue
@@ -623,7 +623,7 @@ def assign_occurrences_by_tracking_images(
 ) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
-        logger.warning(f"Event {event.pk}: not enough images to track ({len(source_images)})")
+        logger.warning(f"Session {event.pk}: not enough images to track ({len(source_images)})")
         return {}
 
     transitions = len(source_images) - 1
@@ -642,7 +642,7 @@ def assign_occurrences_by_tracking_images(
         held_out = {detection_id for detection_id, _ in confirmed}
         confirmed_tracks = len({occurrence_id for _, occurrence_id in confirmed})
         if confirmed_tracks:
-            logger.info(f"Event {event.pk}: leaving {confirmed_tracks} confirmed track(s) unchanged.")
+            logger.info(f"Session {event.pk}: leaving {confirmed_tracks} confirmed occurrence(s) unchanged.")
 
         transition_links = iter_transition_links(source_images, algorithm, config, logger, held_out=held_out)
         for i, proposed in enumerate(transition_links):
@@ -656,7 +656,7 @@ def assign_occurrences_by_tracking_images(
 
         if skipped_transitions:
             logger.info(
-                f"Event {event.pk}: skipped {skipped_transitions}/{transitions} transitions "
+                f"Session {event.pk}: skipped {skipped_transitions}/{transitions} transitions "
                 "due to missing image dimensions."
             )
 
@@ -747,7 +747,7 @@ class TrackingTask(BasePostProcessingTask):
         skip_reasons: collections.Counter[str] = collections.Counter()
 
         for idx, event in enumerate(events, start=1):
-            self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
+            self.logger.info(f"Tracking session {idx}/{total} (id={event.pk})")
             # Each session is checked and tracked under the lock track edits also take, so the
             # checks see an edit made since the job started and an edit made during the run waits.
             with transaction.atomic():
@@ -757,7 +757,7 @@ class TrackingTask(BasePostProcessingTask):
                     fresh, reason = event_is_fresh(event)
                     if not fresh:
                         self.logger.info(
-                            f"Skipping event {event.pk}: not fresh ({reason}). "
+                            f"Skipping session {event.pk}: not fresh ({reason}). "
                             "v1 only handles 1:1 detection/occurrence input. "
                             "Re-tracking previously-tracked data lands in v2 (incremental)."
                         )
@@ -775,7 +775,7 @@ class TrackingTask(BasePostProcessingTask):
                     self.config.skip_if_human_identifications
                     and Occurrence.objects.filter(event=event, identifications__isnull=False).exists()
                 ):
-                    self.logger.info(f"Skipping event {event.pk}: has human identifications.")
+                    self.logger.info(f"Skipping session {event.pk}: has human identifications.")
                     totals["events_skipped"] += 1
                     skip_reasons["it has human identifications"] += 1
                     continue
@@ -785,7 +785,7 @@ class TrackingTask(BasePostProcessingTask):
                     and algorithm is not None
                     and not event_fully_processed(event, logger=self.logger, algorithm=algorithm)
                 ):
-                    self.logger.info(f"Skipping event {event.pk}: not fully processed.")
+                    self.logger.info(f"Skipping session {event.pk}: not fully processed.")
                     totals["events_skipped"] += 1
                     skip_reasons["it is not fully processed"] += 1
                     continue
@@ -814,19 +814,19 @@ class TrackingTask(BasePostProcessingTask):
         update_calculated_fields_for_sessions_and_stations(tracked_event_ids, stations_async=False)
 
         metrics: dict[str, typing.Any] = {
-            "Events tracked": totals["events_tracked"],
-            "Events skipped": totals["events_skipped"],
+            "Sessions tracked": totals["events_tracked"],
+            "Sessions skipped": totals["events_skipped"],
             "Detection links created": totals["links_created"],
             "Occurrences merged": totals["occurrences_merged"],
-            "Confirmed tracks left unchanged": totals["confirmed_tracks_left_unchanged"],
+            "Confirmed occurrences left unchanged": totals["confirmed_tracks_left_unchanged"],
         }
         # The job still succeeds, so without this line a run that skipped every session
         # looks the same in the job details as one that did the work. It is written on every
         # run because a retry keeps text params, and a stale line would contradict the counts.
         if totals["events_tracked"]:
             metrics["Result"] = f"Tracked {totals['events_tracked']} session(s)."
-            if totals["confirmed_tracks_left_unchanged"]:
-                metrics["Result"] += f" Left {totals['confirmed_tracks_left_unchanged']} confirmed track(s) unchanged."
+            if left_unchanged := totals["confirmed_tracks_left_unchanged"]:
+                metrics["Result"] += f" Left {left_unchanged} confirmed occurrence(s) unchanged."
         elif skip_reasons:
             metrics["Result"] = nothing_tracked_summary(skip_reasons)
             self.logger.warning(metrics["Result"])

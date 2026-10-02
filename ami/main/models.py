@@ -1771,7 +1771,7 @@ def _group_images_into_events_locked(
             "Events created": events_created_count,
             "Events touched": len(touched_event_pks),
             "Empty events deleted": events_deleted_empty,
-            "Tracks split at a session boundary": tracks_split_count,
+            "Occurrences split at a session boundary": tracks_split_count,
             "Duplicate timestamps": duplicate_timestamp_count,
             "Ungrouped captures": ungrouped_captures_count,
             "Captures missing timestamp": no_timestamp_captures_count,

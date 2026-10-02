@@ -1615,11 +1615,11 @@ class TestRegroupSplitsTracks(TestCase):
 
         self._group(gap_hours=2, job=job)
         job.refresh_from_db()
-        self.assertEqual(job.progress.get_stage_param("regroup", "tracks_split_at_a_session_boundary").value, 1)
+        self.assertEqual(job.progress.get_stage_param("regroup", "occurrences_split_at_a_session_boundary").value, 1)
 
         self._group(gap_hours=2, job=job)
         job.refresh_from_db()
-        self.assertEqual(job.progress.get_stage_param("regroup", "tracks_split_at_a_session_boundary").value, 0)
+        self.assertEqual(job.progress.get_stage_param("regroup", "occurrences_split_at_a_session_boundary").value, 0)
         self.assertEqual(Occurrence.objects.filter(deployment=self.deployment).count(), 2)
 
     def test_a_manual_split_gives_the_tail_the_session_of_its_detections(self):
@@ -9744,7 +9744,7 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.json()["occurrence_ids"],
-            "This would put two detections from the captures at 10:48:23 PM, 12:05:07 AM into one track. "
+            "This would put two detections from the captures at 10:48:23 PM, 12:05:07 AM into one occurrence. "
             "One animal appears once per capture, so these are different individuals.",
         )
 
