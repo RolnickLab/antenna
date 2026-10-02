@@ -114,6 +114,19 @@ describe('buildJobPayload', () => {
     expect(startNow).toBe(false)
   })
 
+  test('name prefers the capture set over other picked labels', () => {
+    const { body } = buildJobPayload({
+      projectId: '7',
+      jobType: mlType,
+      pickedLabels: {
+        pipeline_id: 'Moths',
+        source_image_collection_id: 'Night 1',
+      },
+      configValues: {},
+    })
+    expect(body.name).toBe('ML pipeline – Night 1')
+  })
+
   test('name falls back to the date without a picked label', () => {
     const { body } = buildJobPayload({
       projectId: '7',

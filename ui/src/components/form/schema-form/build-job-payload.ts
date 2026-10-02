@@ -65,7 +65,10 @@ export const buildJobPayload = (state: CreateJobState) => {
       : { config }
 
   const label = variant?.name ?? jobType.name
-  const pickedLabel = Object.values(state.pickedLabels ?? {}).find(Boolean)
+  // The capture set names a job best; otherwise use whatever was picked first.
+  const pickedLabel =
+    state.pickedLabels?.source_image_collection_id ||
+    Object.values(state.pickedLabels ?? {}).find(Boolean)
   const name =
     state.name?.trim() ||
     `${label} – ${
