@@ -237,7 +237,9 @@ payload, timestamp, withdrawn, is_current)`. `aspect` is one vocabulary across t
 `confirmed | rejected | corrected`, the correction in `payload` or via `identification`;
 `reviewed_result` points at the `AlgorithmResult` the verdict answers (TRAPPER's source pointer,
 Web Annotation's target); `is_current` holds one active row per `(target, aspect, user)`, with
-history kept through `withdrawn`. `Identification` stays (it feeds the determination and has
+history kept through `withdrawn`. Every review has a free-text `comment`, and a note with no
+verdict is `aspect = comment` with `verdict` null, so the first two uses are marking a track
+correct (`grouping`, `confirmed`) and leaving a comment on anything (`comment`). `Identification` stays (it feeds the determination and has
 agreement links) and writes a review row on save; `grouping_verified_at/by` on `Occurrence`
 remain as the cache of the latest grouping review. Evaluation of any algorithm against people
 is one symmetric join: `AlgorithmResult × ValidationReview` on the same target column with
@@ -278,6 +280,44 @@ concepts, so #1407's `training_info.job_id` moves out of it.
 | Head retraining (#1407) | reads `DetectionEmbedding(algorithm=head.feature_extractor)`; writes a derived `Algorithm` |
 | Prototypes, PCA | derived `Algorithm` + `TaxonEmbedding(key=prototype)` / `DetectionEmbedding` under it |
 | A person | `Identification` + `ValidationReview(aspect=identification)`; "mark complete" → `ValidationReview(aspect=grouping, reviewed_result=…)` |
+
+### 5.10 Worked flow: retraining a classifier head (#1407) on the settled tables
+
+1. **Scope.** A `train_classifier` job (type from #1407) with `params.config` validated by its
+   schema: the head to retrain, the taxa in scope (the project's default list, later a tag),
+   `min_per_species`, `test_fraction`, `split_salt`.
+2. **Vectors.** The head names its frozen backbone in `Algorithm.feature_extractor`. Verified
+   crops lacking a vector from that backbone are filled by the feature-only job with a
+   "verified only" scope (this replaces #1407's `generate_embeddings` job and its storage flag).
+3. **Verified** means the detection's occurrence has a current `ValidationReview(aspect =
+   identification)` that is not rejected or withdrawn (phase 2; until then, as #1407 does, an
+   `Identification` and a determination).
+4. **Dataset.** `DetectionEmbedding.objects.for_algorithm(backbone).verified(project)
+   .for_taxa(scope).with_labels().training_arrays()`, split by occurrence with the salt so
+   near-duplicate frames stay on one side; written as an `.npz` to project storage and handed to
+   the service by URL (the mirror image of the phase 3 result sink), or fitted in-process for a
+   logistic-regression head.
+5. **Registration.** A new `Algorithm` row: same name, next version, new key;
+   `feature_extractor = backbone`; `category_map` for the taxa in scope; #1407's
+   `training_info` (dataset url, rows, classes, metrics, warnings) stays on the row, minus the
+   parent key and job id, which become `derived_from` / `derived_relation = head_retrain` /
+   `produced_by_job` when the lineage fields land (phase 6; until then the job is findable from
+   `training_info` without an FK). Which occurrences were trained on: #1407's
+   `TrainingSetMembership` now, a tag with `job` on the assignment later.
+6. **Serving.** The service loads the head by key from its stored weights; its classifications
+   land as `Classification` rows with `job`, and its backbone vectors land in
+   `DetectionEmbedding` under the backbone's key, so a retrain adds no vectors and the next
+   retrain starts with full coverage. Nothing is promoted automatically.
+7. **Evaluation.** The `evaluate_algorithm` job compares `Classification(algorithm = head)` per
+   occurrence with `ValidationReview.current(aspect = identification)` on a fixed occurrence set
+   (#1407's `OccurrenceSet`, a tag later). Per-algorithm scores stay in #1407's
+   `AlgorithmEvaluation` and `TaxonEvaluation`; a per-occurrence correctness flag, if the UI wants
+   one, is an `AlgorithmResult(kind = eval_correct, value = 0 | 1)`.
+
+What #1407 keeps: its job types, dispatch, head store, evaluation tables, `trainable`,
+`training_config`, `training_info`. What it drops: its `DetectionEmbedding`, `ml/0029`, the
+positional writer, `EMBEDDING_DIMENSIONS`, `store_classification_embeddings`,
+`GenerateEmbeddingsJob`; `training_info.job_id` leaves `ami/ml/schemas.py`.
 
 ## 6. Entity diagram
 
