@@ -69,7 +69,7 @@ def _detections_for(occurrence_ids: list[int]) -> models.QuerySet:
             label_score=Subquery(best_classification.values("score")[:1]),
             # Same notion as DetectionQuerySet.has_vector(): an embedding or a classification vector.
             has_feature_vector=ExpressionWrapper(
-                Exists(DetectionEmbedding.objects.filter(detection=OuterRef("pk")))
+                Exists(DetectionEmbedding.objects.filter(detection=OuterRef("pk"), key="embedding"))
                 | Exists(Classification.objects.filter(detection=OuterRef("pk"), features_2048__isnull=False)),
                 output_field=models.BooleanField(),
             ),

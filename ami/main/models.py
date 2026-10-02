@@ -3063,15 +3063,16 @@ class ClassificationQuerySet(BaseQuerySet):
     def with_has_features(self):
         """Annotate ``has_features`` and defer the embedding itself.
 
-        ``has_features`` is true when the classification's algorithm stored a vector for
-        its detection, on the classification or as a ``DetectionEmbedding``. Read paths
+        ``has_features`` is true when the classification's algorithm stored a backbone vector
+        for its detection, on the classification or as a ``DetectionEmbedding`` under the
+        ``embedding`` key. Read paths
         only need to know that; deferring the 2048-float column keeps it out of the row's
         SELECT. A select_related self-join (``applied_to``) needs its own
         ``defer("applied_to__features_2048")``.
         """
         embedded = Exists(
             DetectionEmbedding.objects.filter(
-                detection_id=OuterRef("detection_id"), algorithm_id=OuterRef("algorithm_id")
+                detection_id=OuterRef("detection_id"), algorithm_id=OuterRef("algorithm_id"), key="embedding"
             )
         )
         return self.defer("features_2048").annotate(
