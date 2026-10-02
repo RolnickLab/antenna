@@ -1,6 +1,6 @@
 from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
-from rest_framework import serializers
+from rest_framework import exceptions, serializers
 
 from ami.exports.models import DataExport
 from ami.main.api.serializers import (
@@ -9,13 +9,21 @@ from ami.main.api.serializers import (
     SourceImageCollectionNestedSerializer,
     SourceImageNestedSerializer,
 )
-from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
-from ami.ml.models import Pipeline
+from ami.main.models import Project
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import JOB_LOGS_DEFAULT_LIMIT, Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
-from .schemas import QueuedTaskAcknowledgment
+from .models import (
+    JOB_LOGS_DEFAULT_LIMIT,
+    VALID_JOB_TYPES,
+    Job,
+    JobProgress,
+    JobType,
+    _legacy_logs_shape,
+    get_job_type_by_key,
+    serialize_job_logs,
+)
+from .schemas import JobTypeDescription, QueuedTaskAcknowledgment
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -52,9 +60,7 @@ class JobListSerializer(DefaultSerializer):
     progress = SchemaField(schema=JobProgress, read_only=True)
     logs = serializers.SerializerMethodField()
     job_type = JobTypeSerializer(read_only=True)
-    # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
-    # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
-    job_type_key = serializers.SlugField(write_only=True, default=MLJob.key)
+    job_type_key = serializers.SlugField(write_only=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -62,42 +68,6 @@ class JobListSerializer(DefaultSerializer):
         # @TODO this should be filtered by projects belonging to current user
         queryset=Project.objects.all(),
         source="project",
-    )
-    deployment_id = serializers.PrimaryKeyRelatedField(
-        label="Deployment",
-        write_only=True,
-        required=False,
-        allow_null=True,
-        # @TODO should this be filtered by project (from URL for new job?)
-        queryset=Deployment.objects.all(),
-        source="deployment",
-    )
-    source_image_single_id = serializers.PrimaryKeyRelatedField(
-        label="Source Image",
-        write_only=True,
-        required=False,
-        allow_null=True,
-        # @TODO should this be filtered by project (from URL for new job?)
-        queryset=SourceImage.objects.all(),
-        source="source_image_single",
-    )
-    source_image_collection_id = serializers.PrimaryKeyRelatedField(
-        label="Capture Set",
-        write_only=True,
-        required=False,
-        allow_null=True,
-        # @TODO should this be filtered by project (from URL for new job?)
-        queryset=SourceImageCollection.objects.all(),
-        source="source_image_collection",
-    )
-    pipeline_id = serializers.PrimaryKeyRelatedField(
-        label="Pipeline",
-        write_only=True,
-        required=False,
-        allow_null=True,
-        # @TODO should this be filtered by project (from URL for new job?)
-        queryset=Pipeline.objects.all(),
-        source="pipeline",
     )
 
     class Meta:
@@ -112,13 +82,9 @@ class JobListSerializer(DefaultSerializer):
             "project",
             "project_id",
             "deployment",
-            "deployment_id",
             "source_image_collection",
-            "source_image_collection_id",
             "source_image_single",
-            "source_image_single_id",
             "pipeline",
-            "pipeline_id",
             "status",
             "created_at",
             "updated_at",
@@ -176,10 +142,60 @@ class JobListSerializer(DefaultSerializer):
 class JobSerializer(JobListSerializer):
     # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
 
+    # A job's settings, checked by its job type when the job is created and fixed after that:
+    # a later update cannot swap in settings that were never validated. See JobType.validate_params.
+    params = serializers.JSONField(required=False, allow_null=True)
+
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
             "result",
+            "params",
         ]
+
+    def validate_job_type_key(self, value: str) -> str:
+        job_type = get_job_type_by_key(value)
+        if not job_type:
+            known = sorted(t.key for t in VALID_JOB_TYPES if t.user_creatable)
+            raise serializers.ValidationError(f"Unknown job type '{value}'. Known types: {known}")
+        if self.instance is None and not job_type.user_creatable:
+            raise serializers.ValidationError(
+                f"{job_type.name} jobs are created by the platform, not through this API."
+            )
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            # A job's project, type and settings are fixed once it exists: they were validated
+            # together, and the worker reads the settings against that project.
+            for field in ("project", "job_type_key"):
+                if field in attrs and attrs[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError({field: "Cannot be changed after the job is created."})
+            attrs.pop("params", None)
+            return attrs
+
+        # A new job's inputs all arrive in params["config"] and are checked by its job type's
+        # model; the ids among them that are Job columns are stored there too.
+        job_type = get_job_type_by_key(attrs["job_type_key"])
+        project = attrs["project"]
+        user = getattr(self.context.get("request"), "user", None)
+        attrs["params"] = job_type.validate_params(project, user, attrs.get("params") or {})
+        attrs.update(job_type.column_ids(attrs["params"]))
+        if job_type.variant_key:
+            self._check_may_run(job_type, project, attrs["params"], user)
+        return attrs
+
+    def _check_may_run(self, job_type: type[JobType], project: Project | None, params: dict, user) -> None:
+        # Creating a job whose type runs registered methods (post-processing) takes the
+        # permission to run it, so a role that cannot start one is refused before a job it
+        # could never run is stored.
+        if user is None:
+            return
+        job = Job(job_type_key=job_type.key, project=project, params=params)
+        if not job.check_custom_permission(user, "run"):
+            raise exceptions.PermissionDenied(
+                f"You do not have permission to run {job_type.name} jobs in this project."
+            )
 
 
 class MinimalJobSerializer(DefaultSerializer):
@@ -190,6 +206,12 @@ class MinimalJobSerializer(DefaultSerializer):
     class Meta:
         model = Job
         fields = ["id", "pipeline_slug"]
+
+
+class JobTypesResponseSerializer(serializers.Serializer):
+    """GET /jobs/types/ — the job types the Create Job dialog may offer for a project."""
+
+    results = SchemaField(schema=list[JobTypeDescription])
 
 
 class MLJobTasksRequestSerializer(serializers.Serializer):

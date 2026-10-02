@@ -1,4 +1,15 @@
 export enum STRING {
+  JOB_CREATE,
+  JOB_FIELD_TYPE,
+  JOB_FIELD_METHOD,
+  JOB_SETTINGS_DIVIDER,
+  JOB_ADVANCED,
+  JOB_START_IMMEDIATELY,
+  JOB_NOT_PERMITTED,
+  JOB_LOADING_TYPES,
+  JOB_MORE_SETTINGS,
+  JOB_START_NOW,
+  JOB_VALUE_NOT_SET,
   /* BUTTON */
   ADD,
   ADMIN,
@@ -223,6 +234,12 @@ export enum STRING {
   MESSAGE_SYNC_ALL_CONFIRM,
   MESSAGE_SYNC_CONFIRM,
   MESSAGE_VALUE_INVALID,
+  MESSAGE_ENTER_NUMBER,
+  MESSAGE_ENTER_WHOLE_NUMBER,
+  MESSAGE_VALUE_AT_LEAST,
+  MESSAGE_VALUE_AT_MOST,
+  MESSAGE_VALUE_GREATER_THAN,
+  MESSAGE_VALUE_LESS_THAN,
   MESSAGE_VALUE_MISSING,
 
   /* NAV_ITEM */
@@ -382,6 +399,17 @@ export enum STRING {
 }
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
+  [STRING.JOB_CREATE]: 'Create job',
+  [STRING.JOB_FIELD_TYPE]: 'Job type',
+  [STRING.JOB_FIELD_METHOD]: 'Method',
+  [STRING.JOB_SETTINGS_DIVIDER]: '{{method}} settings',
+  [STRING.JOB_ADVANCED]: 'Advanced',
+  [STRING.JOB_START_IMMEDIATELY]: 'Start immediately',
+  [STRING.JOB_NOT_PERMITTED]: 'Not permitted for your role',
+  [STRING.JOB_LOADING_TYPES]: 'Loading job types',
+  [STRING.JOB_MORE_SETTINGS]: 'More settings',
+  [STRING.JOB_START_NOW]: 'Start now',
+  [STRING.JOB_VALUE_NOT_SET]: 'Not set',
   /* BUTTON */
   [STRING.ADD]: 'Add',
   [STRING.ADMIN]: 'Admin',
@@ -637,6 +665,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_SYNC_CONFIRM]:
     'This scans the connected storage source and imports any new captures as a background job.',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
+  [STRING.MESSAGE_ENTER_NUMBER]: 'Enter a number',
+  [STRING.MESSAGE_ENTER_WHOLE_NUMBER]: 'Enter a whole number',
+  [STRING.MESSAGE_VALUE_AT_LEAST]: 'Must be at least {{value}}',
+  [STRING.MESSAGE_VALUE_AT_MOST]: 'Must be at most {{value}}',
+  [STRING.MESSAGE_VALUE_GREATER_THAN]: 'Must be greater than {{value}}',
+  [STRING.MESSAGE_VALUE_LESS_THAN]: 'Must be less than {{value}}',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
