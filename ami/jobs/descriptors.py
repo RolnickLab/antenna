@@ -1,54 +1,39 @@
 """
 Describe job types to the Create Job dialog, so a form can be generated for any of them.
 
-A job type is described by its docstring (the help text), the scope it needs (which pipeline,
-capture set, station or sessions it runs on) and an optional pydantic ``config_schema`` for its
-settings. The dialog renders all three without knowing the job type in advance, which is what lets
-a new job type or post-processing task appear in the UI with no frontend work. See
-``docs/claude/reference/jobs-panel.md``.
+A job type's settings are a pydantic model; the dialog renders its JSON Schema as is. Labels and
+help text are the fields' ``title`` and ``description`` (wrap them in ``gettext_lazy`` and they are
+served in the request's language), and a picker is requested with extra ``Field`` keywords, which
+pydantic copies into the schema. See ``docs/claude/reference/jobs-panel.md``.
 """
 
-import copy
 import dataclasses
 import inspect
-import re
-import typing
 
 import pydantic
 
-# Bumped when the shape of a normalized schema changes, so a deployed client can tell.
+# Bumped when the shape of a served schema changes, so a deployed client can tell.
 SCHEMA_VERSION = 1
 
-# Widget hints a config field can carry, passed as extra keyword arguments to ``pydantic.Field``.
-# Pydantic v1 copies unknown ``Field`` keywords into the field's JSON Schema unchanged.
-WIDGET_KEY = "ami_widget"
+# Extra ``pydantic.Field`` keywords the dialog reads. ``ami_widget="entity"`` with
+# ``ami_entity="<api route>"`` renders a picker over that list endpoint, and the server checks the
+# id belongs to the job's project. ``ami_widget="hidden"`` keeps a field out of the form.
+# ``ami_advanced=True`` puts a field in the form's collapsed "More settings" group.
 ENTITY_KEY = "ami_entity"
-ENTITY_FILTERS_KEY = "ami_entity_filters"
-# Set by the server on settings the requesting user may change but project members may not,
-# so the dialog can tuck them under a collapsed staff section.
-STAFF_ONLY_KEY = "ami_staff_only"
-
-# Words that sentence-casing a field name would get wrong.
-ACRONYMS = {"id": "ID", "ids": "IDs", "iou": "IoU", "ml": "ML", "gbif": "GBIF", "url": "URL"}
 
 
 @dataclasses.dataclass(frozen=True)
 class ScopeField:
-    """One thing a job runs on, chosen before its settings.
+    """A Job column the dialog asks for before the settings, such as the pipeline or the station.
 
-    ``field`` is the name the dialog sends. ``target`` says where: ``"job"`` fields are top-level
-    serializer fields backed by a Job column (``pipeline_id``, ``source_image_collection_id``),
-    ``"config"`` fields go inside ``params["config"]`` because the job has no column for them.
-    ``entity`` is the API list route the picker pages through, relative to ``/api/v2/``.
+    ``field`` is the serializer field the dialog sends; ``entity`` is the API list route the
+    picker pages through, relative to ``/api/v2/``.
     """
 
     field: str
     label: str
     entity: str
     required: bool = True
-    many: bool = False
-    target: typing.Literal["job", "config"] = "job"
-    entity_filters: dict[str, str] = dataclasses.field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -59,67 +44,28 @@ CAPTURE_SET_SCOPE = ScopeField(field="source_image_collection_id", label="Captur
 STATION_SCOPE = ScopeField(field="deployment_id", label="Station", entity="deployments")
 
 
-def strip_markup(text: str) -> str:
-    """Drop reST and Markdown code markup (``x``, `x`, :role:`x`) so help text reads as prose."""
-    text = re.sub(r":[a-z]+:`([^`]*)`", r"\1", text)
-    return re.sub(r"`{1,2}([^`]*)`{1,2}", r"\1", text)
-
-
-def describe_docstring(obj) -> str:
-    """Return the first paragraph of a class docstring, as the help text shown in the dialog."""
+def describe(obj) -> str:
+    """The help text shown for a job type or task: its ``description`` attribute, else its docstring."""
+    description = getattr(obj, "description", "")
+    if description:
+        return description
     doc = inspect.getdoc(obj) or ""
-    return strip_markup(doc.split("\n\n")[0].replace("\n", " ").strip())
+    return doc.split("\n\n")[0].replace("\n", " ").strip()
 
 
-def _sentence_case(name: str) -> str:
-    words = name.removesuffix("_ids").removesuffix("_id").split("_")
-    words = [ACRONYMS.get(word, word) for word in words if word]
-    text = " ".join(words)
-    return text[:1].upper() + text[1:]
+def config_schema(model: type[pydantic.BaseModel]) -> dict:
+    """The JSON Schema the dialog renders for a settings model, exactly as pydantic produces it.
 
-
-def _inline_refs(node, definitions: dict):
-    """Replace ``$ref`` and single-element ``allOf`` with the definition they point to."""
-    if isinstance(node, list):
-        return [_inline_refs(item, definitions) for item in node]
-    if not isinstance(node, dict):
-        return node
-    if "$ref" in node:
-        target = definitions[node["$ref"].split("/")[-1]]
-        merged = {**_inline_refs(copy.deepcopy(target), definitions), **{k: v for k, v in node.items() if k != "$ref"}}
-        return merged
-    if "allOf" in node and len(node["allOf"]) == 1:
-        rest = {k: v for k, v in node.items() if k != "allOf"}
-        return {**_inline_refs(node["allOf"][0], definitions), **rest}
-    return {key: _inline_refs(value, definitions) for key, value in node.items()}
-
-
-def normalize_config_schema(
-    model: type[pydantic.BaseModel],
-    exclude: typing.Iterable[str] = (),
-) -> dict:
-    """Turn a pydantic config model into the JSON Schema subset the dialog renders.
-
-    Inlines definitions, drops the fields in ``exclude`` (scope fields the dialog asks for
-    separately, and settings the user may not change), and replaces pydantic's generated
-    title-case labels with a sentence-cased one when the task author did not write a title.
+    Use ``typing.Literal`` for choices: pydantic inlines it as an ``enum``, whereas an ``Enum``
+    class becomes a ``$ref`` the dialog does not follow.
     """
-    raw = model.schema()
-    definitions = raw.pop("definitions", {})
-    schema = _inline_refs(raw, definitions)
-    excluded = set(exclude)
-    properties = {}
-    for name, prop in schema.get("properties", {}).items():
-        if name in excluded:
-            continue
-        field_info = model.__fields__[name].field_info
-        if field_info.title is None:
-            prop["title"] = _sentence_case(name)
-        properties[name] = prop
+    return {**model.schema(), "x-ami-schema-version": SCHEMA_VERSION}
+
+
+def entity_fields(model: type[pydantic.BaseModel]) -> dict[str, str]:
+    """Map each settings field that names a project's rows to its API entity."""
     return {
-        "type": "object",
-        "title": schema.get("title", model.__name__),
-        "properties": properties,
-        "required": [name for name in schema.get("required", []) if name in properties],
-        "x-ami-schema-version": SCHEMA_VERSION,
+        name: prop[ENTITY_KEY]
+        for name, prop in model.schema().get("properties", {}).items()
+        if isinstance(prop, dict) and ENTITY_KEY in prop
     }

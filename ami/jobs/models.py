@@ -1,4 +1,3 @@
-import dataclasses
 import datetime
 import logging
 import random
@@ -12,6 +11,7 @@ from celery.result import AsyncResult
 from django.conf import settings
 from django.db import models, transaction
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 from django_pydantic_field import SchemaField
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -20,23 +20,17 @@ from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.descriptors import (
     CAPTURE_SET_SCOPE,
-    ENTITY_KEY,
     PIPELINE_SCOPE,
-    STAFF_ONLY_KEY,
     STATION_SCOPE,
     ScopeField,
-    describe_docstring,
-    normalize_config_schema,
+    config_schema,
+    describe,
+    entity_fields,
 )
 from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.post_processing.registry import (
-    MEMBER_POST_PROCESSING_TASKS,
-    POSTPROCESSING_TASKS,
-    get_postprocessing_task,
-    staff_only_config_fields,
-)
+from ami.ml.post_processing.registry import POSTPROCESSING_TASKS, get_postprocessing_task
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -500,15 +494,6 @@ def check_entities_in_project(values: dict, entities: dict[str, str], project: P
         raise serializers.ValidationError({"params": {"config": errors}})
 
 
-def schema_entity_fields(model: type[pydantic.BaseModel]) -> dict[str, str]:
-    """Map each config field carrying an ``ami_entity`` hint to that entity."""
-    return {
-        name: prop[ENTITY_KEY]
-        for name, prop in model.schema().get("properties", {}).items()
-        if isinstance(prop, dict) and ENTITY_KEY in prop
-    }
-
-
 def _validate_config(
     model_cls: type[pydantic.BaseModel],
     config,
@@ -521,7 +506,7 @@ def _validate_config(
         model = model_cls(**config)
     except pydantic.ValidationError as exc:
         raise serializers.ValidationError({"params": {"config": pydantic_messages(exc)}})
-    entities = {**schema_entity_fields(model_cls), **(extra_entities or {})}
+    entities = {**entity_fields(model_cls), **(extra_entities or {})}
     check_entities_in_project(model.dict(), entities, project)
     return model
 
@@ -536,6 +521,9 @@ class JobType:
 
     name: str
     key: str
+    # Help text under the job type select. Wrap it in gettext_lazy to translate it; left empty,
+    # the first paragraph of the class docstring is used.
+    description: str = ""
 
     # What a job of this type cannot run without. The API refuses to create one that is
     # missing any of these, so a gap is a 400 when the job is made rather than a failure
@@ -558,7 +546,7 @@ class JobType:
     variant_key: str | None = None
 
     @classmethod
-    def variants(cls, user=None) -> list[dict]:
+    def variants(cls, project: Project) -> list[dict]:
         return []
 
     @classmethod
@@ -594,12 +582,9 @@ class JobType:
 
 
 class MLJob(JobType):
-    """
-    Run a processing pipeline over a capture set: detect, classify and create occurrences.
-    """
-
     name = "ML pipeline"
     key = "ml"
+    description = _("Run a processing pipeline over a capture set: detect, classify and create occurrences.")
     user_creatable = True
     # The dialog requires a pipeline, but the API has always accepted an ML job without one
     # (it fails when run), so required_fields stays empty to keep existing clients working.
@@ -854,6 +839,7 @@ class DataStorageSyncJob(JobType):
 
     name = "Data storage sync"
     key = "data_storage_sync"
+    description = _("Add new captures from a station's data storage, then regroup them into sessions.")
     user_creatable = True
     required_fields = ("deployment",)
     scope_fields = (STATION_SCOPE,)
@@ -949,12 +935,9 @@ class DataStorageSyncJob(JobType):
 
 
 class SourceImageCollectionPopulateJob(JobType):
-    """
-    Fill a capture set with the captures its sampling method selects.
-    """
-
     name = "Populate capture set"
     key = "populate_captures_collection"
+    description = _("Fill a capture set with the captures its sampling method selects.")
     user_creatable = True
     required_fields = ("source_image_collection",)
     scope_fields = (CAPTURE_SET_SCOPE,)
@@ -1043,77 +1026,40 @@ class DataExportJob(JobType):
 
 
 class PostProcessingJob(JobType):
-    """
-    Revise existing results with a post-processing method, such as masking classes or
-    filtering out detections too small to identify.
-    """
-
     name = "Post Processing"
     key = "post_processing"
+    description = _(
+        "Revise existing results with a post-processing method, such as masking classes or "
+        "filtering out detections too small to identify."
+    )
     user_creatable = True
     variant_key = "task"
 
-    # Config fields that say what a task runs on. The dialog asks for them as scope, so they
-    # are left out of the settings form. ``occurrence_id`` is the admin's single-occurrence
-    # path and is not offered in the dialog.
-    SCOPE_CONFIG_FIELDS = {
-        "source_image_collection_id": ScopeField(
-            field="source_image_collection_id", label="Capture set", entity="captures/collections", target="config"
-        ),
-        "event_ids": ScopeField(field="event_ids", label="Sessions", entity="events", many=True, target="config"),
-    }
-    HIDDEN_CONFIG_FIELDS = {"occurrence_id"}
+    @classmethod
+    def enabled_tasks(cls, project: Project | None) -> dict:
+        """The registered tasks whose feature flag is on for ``project``; the others are hidden."""
+        flags = project.feature_flags if project else None
+        return {key: task for key, task in POSTPROCESSING_TASKS.items() if flags and getattr(flags, task.feature_flag)}
 
     @classmethod
-    def member_may_run_task(cls, task_key: str) -> bool:
-        return task_key in MEMBER_POST_PROCESSING_TASKS
-
-    @classmethod
-    def task_scope(cls, task_cls) -> list[ScopeField]:
-        fields = task_cls.config_schema.__fields__
-        scope = [cls.SCOPE_CONFIG_FIELDS[name] for name in cls.SCOPE_CONFIG_FIELDS if name in fields]
-        if len(scope) > 1:
-            # The task's own root validator requires exactly one of them.
-            scope = [dataclasses.replace(field, required=False) for field in scope]
-        return scope
-
-    @classmethod
-    def variants(cls, user=None) -> list[dict]:
-        is_superuser = bool(user and user.is_superuser)
-        variants = []
-        for key, task_cls in POSTPROCESSING_TASKS.items():
-            scope = cls.task_scope(task_cls)
-            exclude = {f.field for f in scope} | cls.HIDDEN_CONFIG_FIELDS
-            member_fields = MEMBER_POST_PROCESSING_TASKS.get(key, frozenset())
-            if not is_superuser:
-                exclude |= set(task_cls.config_schema.__fields__) - member_fields
-            config_schema = normalize_config_schema(task_cls.config_schema, exclude=exclude)
-            if is_superuser and cls.member_may_run_task(key):
-                # Staff see every setting; mark the ones members cannot change.
-                for name, prop in config_schema["properties"].items():
-                    if name not in member_fields:
-                        prop[STAFF_ONLY_KEY] = True
-            variants.append(
-                {
-                    "key": key,
-                    "name": task_cls.name,
-                    "description": describe_docstring(task_cls),
-                    "allowed_for_members": cls.member_may_run_task(key),
-                    "scope": [f.as_dict() for f in scope],
-                    "scope_rule": "exactly_one" if len(scope) > 1 else "all_required",
-                    "config_schema": config_schema,
-                }
-            )
-        return variants
+    def variants(cls, project: Project) -> list[dict]:
+        return [
+            {
+                "key": key,
+                "name": task_cls.name,
+                "description": describe(task_cls),
+                "config_schema": config_schema(task_cls.config_schema),
+            }
+            for key, task_cls in cls.enabled_tasks(project).items()
+        ]
 
     @classmethod
     def validate_params(cls, project: Project | None, user, params) -> dict:
         """Check a post-processing job's ``{"task": ..., "config": {...}}`` before it is saved.
 
-        Returns the params with the config normalized by the task's schema, so the stored job
-        carries every default the worker will run with. Every id in the config must belong to
-        the job's project. Only superusers may start a task that is not on the member list, or
-        change a setting away from its default that members may not change.
+        The task must be turned on for the project (its feature flag), the config must pass the
+        task's schema, and every id in it must belong to the project. Returns the params with the
+        config normalized by the schema, so the stored job carries every default the worker uses.
         """
         if not isinstance(params, dict) or set(params) - {"task", "config"}:
             raise serializers.ValidationError(
@@ -1123,27 +1069,11 @@ class PostProcessingJob(JobType):
         task_cls = get_postprocessing_task(task_key) if isinstance(task_key, str) else None
         if task_cls is None:
             raise serializers.ValidationError({"params": {"task": f"Unknown post-processing task {task_key!r}."}})
-        is_superuser = bool(user and user.is_superuser)
-        if not is_superuser and not cls.member_may_run_task(task_key):
+        if task_key not in cls.enabled_tasks(project):
             raise serializers.ValidationError(
-                {"params": {"task": f"The {task_cls.name} task can only be started by staff."}}
+                {"params": {"task": f"{task_cls.name} is not turned on for this project."}}
             )
-        config = params.get("config") or {}
-        if not isinstance(config, dict):
-            raise serializers.ValidationError({"params": {"config": "Must be an object."}})
-        if not is_superuser:
-            staff_only = staff_only_config_fields(task_key, config)
-            if staff_only:
-                raise serializers.ValidationError(
-                    {
-                        "params": {
-                            "config": [f"{name}: Only a superuser can change this setting." for name in staff_only]
-                        }
-                    }
-                )
-        scope_entities = {f.field: f.entity for f in cls.task_scope(task_cls)}
-        scope_entities["occurrence_id"] = "occurrences"
-        model = _validate_config(task_cls.config_schema, config, project, extra_entities=scope_entities)
+        model = _validate_config(task_cls.config_schema, params.get("config") or {}, project)
         return {"task": task_key, "config": model.dict()}
 
     @classmethod
@@ -1194,6 +1124,7 @@ class RegroupEventsJob(JobType):
 
     name = "Regroup sessions"
     key = "regroup_events"
+    description = _("Regroup a station's captures into sessions using the project's session time gap.")
     user_creatable = True
     required_fields = ("deployment",)
     scope_fields = (STATION_SCOPE,)
@@ -1652,6 +1583,11 @@ class Job(BaseModel):
             permission_codename = f"{action}_{job_type}_job"
 
         project = self.get_project() if hasattr(self, "get_project") else None
+        if job_type == PostProcessingJob.key and action in ("run", "retry") and not user.is_superuser:
+            # Turning a method's feature flag off also stops its existing jobs being re-run.
+            task_key = (self.params or {}).get("task")
+            if task_key not in PostProcessingJob.enabled_tasks(project):
+                return False
         return user.has_perm(permission_codename, project)
 
     def get_custom_user_permissions(self, user) -> list[str]:

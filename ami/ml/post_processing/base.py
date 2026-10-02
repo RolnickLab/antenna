@@ -27,6 +27,11 @@ class BasePostProcessingTask(abc.ABC):
     key: str
     name: str
     config_schema: type[pydantic.BaseModel]
+    # The ProjectFeatureFlags field that offers this task in the Create Job dialog. While it is
+    # off the task is hidden and its jobs cannot be started or re-run, except by a superuser.
+    feature_flag: str
+    # Help text under the method select (wrap in gettext_lazy); left empty, the docstring is used.
+    description: str = ""
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -35,7 +40,7 @@ class BasePostProcessingTask(abc.ABC):
         # defer key/name/config_schema to its concrete subclasses.
         if inspect.isabstract(cls):
             return
-        required_attrs = ["key", "name", "config_schema"]
+        required_attrs = ["key", "name", "config_schema", "feature_flag"]
         for attr in required_attrs:
             if not hasattr(cls, attr) or getattr(cls, attr) is None:
                 raise TypeError(f"{cls.__name__} must define '{attr}' class attribute")

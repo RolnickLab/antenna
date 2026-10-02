@@ -15,7 +15,7 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .descriptors import describe_docstring, normalize_config_schema
+from .descriptors import config_schema, describe
 from .models import (
     JOB_LOGS_DEFAULT_LIMIT,
     VALID_JOB_TYPES,
@@ -65,21 +65,19 @@ def describe_job_types(project: Project, user) -> list[dict]:
     for job_type in VALID_JOB_TYPES:
         if not job_type.user_creatable:
             continue
-        allowed = user.is_superuser or f"run_{job_type.key}_job" in perms
-        variants = job_type.variants(user=user)
-        for variant in variants:
-            allowed_for_members = variant.pop("allowed_for_members")
-            variant["allowed"] = allowed and (user.is_superuser or allowed_for_members)
+        variants = job_type.variants(project)
+        if job_type.variant_key and not variants:
+            continue  # e.g. post-processing with no method turned on for this project
         described.append(
             {
                 "key": job_type.key,
                 "name": job_type.name,
-                "description": describe_docstring(job_type),
-                "allowed": allowed,
+                "description": describe(job_type),
+                "allowed": user.is_superuser or f"run_{job_type.key}_job" in perms,
                 "scope": [field.as_dict() for field in job_type.scope_fields],
                 "required_fields": list(job_type.required_fields),
                 "required_params": list(job_type.required_params),
-                "config_schema": (normalize_config_schema(job_type.config_schema) if job_type.config_schema else None),
+                "config_schema": config_schema(job_type.config_schema) if job_type.config_schema else None,
                 "variant_key": job_type.variant_key,
                 "variants": variants,
             }

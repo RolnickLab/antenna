@@ -6,6 +6,7 @@ import pydantic
 from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
@@ -19,27 +20,33 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
+    source_image_collection_id: int | None = pydantic.Field(
+        None,
+        title=_("Capture set"),
+        ami_widget="entity",
+        ami_entity="captures/collections",
+    )
+    # The admin's single-occurrence path; not offered in the Create Job dialog.
+    occurrence_id: int | None = pydantic.Field(None, ami_widget="hidden", ami_entity="occurrences")
     taxa_list_id: int = pydantic.Field(
         ...,
-        title="Taxa list to keep",
-        description="Classes outside this list are masked out.",
+        title=_("Taxa list to keep"),
+        description=_("Classes outside this list are masked out."),
         ami_widget="entity",
         ami_entity="taxa/lists",
     )
     algorithm_id: int = pydantic.Field(
         ...,
-        title="Source classifier",
-        description="Its terminal predictions are the ones re-scored.",
+        title=_("Source classifier"),
+        description=_("Its terminal predictions are the ones re-scored."),
         ami_widget="entity",
         ami_entity="ml/algorithms",
         ami_entity_filters={"task_type": "classification"},
     )
     reweight: bool = pydantic.Field(
         True,
-        title="Reweight scores",
-        description=(
+        title=_("Reweight scores"),
+        description=_(
             "Renormalise the kept classes to sum to 1. Off keeps raw absolute scores; "
             "the chosen species is the same either way."
         ),
@@ -250,13 +257,13 @@ def make_classifications_filtered_by_taxa_list(
 
 
 class ClassMaskingTask(BasePostProcessingTask):
-    """
-    Masks out classes whose taxon is not on the chosen list and renormalises each prediction over what
-    remains. The original classification is kept and demoted.
-    """
-
     key = "class_masking"
     name = "Class masking"
+    feature_flag = "class_masking"
+    description = _(
+        "Masks out classes whose taxon is not on the chosen list and renormalises each prediction over "
+        "what remains. The original classification is kept and demoted."
+    )
     config_schema = ClassMaskingConfig
 
     def _get_or_create_masking_algorithm(

@@ -1,6 +1,7 @@
 import pydantic
 from django.db.models import QuerySet
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
@@ -12,12 +13,18 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
     # set is the bulk path; a single occurrence is the spot/dev path (fast feedback
     # while tuning a filter). This discriminated-scope shape is the pattern other
     # post-processing tasks copy when they gain per-occurrence / per-event triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
+    source_image_collection_id: int | None = pydantic.Field(
+        None,
+        title=_("Capture set"),
+        ami_widget="entity",
+        ami_entity="captures/collections",
+    )
+    # The admin's single-occurrence path; not offered in the Create Job dialog.
+    occurrence_id: int | None = pydantic.Field(None, ami_widget="hidden", ami_entity="occurrences")
     size_threshold: float = pydantic.Field(
         0.0008,
-        title="Size threshold",
-        description="Detections smaller than this fraction of the image area are marked as not identifiable.",
+        title=_("Size threshold"),
+        description=_("Detections smaller than this fraction of the image area are marked as not identifiable."),
         gt=0.0,
         lt=1.0,
     )
@@ -40,12 +47,10 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
 
 
 class SmallSizeFilterTask(BasePostProcessingTask):
-    """
-    Marks detections that are too small to identify, so they stop counting towards species totals.
-    """
-
     key = "small_size_filter"
     name = "Small size filter"
+    feature_flag = "small_size_filter"
+    description = _("Marks detections that are too small to identify, so they stop counting towards species totals.")
     config_schema = SmallSizeFilterConfig
 
     def _scoped_detections(self, config: SmallSizeFilterConfig) -> tuple[QuerySet[Detection], str]:
