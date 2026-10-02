@@ -1,4 +1,4 @@
-import { TrackCompleteReviewEntry } from 'data-services/models/occurrence-history'
+import { GroupingReviewEntry } from 'data-services/models/occurrence-history'
 import { UserIcon } from 'lucide-react'
 import { IdentificationCard } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
@@ -20,7 +20,7 @@ export const TrackReview = ({
   entry,
 }: {
   currentUser?: UserInfo
-  entry: TrackCompleteReviewEntry
+  entry: GroupingReviewEntry
 }) => {
   const { projectId } = useParams()
   const { payload, user } = entry
@@ -63,9 +63,14 @@ export const TrackReview = ({
           )
         }
         subTitle={
-          added || removed
-            ? translate(STRING.HISTORY_REVIEW_CHANGES, { added, removed })
-            : undefined
+          [
+            entry.withdrawn ? translate(STRING.HISTORY_WITHDRAWN) : undefined,
+            added || removed
+              ? translate(STRING.HISTORY_REVIEW_CHANGES, { added, removed })
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ') || undefined
         }
         title={translate(STRING.HISTORY_TRACK_COMPLETE_BY, {
           name: getUserLabel(user, currentUser),

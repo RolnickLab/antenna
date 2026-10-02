@@ -6,8 +6,8 @@ import {
   getFallbackTimelineItems,
   getFoldedPrediction,
   getTimelineItems,
+  GroupingReviewEntry,
   ServerOccurrenceHistoryEntry,
-  TrackCompleteReviewEntry,
 } from './occurrence-history'
 import { Taxon } from './taxa'
 import { UserPermission } from 'utils/user/types'
@@ -17,6 +17,8 @@ const XESTIA = { id: 4, name: 'Xestia c-nigrum', rank: 'SPECIES' }
 
 const base = {
   algorithm: null,
+  comment: '',
+  is_current: null,
   job: null,
   score: null,
   subtype: null,
@@ -24,6 +26,8 @@ const base = {
   taxon_before: null,
   timestamp: '2026-04-29T22:00:00',
   user: null,
+  verdict: null,
+  withdrawn: false,
 }
 
 const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
@@ -57,7 +61,7 @@ const review = (
   id: number,
   detectionIds: number[],
   occurrenceId: number | null = 100
-): TrackCompleteReviewEntry => ({
+): GroupingReviewEntry => ({
   ...base,
   id,
   payload: {
@@ -69,7 +73,19 @@ const review = (
     last_timestamp: null,
     occurrence_id: occurrenceId,
   },
-  subtype: 'track_complete',
+  is_current: true,
+  subtype: 'grouping',
+  type: 'review',
+  verdict: 'confirmed',
+})
+
+const comment = (id: number): ServerOccurrenceHistoryEntry => ({
+  ...base,
+  comment: 'The second frame is another moth',
+  id,
+  is_current: true,
+  payload: {},
+  subtype: 'comment',
   type: 'review',
 })
 
@@ -117,6 +133,7 @@ describe('getTimelineItems', () => {
   test('maps each entry type to its card, keeping the server order', () => {
     const items = getTimelineItems({
       entries: [
+        comment(9),
         review(8, [1]),
         classMasking,
         identificationEntry(2),
@@ -128,10 +145,21 @@ describe('getTimelineItems', () => {
 
     expect(items.map((item) => item.type)).toEqual([
       'review',
+      'review',
       'algorithm_result',
       'identification',
       'prediction',
     ])
+  })
+
+  test('leaves out a review aspect it has no card for', () => {
+    const items = getTimelineItems({
+      entries: [{ ...review(8, [1]), subtype: 'bbox' } as never],
+      identifications: [],
+      predictions: [],
+    })
+
+    expect(items).toEqual([])
   })
 
   test("reuses the occurrence's own records, which carry the viewer's permissions", () => {

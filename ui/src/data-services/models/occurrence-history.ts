@@ -55,7 +55,7 @@ export interface ServerSizeFilterPayload
   size_threshold: number
 }
 
-export interface ServerTrackCompletePayload {
+export interface ServerGroupingReviewPayload {
   detection_ids: number[]
   detections_added: number[]
   detections_removed: number[]
@@ -81,7 +81,10 @@ export interface ServerPredictionPayload {
 
 interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
   algorithm: ServerHistoryAlgorithm | null
+  comment: string
   id: number
+  /** For results and reviews: whether it is the latest of its kind, not replaced. */
+  is_current: boolean | null
   job: ServerHistoryJob | null
   payload: Payload
   score: number | null
@@ -91,6 +94,8 @@ interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
   timestamp: string
   type: Type
   user: ServerHistoryUser | null
+  verdict: 'confirmed' | 'rejected' | 'corrected' | null
+  withdrawn: boolean
 }
 
 export type TrackingResultEntry = ServerHistoryEntryBase<
@@ -112,11 +117,17 @@ export type AlgorithmResultEntry =
   | TrackingResultEntry
   | ClassMaskingResultEntry
   | SizeFilterResultEntry
-export type TrackCompleteReviewEntry = ServerHistoryEntryBase<
+export type GroupingReviewEntry = ServerHistoryEntryBase<
   'review',
-  'track_complete',
-  ServerTrackCompletePayload
+  'grouping',
+  ServerGroupingReviewPayload
 >
+export type CommentReviewEntry = ServerHistoryEntryBase<
+  'review',
+  'comment',
+  Record<string, never>
+>
+export type ReviewEntry = GroupingReviewEntry | CommentReviewEntry
 export type IdentificationEntry = ServerHistoryEntryBase<
   'identification',
   null,
@@ -130,7 +141,7 @@ export type PredictionEntry = ServerHistoryEntryBase<
 
 export type ServerOccurrenceHistoryEntry =
   | AlgorithmResultEntry
-  | TrackCompleteReviewEntry
+  | ReviewEntry
   | IdentificationEntry
   | PredictionEntry
 
@@ -142,9 +153,10 @@ export type TimelineItem =
     }
   | { type: 'prediction'; id: string; prediction: MachinePrediction }
   | { type: 'algorithm_result'; id: string; entry: AlgorithmResultEntry }
-  | { type: 'review'; id: string; entry: TrackCompleteReviewEntry }
+  | { type: 'review'; id: string; entry: ReviewEntry }
 
 const ALGORITHM_RESULT_SUBTYPES = ['tracking', 'class_masking', 'size_filter']
+const REVIEW_SUBTYPES = ['grouping', 'comment']
 
 export const convertHistoryTaxon = (taxon: ServerHistoryTaxon) =>
   new Taxon({ ...taxon, id: `${taxon.id}`, cover_image_url: null })
@@ -233,7 +245,7 @@ export const getTimelineItems = ({
           ? [{ type: 'algorithm_result', id, entry }]
           : []
       case 'review':
-        return entry.subtype === 'track_complete'
+        return REVIEW_SUBTYPES.includes(entry.subtype)
           ? [{ type: 'review', id, entry }]
           : []
       default:

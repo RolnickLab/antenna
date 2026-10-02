@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import { AlgorithmResult } from './algorithm-result'
+import { CommentReview } from './comment-review'
 import { HumanIdentification } from './human-identification'
 import { MachinePrediction } from './machine-prediction'
 import { TrackReview } from './track-review'
@@ -97,7 +98,13 @@ export const OccurrenceTimeline = ({
               />
             )
           case 'review':
-            return (
+            return item.entry.subtype === 'comment' ? (
+              <CommentReview
+                key={item.id}
+                currentUser={currentUser}
+                entry={item.entry}
+              />
+            ) : (
               <TrackReview
                 key={item.id}
                 currentUser={currentUser}
