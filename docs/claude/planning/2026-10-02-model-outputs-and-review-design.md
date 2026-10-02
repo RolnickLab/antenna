@@ -1250,3 +1250,16 @@ Each phase is one PR or a small group, independently useful, in landing order.
 | 6 · Research features | OOD scores and person / test-image flags as `AlgorithmResult` values; prototypes and lineage fields; cross-night clustering with bulk annotation; representative captures per session; `SourceImageEmbedding` with the people gate when a capture extractor exists | 2, 5 |
 
 Phases 1 and 2 are the tracking sprint's path; 3 and 4 are infrastructure that pays for itself in storage and query cost; 5 and 6 are the research features the vectors exist for.
+
+### C.4 Amendment: `ValidationReview` replaces `OccurrenceReview`
+
+The human record is one table for every target, mirroring `AlgorithmResult`:
+`ValidationReview(project, occurrence? | detection? | source_image? | event?, user, aspect, verdict,
+identification?, reviewed_result?, payload, timestamp, withdrawn, is_current)` with
+`CHECK num_nonnulls(targets) = 1`. Reviews are few and human-paced, so the detection target is
+allowed here. `aspect` is one vocabulary across targets (`identification`, `grouping`, `bbox`,
+`count`, `person_present`, `night_valid`); `verdict` is `confirmed | rejected | corrected` with the
+correction in `payload` or via `identification`; `is_current` holds one active row per
+`(target, aspect, user)`, history kept through `withdrawn`. Evaluation is then a symmetric join,
+`AlgorithmResult × ValidationReview` on the same target column with `kind = aspect`. Every earlier
+mention of `OccurrenceReview` reads as `ValidationReview`.
