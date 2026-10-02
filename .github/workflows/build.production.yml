@@ -49,11 +49,11 @@ jobs:
           file: compose/production/django/Dockerfile
           push: false
           load: true
-          tags: antenna-backend:ci
+          tags: antenna-backend:dependency-check
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # Catches a dependency that installs but fails to import. The entrypoint
       # is bypassed because it waits for a database that does not exist here.
       - name: Check that core dependencies import
-        run: docker run --rm --entrypoint python antenna-backend:ci -c "import django, celery, rest_framework"
+        run: docker run --rm --entrypoint python antenna-backend:dependency-check -c "import django, celery, rest_framework"
