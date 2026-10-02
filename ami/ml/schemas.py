@@ -137,14 +137,16 @@ class ClassificationResponse(pydantic.BaseModel):
         default=None,
         description=(
             "Optional feature embedding vector from the model backbone, used for tracking and similarity search. "
-            "Must be exactly 2048 floats to match the Classification.features_2048 column."
+            "Only 2048-float vectors are stored; a vector of another length is dropped with a warning."
         ),
     )
 
     @pydantic.validator("features")
     def _features_length(cls, v):
+        # Dropped rather than rejected, so one model's vector size never fails the batch it came in.
         if v is not None and len(v) != 2048:
-            raise ValueError(f"features must be length 2048 to match Classification.features_2048, got {len(v)}")
+            logger.warning(f"Dropping a feature vector of length {len(v)}; only 2048-float vectors are stored.")
+            return None
         return v
 
     inference_time: float | None = None

@@ -2340,3 +2340,28 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestClassificationFeaturesLength(unittest.TestCase):
+    """A feature vector of an unexpected length is dropped with a warning, so one model's
+    vector size never fails the whole batch of results it arrived with."""
+
+    def _response(self, features: list[float] | None):
+        from ami.ml.schemas import AlgorithmReference, ClassificationResponse
+
+        return ClassificationResponse(
+            classification="Moth",
+            scores=[1.0],
+            features=features,
+            algorithm=AlgorithmReference(name="Classifier", key="classifier"),
+            timestamp=datetime.datetime(2026, 1, 1),
+        )
+
+    def test_a_2048_float_vector_is_kept(self):
+        self.assertEqual(len(self._response([0.5] * 2048).features or []), 2048)
+
+    def test_a_vector_of_another_length_is_dropped_with_a_warning(self):
+        with self.assertLogs("ami.ml.schemas", level="WARNING") as logs:
+            response = self._response([0.5] * 1024)
+        self.assertIsNone(response.features)
+        self.assertIn("1024", logs.output[0])
