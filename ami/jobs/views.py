@@ -12,7 +12,7 @@ from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
@@ -184,12 +184,6 @@ class IncompleteJobFilter(BaseFilterBackend):
         return queryset
 
 
-class JobHasStoredOutputs(APIException):
-    status_code = 409
-    default_detail = "This job stored results that still refer to it, so it cannot be deleted."
-    default_code = "job_has_stored_outputs"
-
-
 @extend_schema_view(
     retrieve=extend_schema(parameters=[logs_limit_param]),
 )
@@ -239,11 +233,15 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     permission_classes = [IsAuthenticatedOrReadOnly, ObjectPermission]
 
     def perform_destroy(self, instance):
-        # Stored embeddings keep the job that wrote them (on_delete=RESTRICT), so the job stays.
-        try:
-            instance.delete()
-        except RestrictedError as error:
-            raise JobHasStoredOutputs() from error
+        # A job whose outputs still name it is hidden rather than deleted, so their provenance
+        # stays. RESTRICT on embeddings and results also catches outputs written meanwhile.
+        if not instance.has_stored_outputs():
+            try:
+                instance.delete()
+                return
+            except RestrictedError:
+                pass
+        Job.objects.filter(pk=instance.pk).update(hidden=True)
 
     def get_serializer_class(self):
         """
@@ -337,6 +335,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             jobs = jobs.filter(project=project)
+        if self.action == "list" and not url_boolean_param(self.request, "include_hidden", default=False):
+            jobs = jobs.filter(hidden=False)
         # Validate via SingleParamSerializer so a bad value 400s instead of
         # 500ing through django.forms.IntegerField (raises django.core
         # ValidationError, which DRF's default handler does NOT convert).

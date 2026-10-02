@@ -1064,6 +1064,9 @@ class Job(BaseModel):
     job_type_key = models.CharField(
         "Job Type", max_length=255, default=UnknownJobType.key, choices=[(t.key, t.name) for t in VALID_JOB_TYPES]
     )
+    # Soft delete: a job whose outputs still refer to it is hidden instead of deleted, so
+    # their provenance stays (see has_stored_outputs).
+    hidden = models.BooleanField(default=False, help_text="Hidden from the job list instead of deleted.")
 
     project = models.ForeignKey(
         Project,
@@ -1377,6 +1380,18 @@ class Job(BaseModel):
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None
+
+    def has_stored_outputs(self) -> bool:
+        """Whether rows this job wrote still name it: detections, classifications, embeddings or results."""
+        return any(
+            related.exists()
+            for related in (
+                self.detectionembeddings,
+                self.algorithmresults,
+                self.classifications,
+                self.detections,
+            )
+        )
 
     def save(self, update_progress=True, *args, **kwargs):
         """

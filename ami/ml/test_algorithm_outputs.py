@@ -140,17 +140,45 @@ class TestEmbeddingWrites(FeatureOnlyFixture, TestCase):
 
 
 class TestJobDeleteEndpoint(FeatureOnlyFixture, APITestCase):
-    def test_deleting_a_job_with_stored_vectors_is_a_conflict(self):
+    """Deleting a job whose outputs still name it hides the job, so their provenance stays."""
+
+    def setUp(self) -> None:
         self._set_up_project(images=1, boxes_per_image=1)
+        self.client.force_authenticate(User.objects.create_superuser(email="emb-admin@example.org", password="x"))
+
+    def _delete(self, job: Job):
+        return self.client.delete(f"/api/v2/jobs/{job.pk}/?project_id={self.project.pk}")
+
+    def _listed_ids(self, *params: str) -> set[int]:
+        query = "&".join([f"project_id={self.project.pk}", *params])
+        return {row["id"] for row in self.client.get(f"/api/v2/jobs/?{query}").json()["results"]}
+
+    def test_a_job_with_stored_vectors_is_hidden_not_deleted(self):
         job = Job.objects.create(project=self.project, name="Feature job", pipeline=self.pipeline)
         detection = Detection.objects.filter(bbox__isnull=False).first()
         DetectionEmbedding.objects.create(detection=detection, algorithm=self.extractor, vector=[0.5] * 4, job=job)
-        self.client.force_authenticate(User.objects.create_superuser(email="emb-admin@example.org", password="x"))
 
-        response = self.client.delete(f"/api/v2/jobs/{job.pk}/?project_id={self.project.pk}")
+        response = self._delete(job)
 
-        self.assertEqual(response.status_code, 409, response.content)
-        self.assertTrue(Job.objects.filter(pk=job.pk).exists())
+        self.assertEqual(response.status_code, 204, response.content)
+        job.refresh_from_db()
+        self.assertTrue(job.hidden)
+        self.assertNotIn(job.pk, self._listed_ids())
+        self.assertIn(job.pk, self._listed_ids("include_hidden=true"))
+        self.assertEqual(self.client.get(f"/api/v2/jobs/{job.pk}/?project_id={self.project.pk}").status_code, 200)
+
+    def test_a_job_named_only_by_classifications_is_hidden_too(self):
+        job = Job.objects.create(project=self.project, name="Classifier job", pipeline=self.pipeline)
+        Classification.objects.filter(detection__source_image__project=self.project).update(job=job)
+
+        self.assertEqual(self._delete(job).status_code, 204)
+        self.assertTrue(Job.objects.get(pk=job.pk).hidden)
+
+    def test_a_job_without_outputs_is_deleted(self):
+        job = Job.objects.create(project=self.project, name="Empty job", pipeline=self.pipeline)
+
+        self.assertEqual(self._delete(job).status_code, 204)
+        self.assertFalse(Job.objects.filter(pk=job.pk).exists())
 
 
 class TestOutputsRecordTheirJob(FeatureOnlyFixture, TestCase):

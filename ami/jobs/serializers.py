@@ -217,6 +217,7 @@ class JobListSerializer(DefaultSerializer):
             "params",
             "data_export",
             "dispatch_mode",
+            "hidden",
             # "duration",
             # "duration_label",
             # "progress_label",
@@ -232,6 +233,7 @@ class JobListSerializer(DefaultSerializer):
             "finished_at",
             "duration",
             "dispatch_mode",
+            "hidden",
         ]
 
     def validate(self, attrs: dict) -> dict:
