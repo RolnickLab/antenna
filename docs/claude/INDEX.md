@@ -57,7 +57,7 @@ See `research/README.md` for the full table and conventions. Each note states th
 | `planning/stats-list-pattern.md` | Deferred list/paginator pattern for stats endpoints — companion to api-stats-pattern.md |
 | `planning/celery-queue-split-rollout.md` | Rollout plan for the Celery queue split (`feat/celery-queue-split`) |
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
-| `planning/2026-10-02-model-outputs-and-review-design.md` | Design exploration: one home for detection vectors, logits and post-processing outputs (`DetectionOutput`/`OccurrenceOutput` on a shared spine, `AlgorithmRun`, `OccurrenceReview`), measured table facts, options per dimension, migration path, how #1439 splits and converges with #1407 |
+| `planning/2026-10-02-model-outputs-and-review-design.md` | SETTLED design (2026-10-01): where vectors, logits, run decisions and human verifications live — `AlgorithmOutput`→`Embedding`→`DetectionEmbedding`, `AlgorithmResult`, `ValidationReview`, `PipelineResultsBatch`, `Job` as the run, halfvec, result files in object storage; measurements, use cases by phase, ERD, ORM usage, migration, six phases, #1439 split and #1407 convergence, alternatives, decision log |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
 
 ## Archive / session snapshots
