@@ -88,9 +88,9 @@ export class Capture {
             groupingVerifiedAt: detection.occurrence?.grouping_verified_at
               ? new Date(detection.occurrence.grouping_verified_at)
               : null,
-            // Accounts without a display name serialize as an empty string.
+            // An empty string is a user without a display name; null is no user.
             groupingVerifiedBy:
-              detection.occurrence?.grouping_verified_by || null,
+              detection.occurrence?.grouping_verified_by ?? null,
             id: `${detection.id}`,
             label: getDetectionLabel(detection),
             occurrenceId: detection.occurrence

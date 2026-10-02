@@ -1,5 +1,6 @@
 import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
+import { useOccurrenceHistory } from 'data-services/hooks/occurrences/useOccurrenceHistory'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { SearchIcon } from 'lucide-react'
 import {
@@ -21,13 +22,12 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { useProjectFeature } from 'utils/project-features/useProjectFeature'
 import { useUser } from 'utils/user/userContext'
+import { getUserLabel } from 'utils/user/getUserLabel'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
-import { GroupingConfirmation } from './identification-card/grouping-confirmation'
 import { GroupingSummary } from './identification-card/grouping-summary'
-import { HumanIdentification } from './identification-card/human-identification'
-import { MachinePrediction } from './identification-card/machine-prediction'
+import { OccurrenceTimeline } from './identification-card/occurrence-timeline'
 import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
@@ -75,6 +75,10 @@ export const OccurrenceDetails = ({
     occurrence.userPermissions
   )
   const trackingEnabled = useProjectFeature('tracking')
+  const history = useOccurrenceHistory({
+    occurrenceId: occurrence.id,
+    projectId,
+  })
 
   const fields = [
     {
@@ -140,7 +144,10 @@ export const OccurrenceDetails = ({
               content={
                 occurrence.determinationVerified
                   ? translate(STRING.VERIFIED_BY, {
-                      name: occurrence.determinationVerifiedBy?.name,
+                      name: getUserLabel(
+                        occurrence.determinationVerifiedBy,
+                        userInfo
+                      ),
                     })
                   : translate(STRING.MACHINE_PREDICTION_SCORE, {
                       score: `${occurrence.determinationScore}`,
@@ -259,10 +266,6 @@ export const OccurrenceDetails = ({
                       </Box>
                     )}
 
-                    {trackingEnabled && occurrence.groupingVerifiedAt ? (
-                      <GroupingConfirmation occurrence={occurrence} />
-                    ) : null}
-
                     {trackingEnabled && occurrence.groupingSummary ? (
                       <GroupingSummary
                         frameNames={occurrence.frameNames}
@@ -270,24 +273,14 @@ export const OccurrenceDetails = ({
                       />
                     ) : null}
 
-                    {occurrence.humanIdentifications.map((i) => (
-                      <HumanIdentification
-                        key={i.id}
-                        identification={i}
-                        occurrence={occurrence}
-                        user={i.user}
-                        currentUser={userInfo}
-                      />
-                    ))}
-
-                    {occurrence.machinePredictions.map((p) => (
-                      <MachinePrediction
-                        key={p.id}
-                        identification={p}
-                        occurrence={occurrence}
-                        currentUser={userInfo}
-                      />
-                    ))}
+                    <OccurrenceTimeline
+                      currentUser={userInfo}
+                      entries={history.entries}
+                      error={history.error}
+                      isLoading={history.isLoading}
+                      occurrence={occurrence}
+                      onConfirmed={onConfirmed}
+                    />
                   </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.RAW}>
@@ -310,6 +303,7 @@ export const OccurrenceDetails = ({
               <GroupingActions
                 canRestructure={canRestructure}
                 canVerify={canVerifyGrouping}
+                editedSinceComplete={occurrence.groupingEditedSinceVerified}
                 occurrence={occurrence}
               />
             )}
