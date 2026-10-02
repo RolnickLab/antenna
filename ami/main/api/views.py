@@ -512,12 +512,18 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         """
         Return a list of time intervals and the number of detections for each interval,
         including intervals where no source images were captured, along with meta information.
+
+        With ``?taxon=<id>`` each interval also reports how many of its detections belong to
+        occurrences determined as that taxon or one of its descendants, and which capture in
+        the interval has the most of them, so the capture view can show where a taxon appears.
         """
         event = self.get_object()
         resolution_minutes = IntegerField(required=False, min_value=1).clean(
             request.query_params.get("resolution_minutes", 1)
         )
         resolution = datetime.timedelta(minutes=resolution_minutes)
+        taxon = self.get_timeline_taxon(request)
+        taxon_detection_counts = self.get_taxon_detection_counts(event, taxon) if taxon else {}
 
         qs = SourceImage.objects.filter(event=event).with_was_processed()  # type: ignore
 
@@ -563,7 +569,10 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 "detections_count": 0,
                 "detection_counts": [],
                 "was_processed": False,
+                "taxon_detections_count": 0 if taxon else None,
+                "taxon_top_capture": None,
             }
+            taxon_top_count = 0
 
             while image_index < len(source_images) and source_images[image_index]["timestamp"] <= interval_end:
                 image = source_images[image_index]
@@ -577,6 +586,12 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 # Track if any image in this interval was processed
                 if image["was_processed"]:
                     interval_data["was_processed"] = True
+                if taxon:
+                    taxon_count = taxon_detection_counts.get(image["id"], 0)
+                    interval_data["taxon_detections_count"] += taxon_count
+                    if taxon_count > taxon_top_count:
+                        taxon_top_count = taxon_count
+                        interval_data["taxon_top_capture"] = SourceImage(pk=image["id"])
                 image_index += 1
 
             # Set a meaningful average detection count to display for the interval
@@ -606,6 +621,45 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
             context={"request": request},
         )
         return Response(serializer.data)
+
+    def get_timeline_taxon(self, request: Request) -> Taxon | None:
+        """
+        Resolve the optional ``taxon`` query param: 400 for a malformed id, 404 for an
+        unknown one, None when the param is absent or empty.
+        """
+        if not request.query_params.get("taxon"):
+            return None
+        taxon_id = SingleParamSerializer[int].clean(
+            "taxon",
+            field=serializers.IntegerField(required=True, min_value=1),
+            data=request.query_params,
+        )
+        try:
+            return Taxon.objects.get(pk=taxon_id)
+        except Taxon.DoesNotExist:
+            raise NotFound(f"No taxon found with id {taxon_id}")
+
+    def get_taxon_detection_counts(self, event: Event, taxon: Taxon) -> dict[int, int]:
+        """
+        Count, per capture, the detections whose occurrence was determined as ``taxon``
+        or one of its descendants. Occurrences go through the project's default filters
+        so the counts agree with the occurrence lists.
+
+        One query, bounded by the session: occurrences are selected by event, detections by
+        occurrence, and the descendant match uses the ``parents_json`` GIN index (migration 0087).
+        """
+        occurrences = (
+            Occurrence.objects.apply_default_filters(event.project, request=self.request)  # type: ignore
+            .filter(event=event)
+            .filter(models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.pk}]))
+        )
+        rows = (
+            Detection.objects.valid()  # type: ignore
+            .filter(occurrence__in=occurrences.values("pk"))
+            .values("source_image_id")
+            .annotate(count=models.Count("pk"))
+        )
+        return {row["source_image_id"]: row["count"] for row in rows}
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):

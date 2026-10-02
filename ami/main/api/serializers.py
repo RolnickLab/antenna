@@ -1064,8 +1064,21 @@ class TaxonSerializer(DefaultSerializer):
         ]
 
 
+class CaptureDeterminationSerializer(TaxonNoParentNestedSerializer):
+    """
+    Determination of a capture's detection, with its ancestry so the capture view
+    can keep boxes for a taxon and its descendants without another request.
+    ``parents_json`` is a column on the already-joined taxon row, so this adds no queries.
+    """
+
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+
+    class Meta(TaxonNoParentNestedSerializer.Meta):
+        fields = TaxonNoParentNestedSerializer.Meta.fields + ["parents"]
+
+
 class CaptureOccurrenceSerializer(DefaultSerializer):
-    determination = TaxonNoParentNestedSerializer(read_only=True)
+    determination = CaptureDeterminationSerializer(read_only=True)
     determination_algorithm = AlgorithmSerializer(read_only=True)
 
     class Meta:
@@ -1776,6 +1789,9 @@ class EventTimelineIntervalSerializer(serializers.Serializer):
     detections_count = serializers.IntegerField()
     detections_avg = serializers.IntegerField()
     was_processed = serializers.BooleanField()
+    # Null unless the request carries ``?taxon=``; see EventViewSet.timeline.
+    taxon_detections_count = serializers.IntegerField(allow_null=True)
+    taxon_top_capture = EventTimelineSourceImageSerializer(allow_null=True)
 
 
 class EventTimelineMetaSerializer(serializers.Serializer):

@@ -8414,3 +8414,124 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
         html = self._get_html("/api/v2/identifications/")
         self._assert_number_input(html, "occurrence")
         self._assert_number_input(html, "taxon")
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestEventTimelineTaxonFilter(APITestCase):
+    """The session timeline's ``?taxon=`` param reports, per interval, the detections of
+    that taxon and its descendants, so the capture view can show where a taxon appears.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.genus = Taxon.objects.get(name="Vanessa")
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+        self.itea = Taxon.objects.get(name="Vanessa itea")
+
+        self.images = create_captures(deployment=self.deployment, num_nights=1, images_per_night=6, interval_minutes=1)
+        self.event = Event.objects.get(deployment=self.deployment)
+        # Every capture gets one V. cardui; only the first capture also gets a V. atalanta.
+        create_occurrences(deployment=self.deployment, num=6, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment, num=1, taxon=self.atalanta, determination_score=0.9)
+        # A low-scoring V. itea that the project's default score threshold hides.
+        create_occurrences(deployment=self.deployment, num=1, taxon=self.itea, determination_score=0.1)
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+        # The fixture assigns the extra occurrences to whichever capture it lists first.
+        self.busiest_image = Detection.objects.get(
+            occurrence__determination=self.atalanta, source_image__deployment=self.deployment
+        ).source_image
+
+        self.user = User.objects.create_user(email="timeline-taxon@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _timeline(self, **params) -> list[dict]:
+        query = "&".join(f"{key}={value}" for key, value in params.items())
+        url = f"/api/v2/events/{self.event.pk}/timeline/?project_id={self.project.pk}&{query}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+        return res.json()["data"]
+
+    def _taxon_total(self, ticks: list[dict]) -> int:
+        return sum(tick["taxon_detections_count"] for tick in ticks)
+
+    def test_counts_are_null_without_a_taxon(self):
+        ticks = self._timeline()
+        self.assertTrue(all(tick["taxon_detections_count"] is None for tick in ticks))
+        self.assertTrue(all(tick["taxon_top_capture"] is None for tick in ticks))
+        # The regular detection counts are not affected by the taxon filter.
+        filtered_ticks = self._timeline(taxon=self.atalanta.pk)
+        self.assertEqual(
+            [tick["detections_count"] for tick in ticks], [tick["detections_count"] for tick in filtered_ticks]
+        )
+
+    def test_counts_the_taxon_and_its_descendants(self):
+        self.assertEqual(self._taxon_total(self._timeline(taxon=self.cardui.pk)), 6)
+        self.assertEqual(self._taxon_total(self._timeline(taxon=self.atalanta.pk)), 1)
+        # The genus matches both species through parents_json, not through a direct determination.
+        self.assertEqual(self._taxon_total(self._timeline(taxon=self.genus.pk)), 7)
+
+    def test_default_filters_apply_to_the_taxon_counts(self):
+        self.assertEqual(self._taxon_total(self._timeline(taxon=self.itea.pk)), 0)
+        self.assertEqual(self._taxon_total(self._timeline(taxon=self.itea.pk, apply_defaults="false")), 1)
+
+    def test_top_capture_is_the_one_with_most_matching_detections(self):
+        # One interval wide enough to hold every capture of the session.
+        ticks = self._timeline(taxon=self.genus.pk, resolution_minutes=60)
+        tick = next(tick for tick in ticks if tick["captures_count"])
+        self.assertEqual(tick["captures_count"], 6)
+        self.assertEqual(tick["taxon_detections_count"], 7)
+        self.assertEqual(tick["taxon_top_capture"]["id"], self.busiest_image.pk)
+
+    def test_invalid_taxon_param(self):
+        url = f"/api/v2/events/{self.event.pk}/timeline/?project_id={self.project.pk}"
+        self.assertEqual(self.client.get(url + "&taxon=abc").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.client.get(url + "&taxon=999999").status_code, status.HTTP_404_NOT_FOUND)
+        # An empty value means "no filter", like the occurrence list's taxon filter.
+        self.assertEqual(self.client.get(url + "&taxon=").status_code, status.HTTP_200_OK)
+
+    def test_taxon_filter_adds_a_fixed_number_of_queries(self):
+        """The per-capture counts cost a fixed number of queries, whatever the number of
+        captures or matching detections in the session."""
+        from django.core.cache import caches
+
+        def query_count(project: Project, event: Event, taxon: Taxon | None = None) -> int:
+            url = f"/api/v2/events/{event.pk}/timeline/?project_id={project.pk}&resolution_minutes=1"
+            if taxon:
+                url += f"&taxon={taxon.pk}"
+            caches["default"].clear()
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.client.get(url).status_code, status.HTTP_200_OK)
+            return len(ctx.captured_queries)
+
+        # A larger session in its own project, filtered by a different taxon, so cachalot
+        # (keyed on SQL text and params) cannot serve one measurement's lookups to the other.
+        large_project, large_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=large_deployment, num_nights=1, images_per_night=25, interval_minutes=1)
+        create_occurrences(deployment=large_deployment, num=40, taxon=self.cardui, determination_score=0.9)
+        large_event = Event.objects.get(deployment=large_deployment)
+        family = Taxon.objects.get(name="Nymphalidae")
+
+        # Warm the per-project auth and permission lookups on both projects first.
+        query_count(self.project, self.event)
+        query_count(large_project, large_event)
+        without_taxon = query_count(self.project, self.event)
+        small = query_count(self.project, self.event, self.genus)
+        large = query_count(large_project, large_event, family)
+
+        # Taxon lookup, the default filters' include and exclude taxa, and the one aggregate.
+        self.assertEqual(small, without_taxon + 4)
+        self.assertEqual(small, large)
+
+    def test_capture_detail_includes_determination_ancestry(self):
+        """The capture view filters boxes by taxon client-side, which needs each
+        determination's parents in the capture payload."""
+        url = f"/api/v2/captures/{self.busiest_image.pk}/?project_id={self.project.pk}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+        determinations = [detection["occurrence"]["determination"] for detection in res.json()["detections"]]
+        self.assertEqual({d["name"] for d in determinations}, {"Vanessa cardui", "Vanessa atalanta", "Vanessa itea"})
+        for determination in determinations:
+            self.assertIn(self.genus.pk, [parent["id"] for parent in determination["parents"]])
