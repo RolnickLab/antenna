@@ -29,6 +29,10 @@ Five invariants hold after every operation here:
   edit however many occurrences it touched (see ``track_stats.refresh_track_stats``).
 - The cached counts of the sessions and stations the edit touched are refreshed once,
   since an edit adds or removes occurrences.
+
+Every edit, and every tracking run, first locks the session it changes
+(``lock_sessions``), so an edit made during a run waits for the run to finish
+instead of being overwritten by it.
 """
 
 from __future__ import annotations
@@ -38,12 +42,14 @@ import itertools
 from collections import Counter
 from collections.abc import Iterable
 
-from django.db import transaction
+import psycopg.errors
+from django.db import OperationalError, connection, transaction
 from django.db.models import F
 from django.utils import timezone
 
 from ami.main.models import (
     Detection,
+    Event,
     Identification,
     Occurrence,
     OccurrenceHistoryRecord,
@@ -68,6 +74,55 @@ def _capture_order_key(row: dict) -> tuple:
 
 class TrackEditError(ValueError):
     """A track edit that cannot be applied to this occurrence and detection."""
+
+
+class SessionBusy(TrackEditError):
+    """A track edit that gave up waiting for a tracking run on the same session."""
+
+
+# How long an edit waits for a tracking run to release the session. A run can hold it for
+# minutes, and a request left waiting that long fails at the web server with no message.
+EDIT_LOCK_TIMEOUT_MS = 5000
+
+
+def lock_sessions(event_ids: Iterable[int | None], timeout_ms: int | None = None) -> None:
+    """Hold a row lock on each session until the surrounding transaction ends.
+
+    Tracking runs and track edits both call this before reading what they change, so
+    one waits for the other. Locking in id order keeps two writers from deadlocking.
+    With ``timeout_ms``, raises ``SessionBusy`` instead of waiting longer than that.
+    """
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if not pks:
+        return
+    if timeout_ms is not None:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SET LOCAL lock_timeout = {int(timeout_ms)}")
+    try:
+        list(Event.objects.select_for_update().filter(pk__in=pks).order_by("pk").values_list("pk", flat=True))
+    except OperationalError as e:
+        if isinstance(e.__cause__, psycopg.errors.LockNotAvailable):
+            raise SessionBusy("Tracking is running on this session; try again when it finishes.") from e
+        raise
+
+
+def _lock_for_edit(*occurrences: Occurrence, detections: Iterable[Detection] = ()) -> None:
+    """Lock the sessions of ``occurrences``, then re-read what a tracking run may have changed.
+
+    The caller loaded these rows before waiting on the lock, and saving them as loaded
+    would write a finished run's changes back over.
+    """
+    lock_sessions((o.event_id for o in occurrences), timeout_ms=EDIT_LOCK_TIMEOUT_MS)
+    for occurrence in occurrences:
+        try:
+            occurrence.refresh_from_db()
+        except Occurrence.DoesNotExist:
+            raise TrackEditError(f"Occurrence {occurrence.pk} no longer exists; it was merged while this edit waited.")
+    detections = list(detections)
+    if detections:
+        current = dict(Detection.objects.filter(pk__in=[d.pk for d in detections]).values_list("pk", "occurrence_id"))
+        for detection in detections:
+            detection.occurrence_id = current.get(detection.pk)
 
 
 def _ordered_detections(occurrence: Occurrence) -> list[Detection]:
@@ -101,6 +156,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     interface that splits at the frame the operator clicked must map the
     displayed position back to capture order, or it will keep the wrong half.
     """
+    _lock_for_edit(occurrence)
     ordered = _ordered_detections(occurrence)
     index = next((i for i, d in enumerate(ordered) if d.pk == detection.pk), None)
     if index is None:
@@ -130,6 +186,7 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     track is stitched back together across the gap, so removing a detection from
     the middle does not also split what remains. Returns the new occurrence.
     """
+    _lock_for_edit(occurrence)
     ordered = _ordered_detections(occurrence)
     if len(ordered) < 2:
         raise TrackEditError(
@@ -163,6 +220,13 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     confirmation is restated as a review of each piece's own detections.
     Returns the new occurrences in time order, or an empty list when nothing was split.
     """
+    # Waits without a timeout, as a tracking run does: a regroup is a background job too.
+    sessions = SourceImage.objects.filter(detections__occurrence=occurrence).values_list("event_id", flat=True)
+    lock_sessions([occurrence.event_id, *sessions])
+    try:
+        occurrence.refresh_from_db()
+    except Occurrence.DoesNotExist:
+        return []
     detections = occurrence.detections.select_related("source_image").order_by(*CAPTURE_ORDER)
     by_session: dict[int, list[Detection]] = {}
     for detection in detections:
@@ -434,6 +498,29 @@ def _refuse_two_boxes_on_one_capture(target: Occurrence, incoming_capture_ids: I
         )
 
 
+def refuse_edit_outside_session(
+    target: Occurrence, members: Iterable[tuple[int, int | None, int | None]] = (), noun: str = "Occurrence(s)"
+) -> None:
+    """Refuse a track edit unless ``target`` has a session and every member shares it and its project.
+
+    ``members`` are ``(pk, project_id, event_id)`` of what the edit brings in. A capture that was
+    never grouped has no session, so it matches nothing, and without the project check two
+    session-less occurrences from different projects would compare equal.
+    """
+    if target.event_id is None:
+        raise TrackEditError(
+            f"Occurrence {target.pk} has no session. Group its captures into sessions before editing its track."
+        )
+    outside = sorted(
+        pk for pk, project_id, event_id in members if event_id != target.event_id or project_id != target.project_id
+    )
+    if outside:
+        raise TrackEditError(
+            f"{noun} {outside} are not in the session and project of occurrence {target.pk}. "
+            "An occurrence cannot span sessions or projects."
+        )
+
+
 def _time_of_day(timestamp: datetime.datetime | None) -> str:
     """A capture time as a reviewer reads it on the session page, e.g. 10:48:23 PM."""
     if timestamp is None:
@@ -446,19 +533,15 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     """Fold ``sources`` into ``target``: one animal that tracking recorded as several.
 
     Every detection and identification moves to ``target`` and the emptied sources
-    are deleted. Sources must belong to the same session, since an occurrence
-    cannot span two nights.
+    are deleted. Sources must belong to the target's session and project, since an
+    occurrence cannot span two nights.
     """
     sources = [o for o in sources if o.pk != target.pk]
     if not sources:
         raise TrackEditError("Nothing to merge: no occurrence other than the target was given.")
+    _lock_for_edit(target, *sources)
 
-    cross_session = sorted(o.pk for o in sources if o.event_id != target.event_id)
-    if cross_session:
-        raise TrackEditError(
-            f"Occurrence(s) {cross_session} belong to a different session than {target.pk}. "
-            "An occurrence cannot span sessions."
-        )
+    refuse_edit_outside_session(target, ((o.pk, o.project_id, o.event_id) for o in sources))
     _refuse_two_boxes_on_one_capture(
         target,
         Detection.objects.valid()
@@ -500,19 +583,16 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
     is no donor to absorb. Any occurrence left with no detections is absorbed rather
     than deleted outright, so identifications on it survive.
     """
+    detections = list(detections)
+    _lock_for_edit(target, detections=detections)
     detections = [d for d in detections if d.occurrence_id != target.pk]
     if not detections:
         raise TrackEditError("Nothing to add: every detection given is already in this occurrence.")
 
     donor_pks = {d.occurrence_id for d in detections if d.occurrence_id}
-    cross_session = sorted(
-        d.pk for d in detections if d.source_image.event_id and d.source_image.event_id != target.event_id
+    refuse_edit_outside_session(
+        target, ((d.pk, d.source_image.project_id, d.source_image.event_id) for d in detections), "Detection(s)"
     )
-    if cross_session:
-        raise TrackEditError(
-            f"Detection(s) {cross_session} were captured in a different session than occurrence "
-            f"{target.pk}. An occurrence cannot span sessions."
-        )
     _refuse_two_boxes_on_one_capture(target, [d.source_image_id for d in detections])
 
     donors = list(Occurrence.objects.filter(pk__in=donor_pks))
@@ -545,6 +625,7 @@ def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
     an explicit act — no operation in this module sets it as a side effect. The two
     fields hold the current confirmation; the history keeps every review.
     """
+    _lock_for_edit(occurrence)
     occurrence.grouping_verified_at = timezone.now()
     occurrence.grouping_verified_by = user
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])
@@ -552,8 +633,10 @@ def verify_grouping(occurrence: Occurrence, user: User) -> Occurrence:
     return occurrence
 
 
+@transaction.atomic
 def unverify_grouping(occurrence: Occurrence) -> Occurrence:
     """Withdraw a previous confirmation, leaving the detections untouched."""
+    _lock_for_edit(occurrence)
     occurrence.grouping_verified_at = None
     occurrence.grouping_verified_by = None
     occurrence.save(update_fields=["grouping_verified_at", "grouping_verified_by"])

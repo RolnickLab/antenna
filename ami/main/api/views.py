@@ -57,10 +57,12 @@ from ami.main.models_future.occurrence import (
 )
 from ami.main.models_future.tracks import (
     CAPTURE_ORDER,
+    SessionBusy,
     TrackEditError,
     add_detections,
     detach_detection,
     merge_occurrences,
+    refuse_edit_outside_session,
     split_track,
     unverify_grouping,
     verify_grouping,
@@ -1619,6 +1621,13 @@ class OccurrenceFramesPagination(LimitOffsetPaginationWithPermissions):
         return remove_query_param(url, "around") if url else url
 
 
+class SessionBusyConflict(api_exceptions.APIException):
+    """A track edit refused because a tracking run holds the session; the client can retry."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "session_busy"
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1896,6 +1905,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         detection = self._detection_in_track(request, occurrence)
         try:
             new_occurrence = split_track(occurrence, detection)
+        except SessionBusy as e:
+            raise SessionBusyConflict(str(e))
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"detection_id": str(e)})
         return self._track_edit_response(occurrence, new_occurrence)
@@ -1912,6 +1923,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         detection = self._detection_in_track(request, occurrence)
         try:
             new_occurrence = detach_detection(occurrence, detection)
+        except SessionBusy as e:
+            raise SessionBusyConflict(str(e))
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"detection_id": str(e)})
         return self._track_edit_response(occurrence, new_occurrence)
@@ -1950,6 +1963,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             raise api_exceptions.ValidationError({"occurrence_ids": f"Occurrence(s) {missing} were not found."})
         try:
             merge_occurrences(occurrence, sources)
+        except SessionBusy as e:
+            raise SessionBusyConflict(str(e))
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"occurrence_ids": str(e)})
         return self._grouping_response(occurrence)
@@ -2000,6 +2015,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         searching and scoring from it alone.
         """
         occurrence = self.get_object()
+        # Candidates are found by session, and event_id=None would match every ungrouped capture.
+        try:
+            refuse_edit_outside_session(occurrence)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"occurrence": str(e)})
         if "captures" in request.query_params and "minutes" in request.query_params:
             raise api_exceptions.ValidationError(
                 {"minutes": "Pass either `captures` or `minutes` to choose where to search, not both."}
@@ -2109,6 +2129,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             )
         try:
             add_detections(occurrence, detections)
+        except SessionBusy as e:
+            raise SessionBusyConflict(str(e))
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"detection_ids": str(e)})
         return self._grouping_response(occurrence)
@@ -2124,7 +2146,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         change to the detections clears it.
         """
         occurrence = self.get_object()
-        verify_grouping(occurrence, request.user)
+        try:
+            verify_grouping(occurrence, request.user)
+        except SessionBusy as e:
+            raise SessionBusyConflict(str(e))
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError(str(e))
         return self._grouping_response(occurrence)
 
     @extend_schema(request=None, responses=OccurrenceGroupingSerializer)
@@ -2132,7 +2159,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def unverify_grouping(self, request: Request, pk=None) -> Response:
         """Withdraw a previous confirmation. The detections are left untouched."""
         occurrence = self.get_object()
-        unverify_grouping(occurrence)
+        try:
+            unverify_grouping(occurrence)
+        except SessionBusy as e:
+            raise SessionBusyConflict(str(e))
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError(str(e))
         return self._grouping_response(occurrence)
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
