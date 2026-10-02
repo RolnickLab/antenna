@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, PostProcessingJob
 from ami.main.models import Project, ProjectFeatureFlags, SourceImageCollection, TaxaList
-from ami.ml.models import Algorithm
+from ami.ml.models import Algorithm, Pipeline
 from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
 from ami.users.models import User
 from ami.users.roles import BasicMember, MLDataManager
@@ -146,6 +146,11 @@ class TestCreateJobWithParams(JobTypesTestBase):
             params={"config": {"source_image_collection_id": self.other_collection.pk}},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # A pipeline the project has not enabled counts as another project's.
+        pipeline = Pipeline.objects.create(name="Not enabled here")
+        response = self.post_job(self.superuser, job_type_key="ml", params={"config": {"pipeline_id": pipeline.pk}})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("pipeline_id", str(response.json()))
 
     def test_schema_errors_come_back_per_field(self):
         response = self.post_masking(self.ml_manager, taxa_list_id=None)

@@ -39,7 +39,8 @@ columns are fields named as in `JOB_COLUMNS`.
 Register it in `POSTPROCESSING_TASKS`, give it `feature_flag` (a `ProjectFeatureFlags` field you
 add, default off) and a `description`. When a project turns the flag on, ML data managers and
 project managers can run the task with any settings; while it is off the task is hidden, refused on
-create, and its jobs cannot be re-run except by a superuser.
+create through the API, and its jobs cannot be re-run except by a superuser. The Django admin action
+still lets superusers start it, so staff can try a method on a project before turning it on.
 
 The served schema is `config_schema.schema()` unchanged; the same rules apply to the per-type models
 in `ami/jobs/schemas.py`. Write it for the form:

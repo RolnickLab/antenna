@@ -23,7 +23,7 @@ from .models import (
     get_job_type_by_key,
     serialize_job_logs,
 )
-from .schemas import QueuedTaskAcknowledgment
+from .schemas import JobTypeDescription, QueuedTaskAcknowledgment
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -202,6 +202,12 @@ class MinimalJobSerializer(DefaultSerializer):
     class Meta:
         model = Job
         fields = ["id", "pipeline_slug"]
+
+
+class JobTypesResponseSerializer(serializers.Serializer):
+    """GET /jobs/types/ — the job types the Create Job dialog may offer for a project."""
+
+    results = SchemaField(schema=list[JobTypeDescription])
 
 
 class MLJobTasksRequestSerializer(serializers.Serializer):

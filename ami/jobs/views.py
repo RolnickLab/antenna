@@ -41,7 +41,7 @@ from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
 from .models import Job, JobDispatchMode, JobState, describe_job_types
-from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
+from .serializers import JobListSerializer, JobSerializer, JobTypesResponseSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +257,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             )
         return context
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param], responses=JobTypesResponseSerializer)
     @action(detail=False, methods=["get"], name="types")
     def types(self, request):
         """

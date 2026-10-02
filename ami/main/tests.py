@@ -2595,6 +2595,7 @@ class TestRolePermissions(APITestCase):
         self.project = Project.objects.create(name="Insect Project", description="Test Description", owner=owner)
         self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
         self.pipeline, _ = Pipeline.objects.get_or_create(name="Role test pipeline")
+        self.pipeline.projects.add(self.project)
         S3StorageSource.objects.create(name="New source", project=self.project, bucket="Test Bucket")
         create_captures(deployment=self.deployment)
         create_taxa(project=self.project)
