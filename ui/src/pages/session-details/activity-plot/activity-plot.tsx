@@ -11,24 +11,47 @@ const fontFamily = 'Mazzard'
 const fontSize = 14
 const lineColorCaptures = CONSTANTS.COLORS.neutral[300]
 const lineColorDetections = CONSTANTS.COLOR_THEME.secondary.DEFAULT
+const lineColorTaxon = CONSTANTS.COLOR_THEME.primary.DEFAULT
 const spikeColor = CONSTANTS.COLOR_THEME.foreground
 const textColor = CONSTANTS.COLOR_THEME.foreground
 const tooltipBgColor = CONSTANTS.COLOR_THEME.background
 const tooltipBorderColor = CONSTANTS.COLOR_THEME.border
 
 export interface ActivityPlotProps {
+  // When set, the detections trace shows this taxon's detections instead of all.
+  activeTaxon?: { name: string }
   session: SessionDetails
   setActiveCaptureId: (captureId: string) => void
   timeline: TimelineTick[]
 }
 
 export const ActivityPlot = ({
+  activeTaxon,
   session,
   timeline,
   setActiveCaptureId,
 }: ActivityPlotProps) => {
   const containerRef = useRef(null)
   const width = useDynamicPlotWidth(containerRef)
+
+  const detectionsTrace = activeTaxon
+    ? {
+        y: timeline.map((timelineTick) => timelineTick.numTaxonDetections),
+        hovertemplate: `${activeTaxon.name}: %{y}<extra></extra>`,
+        color: lineColorTaxon,
+        name: activeTaxon.name,
+        max: Math.max(
+          ...timeline.map((timelineTick) => timelineTick.numTaxonDetections),
+          1
+        ),
+      }
+    : {
+        y: timeline.map((timelineTick) => timelineTick.avgDetections),
+        hovertemplate: 'Avg. detections: %{y}<extra></extra>',
+        color: lineColorDetections,
+        name: 'Avg. detections',
+        max: Math.max(session.detectionsMaxCount ?? 0, 1), // Ensure a minimum range of 1
+      }
 
   // Calculate the average number of captures
   const avgCaptures =
@@ -66,13 +89,13 @@ export const ActivityPlot = ({
               x: timeline.map(
                 (timelineTick) => new Date(timelineTick.startDate)
               ),
-              y: timeline.map((timelineTick) => timelineTick.avgDetections),
-              hovertemplate: 'Avg. detections: %{y}<extra></extra>',
+              y: detectionsTrace.y,
+              hovertemplate: detectionsTrace.hovertemplate,
               fill: 'tozeroy',
               type: 'scatter',
               mode: 'lines',
-              line: { color: lineColorDetections, width: 1 },
-              name: 'Avg. detections',
+              line: { color: detectionsTrace.color, width: 1 },
+              name: detectionsTrace.name,
               yaxis: 'y2',
             },
           ]}
@@ -106,7 +129,7 @@ export const ActivityPlot = ({
               zeroline: false,
               rangemode: 'nonnegative',
               fixedrange: true,
-              range: [0, Math.max(session.detectionsMaxCount ?? 0, 1)], // Ensure a minimum range of 1
+              range: [0, detectionsTrace.max],
               side: 'right',
               overlaying: 'y',
             },

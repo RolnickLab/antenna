@@ -7,18 +7,24 @@ import { useMemo } from 'react'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 export const useSessionTimeline = (
-  id: string
+  id: string,
+  params?: { taxon?: string }
 ): {
   timeline?: TimelineTick[]
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
+  const taxon = params?.taxon
+  const url = `${API_URL}/${API_ROUTES.SESSIONS}/${id}/timeline/${
+    taxon ? `?taxon=${taxon}` : ''
+  }`
+
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     data: ServerTimelineTick[]
   }>({
-    queryKey: [API_ROUTES.SESSIONS, id, 'timeline'],
-    url: `${API_URL}/${API_ROUTES.SESSIONS}/${id}/timeline/`,
+    queryKey: [API_ROUTES.SESSIONS, id, 'timeline', taxon],
+    url,
   })
 
   const timeline = useMemo(

@@ -8,19 +8,23 @@ import { TreeItem } from './types'
 import { useTaxonSearch } from './useTaxonSearch'
 
 export const TaxonSearch = ({
+  defaultTaxa,
   taxon,
   onTaxonChange,
 }: {
+  // Shown before the user types, e.g. the taxa already seen in the current view.
+  defaultTaxa?: Taxon[]
   taxon?: Taxon
   onTaxonChange: (taxon?: Taxon) => void
 }) => {
   const { projectId } = useParams()
   const [searchString, setSearchString] = useState('')
   const debouncedSearchString = useDebounce(searchString, 200)
-  const { data, isLoading } = useTaxonSearch(
+  const { data: searchResults, isLoading } = useTaxonSearch(
     debouncedSearchString,
     projectId as string
   )
+  const data = debouncedSearchString.length ? searchResults : defaultTaxa
 
   const tree = useMemo(() => {
     if (!data?.length) {

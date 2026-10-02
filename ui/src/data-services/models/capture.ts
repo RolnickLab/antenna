@@ -7,13 +7,17 @@ export type ServerCapture = any // TODO: Update this type
 export type DetectionOccurrence = {
   id: string
   determination: {
+    id: number
     name: string
+    parents?: { id: number }[]
   }
   determination_score: number
 }
 
 export type CaptureDetection = {
   bbox: number[]
+  // The determination and its ancestors, so a taxon filter matches descendants too.
+  determinationTaxonIds: string[]
   id: string
   label: string
   occurrence?: DetectionOccurrence
@@ -21,6 +25,18 @@ export type CaptureDetection = {
   occurrenceMeetsCriteria: boolean
   score: number
   scoreLabel: string
+}
+
+const getDeterminationTaxonIds = (detection: CaptureDetection) => {
+  const determination = detection.occurrence?.determination
+
+  if (!determination) {
+    return []
+  }
+
+  return [determination, ...(determination.parents ?? [])].map(
+    (taxon) => `${taxon.id}`
+  )
 }
 
 const getDetectionLabel = (detection: CaptureDetection) => {
@@ -65,6 +81,7 @@ export class Capture {
         (detection: any): CaptureDetection => {
           return {
             bbox: detection.bbox,
+            determinationTaxonIds: getDeterminationTaxonIds(detection),
             id: `${detection.id}`,
             label: getDetectionLabel(detection),
             occurrenceId: detection.occurrence

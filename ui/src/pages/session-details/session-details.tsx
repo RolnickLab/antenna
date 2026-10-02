@@ -2,6 +2,7 @@ import { ErrorState } from 'components/error-state/error-state'
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
+import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { SessionDetails } from 'data-services/models/session-details'
 import { ExternalLinkIcon } from 'lucide-react'
 import {
@@ -23,13 +24,16 @@ import { useUser } from 'utils/user/userContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureInfo } from './capture-info'
 import { CaptureNavigation } from './capture-navigation'
+import { CaptureTaxonFilter } from './capture-taxon-filter'
 import { Capture } from './capture/capture'
 import { useActiveCaptureId } from './hooks/useActiveCapture'
 import { useActiveOccurrences } from './hooks/useActiveOccurrences'
+import { useActiveTaxonId } from './hooks/useActiveTaxon'
 import { Process } from './process/process'
 import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
+import { filterDetectionsByTaxon } from './taxon-filter'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
 import { ViewSettings } from './view-settings'
 import { ZoomSettings } from './zoom-settings'
@@ -102,7 +106,15 @@ const Content = ({ session }: { session: SessionDetails }) => {
     poll,
     projectId: projectId as string,
   })
-  const { timeline = [] } = useSessionTimeline(session.id)
+  const { activeTaxonId } = useActiveTaxonId()
+  const { species: activeTaxon } = useSpeciesDetails(activeTaxonId, projectId)
+  const { timeline = [] } = useSessionTimeline(session.id, {
+    taxon: activeTaxonId,
+  })
+  const detections = filterDetectionsByTaxon(
+    activeCapture?.detections ?? [],
+    activeTaxonId
+  )
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
@@ -166,7 +178,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
           <div className="grow flex items-center justify-center bg-foreground">
             <Capture
               defaultFilters={settings.defaultFilters}
-              detections={activeCapture?.detections ?? []}
+              detections={detections}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
               sources={
@@ -217,11 +229,17 @@ const Content = ({ session }: { session: SessionDetails }) => {
             <div className="flex items-center justify-center">
               <CaptureNavigation
                 activeCapture={activeCapture}
+                snapToTaxon={!!activeTaxonId}
                 timeline={timeline}
                 setActiveCaptureId={setActiveCaptureId}
               />
             </div>
             <div className="flex-1 flex items-center justify-center gap-2 md:justify-end">
+              <CaptureTaxonFilter
+                numShown={detections.length}
+                numTotal={activeCapture?.detections.length ?? 0}
+                sessionId={session.id}
+              />
               <ZoomSettings transformRef={transformRef} />
               <ViewSettings
                 onSettingsChange={setSettings}
@@ -232,6 +250,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
         </div>
         <div className="p-2 bg-background rounded-lg border border-border overflow-hidden xl:col-span-2 md:p-4">
           <ActivityPlot
+            activeTaxon={activeTaxon}
             session={session}
             setActiveCaptureId={setActiveCaptureId}
             timeline={timeline}

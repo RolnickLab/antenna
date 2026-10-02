@@ -10,6 +10,11 @@ export type ServerTimelineTick = {
   captures_count: number
   detections_count: number
   detections_avg: number
+  // Null unless the timeline was requested with a taxon filter.
+  taxon_detections_count: number | null
+  taxon_top_capture: {
+    id: number
+  } | null
 }
 
 export class TimelineTick {
@@ -35,6 +40,10 @@ export class TimelineTick {
     return this._timelineTick.captures_count ?? 0
   }
 
+  get numTaxonDetections(): number {
+    return this._timelineTick.taxon_detections_count ?? 0
+  }
+
   get startDate(): Date {
     return new Date(this._timelineTick.start)
   }
@@ -53,6 +62,14 @@ export class TimelineTick {
     }
 
     return `${this._timelineTick.top_capture.id}`
+  }
+
+  get taxonTopCaptureId(): string | undefined {
+    if (!this._timelineTick.taxon_top_capture) {
+      return undefined
+    }
+
+    return `${this._timelineTick.taxon_top_capture.id}`
   }
 
   get representativeCaptureId(): string | undefined {

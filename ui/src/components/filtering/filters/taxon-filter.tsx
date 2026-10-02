@@ -1,5 +1,6 @@
 import { TaxonSearch } from 'components/taxon-search/taxon-search'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
+import { Taxon } from 'data-services/models/taxa'
 import { ChevronDownIcon, Loader2Icon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
@@ -7,7 +8,13 @@ import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 
-export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
+export const TaxonFilter = ({
+  defaultTaxa,
+  placeholder = translate(STRING.SELECT_TAXON_PLACEHOLDER),
+  value,
+  onAdd,
+  onClear,
+}: FilterProps & { defaultTaxa?: Taxon[]; placeholder?: string }) => {
   const { projectId } = useParams()
   const [open, setOpen] = useState(false)
   const { species: taxon, isLoading } = useSpeciesDetails(value, projectId)
@@ -19,7 +26,7 @@ export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
     if (value && isLoading) {
       return 'Loading...'
     }
-    return translate(STRING.SELECT_TAXON_PLACEHOLDER)
+    return placeholder
   })()
 
   return (
@@ -49,6 +56,7 @@ export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
         style={{ maxHeight: 'var(--radix-popover-content-available-height)' }}
       >
         <TaxonSearch
+          defaultTaxa={defaultTaxa}
           taxon={taxon}
           onTaxonChange={(taxon) => {
             if (taxon) {

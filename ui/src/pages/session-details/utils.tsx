@@ -4,12 +4,16 @@ export const findClosestCaptureId = ({
   maxDate,
   minDate,
   snapToDetections,
+  snapToTaxon,
   targetDate,
   timeline,
 }: {
   maxDate?: Date
   minDate?: Date
   snapToDetections?: boolean
+  // Only ticks with detections of the timeline's taxon filter, landing on the
+  // capture that has the most of them.
+  snapToTaxon?: boolean
   targetDate: Date
   timeline: TimelineTick[]
 }) => {
@@ -17,11 +21,19 @@ export const findClosestCaptureId = ({
   let smallestDifference = Infinity
 
   timeline.forEach((timelineTick) => {
-    if (!timelineTick.representativeCaptureId) {
+    const captureId = snapToTaxon
+      ? timelineTick.taxonTopCaptureId ?? timelineTick.representativeCaptureId
+      : timelineTick.representativeCaptureId
+
+    if (!captureId) {
       return
     }
 
     if (snapToDetections && !timelineTick.numDetections) {
+      return
+    }
+
+    if (snapToTaxon && !timelineTick.numTaxonDetections) {
       return
     }
 
@@ -39,7 +51,7 @@ export const findClosestCaptureId = ({
 
     if (difference < smallestDifference) {
       smallestDifference = difference
-      closestCaptureId = timelineTick.representativeCaptureId
+      closestCaptureId = captureId
     }
   })
 

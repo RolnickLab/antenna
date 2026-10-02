@@ -13,13 +13,19 @@ import { findClosestCaptureId } from './utils'
 
 export const CaptureNavigation = ({
   activeCapture,
+  snapToTaxon,
   timeline,
   setActiveCaptureId,
 }: {
   activeCapture?: CaptureDetails
+  // With a taxon filter active, the outer buttons skip to captures with that taxon.
+  snapToTaxon?: boolean
   timeline: TimelineTick[]
   setActiveCaptureId: (captureId: string) => void
 }) => {
+  const snapLabel = translate(
+    snapToTaxon ? STRING.SNAP_TO_TAXON : STRING.SNAP_TO_DETECTIONS
+  )
   const [currentIndex, setCurrentIndex] = useState(activeCapture?.currentIndex)
   const [totalCaptures, setTotalCaptures] = useState(
     activeCapture?.totalCaptures
@@ -48,7 +54,8 @@ export const CaptureNavigation = ({
     const prevCaptureId =
       findClosestCaptureId({
         maxDate: activeCapture.date,
-        snapToDetections: true,
+        snapToDetections: !snapToTaxon,
+        snapToTaxon,
         targetDate: activeCapture.date,
         timeline,
       }) ?? activeCapture.prevCaptureId
@@ -74,7 +81,8 @@ export const CaptureNavigation = ({
     const nextCaptureId =
       findClosestCaptureId({
         minDate: activeCapture.date,
-        snapToDetections: true,
+        snapToDetections: !snapToTaxon,
+        snapToTaxon,
         targetDate: activeCapture.date,
         timeline,
       }) ?? activeCapture.nextCaptureId
@@ -103,9 +111,9 @@ export const CaptureNavigation = ({
 
   return (
     <div className="flex items-center justify-center gap-1">
-      <BasicTooltip asChild content={translate(STRING.SNAP_TO_DETECTIONS)}>
+      <BasicTooltip asChild content={snapLabel}>
         <Button
-          aria-label={translate(STRING.SNAP_TO_DETECTIONS)}
+          aria-label={snapLabel}
           disabled={!activeCapture?.prevCaptureId}
           onClick={goToPrevWithDetections}
           size="icon"
@@ -135,9 +143,9 @@ export const CaptureNavigation = ({
       >
         <ChevronRightIcon className="w-4 h-4" />
       </Button>
-      <BasicTooltip asChild content={translate(STRING.SNAP_TO_DETECTIONS)}>
+      <BasicTooltip asChild content={snapLabel}>
         <Button
-          aria-label={translate(STRING.SNAP_TO_DETECTIONS)}
+          aria-label={snapLabel}
           disabled={!activeCapture?.nextCaptureId}
           onClick={goToNextWithDetections}
           size="icon"
