@@ -50,13 +50,14 @@ export const SchemaField = ({
         case 'boolean':
           return (
             <InputContent
-              label={label}
+              label=""
               description={field.description}
               error={error}
             >
               <Checkbox
                 checked={controller.value ?? false}
                 id={formName}
+                label={label}
                 onCheckedChange={controller.onChange}
               />
             </InputContent>
@@ -72,6 +73,7 @@ export const SchemaField = ({
                 entity={field.entity as string}
                 entityFilters={field.entityFilters}
                 projectId={projectId}
+                label={field.label}
                 placeholder={notSet}
                 value={controller.value}
                 onValueChange={(value, optionLabel) => {
@@ -92,7 +94,7 @@ export const SchemaField = ({
                 value={controller.value ?? ''}
                 onValueChange={controller.onChange}
               >
-                <Select.Trigger>
+                <Select.Trigger aria-label={field.label}>
                   <Select.Value
                     placeholder={translate(STRING.SELECT_PLACEHOLDER)}
                   />

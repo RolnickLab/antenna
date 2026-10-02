@@ -195,7 +195,7 @@ const CreateJobForm = ({
             setValue('variantKey', '')
           }}
         >
-          <Select.Trigger>
+          <Select.Trigger aria-label={translate(STRING.JOB_FIELD_TYPE)}>
             <Select.Value />
           </Select.Trigger>
           <Select.Content>
@@ -218,7 +218,7 @@ const CreateJobForm = ({
             value={variantKey}
             onValueChange={(value) => setValue('variantKey', value)}
           >
-            <Select.Trigger>
+            <Select.Trigger aria-label={translate(STRING.JOB_FIELD_METHOD)}>
               <Select.Value
                 placeholder={translate(STRING.SELECT_PLACEHOLDER)}
               />

@@ -24,6 +24,7 @@ export const EntitySelect = ({
   entityFilters,
   projectId,
   value,
+  label,
   placeholder,
   onValueChange,
 }: {
@@ -31,6 +32,7 @@ export const EntitySelect = ({
   entityFilters?: { [key: string]: string | number | boolean }
   projectId: string
   value?: string
+  label: string
   placeholder?: string
   onValueChange: (value: string | undefined, label?: string) => void
 }) => {
@@ -63,7 +65,7 @@ export const EntitySelect = ({
       }
       value={selected}
     >
-      <Select.Trigger loading={isLoading}>
+      <Select.Trigger aria-label={label} loading={isLoading}>
         <Select.Value
           placeholder={placeholder ?? translate(STRING.SELECT_PLACEHOLDER)}
         />
