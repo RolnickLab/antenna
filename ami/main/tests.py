@@ -11460,6 +11460,10 @@ class FeatureVectorPresenceTestCase(APITestCase):
                 taxon=self.taxon, score=0.9, timestamp=capture.timestamp, algorithm=algorithm
             )
         DetectionEmbedding.objects.create(detection=detection, algorithm=embedder, vector=self.vector)
+        # Another key from the moth filter is not the backbone vector its classification would carry.
+        DetectionEmbedding.objects.create(
+            detection=detection, algorithm=moth_filter, key="projection", vector=[0.5] * 2
+        )
 
         flags = dict(
             Classification.objects.filter(detection=detection)

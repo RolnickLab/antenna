@@ -695,12 +695,15 @@ class TracksExportTest(TestCase):
 
         if not pgvector_is_available():
             self.skipTest("This database cannot store embeddings.")
-        detection = self.occurrences[0].detections.order_by("source_image__timestamp").last()
+        first, *_, detection = self.occurrences[0].detections.order_by("source_image__timestamp")
         algorithm = Algorithm.objects.create(name="Embedding model", key="embedding-model")
         DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, vector=[0.1] * 2048)
+        # Only the backbone "embedding" key counts; another key is not the vector tracking compares.
+        DetectionEmbedding.objects.create(detection=first, algorithm=algorithm, key="projection", vector=[0.1] * 2)
 
         rows = {int(row["detection_id"]): row for row in self._rows()}
         self.assertEqual(rows[detection.pk]["has_feature_vector"], "true")
+        self.assertEqual(rows[first.pk]["has_feature_vector"], "false")
 
     def test_query_count_is_one_pair_per_chunk(self):
         from django.db import connection

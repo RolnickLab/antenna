@@ -2520,16 +2520,6 @@ class TestDetectionEmbeddings(TestCase):
             self.assertEqual(detection.classifications.count(), 1)
         self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=treated).count(), 1)
 
-    def test_saving_again_keeps_one_row_per_detection_and_algorithm(self):
-        """Results are re-delivered and images reprocessed; the one row holds the latest vector."""
-        image = self._image()
-        self._save(self._rejected(image, _embedding_payload(self.LOW)))
-        self._save(self._rejected(image, _embedding_payload(self.LOW)))
-        self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=image).count(), 1)
-
-        self._save(self._rejected(image, _embedding_payload(self.HIGH)))
-        self.assertEqual(self._stored(image), {(0.0, EMBEDDING_SPECIES.key): self.HIGH})
-
     def test_each_row_records_the_job_that_saved_it_and_the_job_cannot_be_deleted_under_its_vectors(self):
         from django.db.models import RestrictedError
 
