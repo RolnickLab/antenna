@@ -1070,9 +1070,11 @@ class Job(BaseModel):
         on_delete=models.CASCADE,
         related_name="jobs",
     )
+    # SET_NULL: a station's captures outlive it, and so must the jobs whose outputs they hold
+    # (outputs restrict deleting their job).
     deployment = models.ForeignKey(
         Deployment,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="jobs",
         null=True,
         blank=True,
