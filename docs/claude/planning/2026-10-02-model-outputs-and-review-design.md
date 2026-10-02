@@ -1279,3 +1279,12 @@ failed), `ingested_at`, `keep`. The row is what makes ingest retryable per batch
 notification be recovered by listing rows still expected, stores the object key once instead of
 on every classification, and is what the admin metrics on kept and missing files count.
 `Classification.results_batch` + `results_index` point into it.
+
+### C.6 Amendment: `PipelineResultsBatch`, phase 3 only
+
+`ResultsBatch` is named `PipelineResultsBatch` (it holds a `PipelineResultsResponse` and answers a
+`PipelineProcessingTask`). It and every column that references it (`Classification.results_batch`,
+`results_index`) land in phase 3, the results refactor PR; phases 1 and 2 do not mention it. Its
+`status` is per-batch ingest state (expected, written, ingested, failed) for retries and the
+kept/missing metrics; `Job.progress` for the results stage is derived from it (ingested over
+expected) rather than kept as a separate counter.
