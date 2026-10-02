@@ -1,5 +1,7 @@
 # Keep a project column on every project-scoped model and enforce it in the database
 
+> **Status: preliminary plan, needs review.** This issue describes a need we have measured and the directions we could take. It is not a committed design. The purpose is to agree that the need is real and to pick a direction; the mechanics in the options table are starting points for that discussion.
+
 ## Summary
 
 Many Antenna models carry their own copy of the `project` foreign key instead of reaching the project through a chain of parents. The copy makes permission checks, list pages, counts and data moves cheap, and several planned tables (embeddings, algorithm runs and results, measurements) will want it from their first migration. Today the copy is filled by convention and nothing in the database checks it. On a copy of the production database we measured rows where it is empty or disagrees with the parent. If this work is done, a project column can be trusted everywhere it exists, new tables get it by a single agreed pattern, and project-scoped queries on the largest tables stop depending on total table size.

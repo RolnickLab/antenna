@@ -1200,3 +1200,53 @@ at 2,048-d on our models; quantization loss on image rather than text embeddings
 tap is best for retrieval vs head training; named big-company migration posts; Ente's server
 schema; Immich's face-model-change handling; whether any camera-trap tool stores embeddings;
 Django 5.2 composite-key FK targets; trigger-based alternatives to the composite FK.
+
+## Appendix C (2026-10-01, evening): decisions taken, simplifications, phases
+
+### C.1 Decisions taken by the owner
+
+| # | Decision | Outcome |
+|---|---|---|
+| 1 | Embedding column | `halfvec` (16-bit floats): half the bytes of `vector`, measured cosine shift ~1e-4, and the only way to index 2,048-d vectors. This is the first deployment of pgvector or any vectors anywhere, so start on pgvector 0.8 and never carry an older column type. Unsized column; one partial index per `(algorithm, key)` when a similarity endpoint ships |
+| 2 | Result-sink contract | Yes: the service writes each batch's raw response to a presigned URL, inline response kept as fallback; `ResultsBatch` ledger; logits leave Postgres. Own PR |
+| 3 | Existing arrays | Export the 307k rows' arrays to batch files once, in the result-sink PR, then drop the columns |
+| 4 | Batch-file retention | Keep, with a `keep` flag; the admin or UI must show what is kept and what is missing per job |
+| 5 | Class masking at ingest | Yes by default when the project has a list; own PR |
+| 6 | Job deletion | Soft delete (`hidden`); jobs with outputs are never hard-deleted |
+| 7 | `AlgorithmResult` targets | occurrence, capture and session columns from the start; occurrence writers first |
+| 8 | Prototype vectors | Public like taxa. Note: private taxa lists and taxa, and "managed" public taxa and lists, are coming; a prototype built from a private project may need scoping then |
+| 9 | Landing order with #1407 | #1272 → embeddings foundation PR → #1407 rebased; start simple |
+| 10 | Project-column ticket | Posted as #1453, framed as a preliminary plan focused on the need |
+| 11 | Note body rewrite and visual | when the plan below is settled |
+| 12 | `Classification` | treated as a taxon classification and said so in its docstring; non-taxon outputs never enter it |
+| 13 | Measurements | folded into `AlgorithmResult` via a nullable `value` and an `is_current` flag; no measurement tables |
+| 14 | `SourceImageMeasurement` | wanted now (person present, camera-trap likeness, blur, exposure); served by `AlgorithmResult` with the capture target |
+
+### C.2 Simplifications
+
+1. **One per-target output table.** `AlgorithmResult(project, occurrence? | source_image? | event?, algorithm, job, kind, value?, data?, timestamp, is_current)` replaces `OccurrenceHistoryRecord`, `OccurrenceMeasurement`, `SourceImageMeasurement` and any `EventMeasurement`. Partial unique `(target, algorithm, kind) WHERE is_current`; partial index `(project, kind, value) WHERE is_current AND value IS NOT NULL`.
+2. **Family is two bases and five tables.** `AlgorithmOutput` → `Embedding` (`DetectionEmbedding`, later `SourceImageEmbedding`, `TaxonEmbedding`) and `AlgorithmResult`; plus `Classification` (taxon labels), `OccurrenceReview` (humans), `ResultsBatch` (files). Nothing else.
+3. **`Job` is the run.** No `AlgorithmRun`. Outputs carry `job`; `Classification` does not need its own `job` column because `results_batch → job` gives it.
+4. **Defer `Algorithm.output_specs`.** Phase 1 keeps #1439's `embedding_dimensions` (one key, `embedding`). `output_specs` arrives with the first second output key (projection, text side), as a pydantic-validated JSON list.
+5. **Defer lineage fields.** Phase 1 adds only `Algorithm.feature_extractor` (head → backbone, which #1407 needs). `derived_from`, `derived_relation`, `produced_by_job` arrive with the first derived algorithm (prototypes or PCA).
+6. **`Job.algorithms` snapshots keys and versions now**, hashes when the processing service sends one.
+7. **No per-detection scalar or link tables.** Link cost and job on `Detection` (tracking PRs); candidate matrices and anything detections × candidates to a file per job.
+8. **Wire stays `DetectionResponse.embeddings`.** No generic `outputs` field.
+9. **Composite-FK enforcement of `project` arrives with the Detection retrofit**, not phase 1; phase 1 fills `project` through the shared helper and the integrity check watches it.
+10. **`SourceImageEmbedding` waits for a capture-level extractor**; the abstract base makes it five lines then.
+
+### C.3 Phases
+
+Each phase is one PR or a small group, independently useful, in landing order.
+
+| Phase | Contents | Depends on |
+|---|---|---|
+| 0 · Prerequisites | pgvector 0.8 on every database (operations); #1272's 2048 validator relaxed to drop-and-warn; capture `project` repair and a project-mismatch check as a `check_data_integrity` pair (#1188, #1453); fix the ignored `--dry-run` in `fix_missing_relationships` | – |
+| 1 · Embeddings foundation | abstract `AlgorithmOutput` and `Embedding`; `DetectionEmbedding(detection, algorithm, job, project, key, vector halfvec)`; `Algorithm.feature_extractor`; box-matched writer; feature-only job; `models_future/embeddings.py` reader; tracking and merge ranking read it; `Classification` docstring; carved from #1439 (section 9, PR 1 and PR 2). #1407 rebases onto it | 0 |
+| 2 · Results and reviews | `AlgorithmResult` (from #1439's history rows: rename, `project`, three targets, `value`, `is_current`); `OccurrenceReview` with identification rows and the grouping cache; `Job.hidden` and `Job.algorithms`; history endpoint and timeline UI (#1439 PR 3 and PR 4) | 1 |
+| 3 · Result files | processing-service contract (presigned sink) on both sides; `ResultsBatch`; ingest stage with heartbeat; `Classification.top_k`, `logits_logsumexp`, `results_batch`, `results_index`; export existing arrays once; drop `logits`, `scores`, `features_2048`, `similarity_vector`; admin metrics for kept and missing batches; class masking at ingest | 1 |
+| 4 · Project column enforcement | `Detection.project` (nullable → backfill → NOT VALID / VALIDATE → NOT NULL → index CONCURRENTLY); composite FKs on `DetectionEmbedding` and `AlgorithmResult`; `update_children()` corrects wrong values; move command covers the new tables; `Classification.project` next | 0, 1, 2 |
+| 5 · Similarity and taxon vectors | text-embedding contract; `TaxonEmbedding` (`text`, `text_taxonomic`); partial HNSW indexes per `(algorithm, key)`; `/detections/{id}/similar/` and `/suggested-taxa/` with plan selection by project size; `output_specs` with the second key | 1, 3 |
+| 6 · Research features | OOD scores and person / test-image flags as `AlgorithmResult` values; prototypes and lineage fields; cross-night clustering with bulk annotation; representative captures per session; `SourceImageEmbedding` with the people gate when a capture extractor exists | 2, 5 |
+
+Phases 1 and 2 are the tracking sprint's path; 3 and 4 are infrastructure that pays for itself in storage and query cost; 5 and 6 are the research features the vectors exist for.
