@@ -489,7 +489,7 @@ def _refuse_two_boxes_on_one_capture(target: Occurrence, incoming_capture_ids: I
         times = ", ".join(_time_of_day(timestamp) for timestamp in timestamps)
         captures = "the capture" if len(clashes) == 1 else "the captures"
         raise TrackEditError(
-            f"This would put two detections from {captures} at {times} into one track. "
+            f"This would put two detections from {captures} at {times} into one occurrence. "
             "One animal appears once per capture, so these are different individuals."
         )
 

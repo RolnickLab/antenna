@@ -116,6 +116,11 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         description="A URI to the weight or model details, could be a public web URL or object store path.",
     )
     category_map: AlgorithmCategoryMapResponse | None = None
+    embedding_dimensions: int | None = pydantic.Field(
+        default=None,
+        ge=1,
+        description="For a feature extractor, the length of every vector it returns.",
+    )
 
     class Config:
         extra = "ignore"
@@ -137,14 +142,16 @@ class ClassificationResponse(pydantic.BaseModel):
         default=None,
         description=(
             "Optional feature embedding vector from the model backbone, used for tracking and similarity search. "
-            "Must be exactly 2048 floats to match the Classification.features_2048 column."
+            "Only 2048-float vectors are stored; a vector of another length is dropped with a warning."
         ),
     )
 
     @pydantic.validator("features")
     def _features_length(cls, v):
+        # Dropped rather than rejected, so one model's vector size never fails the batch it came in.
         if v is not None and len(v) != 2048:
-            raise ValueError(f"features must be length 2048 to match Classification.features_2048, got {len(v)}")
+            logger.warning(f"Dropping a feature vector of length {len(v)}; only 2048-float vectors are stored.")
+            return None
         return v
 
     inference_time: float | None = None
@@ -182,6 +189,24 @@ class DetectionRequest(pydantic.BaseModel):
     algorithm: AlgorithmReference
 
 
+class EmbeddingResponse(pydantic.BaseModel):
+    """A feature vector for one detection and the algorithm whose backbone produced it.
+
+    Carried on the detection rather than on a classification, so storing it can never
+    add a prediction that competes for the occurrence's determination. Its length is the
+    algorithm's own (extractors differ), and only vectors from one algorithm are comparable.
+    """
+
+    features: list[float] = pydantic.Field(description="The feature vector.")
+    algorithm: AlgorithmReference
+
+    @pydantic.validator("features")
+    def _features_not_empty(cls, v):
+        if not v:
+            raise ValueError("features must contain at least one value")
+        return v
+
+
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
     bbox: BoundingBox | None = None
@@ -190,6 +215,13 @@ class DetectionResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     crop_image_url: str | None = None
     classifications: list[ClassificationResponse] = []
+    embeddings: list[EmbeddingResponse] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Feature vectors for this detection, at most one per algorithm, including detections "
+            "the moth/non-moth filter rejected. Only vectors from the same algorithm are comparable."
+        ),
+    )
 
 
 class PipelineRequestConfigParameters(pydantic.BaseModel):
@@ -293,9 +325,13 @@ class PipelineProcessingTask(pydantic.BaseModel):
     image_id: str
     image_url: str
     reply_subject: str | None = None  # The NATS subject to send the result to
-    # TODO: Do we need these?
-    # detections: list[DetectionRequest] | None = None
-    # config: PipelineRequestConfigParameters | dict | None = None
+    detections: list[DetectionRequest] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Existing detections on the image to run the pipeline on instead of detecting anew. "
+            "Sent for feature-only pipelines, which return these boxes with an embedding each."
+        ),
+    )
 
 
 class ProcessingServiceClientInfo(pydantic.BaseModel):

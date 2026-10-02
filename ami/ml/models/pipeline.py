@@ -15,6 +15,7 @@ import typing
 import uuid
 from urllib.parse import urljoin
 
+import numpy as np
 import pydantic
 import requests
 from django.db import models
@@ -28,6 +29,7 @@ from ami.main.models import (
     Classification,
     Deployment,
     Detection,
+    DetectionEmbedding,
     Occurrence,
     Project,
     SourceImage,
@@ -35,11 +37,12 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    as_half_precision,
     bbox_is_null,
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
-from ami.ml.exceptions import PipelineNotConfigured
+from ami.ml.exceptions import FeatureResultsStoredNothing, PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -67,6 +70,33 @@ FILTER_PROCESSED_BATCH_SIZE = 1000
 # 0.99 so the caller still owns the final status=SUCCESS, progress=1 flip.
 COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS = 5.0
 COLLECT_PROGRESS_MAX_FRACTION = 0.99
+
+
+class _CollectHeartbeat:
+    """Throttled ``collect`` progress saves, so the reaper sees a long Collect stage moving.
+
+    Silent unless both ``job`` and a non-zero ``total`` are given. Capped at
+    COLLECT_PROGRESS_MAX_FRACTION so the caller's final SUCCESS flip owns the terminal value.
+    ``updated_at`` is saved explicitly: auto_now only fires for fields in update_fields,
+    and the reaper keys off it (see ``ami/jobs/tasks.py``).
+    """
+
+    def __init__(self, job: Job | None, total: int | None) -> None:
+        self.job, self.total = job, total
+        self.processed = 0
+        self.last_save = time.monotonic()
+
+    def tick(self, batch_size: int) -> None:
+        self.processed += batch_size
+        if self.job is None or not self.total:
+            return
+        now = time.monotonic()
+        if now - self.last_save >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
+            self.job.progress.update_stage(
+                "collect", progress=min(self.processed / self.total, COLLECT_PROGRESS_MAX_FRACTION)
+            )
+            self.job.save(update_fields=["progress", "updated_at"])
+            self.last_save = now
 
 
 def filter_processed_images(
@@ -106,11 +136,23 @@ def filter_processed_images(
     pipeline_algorithms = list(pipeline.algorithms.all())
     pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
 
+    feature_extractors = feature_extractors_if_feature_only(pipeline_algorithms)
+    if feature_extractors:
+        yield from filter_images_missing_features(
+            images,
+            [algorithm.pk for algorithm in feature_extractors],
+            batch_size=batch_size,
+            heartbeat=_CollectHeartbeat(job, total),
+        )
+        return
+
     detection_type_keys = set(Algorithm.detection_task_types)
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
+    # A feature extractor never classifies, so it cannot mark an image as processed.
+    not_classifier_keys = detection_type_keys | set(Algorithm.feature_extraction_task_types)
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in not_classifier_keys}
     if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
         # set().issubset(anything) is vacuously True, so without this short-circuit
@@ -120,11 +162,7 @@ def filter_processed_images(
         return
 
     image_iter = iter(images)
-    # Track how many of the input images we've inspected so far so we can emit
-    # a fractional `collect` progress to the Job row. Only used when both
-    # `job` and `total` are passed by the caller; legacy callers stay silent.
-    processed_count = 0
-    last_progress_save_monotonic = time.monotonic()
+    heartbeat = _CollectHeartbeat(job, total)
     while True:
         batch = list(itertools.islice(image_iter, batch_size))
         if not batch:
@@ -200,25 +238,112 @@ def filter_processed_images(
                     f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
                 )
 
-        # Throttled progress emit. Save only when both `job` and `total` are
-        # provided, the total is non-zero, and at least
-        # COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time have passed since
-        # the last save. Capped at COLLECT_PROGRESS_MAX_FRACTION so the caller's
-        # final status=SUCCESS, progress=1 flip still owns the terminal value.
-        #
-        # `updated_at` is included in update_fields explicitly: Django only fires
-        # auto_now's pre_save hook for fields listed in update_fields, so without
-        # it the reaper's `Job.updated_at < cutoff` heuristic
-        # (`ami/jobs/tasks.py:929-944`) would not see this heartbeat and could
-        # still revoke the job mid-Collect.
-        processed_count += len(batch)
-        if job is not None and total:
-            now_monotonic = time.monotonic()
-            if now_monotonic - last_progress_save_monotonic >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
-                fraction = min(processed_count / total, COLLECT_PROGRESS_MAX_FRACTION)
-                job.progress.update_stage("collect", progress=fraction)
-                job.save(update_fields=["progress", "updated_at"])
-                last_progress_save_monotonic = now_monotonic
+        heartbeat.tick(len(batch))
+
+
+def feature_extractors_if_feature_only(algorithms: list[Algorithm]) -> list[Algorithm]:
+    """The feature extractors of a pipeline that only extracts features, otherwise none.
+
+    Such a pipeline has a feature extractor and otherwise only detectors: the service names the
+    detector of the boxes it echoes back, but detects nothing new. Any other task type, including
+    a blank or unknown one, rules it out, because a feature-only save drops new detections.
+    """
+    feature_types = set(Algorithm.feature_extraction_task_types)
+    allowed_types = feature_types | set(Algorithm.detection_task_types)
+    if any(algorithm.task_type not in allowed_types for algorithm in algorithms):
+        return []
+    return [algorithm for algorithm in algorithms if algorithm.task_type in feature_types]
+
+
+def feature_extraction_only(algorithms: list[Algorithm]) -> bool:
+    """Whether a pipeline made of these algorithms only extracts features (see ``Pipeline.is_feature_only``)."""
+    return bool(feature_extractors_if_feature_only(algorithms))
+
+
+def embeddable_detections(detections: models.QuerySet) -> models.QuerySet:
+    """The detections a feature-only pipeline can be sent: real boxes whose detector is known.
+
+    Choosing images and building the request both go through this, so an image is never
+    queued with no boxes to embed (a worker would then run its own detector on it).
+    """
+    return detections.valid().filter(detection_algorithm__isnull=False)
+
+
+def detections_missing_features(detections: models.QuerySet, algorithm_ids: list[int]) -> models.QuerySet:
+    """Embeddable detections without a stored vector from at least one of the algorithms.
+
+    Only ``DetectionEmbedding`` rows count: they are what a feature-only pipeline writes.
+    """
+    missing = models.Q()
+    for algorithm_id in algorithm_ids:
+        missing |= ~models.Exists(
+            DetectionEmbedding.objects.filter(detection_id=models.OuterRef("pk"), algorithm_id=algorithm_id)
+        )
+    return embeddable_detections(detections).filter(missing)
+
+
+def filter_images_missing_features(
+    images: typing.Iterable[SourceImage],
+    algorithm_ids: list[int],
+    batch_size: int = FILTER_PROCESSED_BATCH_SIZE,
+    heartbeat: _CollectHeartbeat | None = None,
+) -> typing.Iterable[SourceImage]:
+    """The images with at least one real detection that lacks a vector from the algorithms.
+
+    Images without detections are skipped: a feature-only pipeline has nothing to run on there.
+    """
+    image_iter = iter(images)
+    while True:
+        batch = list(itertools.islice(image_iter, batch_size))
+        if not batch:
+            return
+        needing = set(
+            detections_missing_features(
+                Detection.objects.filter(source_image_id__in=[image.pk for image in batch]), algorithm_ids
+            )
+            .order_by()
+            .values_list("source_image_id", flat=True)
+            .distinct()
+        )
+        yield from (image for image in batch if image.pk in needing)
+        if heartbeat is not None:
+            heartbeat.tick(len(batch))
+
+
+def collect_detections_for_features(
+    source_image_requests: list[SourceImageRequest],
+    algorithm_ids: list[int],
+    include_existing_vectors: bool = False,
+) -> list[DetectionRequest]:
+    """The existing detections a feature-only pipeline should embed, for all the images in one query.
+
+    Detections that already have a vector from every one of the algorithms are left out
+    unless ``include_existing_vectors`` is set.
+    """
+    request_by_image_id = {int(request.id): request for request in source_image_requests}
+    detections = Detection.objects.filter(source_image_id__in=list(request_by_image_id))
+    detections = (
+        embeddable_detections(detections)
+        if include_existing_vectors
+        else detections_missing_features(detections, algorithm_ids)
+    )
+    detection_requests: list[DetectionRequest] = []
+    for detection in detections.select_related("detection_algorithm").order_by("source_image_id", "pk"):
+        bbox = detection.get_bbox()
+        if bbox is None or detection.detection_algorithm is None:
+            continue
+        detection_requests.append(
+            DetectionRequest(
+                source_image=request_by_image_id[detection.source_image_id],
+                bbox=bbox,
+                crop_image_url=detection.url(),
+                algorithm=AlgorithmReference(
+                    name=detection.detection_algorithm.name,
+                    key=detection.detection_algorithm.key,
+                ),
+            )
+        )
+    return detection_requests
 
 
 def collect_images(
@@ -348,6 +473,8 @@ def process_images(
         if pipeline_config.reprocess_existing_detections:
             reprocess_existing_detections = True
 
+    feature_algorithm_ids = [algorithm.pk for algorithm in pipeline.feature_extraction_algorithms()]
+
     for source_image, url in zip(images, urls):
         if url:
             source_image_request = SourceImageRequest(
@@ -356,10 +483,20 @@ def process_images(
             )
             source_image_requests.append(source_image_request)
 
-            if reprocess_existing_detections:
+            if reprocess_existing_detections and not feature_algorithm_ids:
                 detection_requests += collect_detections(source_image, source_image_request)
 
-    if reprocess_existing_detections:
+    if feature_algorithm_ids:
+        # A feature-only pipeline only ever runs on the boxes Antenna already has.
+        detection_requests = collect_detections_for_features(
+            source_image_requests, feature_algorithm_ids, include_existing_vectors=reprocess_all_images
+        )
+        images_with_detections = {request.source_image.id for request in detection_requests}
+        source_image_requests = [request for request in source_image_requests if request.id in images_with_detections]
+        task_logger.info(f"Sending {len(detection_requests)} existing detections for feature extraction.")
+        if not source_image_requests:
+            return PipelineResultsResponse(pipeline=pipeline.slug, source_images=[], detections=[], total_time=0)
+    elif reprocess_existing_detections:
         task_logger.info(f"Found {len(detection_requests)} existing detections to reprocess.")
     else:
         task_logger.info("Reprocessing of existing detections is disabled, sending images without detections.")
@@ -512,6 +649,17 @@ def get_or_create_algorithm_and_category_map(
             setattr(algo, field, new_value)
             algo_fields_updated.append(field)
 
+    if algorithm_config.embedding_dimensions and algo.embedding_dimensions != algorithm_config.embedding_dimensions:
+        if algo.embedding_dimensions is None:
+            algo.embedding_dimensions = algorithm_config.embedding_dimensions
+            algo_fields_updated.append("embedding_dimensions")
+        else:
+            # Stored vectors keep their length; a new length needs a new algorithm version.
+            logger.warning(
+                f"Algorithm {algo} reports {algorithm_config.embedding_dimensions}-dimension vectors but "
+                f"stores {algo.embedding_dimensions}; keeping {algo.embedding_dimensions}."
+            )
+
     if algo_fields_updated:
         algo.save(update_fields=algo_fields_updated)
 
@@ -524,6 +672,7 @@ def get_or_create_detection(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Detection, bool]:
     """
     Create a Detection object from a DetectionResponse, or update an existing one.
@@ -617,6 +766,7 @@ def get_or_create_detection(
             path=crop_url,
             detection_time=detection_resp.timestamp,
             detection_algorithm=detection_algo,
+            job_id=job_id,
         )
         if save:
             new_detection.save()
@@ -634,6 +784,7 @@ def create_detections(
     detections: list[DetectionResponse],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> list[Detection]:
     """
     Efficiently create multiple Detection objects from a list of DetectionResponse objects, grouped by source image.
@@ -664,6 +815,7 @@ def create_detections(
             algorithms_known=algorithms_known,
             save=False,
             logger=logger,
+            job_id=job_id,
         )
         if created:
             new_detections.append(detection)
@@ -678,6 +830,192 @@ def create_detections(
     )
 
     return existing_detections + new_detections
+
+
+# Boxes are matched to responses at this precision, so a service that re-serialises the
+# coordinates it was sent still lands its vectors on the same detections.
+BOX_MATCH_DECIMALS = 3
+
+
+def _box_key(source_image_id, coordinates) -> tuple:
+    return (str(source_image_id), tuple(round(float(value), BOX_MATCH_DECIMALS) for value in coordinates))
+
+
+class EmbeddingDimensionMismatch(PipelineNotConfigured):
+    """A vector's length differs from the length its algorithm has produced before."""
+
+
+def _check_embedding_dimensions(algorithm: Algorithm, lengths: set[int]) -> None:
+    """Refuse vectors whose length differs from the algorithm's, recording it on first sight.
+
+    Vectors of different lengths can never be compared, so each algorithm keeps one length.
+    """
+    if algorithm.embedding_dimensions is None:
+        if len(lengths) > 1:
+            raise EmbeddingDimensionMismatch(
+                f"Algorithm {algorithm.key} sent vectors of several lengths in one batch: {sorted(lengths)}"
+            )
+        (length,) = lengths
+        # Conditional update: the first batch to record a length wins over a concurrent one.
+        Algorithm.objects.filter(pk=algorithm.pk, embedding_dimensions__isnull=True).update(
+            embedding_dimensions=length
+        )
+        algorithm.refresh_from_db(fields=["embedding_dimensions"])
+    wrong = lengths - {algorithm.embedding_dimensions}
+    if wrong:
+        raise EmbeddingDimensionMismatch(
+            f"Algorithm {algorithm.key} produces {algorithm.embedding_dimensions}-dimension vectors; "
+            f"refusing vectors of length {sorted(wrong)}."
+        )
+
+
+# How many boxes that match no stored detection are named in the job log per batch.
+UNMATCHED_BOXES_TO_LOG = 5
+
+
+@dataclasses.dataclass
+class StoredEmbeddings:
+    """The vectors stored from one batch, and the returned boxes that matched no detection.
+
+    ``without_vector`` counts the detections on the batch's images that still lack a vector
+    after the save: boxes the service did not return, or returned without a vector.
+    """
+
+    embeddings: list[DetectionEmbedding]
+    unmatched: list[DetectionResponse]
+    without_vector: int = 0
+
+
+def _describe_boxes(detection_responses: list[DetectionResponse]) -> str:
+    return "; ".join(
+        f"image {response.source_image_id} box {tuple(response.bbox.dict().values()) if response.bbox else None}"
+        for response in detection_responses[:UNMATCHED_BOXES_TO_LOG]
+    )
+
+
+def create_detection_embeddings(
+    detections: list[Detection],
+    detection_responses: list[DetectionResponse],
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+    job_id: int | None = None,
+) -> StoredEmbeddings:
+    """
+    Store the feature vectors sent with each detection, one row per (detection, algorithm, key).
+
+    Writes are insert-mostly (see ``EmbeddingQuerySet.store``): saving the same results twice
+    changes nothing, and a new vector for a pair replaces the old row. Only ``DetectionEmbedding``
+    rows are written, never a classification, so no determination can change. A vector with a
+    value half precision cannot hold (NaN, infinity, beyond 65504) is skipped with a warning.
+
+    Responses are matched to ``detections`` by image and box (see ``BOX_MATCH_DECIMALS``),
+    the key ``get_or_create_detection`` reuses detections by. A returned box with no match is
+    skipped and listed in the result's ``unmatched``. An algorithm key the pipeline has not
+    registered raises ``PipelineNotConfigured``, as it does for classifications, and a vector
+    whose length differs from its algorithm's raises ``EmbeddingDimensionMismatch``.
+    ``job_id`` records the job whose results stored each vector.
+    """
+    by_box = {
+        _box_key(detection.source_image_id, detection.bbox): detection
+        for detection in detections
+        if detection.bbox is not None
+    }
+    embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
+    lengths_by_algorithm: dict[str, set[int]] = collections.defaultdict(set)
+    unmatched: list[DetectionResponse] = []
+    not_finite = 0
+    for detection_resp in detection_responses:
+        if detection_resp.bbox is None:
+            continue
+        detection = by_box.get(_box_key(detection_resp.source_image_id, detection_resp.bbox.dict().values()))
+        if detection is None:
+            unmatched.append(detection_resp)
+            continue
+        for embedding_resp in detection_resp.embeddings or []:
+            try:
+                algorithm = algorithms_known[embedding_resp.algorithm.key]
+            except KeyError as err:
+                raise PipelineNotConfigured(
+                    f"Embedding algorithm {embedding_resp.algorithm.key} is not a known algorithm. "
+                    "The processing service must declare it in the /info endpoint. "
+                    f"Known algorithms: {list(algorithms_known.keys())}"
+                ) from err
+            if not np.isfinite(as_half_precision(embedding_resp.features)).all():
+                not_finite += 1
+                continue
+            lengths_by_algorithm[algorithm.key].add(len(embedding_resp.features))
+            embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
+                detection=detection, algorithm=algorithm, vector=embedding_resp.features, job_id=job_id
+            )
+
+    for key, lengths in lengths_by_algorithm.items():
+        _check_embedding_dimensions(algorithms_known[key], lengths)
+
+    if unmatched:
+        logger.warning(
+            f"Skipped {len(unmatched)} returned boxes that match no stored detection, "
+            f"for example: {_describe_boxes(unmatched)}"
+        )
+    if not_finite:
+        logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
+    inserted, unchanged = DetectionEmbedding.objects.store(embeddings.values())
+    logger.info(f"Stored {inserted} detection embeddings ({unchanged} unchanged) for {len(detections)} detections.")
+    return StoredEmbeddings(embeddings=list(embeddings.values()), unmatched=unmatched)
+
+
+def save_features_for_existing_detections(
+    results: PipelineResultsResponse,
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+    job_id: int | None = None,
+) -> StoredEmbeddings:
+    """Store the vectors a feature-only pipeline returned for detections Antenna already has.
+
+    Writes ``DetectionEmbedding`` rows and nothing else: a box that matches no stored
+    detection is skipped rather than created, classifications in the response are ignored,
+    and no occurrence, determination or null marker is touched. Detections on the batch's
+    images that still lack a vector afterwards are counted in ``without_vector``. A batch
+    that stores no vector at all while such detections remain raises
+    ``FeatureResultsStoredNothing``, because they would otherwise be sent again on every run.
+    A response that reports an error is left to the error handling of the caller.
+    """
+    ignored = sum(len(detection.classifications) for detection in results.detections)
+    if ignored:
+        logger.warning(f"Ignored {ignored} classifications returned by a feature-only pipeline.")
+    returned_boxes = [detection for detection in results.detections if detection.bbox is not None]
+    image_ids = {int(detection.source_image_id) for detection in returned_boxes}
+    detections = list(
+        Detection.objects.valid().filter(source_image_id__in=image_ids).only("pk", "source_image_id", "bbox")
+    )
+    stored = create_detection_embeddings(
+        detections=detections,
+        detection_responses=results.detections,
+        algorithms_known=algorithms_known,
+        logger=logger,
+        job_id=job_id,
+    )
+    batch_image_ids = image_ids | {int(image.id) for image in results.source_images}
+    extractor_ids = [algorithm.pk for algorithm in feature_extractors_if_feature_only(list(algorithms_known.values()))]
+    if batch_image_ids and extractor_ids:
+        stored.without_vector = detections_missing_features(
+            Detection.objects.filter(source_image_id__in=batch_image_ids), extractor_ids
+        ).count()
+    if stored.without_vector:
+        logger.warning(
+            f"{stored.without_vector} detections on the {len(batch_image_ids)} images of this batch "
+            "still have no feature vector after saving it."
+        )
+    all_unmatched = bool(returned_boxes) and len(stored.unmatched) == len(returned_boxes)
+    if not stored.embeddings and (stored.without_vector or all_unmatched) and not results.errors:
+        raise FeatureResultsStoredNothing(
+            f"The feature-only pipeline returned {len(returned_boxes)} boxes and no vector was saved, "
+            f"while {stored.without_vector} detections on these images still have none "
+            f"({len(stored.unmatched)} returned boxes match no stored detection). "
+            f"First boxes: {_describe_boxes(returned_boxes)}",
+            unmatched=len(stored.unmatched),
+            without_vector=stored.without_vector,
+        )
+    return stored
 
 
 def create_category_map_for_classification(
@@ -757,6 +1095,7 @@ def create_classification(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Classification, bool]:
     """
     Create a Classification object from a ClassificationResponse, or update an existing one.
@@ -848,6 +1187,7 @@ def create_classification(
             features_2048=classification_resp.features,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
+            job_id=job_id,
         )
         classification = new_classification
 
@@ -866,6 +1206,7 @@ def create_classifications(
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
+    job_id: int | None = None,
 ) -> list[Classification]:
     """
     Efficiently create multiple Classification objects from a list of ClassificationResponse objects,
@@ -890,6 +1231,7 @@ def create_classifications(
                 algorithms_known=algorithms_known,
                 save=False,
                 logger=logger,
+                job_id=job_id,
             )
             if created:
                 new_classifications.append(classification)
@@ -980,6 +1322,10 @@ class PipelineSaveResults:
     classifications: list[Classification]
     algorithms: dict[str, Algorithm]
     total_time: float
+    # Only a feature-only save reports these: returned boxes that matched no stored detection,
+    # and detections on the saved images that still have no vector.
+    unmatched_detections: int | None = None
+    detections_without_vector: int | None = None
 
 
 def create_null_detections_for_undetected_images(
@@ -1060,6 +1406,28 @@ def save_results(
         )
 
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
+    if feature_extraction_only(list(algorithms_known.values())):
+        job_logger.info(f"Pipeline {pipeline} only extracts features; storing vectors for existing detections.")
+        stored = save_features_for_existing_detections(
+            results, algorithms_known, logger=job_logger, job_id=job.pk if job else None
+        )
+        total_time = time.time() - start_time
+        job_logger.info(
+            f"Saved {len(stored.embeddings)} feature vectors from pipeline {pipeline} in {total_time:.2f} seconds"
+        )
+        if return_created:
+            return PipelineSaveResults(
+                pipeline=pipeline,
+                source_images=list(source_images),
+                detections=[],
+                classifications=[],
+                algorithms={},
+                total_time=total_time,
+                unmatched_detections=len(stored.unmatched),
+                detections_without_vector=stored.without_vector,
+            )
+        return None
+
     try:
         detection_algorithm = pipeline.algorithms.get(task_type__in=Algorithm.detection_task_types)
     except Algorithm.DoesNotExist:
@@ -1080,6 +1448,17 @@ def save_results(
         detections=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
+    )
+
+    # Before classifications, so an unregistered embedding algorithm stops the batch at the
+    # same point an unregistered classification algorithm does.
+    create_detection_embeddings(
+        detections=detections,
+        detection_responses=results.detections,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     classifications = create_classifications(
@@ -1087,6 +1466,7 @@ def save_results(
         detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     # Create a new occurrence for each detection (no tracking yet)
@@ -1238,6 +1618,17 @@ class Pipeline(BaseModel):
     def __str__(self):
         return f'#{self.pk} "{self.name}" ({self.slug}) v{self.version}'
 
+    def feature_extraction_algorithms(self) -> list[Algorithm]:
+        """The pipeline's feature extractors when it has no classifier, otherwise none.
+
+        Such a pipeline is run on existing detections and only stores their vectors: it
+        creates no detection, classification or occurrence.
+        """
+        return feature_extractors_if_feature_only(list(self.algorithms.all()))
+
+    def is_feature_only(self) -> bool:
+        return bool(self.feature_extraction_algorithms())
+
     def get_config(self, project_id: int | None = None) -> PipelineRequestConfigParameters:
         """
         Get the configuration for the pipeline request.
@@ -1350,8 +1741,8 @@ class Pipeline(BaseModel):
             reprocess_all_images=reprocess_all_images,
         )
 
-    def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):
-        return save_results(results=results, job_id=job_id)
+    def save_results(self, results: PipelineResultsResponse, job_id: int | None = None, return_created=False):
+        return save_results(results=results, job_id=job_id, return_created=return_created)
 
     def save_results_async(self, results: PipelineResultsResponse, job_id: int | None = None):
         # Returns an AsyncResult

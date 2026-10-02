@@ -4,7 +4,8 @@ import pathlib
 import unittest
 import uuid
 
-from django.test import TestCase
+import pydantic
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -12,6 +13,7 @@ from ami.main.models import (
     Classification,
     Deployment,
     Detection,
+    DetectionEmbedding,
     Event,
     Identification,
     Occurrence,
@@ -22,8 +24,14 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
-from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.models.pipeline import (
+    collect_images,
+    create_detection_embeddings,
+    get_or_create_algorithm_and_category_map,
+    save_results,
+)
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -2340,3 +2348,260 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestClassificationFeaturesLength(unittest.TestCase):
+    """A feature vector of an unexpected length is dropped with a warning, so one model's
+    vector size never fails the whole batch of results it arrived with."""
+
+    def _response(self, features: list[float] | None):
+        from ami.ml.schemas import AlgorithmReference, ClassificationResponse
+
+        return ClassificationResponse(
+            classification="Moth",
+            scores=[1.0],
+            features=features,
+            algorithm=AlgorithmReference(name="Classifier", key="classifier"),
+            timestamp=datetime.datetime(2026, 1, 1),
+        )
+
+    def test_a_2048_float_vector_is_kept(self):
+        self.assertEqual(len(self._response([0.5] * 2048).features or []), 2048)
+
+    def test_a_vector_of_another_length_is_dropped_with_a_warning(self):
+        with self.assertLogs("ami.ml.schemas", level="WARNING") as logs:
+            response = self._response([0.5] * 1024)
+        self.assertIsNone(response.features)
+        self.assertIn("1024", logs.output[0])
+
+
+EMBEDDING_DETECTOR = ALGORITHM_CHOICES["random-detector"]
+EMBEDDING_BINARY = ALGORITHM_CHOICES["random-binary-classifier"]  # labels: "Moth", "Not a moth"
+EMBEDDING_SPECIES = ALGORITHM_CHOICES["random-species-classifier"]
+
+
+def _embedding_payload(vector: list[float], algorithm=EMBEDDING_SPECIES) -> list[dict]:
+    return [{"algorithm": {"name": algorithm.name, "key": algorithm.key}, "features": vector}]
+
+
+class TestEmbeddingSchema(SimpleTestCase):
+    """The per-detection ``embeddings`` field of the processing-service results schema."""
+
+    def _detection(self, **extra) -> dict:
+        return {
+            "source_image_id": "1",
+            "bbox": {"x1": 0.0, "y1": 0.0, "x2": 10.0, "y2": 10.0},
+            "algorithm": {"name": EMBEDDING_DETECTOR.name, "key": EMBEDDING_DETECTOR.key},
+            "timestamp": datetime.datetime.now().isoformat(),
+            **extra,
+        }
+
+    def test_a_detection_carries_each_vector_with_its_algorithm(self):
+        """The field is optional, so a service that sends no embeddings still parses."""
+        parsed = DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([0.5] * 2048)))
+        self.assertEqual(
+            [(e.algorithm.key, len(e.features)) for e in parsed.embeddings or []], [(EMBEDDING_SPECIES.key, 2048)]
+        )
+        self.assertIsNone(DetectionResponse.parse_obj(self._detection()).embeddings)
+
+    def test_an_empty_vector_is_refused(self):
+        """Any length parses (extractors differ; each algorithm's length is checked on save), but not none."""
+        self.assertEqual(
+            len(DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([0.5] * 512))).embeddings),
+            1,
+        )
+        with self.assertRaises(pydantic.ValidationError):
+            DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([])))
+
+
+class TestDetectionEmbeddings(TestCase):
+    """Storing the feature vector a processing service sends with each detection.
+
+    The vector is what tracking and merge ranking compare, and it arrives for every
+    detection, including those the moth/non-moth filter rejected. What these pin is that
+    it is stored once per detection and algorithm, on the detection it was sent with, and
+    that storing it never adds a classification or moves a determination.
+    """
+
+    LOW = [0.25] * 2048
+    HIGH = [0.75] * 2048
+
+    def setUp(self) -> None:
+        self.project = Project.objects.create(name="Detection embeddings")
+        self.pipeline = Pipeline.objects.create(name="Embedding test pipeline")
+        self.pipeline.algorithms.set(
+            [
+                get_or_create_algorithm_and_category_map(algorithm)
+                for algorithm in (EMBEDDING_DETECTOR, EMBEDDING_BINARY, EMBEDDING_SPECIES)
+            ]
+        )
+        self.images = 0
+
+    def _image(self) -> SourceImage:
+        self.images += 1
+        return SourceImage.objects.create(
+            path=f"emb-{self.images}-20240101000{self.images}00.jpg", project=self.project
+        )
+
+    @staticmethod
+    def _classification(algorithm, label: str, score: float, terminal: bool) -> dict:
+        return {
+            "classification": label,
+            "scores": [score],
+            "algorithm": {"name": algorithm.name, "key": algorithm.key},
+            "terminal": terminal,
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+
+    def _detection(self, image: SourceImage, classifications: list[dict], embeddings=None, box: float = 0.0) -> dict:
+        payload = {
+            "source_image_id": str(image.pk),
+            "bbox": {"x1": box, "y1": box, "x2": box + 10.0, "y2": box + 10.0},
+            "algorithm": {"name": EMBEDDING_DETECTOR.name, "key": EMBEDDING_DETECTOR.key},
+            "timestamp": datetime.datetime.now().isoformat(),
+            "classifications": classifications,
+        }
+        if embeddings is not None:
+            payload["embeddings"] = embeddings
+        return payload
+
+    def _rejected(self, image: SourceImage, embeddings=None, box: float = 0.0) -> dict:
+        """A crop the moth/non-moth filter rejected, labelled as the service labels it: non-terminal."""
+        label = self._classification(EMBEDDING_BINARY, "Not a moth", 0.8, terminal=False)
+        return self._detection(image, [label], embeddings, box)
+
+    def _moth(self, image: SourceImage, embeddings=None, box: float = 0.0) -> dict:
+        labels = [
+            self._classification(EMBEDDING_BINARY, "Moth", 0.95, terminal=False),
+            self._classification(EMBEDDING_SPECIES, "Vanessa cardui", 0.6, terminal=True),
+        ]
+        return self._detection(image, labels, embeddings, box)
+
+    def _save(self, *detections: dict, job_id: int | None = None) -> None:
+        image_ids = list(dict.fromkeys(d["source_image_id"] for d in detections))
+        payload = {
+            "pipeline": self.pipeline.slug,
+            "total_time": 0.01,
+            "source_images": [{"id": image_id, "url": f"test/{image_id}.jpg"} for image_id in image_ids],
+            "detections": list(detections),
+        }
+        save_results(PipelineResultsResponse.parse_obj(payload), job_id=job_id)
+
+    @staticmethod
+    def _stored(image: SourceImage) -> dict[tuple[float, str], list[float]]:
+        """{(box corner, algorithm key): vector} for the image's stored embeddings."""
+        rows = DetectionEmbedding.objects.filter(detection__source_image=image).select_related(
+            "detection", "algorithm"
+        )
+        return {(row.detection.bbox[0], row.algorithm.key): list(row.vector) for row in rows}
+
+    def test_every_detection_stores_one_vector_per_algorithm(self):
+        """Including the rejected crop, which has no species classification that could carry one."""
+        image = self._image()
+        self._save(
+            self._moth(image, _embedding_payload(self.LOW)),
+            self._rejected(image, _embedding_payload(self.HIGH), box=100.0),
+        )
+        self.assertEqual(
+            self._stored(image),
+            {(0.0, EMBEDDING_SPECIES.key): self.LOW, (100.0, EMBEDDING_SPECIES.key): self.HIGH},
+        )
+
+    def test_a_vector_adds_no_classification_and_moves_no_determination(self):
+        """The rejected crop's binary label is non-terminal, so a species classification sent in
+        the vector's place would become its determination. An embedding must not."""
+        control, treated = self._image(), self._image()
+        self._save(self._rejected(control))
+        self._save(self._rejected(treated, _embedding_payload(self.HIGH)))
+
+        for image in (control, treated):
+            detection = Detection.objects.select_related("occurrence__determination").get(source_image=image)
+            self.assertEqual(detection.occurrence.determination.name, "Not a moth")
+            self.assertEqual(detection.classifications.count(), 1)
+        self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=treated).count(), 1)
+
+    def test_saving_again_keeps_one_row_per_detection_and_algorithm(self):
+        """Results are re-delivered and images reprocessed; the one row holds the latest vector."""
+        image = self._image()
+        self._save(self._rejected(image, _embedding_payload(self.LOW)))
+        self._save(self._rejected(image, _embedding_payload(self.LOW)))
+        self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=image).count(), 1)
+
+        self._save(self._rejected(image, _embedding_payload(self.HIGH)))
+        self.assertEqual(self._stored(image), {(0.0, EMBEDDING_SPECIES.key): self.HIGH})
+
+    def test_each_row_records_the_job_that_saved_it_and_the_job_cannot_be_deleted_under_its_vectors(self):
+        from django.db.models import RestrictedError
+
+        from ami.jobs.models import Job
+
+        image = self._image()
+        first, second = (
+            Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline) for n in (1, 2)
+        )
+        self._save(self._moth(image, _embedding_payload(self.LOW)), job_id=first.pk)
+        self._save(self._moth(image, _embedding_payload(self.HIGH)), job_id=second.pk)
+
+        detection = Detection.objects.get(source_image=image)
+        self.assertEqual(detection.job_id, first.pk, "The detection keeps the job that created it")
+        self.assertEqual(set(detection.classifications.values_list("job_id", flat=True)), {first.pk})
+        self.assertEqual(DetectionEmbedding.objects.get(detection=detection).job_id, second.pk)
+
+        with self.assertRaises(RestrictedError):
+            second.delete()
+        first.delete()
+        detection.refresh_from_db()
+        self.assertIsNone(detection.job_id)
+        self.assertEqual(list(DetectionEmbedding.objects.get(detection=detection).vector), self.HIGH)
+
+    def test_a_vector_lands_on_its_own_detection_when_some_detections_already_exist(self):
+        """Detection creation returns existing detections ahead of new ones, so pairing responses
+        with detections by position would swap these two vectors."""
+        image = self._image()
+        self._save(self._rejected(image, box=0.0))
+        self._save(
+            self._rejected(image, _embedding_payload(self.HIGH), box=100.0),
+            self._rejected(image, _embedding_payload(self.LOW), box=0.0),
+        )
+        self.assertEqual(
+            self._stored(image),
+            {(0.0, EMBEDDING_SPECIES.key): self.LOW, (100.0, EMBEDDING_SPECIES.key): self.HIGH},
+        )
+
+    def test_a_vector_from_an_unregistered_algorithm_stops_the_batch_like_a_classification(self):
+        """It raises where an unregistered classification algorithm does: after detections are
+        saved and before any classification is."""
+        image = self._image()
+        unregistered = {"algorithm": {"name": "Unregistered", "key": "unregistered-embedder"}, "features": self.LOW}
+        with self.assertRaises(PipelineNotConfigured):
+            self._save(self._rejected(image, [unregistered]))
+        self.assertFalse(DetectionEmbedding.objects.exists())
+        self.assertFalse(Classification.objects.filter(detection__source_image=image).exists())
+
+    def test_storing_vectors_takes_the_same_queries_however_many_detections(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        image = self._image()
+        boxes = [float(20 * i) for i in range(5)]
+        self._save(*[self._rejected(image, box=box) for box in boxes])
+        detections = list(Detection.objects.filter(source_image=image).order_by("bbox"))
+        parsed = [
+            DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=box)) for box in boxes
+        ]
+        algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
+
+        # The first vector records the algorithm's length; measure after that, on other
+        # detections so no read is served from the query cache.
+        create_detection_embeddings(detections[:1], parsed[:1], algorithms_known)
+        DetectionEmbedding.objects.all().delete()
+        with CaptureQueriesContext(connection) as one:
+            create_detection_embeddings(detections[1:2], parsed[1:2], algorithms_known)
+        DetectionEmbedding.objects.all().delete()
+        with CaptureQueriesContext(connection) as five:
+            stored = create_detection_embeddings(detections, parsed, algorithms_known)
+        self.assertEqual(len(five), len(one))
+        self.assertEqual(len(stored.embeddings), 5)
+
+        with self.assertNumQueries(1):
+            create_detection_embeddings(detections, parsed, algorithms_known)

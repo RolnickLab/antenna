@@ -5,14 +5,14 @@ import kombu.exceptions
 import nats.errors
 from asgiref.sync import async_to_sync
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Q, RestrictedError
 from django.db.models.query import QuerySet
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
@@ -184,6 +184,12 @@ class IncompleteJobFilter(BaseFilterBackend):
         return queryset
 
 
+class JobHasStoredOutputs(APIException):
+    status_code = 409
+    default_detail = "This job stored results that still refer to it, so it cannot be deleted."
+    default_code = "job_has_stored_outputs"
+
+
 @extend_schema_view(
     retrieve=extend_schema(parameters=[logs_limit_param]),
 )
@@ -231,6 +237,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
     # Anonymous writes are refused before the body is validated; reads stay public.
     permission_classes = [IsAuthenticatedOrReadOnly, ObjectPermission]
+
+    def perform_destroy(self, instance):
+        # Stored embeddings keep the job that wrote them (on_delete=RESTRICT), so the job stays.
+        try:
+            instance.delete()
+        except RestrictedError as error:
+            raise JobHasStoredOutputs() from error
 
     def get_serializer_class(self):
         """

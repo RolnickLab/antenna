@@ -37,12 +37,14 @@ class TrackingActionForm(BasePostProcessingActionForm):
         ),
     )
     feature_extraction_algorithm_id = forms.ModelChoiceField(
-        queryset=Algorithm.objects.filter(task_type=AlgorithmTaskType.CLASSIFICATION.value).order_by("name"),
+        queryset=Algorithm.objects.filter(
+            task_type__in=[AlgorithmTaskType.CLASSIFICATION.value, *Algorithm.feature_extraction_task_types]
+        ).order_by("name"),
         required=False,
         label="Feature extractor",
         help_text=(
-            "Whose embeddings to compare. Leave blank to detect it automatically; set it when "
-            "more than one classifier has run on the same session."
+            "Whose embeddings to compare. Leave blank for the session's only extractor or, "
+            "when there are several, the project's default one."
         ),
     )
     skip_if_human_identifications = forms.BooleanField(

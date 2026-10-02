@@ -7,7 +7,7 @@ from collections.abc import Collection, Iterable, Iterator, Sequence
 import numpy as np
 import pydantic
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef
 from django.utils import timezone
 
 from ami.main.models import (
@@ -21,10 +21,18 @@ from ami.main.models import (
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
+from ami.main.models_future.embeddings import (
+    algorithm_ids_with_vectors,
+    default_feature_algorithm_id,
+    vectors_for_detections,
+)
 from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.main.models_future.tracks import lock_sessions
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 
 class TrackingConfig(pydantic.BaseModel):
@@ -60,8 +68,8 @@ class TrackingConfig(pydantic.BaseModel):
     # data is a v2 concern (see #1272 for the incremental append/prepend plan).
     require_fresh_event: bool = True
 
-    # Which feature extractor's embeddings to compare. Left unset, the task infers it
-    # when exactly one algorithm produced embeddings for the event.
+    # Which feature extractor's embeddings to compare. Left unset: the event's only one,
+    # or the project's default among several (see resolve_feature_algorithm).
     feature_extraction_algorithm_id: int | None = None
 
     @pydantic.root_validator(skip_on_failure=True)
@@ -78,6 +86,9 @@ class TrackingConfig(pydantic.BaseModel):
 def cosine_similarity(v1: Iterable[float], v2: Iterable[float]) -> float:
     a = np.array(v1)
     b = np.array(v2)
+    if a.shape != b.shape:
+        # Vectors of different lengths come from different extractors and are not comparable.
+        raise ValueError(f"Cannot compare vectors of shapes {a.shape} and {b.shape}")
     sim = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     return float(np.clip(sim, 0.0, 1.0))
 
@@ -130,21 +141,13 @@ def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | No
     """
     Return ``(unique_algorithm, all_candidates)``.
 
-    If exactly one feature-extraction algorithm produced ``features_2048`` for this
-    event, returns that algorithm and a single-element list. Otherwise returns
-    ``(None, candidates)`` so the caller can either skip with a warning or require
-    the operator to pass an explicit ``feature_extraction_algorithm_id``.
+    If exactly one feature-extraction algorithm stored vectors (embeddings or
+    classification ``features_2048``) for this event, returns that algorithm and a
+    single-element list. Otherwise returns ``(None, candidates)`` and the caller picks
+    one (``resolve_feature_algorithm``).
     """
-    algo_ids = (
-        Classification.objects.filter(
-            detection__source_image__event=event,
-            features_2048__isnull=False,
-            algorithm_id__isnull=False,
-        )
-        .values_list("algorithm_id", flat=True)
-        .distinct()
-    )
-    candidates = list(Algorithm.objects.filter(pk__in=list(algo_ids)))
+    algo_ids = algorithm_ids_with_vectors(source_image__event=event)
+    candidates = list(Algorithm.objects.filter(pk__in=algo_ids))
     if len(candidates) == 1:
         return candidates[0], candidates
     return None, candidates
@@ -156,9 +159,11 @@ def resolve_feature_algorithm(
     """The feature extractor a tracking run compares embeddings from, and whether it tracks the event.
 
     Returns ``(algorithm, should_track, note)``. ``algorithm`` is None when the run falls
-    back to geometry alone, and ``note`` says why a run falls back or skips; it is empty
-    when one extractor was configured or found. ``candidates`` are the extractors that
-    produced embeddings: every one in the event unless the caller passes a narrower set.
+    back to geometry alone. With vectors from several extractors and none configured, the
+    project's default is taken (see ``default_feature_algorithm_id``). ``note`` says which
+    extractor was picked among several, or why a run falls back or skips; it is empty when
+    one extractor was configured or found. ``candidates`` are the extractors that produced
+    embeddings: every one in the event unless the caller passes a narrower set.
     """
     if config.feature_extraction_algorithm_id is not None:
         algorithm = Algorithm.objects.filter(pk=config.feature_extraction_algorithm_id).first()
@@ -167,7 +172,7 @@ def resolve_feature_algorithm(
                 None,
                 False,
                 f"Configured feature_extraction_algorithm_id="
-                f"{config.feature_extraction_algorithm_id} not found; skipping event {event.pk}.",
+                f"{config.feature_extraction_algorithm_id} not found; skipping session {event.pk}.",
             )
         return algorithm, True, ""
 
@@ -177,14 +182,20 @@ def resolve_feature_algorithm(
         return candidates[0], True, ""
 
     if candidates:
-        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
-        message = (
-            f"Event {event.pk}: detections classified by {len(candidates)} different "
-            f"feature-extraction algorithms ({candidate_names}). Pass "
-            "feature_extraction_algorithm_id in the job config to disambiguate."
+        # Vectors from several extractors: compare the project's default one, never a mix.
+        default_id = default_feature_algorithm_id(
+            event.project_id, [a.pk for a in candidates], source_image__event=event
         )
-    else:
-        message = f"Event {event.pk}: no detections carry feature embeddings."
+        algorithm = next(a for a in candidates if a.pk == default_id)
+        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
+        return (
+            algorithm,
+            True,
+            f"Session {event.pk}: vectors from {len(candidates)} feature extractors ({candidate_names}); "
+            f"comparing #{algorithm.pk} {algorithm.name}. Pass feature_extraction_algorithm_id to choose another.",
+        )
+
+    message = f"Session {event.pk}: no detections carry feature embeddings."
 
     if config.require_features:
         return None, False, f"{message} Skipping."
@@ -219,21 +230,18 @@ def event_is_fresh(event: Event) -> tuple[bool, str]:
 
 def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algorithm) -> bool:
     total = event.captures.count()
-    processed = (
-        event.captures.filter(
-            detections__classifications__features_2048__isnull=False,
-            detections__classifications__algorithm=algorithm,
-        )
-        .distinct()
-        .count()
-    )
+    processed = event.captures.filter(
+        Exists(Detection.objects.has_vector(algorithm).filter(source_image_id=OuterRef("pk")))
+    ).count()
     if processed < total:
-        logger.info(f"Event {event.pk} not fully processed: {processed}/{total} captures")
+        logger.info(f"Session {event.pk} not fully processed: {processed}/{total} captures")
         return False
     return True
 
 
-def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) -> Classification | None:
+def record_tracking_determination(
+    occurrence: Occurrence, algorithm: Algorithm, job: "Job | None" = None
+) -> Classification | None:
     """Leave a terminal classification, attributed to the tracking algorithm, when a merge
     changed the occurrence's determination, so the history shows what tracking decided.
 
@@ -251,13 +259,17 @@ def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) 
         score=winner.score,
         terminal=True,
         algorithm=algorithm,
+        job=job,
         timestamp=timezone.now(),
         applied_to=winner,
     )
 
 
 def assign_occurrences_from_detection_chains(
-    source_images: list[SourceImage], logger: logging.Logger, record_as: Algorithm | None = None
+    source_images: list[SourceImage],
+    logger: logging.Logger,
+    record_as: Algorithm | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
@@ -384,7 +396,7 @@ def assign_occurrences_from_detection_chains(
             if update_occurrence_determination(keeper, save=False):
                 keeper.save(update_determination=False, update_fields=["determination", "determination_score"])
             if record_as is not None and keeper.determination_id != previous_determination_id:
-                if record_tracking_determination(keeper, record_as) is not None:
+                if record_tracking_determination(keeper, record_as, job=job) is not None:
                     determinations_recorded += 1
             settled.add(keeper.pk)
 
@@ -423,24 +435,6 @@ def nothing_tracked_summary(skip_reasons: collections.Counter[str]) -> str:
     total = sum(skip_reasons.values())
     reasons = "; ".join(f"{count} because {reason}" for reason, count in skip_reasons.most_common())
     return f"Nothing was tracked: {total} session(s) skipped ({reasons})."
-
-
-def latest_feature_vectors(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, typing.Any]:
-    """The most recent embedding from one algorithm for each detection given, by detection id.
-
-    Detections without one are left out. One query for the whole batch.
-    """
-    vectors: dict[int, typing.Any] = {}
-    rows = (
-        Classification.objects.filter(
-            detection_id__in=list(detection_ids), algorithm_id=algorithm_id, features_2048__isnull=False
-        )
-        .order_by("-timestamp", "-pk")
-        .values_list("detection_id", "features_2048")
-    )
-    for detection_id, vector in rows:
-        vectors.setdefault(detection_id, vector)
-    return vectors
 
 
 def select_links(
@@ -498,7 +492,7 @@ def select_transition_links(
     """The links tracking makes between two adjacent captures, reading embeddings but saving nothing."""
     vectors: dict[int, typing.Any] = {}
     if algorithm is not None:
-        vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
+        vectors = vectors_for_detections([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
     return select_links(
         current_detections,
         next_detections,
@@ -579,7 +573,7 @@ def iter_transition_links(
         if not cur.width or not cur.height:
             logger.warning(
                 f"Image {cur.pk} has no dimensions; skipping transition {i + 1}/{transitions} "
-                f"for event {cur.event_id}."
+                f"for session {cur.event_id}."
             )
             yield None
             continue
@@ -620,10 +614,11 @@ def assign_occurrences_by_tracking_images(
     config: TrackingConfig,
     progress_cb: typing.Callable[[float], None] | None = None,
     record_as: Algorithm | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
-        logger.warning(f"Event {event.pk}: not enough images to track ({len(source_images)})")
+        logger.warning(f"Session {event.pk}: not enough images to track ({len(source_images)})")
         return {}
 
     transitions = len(source_images) - 1
@@ -642,7 +637,7 @@ def assign_occurrences_by_tracking_images(
         held_out = {detection_id for detection_id, _ in confirmed}
         confirmed_tracks = len({occurrence_id for _, occurrence_id in confirmed})
         if confirmed_tracks:
-            logger.info(f"Event {event.pk}: leaving {confirmed_tracks} confirmed track(s) unchanged.")
+            logger.info(f"Session {event.pk}: leaving {confirmed_tracks} confirmed occurrence(s) unchanged.")
 
         transition_links = iter_transition_links(source_images, algorithm, config, logger, held_out=held_out)
         for i, proposed in enumerate(transition_links):
@@ -656,11 +651,11 @@ def assign_occurrences_by_tracking_images(
 
         if skipped_transitions:
             logger.info(
-                f"Event {event.pk}: skipped {skipped_transitions}/{transitions} transitions "
+                f"Session {event.pk}: skipped {skipped_transitions}/{transitions} transitions "
                 "due to missing image dimensions."
             )
 
-        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as)
+        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as, job=job)
 
     counters["links_created"] = links
     counters["confirmed_tracks_left_unchanged"] = confirmed_tracks
@@ -747,7 +742,7 @@ class TrackingTask(BasePostProcessingTask):
         skip_reasons: collections.Counter[str] = collections.Counter()
 
         for idx, event in enumerate(events, start=1):
-            self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
+            self.logger.info(f"Tracking session {idx}/{total} (id={event.pk})")
             # Each session is checked and tracked under the lock track edits also take, so the
             # checks see an edit made since the job started and an edit made during the run waits.
             with transaction.atomic():
@@ -757,7 +752,7 @@ class TrackingTask(BasePostProcessingTask):
                     fresh, reason = event_is_fresh(event)
                     if not fresh:
                         self.logger.info(
-                            f"Skipping event {event.pk}: not fresh ({reason}). "
+                            f"Skipping session {event.pk}: not fresh ({reason}). "
                             "v1 only handles 1:1 detection/occurrence input. "
                             "Re-tracking previously-tracked data lands in v2 (incremental)."
                         )
@@ -775,7 +770,7 @@ class TrackingTask(BasePostProcessingTask):
                     self.config.skip_if_human_identifications
                     and Occurrence.objects.filter(event=event, identifications__isnull=False).exists()
                 ):
-                    self.logger.info(f"Skipping event {event.pk}: has human identifications.")
+                    self.logger.info(f"Skipping session {event.pk}: has human identifications.")
                     totals["events_skipped"] += 1
                     skip_reasons["it has human identifications"] += 1
                     continue
@@ -785,7 +780,7 @@ class TrackingTask(BasePostProcessingTask):
                     and algorithm is not None
                     and not event_fully_processed(event, logger=self.logger, algorithm=algorithm)
                 ):
-                    self.logger.info(f"Skipping event {event.pk}: not fully processed.")
+                    self.logger.info(f"Skipping session {event.pk}: not fully processed.")
                     totals["events_skipped"] += 1
                     skip_reasons["it is not fully processed"] += 1
                     continue
@@ -801,6 +796,7 @@ class TrackingTask(BasePostProcessingTask):
                     algorithm=algorithm,
                     config=self.config,
                     record_as=self.algorithm,
+                    job=self.job,
                     progress_cb=_stage_progress,
                 )
                 totals["events_tracked"] += 1
@@ -814,19 +810,19 @@ class TrackingTask(BasePostProcessingTask):
         update_calculated_fields_for_sessions_and_stations(tracked_event_ids, stations_async=False)
 
         metrics: dict[str, typing.Any] = {
-            "Events tracked": totals["events_tracked"],
-            "Events skipped": totals["events_skipped"],
+            "Sessions tracked": totals["events_tracked"],
+            "Sessions skipped": totals["events_skipped"],
             "Detection links created": totals["links_created"],
             "Occurrences merged": totals["occurrences_merged"],
-            "Confirmed tracks left unchanged": totals["confirmed_tracks_left_unchanged"],
+            "Confirmed occurrences left unchanged": totals["confirmed_tracks_left_unchanged"],
         }
         # The job still succeeds, so without this line a run that skipped every session
         # looks the same in the job details as one that did the work. It is written on every
         # run because a retry keeps text params, and a stale line would contradict the counts.
         if totals["events_tracked"]:
             metrics["Result"] = f"Tracked {totals['events_tracked']} session(s)."
-            if totals["confirmed_tracks_left_unchanged"]:
-                metrics["Result"] += f" Left {totals['confirmed_tracks_left_unchanged']} confirmed track(s) unchanged."
+            if left_unchanged := totals["confirmed_tracks_left_unchanged"]:
+                metrics["Result"] += f" Left {left_unchanged} confirmed occurrence(s) unchanged."
         elif skip_reasons:
             metrics["Result"] = nothing_tracked_summary(skip_reasons)
             self.logger.warning(metrics["Result"])

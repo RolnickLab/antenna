@@ -13,6 +13,7 @@ from django.db import transaction
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
+from ami.ml.exceptions import FeatureResultsStoredNothing
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
@@ -323,10 +324,20 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     try:
         # Save to database (this is the slow operation)
         detections_count, classifications_count, captures_count = 0, 0, 0
+        feature_counts: dict[str, int] = {}
         if pipeline_result:
             # should never happen since otherwise we could not be processing results here
             assert job.pipeline is not None, "Job pipeline is None"
-            job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
+            # Only a feature-only save reports boxes that matched no detection and detections
+            # left without a vector; asking the full save for its created rows would load
+            # every detection's algorithm.
+            feature_only = job.pipeline.is_feature_only()
+            saved = job.pipeline.save_results(results=pipeline_result, job_id=job.pk, return_created=feature_only)
+            if feature_only and saved:
+                feature_counts = {
+                    "unmatched": saved.unmatched_detections or 0,
+                    "without_vector": saved.detections_without_vector or 0,
+                }
             job.logger.info(f"Successfully saved results for job {job_id}")
 
             _, t = t(
@@ -385,6 +396,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         counts_to_apply = (
             (detections_count, classifications_count, captures_count) if is_first_processing else (0, 0, 0)
         )
+        extra_counts = {key: count if is_first_processing else 0 for key, count in feature_counts.items()}
         _update_job_progress(
             job_id,
             "results",
@@ -393,6 +405,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             detections=counts_to_apply[0],
             classifications=counts_to_apply[1],
             captures=counts_to_apply[2],
+            **extra_counts,
         )
 
         # Ack LAST — only after the results-stage SREM and progress commit are
@@ -408,6 +421,19 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         # Celery's autoretry_for handles the transient rather than this broad
         # except swallowing it.
         raise
+    except FeatureResultsStoredNothing as e:
+        # Redelivering would return the same response, and a later job would send the same
+        # detections again, so record the counts and fail the job instead of retrying.
+        _update_job_progress(
+            job_id,
+            "results",
+            0,
+            complete_state=JobState.FAILURE,
+            unmatched=e.unmatched,
+            without_vector=e.without_vector,
+        )
+        _ack_task_via_nats(reply_subject, job.logger)
+        _fail_job(job_id, str(e))
     except Exception as e:
         error = f"Error processing pipeline result for job {job_id}: {e}"
         if not acked:
@@ -500,6 +526,15 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> bool:
     except Exception as ack_error:
         job_logger.error(f"Error acknowledging task via NATS: {ack_error}", exc_info=True)
         return False
+
+
+def _get_stage_param(job, stage: str, key: str) -> int:
+    """The integer value of one stage parameter, or 0 when the stage or parameter is absent."""
+    try:
+        stage_obj = job.progress.get_stage(stage)
+    except ValueError:
+        return 0
+    return next((param.value or 0 for param in stage_obj.params if param.key == key), 0)
 
 
 def _get_current_counts_from_job_progress(job, stage: str) -> tuple[int, int, int]:
@@ -628,6 +663,9 @@ def _update_job_progress(
             state_params["detections"] = current_detections + new_detections
             state_params["classifications"] = current_classifications + new_classifications
             state_params["captures"] = current_captures + new_captures
+            for key in ("unmatched", "without_vector"):
+                if key in state_params:
+                    state_params[key] = _get_stage_param(job, stage, key) + state_params[key]
 
         # Don't overwrite a stage with a stale progress value.
         # This guards against the race where a slower worker calls _update_job_progress
