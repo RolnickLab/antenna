@@ -4435,7 +4435,8 @@ class ValidationReview(BaseModel):
     """A person's verdict on one aspect of an occurrence, detection, capture or session.
 
     One table for every human check. ``is_current`` marks each person's latest review of
-    a target and aspect, so earlier ones stay as history; ``withdrawn`` marks one taken back.
+    a target and aspect, so earlier ones stay as history; an edit to the target also retires
+    a grouping review. ``withdrawn`` marks one the person took back.
     A comment is ``aspect = comment`` with no verdict. ``reviewed_result`` is the algorithm
     result the verdict answers, when there is one. See #1453.
     """

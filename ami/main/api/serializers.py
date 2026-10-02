@@ -1802,7 +1802,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     def get_grouping_edited_since_verified(self, obj: Occurrence) -> bool:
         from ami.main.models_future.history import edited_since_track_complete_review
 
-        # Editing the detections withdraws the confirmation, so a confirmed grouping is unchanged.
+        # Editing the detections clears the confirmation, so a confirmed grouping is unchanged.
         return obj.grouping_verified_at is None and edited_since_track_complete_review(obj)
 
     @extend_schema_field(OccurrenceFrameSerializer(many=True))

@@ -43,6 +43,12 @@ sections 5.4, 5.6 and 5.7.
   the user's current, non-withdrawn review of this occurrence has the same detection ids, so a
   replay at the original time is idempotent.
 - `unverify_grouping` clears the cache and sets `withdrawn` on the standing grouping reviews.
+- A track edit (split, merge, add or remove detections) calls `clear_grouping_verification`
+  (`ami/main/models_future/tracks.py`), which also sets `is_current = False` on the grouping
+  reviews (`retire_grouping_reviews`), not `withdrawn`: the person did not take it back. So
+  `ValidationReview.objects.current(aspect="grouping")` agrees with `grouping_verified_at`.
+- Tracking records one result per keeper, even when two chains settle on the same occurrence
+  (`TrackingResults.build` takes the list of chains).
 - A regroup split restates the review per piece (`carry_confirmation_over_split`).
 - Merges (`_absorb`, tracking) call `move_history`: results and reviews move to the keeper with
   `is_current = False` (comments keep theirs).

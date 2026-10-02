@@ -10133,8 +10133,9 @@ class TrackChainAfterEditTestCase(TrackFixtureTestCase):
     def test_a_multi_frame_merge_does_not_query_per_frame(self):
         other, _ = self._make_track(3, captures=self._make_captures_after(3))
 
-        # Four of these move the merged track's results and reviews, then cascade-delete them.
-        with self.assertNumQueries(38):
+        # Five of these move the merged track's results and reviews, cascade-delete them,
+        # and retire the keeper's grouping reviews.
+        with self.assertNumQueries(39):
             merge_occurrences(self.occurrence, [other])
 
         self.assertFullyLinked(self.occurrence)

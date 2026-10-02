@@ -126,7 +126,7 @@ class ValidationReviewTestCase(TestCase):
         for label, fields in (
             ("comment with a verdict", {"aspect": "comment", "comment": "x", "verdict": "confirmed"}),
             ("empty comment", {"aspect": "comment", "comment": ""}),
-            ("grouping without a verdict", {"aspect": "bbox"}),
+            ("bbox review without a verdict", {"aspect": "bbox"}),
         ):
             with self.subTest(label), transaction.atomic(), self.assertRaises(IntegrityError):
                 ValidationReview.objects.create(occurrence=self.occurrence, user=self.user, **fields)
@@ -239,6 +239,17 @@ class TrackCompleteReviewTestCase(main_tests.TrackFixtureTestCase):
         self.assertEqual(second.payload["detections_added"], [])
         self.assertEqual(second.payload["frames_count"], len(self.captures) - 1)
         self.assertEqual(first.payload["detection_ids"], sorted(d.pk for d in self.detections))
+
+    def test_an_edit_retires_the_confirmation_and_keeps_it_in_the_history(self):
+        self.verify()
+        response = self.post("remove-detection", self.detections[-1], user=self.curator)
+        self.assertEqual(response.status_code, 200, response.data)
+
+        review = self.reviews().get()
+        self.assertEqual((review.is_current, review.withdrawn), (False, False))
+        self.assertFalse(ValidationReview.objects.current(aspect=GROUPING).exists())
+        self.occurrence.refresh_from_db()
+        self.assertIsNone(self.occurrence.grouping_verified_at)
 
     def test_a_confirmation_by_someone_else_writes_a_review_and_both_stand(self):
         self.verify()

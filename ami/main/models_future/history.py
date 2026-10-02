@@ -101,6 +101,17 @@ def withdraw_track_complete_reviews(occurrence: Occurrence) -> int:
     ).update(withdrawn=True)
 
 
+def retire_grouping_reviews(occurrence_pks: Iterable[int]) -> int:
+    """Stop the grouping reviews of occurrences whose detections just changed from standing.
+
+    They confirmed a set of detections the occurrence no longer holds. They stay in the
+    history and are still what ``edited_since_track_complete_review`` compares against.
+    """
+    return ValidationReview.objects.filter(
+        occurrence_id__in=list(occurrence_pks), aspect=GROUPING, is_current=True
+    ).update(is_current=False)
+
+
 def carry_confirmation_over_split(occurrence: Occurrence, pieces: list[Occurrence]) -> None:
     """Restate a confirmed occurrence's review for each piece a session split left.
 

@@ -61,6 +61,7 @@ from ami.main.models_future.history import (
     carry_confirmation_over_split,
     move_history,
     record_track_complete_review,
+    retire_grouping_reviews,
     withdraw_track_complete_reviews,
 )
 from ami.main.models_future.track_stats import refresh_track_stats
@@ -448,7 +449,8 @@ def clear_grouping_verification(*occurrences: Occurrence) -> None:
     """Drop grouping verification from occurrences whose detection set just changed.
 
     Clears the loaded instances as well as the rows: a caller that saves the instance
-    afterwards would otherwise write the stale confirmation straight back.
+    afterwards would otherwise write the stale confirmation straight back. The grouping
+    reviews stop being current too, so they agree with the cleared fields.
     """
     pks = [o.pk for o in occurrences if o.pk is not None]
     for occurrence in occurrences:
@@ -456,6 +458,7 @@ def clear_grouping_verification(*occurrences: Occurrence) -> None:
         occurrence.grouping_verified_by = None
     if pks:
         Occurrence.objects.filter(pk__in=pks).update(grouping_verified_at=None, grouping_verified_by=None)
+        retire_grouping_reviews(pks)
 
 
 def _absorb(target: Occurrence, sources: list[Occurrence]) -> None:
