@@ -1,12 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_ROUTES, API_URL, SUCCESS_TIMEOUT } from 'data-services/constants'
+import { ServerJobType } from 'data-services/models/job'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 interface JobFieldValues {
+  algorithm?: string
   delay?: number
+  jobType?: ServerJobType
   name: string
+  occurrenceSet?: string
   projectId: string
   pipeline?: string
   sourceImage?: string
@@ -14,13 +18,29 @@ interface JobFieldValues {
   startNow?: boolean
 }
 
+// Each job type reads what it needs out of the free-form params the API stores.
+const buildParams = (fieldValues: JobFieldValues) => {
+  const params: { algorithm_key?: string; occurrence_set_id?: string } = {}
+
+  if (fieldValues.algorithm) {
+    params.algorithm_key = fieldValues.algorithm
+  }
+  if (fieldValues.occurrenceSet) {
+    params.occurrence_set_id = fieldValues.occurrenceSet
+  }
+
+  return Object.keys(params).length ? params : undefined
+}
+
 const convertToServerFieldValues = (fieldValues: JobFieldValues) => ({
   delay: fieldValues.delay ?? 0,
   name: fieldValues.name,
   project_id: fieldValues.projectId,
+  job_type_key: fieldValues.jobType,
   pipeline_id: fieldValues.pipeline,
   source_image_collection_id: fieldValues.sourceImages,
   source_image_single_id: fieldValues.sourceImage,
+  params: buildParams(fieldValues),
 })
 
 export const useCreateJob = (onSuccess?: (id: string) => void) => {

@@ -21,6 +21,9 @@ export const SERVER_JOB_TYPES = [
   'data_storage_sync',
   'populate_captures_collection',
   'data_export',
+  'train_classifier',
+  'generate_embeddings',
+  'evaluate_algorithm',
   'unknown',
 ] as const
 
@@ -164,6 +167,9 @@ export class Job extends Entity {
       data_storage_sync: 'Data storage sync',
       populate_captures_collection: 'Populate captures collection',
       data_export: 'Data export',
+      train_classifier: 'Train classifier',
+      generate_embeddings: 'Generate embeddings',
+      evaluate_algorithm: 'Evaluate algorithm',
       unknown: 'Unknown',
     }[key]
 

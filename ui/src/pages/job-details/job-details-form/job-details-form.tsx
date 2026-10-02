@@ -10,12 +10,14 @@ import {
 import { FormConfig } from 'components/form/types'
 import { API_ROUTES } from 'data-services/constants'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { Job, ServerJobType } from 'data-services/models/job'
 import {
   Checkbox,
   DocsLink,
   EntityPicker,
   InputContent,
   SaveButton,
+  Select,
 } from 'nova-ui-kit'
 import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
@@ -23,17 +25,47 @@ import { useParams } from 'react-router-dom'
 import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
+import { TrainableAlgorithmPicker } from './trainable-algorithm-picker'
 
 interface JobFormValues {
+  algorithm?: string
   delay: number
+  jobType: ServerJobType
   name: string
+  occurrenceSet?: string
   pipeline?: string
   sourceImage?: string
   sourceImages?: string
   startNow?: boolean
 }
 
+// What each job type asks for. The backend refuses a job missing any of these, so the
+// form hides the fields a type does not use and requires the ones it does.
+const FIELDS_BY_JOB_TYPE: {
+  [key in CreatableJobType]: (keyof JobFormValues)[]
+} = {
+  ml: ['sourceImages', 'pipeline'],
+  generate_embeddings: ['pipeline', 'sourceImages'],
+  train_classifier: ['algorithm'],
+  evaluate_algorithm: ['algorithm', 'occurrenceSet'],
+}
+
+const CREATABLE_JOB_TYPES = Object.keys(
+  FIELDS_BY_JOB_TYPE
+) as CreatableJobType[]
+
+type CreatableJobType = Extract<
+  ServerJobType,
+  'ml' | 'generate_embeddings' | 'train_classifier' | 'evaluate_algorithm'
+>
+
 const config: FormConfig = {
+  algorithm: {
+    label: translate(STRING.FIELD_LABEL_ALGORITHM),
+    rules: {
+      required: true,
+    },
+  },
   delay: {
     label: translate(STRING.FIELD_LABEL_DELAY),
     rules: {
@@ -41,8 +73,20 @@ const config: FormConfig = {
       min: 0,
     },
   },
+  jobType: {
+    label: translate(STRING.FIELD_LABEL_TYPE),
+    rules: {
+      required: true,
+    },
+  },
   name: {
     label: translate(STRING.FIELD_LABEL_NAME),
+    rules: {
+      required: true,
+    },
+  },
+  occurrenceSet: {
+    label: translate(STRING.FIELD_LABEL_EVALUATION_SET),
     rules: {
       required: true,
     },
@@ -82,15 +126,20 @@ export const JobDetailsForm = ({
     control,
     handleSubmit,
     setError: setFieldError,
+    watch,
   } = useForm<JobFormValues>({
     defaultValues: {
       name: '',
       delay: 0,
+      jobType: 'ml',
       pipeline: project?.settings.defaultProcessingPipeline?.id,
     },
     mode: 'onChange',
   })
 
+  const jobType = watch('jobType') as CreatableJobType
+  const fields = FIELDS_BY_JOB_TYPE[jobType] ?? FIELDS_BY_JOB_TYPE.ml
+  const shows = (field: keyof JobFormValues) => fields.includes(field)
   const errorMessage = useFormError({ error, setFieldError })
 
   return (
@@ -118,6 +167,33 @@ export const JobDetailsForm = ({
             config={config}
             control={control}
           />
+          <FormController
+            name="jobType"
+            control={control}
+            config={config.jobType}
+            render={({ field, fieldState }) => (
+              <InputContent
+                description={config[field.name].description}
+                label={`${config[field.name].label} *`}
+                error={fieldState.error?.message}
+              >
+                <Select.Root onValueChange={field.onChange} value={field.value}>
+                  <Select.Trigger>
+                    <Select.Value />
+                  </Select.Trigger>
+                  <Select.Content>
+                    {CREATABLE_JOB_TYPES.map((key) => (
+                      <Select.Item key={key} value={key}>
+                        {Job.getJobTypeInfo(key).label}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </InputContent>
+            )}
+          />
+        </FormRow>
+        <FormRow>
           <FormField
             name="delay"
             type="number"
@@ -126,67 +202,120 @@ export const JobDetailsForm = ({
           />
         </FormRow>
         <FormRow>
-          <FormController
-            name="sourceImages"
-            control={control}
-            config={config.sourceImages}
-            render={({ field, fieldState }) => (
-              <InputContent
-                description={config[field.name].description}
-                label={
-                  config[field.name].rules?.required
-                    ? `${config[field.name].label} *`
-                    : config[field.name].label
-                }
-                error={fieldState.error?.message}
-                tooltip={{
-                  text: translate(STRING.TOOLTIP_CAPTURE_SET),
-                  link: {
-                    text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
-                    to: APP_ROUTES.CAPTURE_SETS({
-                      projectId: projectId as string,
-                    }),
-                  },
-                }}
-              >
-                <CaptureSetPicker
-                  onValueChange={field.onChange}
-                  value={field.value}
-                />
-              </InputContent>
-            )}
-          />
-          <FormController
-            name="pipeline"
-            control={control}
-            config={config.pipeline}
-            render={({ field, fieldState }) => (
-              <InputContent
-                description={config[field.name].description}
-                label={
-                  config[field.name].rules?.required
-                    ? `${config[field.name].label} *`
-                    : config[field.name].label
-                }
-                error={fieldState.error?.message}
-                tooltip={{
-                  text: translate(STRING.TOOLTIP_PIPELINE),
-                  link: {
-                    text: translate(STRING.NAV_ITEM_PIPELINES),
-                    to: APP_ROUTES.PIPELINES({
-                      projectId: projectId as string,
-                    }),
-                  },
-                }}
-              >
-                <EntityPicker
-                  collection={API_ROUTES.PIPELINES}
-                  onValueChange={field.onChange}
-                  value={field.value}
-                />
-              </InputContent>
-            )}
-          />
+          {shows('sourceImages') ? (
+            <FormController
+              name="sourceImages"
+              control={control}
+              config={config.sourceImages}
+              render={({ field, fieldState }) => (
+                <InputContent
+                  description={config[field.name].description}
+                  label={
+                    config[field.name].rules?.required
+                      ? `${config[field.name].label} *`
+                      : config[field.name].label
+                  }
+                  error={fieldState.error?.message}
+                  tooltip={{
+                    text: translate(STRING.TOOLTIP_CAPTURE_SET),
+                    link: {
+                      text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+                      to: APP_ROUTES.CAPTURE_SETS({
+                        projectId: projectId as string,
+                      }),
+                    },
+                  }}
+                >
+                  <CaptureSetPicker
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  />
+                </InputContent>
+              )}
+            />
+          ) : null}
+          {shows('pipeline') ? (
+            <FormController
+              name="pipeline"
+              control={control}
+              config={config.pipeline}
+              render={({ field, fieldState }) => (
+                <InputContent
+                  description={config[field.name].description}
+                  label={
+                    config[field.name].rules?.required
+                      ? `${config[field.name].label} *`
+                      : config[field.name].label
+                  }
+                  error={fieldState.error?.message}
+                  tooltip={{
+                    text: translate(STRING.TOOLTIP_PIPELINE),
+                    link: {
+                      text: translate(STRING.NAV_ITEM_PIPELINES),
+                      to: APP_ROUTES.PIPELINES({
+                        projectId: projectId as string,
+                      }),
+                    },
+                  }}
+                >
+                  <EntityPicker
+                    collection={API_ROUTES.PIPELINES}
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  />
+                </InputContent>
+              )}
+            />
+          ) : null}
+          {shows('algorithm') ? (
+            <FormController
+              name="algorithm"
+              control={control}
+              config={config.algorithm}
+              render={({ field, fieldState }) => (
+                <InputContent
+                  description={config[field.name].description}
+                  label={`${config[field.name].label} *`}
+                  error={fieldState.error?.message}
+                  tooltip={{
+                    text: translate(STRING.TOOLTIP_ALGORITHM),
+                    link: {
+                      text: translate(STRING.NAV_ITEM_ALGORITHMS),
+                      to: APP_ROUTES.ALGORITHMS({
+                        projectId: projectId as string,
+                      }),
+                    },
+                  }}
+                >
+                  <TrainableAlgorithmPicker
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  />
+                </InputContent>
+              )}
+            />
+          ) : null}
+          {shows('occurrenceSet') ? (
+            <FormController
+              name="occurrenceSet"
+              control={control}
+              config={config.occurrenceSet}
+              render={({ field, fieldState }) => (
+                <InputContent
+                  description={config[field.name].description}
+                  label={`${config[field.name].label} *`}
+                  error={fieldState.error?.message}
+                  tooltip={{ text: translate(STRING.TOOLTIP_EVALUATION_SET) }}
+                >
+                  <EntityPicker
+                    collection={API_ROUTES.OCCURRENCE_SETS}
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  />
+                </InputContent>
+              )}
+            />
+          ) : null}
         </FormRow>
         <FormRow>
           <InputContent label="Config">

@@ -5,6 +5,7 @@ export interface FetchParams {
   filters?: { field: string; value?: string; error?: string }[]
   withCounts?: boolean
   withExampleOccurrences?: boolean
+  withTrainingCropCounts?: boolean
 }
 
 export interface APIValidationError {
