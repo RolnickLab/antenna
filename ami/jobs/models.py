@@ -476,7 +476,9 @@ def _entity_queryset(entity: str, project: Project | None):
         "deployments": lambda: Deployment.objects.filter(project=project),
         "captures": lambda: SourceImage.objects.filter(project=project),
         # A pipeline is shared; a job may use the ones its project has enabled.
-        "ml/pipelines": lambda: Pipeline.objects.filter(projects=project),
+        "ml/pipelines": lambda: Pipeline.objects.filter(
+            project_pipeline_configs__project=project, project_pipeline_configs__enabled=True
+        ),
         "events": lambda: Event.objects.filter(project=project),
         "occurrences": lambda: Occurrence.objects.filter(project=project),
         # Public lists belong to no project and may be used by any.
