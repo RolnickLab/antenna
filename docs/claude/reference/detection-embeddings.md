@@ -14,7 +14,7 @@ extractor's vectors to compare. See #1417 for the original design.
   are comparable only within one (algorithm, key). `vector` is an unsized pgvector `halfvec`
   with `STORAGE EXTERNAL` (needs pgvector >= 0.7): extractors differ (2048 for the moth classifier
   backbones, 1024 for BioCLIP). `job` FK is `RESTRICT` (a job with vectors cannot be deleted on
-  its own; `JobViewSet.perform_destroy` answers 409) and nullable because `save_results` can run
+  its own; `JobViewSet.perform_destroy` hides such a job instead, see algorithm-results-and-reviews.md) and nullable because `save_results` can run
   without a job. `project` is NOT NULL, filled from the detection's capture by
   `fill_project_ids` (`ami/main/models_future/project_scope.py`) in `save()` and in
   `EmbeddingQuerySet.bulk_create`; `project_mismatch_counts()` reports drift.
