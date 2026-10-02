@@ -1,9 +1,9 @@
 name: Production Image Build
 
 # Checks that the production Django image still builds when its inputs change.
-# Application code is excluded from the path filter on purpose: the
-# Dockerfile copies it in, but a code change cannot make the build fail, and the
-# backend tests already cover it.
+# Application code is left out of the path filter on purpose. The build does
+# load Django while compiling translations, so a broken import can fail it, but
+# the backend tests already catch that on every code change.
 
 on:
   pull_request:
@@ -11,6 +11,7 @@ on:
     paths:
       - "compose/production/**"
       - "requirements/**"
+      - "locale/**"
       - "docker-compose.production.yml"
       - "docker-compose.worker.yml"
       - ".dockerignore"
@@ -21,6 +22,7 @@ on:
     paths:
       - "compose/production/**"
       - "requirements/**"
+      - "locale/**"
       - "docker-compose.production.yml"
       - "docker-compose.worker.yml"
       - ".dockerignore"
