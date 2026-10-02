@@ -1,7 +1,4 @@
-import {
-  ServerConfigSchema,
-  ServerScopeField,
-} from 'data-services/models/job-type'
+import { ServerConfigSchema } from 'data-services/models/job-type'
 
 export type FieldKind =
   | 'integer'
@@ -78,15 +75,6 @@ export const schemaToFields = (
       }
       return { ...base, kind: 'json' }
     })
-
-export const scopeToFields = (scope: ServerScopeField[]): FieldDescriptor[] =>
-  scope.map((item) => ({
-    name: item.field,
-    label: item.label,
-    kind: 'entity',
-    required: item.required,
-    entity: item.entity,
-  }))
 
 const isEmptyDefault = (value: unknown) =>
   value === undefined ||

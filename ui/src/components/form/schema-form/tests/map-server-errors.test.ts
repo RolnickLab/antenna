@@ -2,7 +2,6 @@ import { mapServerErrors } from '../map-server-errors'
 
 const known = {
   configFields: ['taxa_list_id', 'reweight'],
-  scopeFields: ['source_image_collection_id'],
 }
 
 describe('mapServerErrors', () => {
@@ -12,7 +11,7 @@ describe('mapServerErrors', () => {
         params: {
           config: [
             'taxa_list_id: field required',
-            'reweight: Only a superuser can change this setting.',
+            'reweight: value could not be parsed to a boolean',
           ],
         },
       },
@@ -20,23 +19,20 @@ describe('mapServerErrors', () => {
     )
     expect(fieldErrors).toEqual({
       'config.taxa_list_id': 'field required',
-      'config.reweight': 'Only a superuser can change this setting.',
+      'config.reweight': 'value could not be parsed to a boolean',
     })
     expect(general).toEqual([])
   })
 
-  test('maps scope errors and leaves unmatched messages general', () => {
+  test('leaves messages that match no field general', () => {
     const { fieldErrors, general } = mapServerErrors(
       {
-        source_image_collection_id: ['Not found in this project.'],
         params: { task: 'Unknown task', config: ['other: bad'] },
         detail: 'Nope',
       },
       known
     )
-    expect(fieldErrors).toEqual({
-      'scope.source_image_collection_id': 'Not found in this project.',
-    })
+    expect(fieldErrors).toEqual({})
     expect(general).toEqual(['Unknown task', 'other: bad', 'Nope'])
   })
 })

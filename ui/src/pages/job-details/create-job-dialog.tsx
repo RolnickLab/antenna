@@ -6,7 +6,6 @@ import {
   FieldDescriptor,
   getInitialValue,
   schemaToFields,
-  scopeToFields,
 } from 'components/form/schema-form/schema-to-fields'
 import { useCreateTypedJob } from 'data-services/hooks/jobs/useCreateTypedJob'
 import { useJobTypes } from 'data-services/hooks/jobs/useJobTypes'
@@ -33,7 +32,6 @@ const CLOSE_TIMEOUT = 1000
 interface FormValues {
   typeKey: string
   variantKey: string
-  scope: { [field: string]: unknown }
   config: { [field: string]: unknown }
   name: string
   delay: string
@@ -68,7 +66,7 @@ const CreateJobForm = ({
 }) => {
   const { createJob, isLoading, isSuccess, error } =
     useCreateTypedJob(onCreated)
-  const [scopeLabels, setScopeLabels] = useState<{ [field: string]: string }>(
+  const [pickedLabels, setPickedLabels] = useState<{ [field: string]: string }>(
     {}
   )
   const [generalErrors, setGeneralErrors] = useState<string[]>([])
@@ -80,7 +78,6 @@ const CreateJobForm = ({
       defaultValues: {
         typeKey: getDefaultTypeKey(jobTypes),
         variantKey: '',
-        scope: {},
         config: {},
         name: '',
         delay: '0',
@@ -94,10 +91,6 @@ const CreateJobForm = ({
   const jobType = jobTypes.find((t) => t.key === typeKey)
   const variant = jobType?.variants.find((v) => v.key === variantKey)
 
-  const scopeFields = useMemo(
-    () => scopeToFields(jobType?.scope ?? []),
-    [jobType]
-  )
   const configFields = useMemo(
     () => schemaToFields(variant?.config_schema ?? jobType?.config_schema),
     [jobType, variant]
@@ -105,16 +98,15 @@ const CreateJobForm = ({
   const mainFields = configFields.filter((field) => !field.advanced)
   const moreFields = configFields.filter((field) => field.advanced)
 
-  // Scope and settings belong to the selected type and method, so they start
+  // Settings belong to the selected type and method, so they start
   // fresh (with schema defaults) whenever either changes.
   useEffect(() => {
     const config: { [field: string]: unknown } = {}
     configFields.forEach((field) => {
       config[field.name] = getInitialValue(field)
     })
-    setValue('scope', {})
     setValue('config', config)
-    setScopeLabels({})
+    setPickedLabels({})
   }, [typeKey, variantKey])
 
   useEffect(() => {
@@ -125,7 +117,6 @@ const CreateJobForm = ({
     const data = (error as any).response?.data
     const { fieldErrors, general } = mapServerErrors(data, {
       configFields: configFields.map((f) => f.name),
-      scopeFields: scopeFields.map((f) => f.name),
     })
     Object.entries(fieldErrors).forEach(([name, message]) =>
       setError(name as any, { message })
@@ -147,8 +138,7 @@ const CreateJobForm = ({
           projectId,
           jobType,
           variant,
-          scopeValues: values.scope,
-          scopeLabels,
+          pickedLabels,
           configValues: values.config,
           name: values.name,
           delay: values.delay,
@@ -160,15 +150,15 @@ const CreateJobForm = ({
     }
   }
 
-  const renderField = (field: FieldDescriptor, prefix: 'scope' | 'config') => (
+  const renderField = (field: FieldDescriptor) => (
     <SchemaField
-      key={`${typeKey}-${variantKey}-${prefix}-${field.name}`}
+      key={`${typeKey}-${variantKey}-${field.name}`}
       control={control}
       field={field}
-      formName={`${prefix}.${field.name}`}
+      formName={`config.${field.name}`}
       projectId={projectId}
       onLabelChange={(label) =>
-        setScopeLabels((labels) => ({ ...labels, [field.name]: label ?? '' }))
+        setPickedLabels((labels) => ({ ...labels, [field.name]: label ?? '' }))
       }
     />
   )
@@ -238,7 +228,6 @@ const CreateJobForm = ({
       ) : null}
       {variantReady ? (
         <>
-          {scopeFields.map((field) => renderField(field, 'scope'))}
           {configFields.length ? (
             <>
               <Divider
@@ -246,7 +235,7 @@ const CreateJobForm = ({
                   method: variant?.name ?? jobType?.name ?? '',
                 })}
               />
-              {mainFields.map((field) => renderField(field, 'config'))}
+              {mainFields.map((field) => renderField(field))}
               {moreFields.length ? (
                 <div className="flex flex-col gap-6">
                   <button
@@ -258,7 +247,7 @@ const CreateJobForm = ({
                     {translate(STRING.JOB_MORE_SETTINGS)} {moreOpen ? '▾' : '▸'}
                   </button>
                   {moreOpen
-                    ? moreFields.map((field) => renderField(field, 'config'))
+                    ? moreFields.map((field) => renderField(field))
                     : null}
                 </div>
               ) : null}

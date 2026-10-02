@@ -3,19 +3,14 @@ import {
   ServerJobTypeVariant,
 } from 'data-services/models/job-type'
 import { parseIntegerList } from 'utils/fieldProcessors'
-import {
-  FieldDescriptor,
-  schemaToFields,
-  scopeToFields,
-} from './schema-to-fields'
+import { FieldDescriptor, schemaToFields } from './schema-to-fields'
 
 export interface CreateJobState {
   projectId: string
   jobType: ServerJobType
   variant?: ServerJobTypeVariant
-  scopeValues: { [field: string]: unknown }
-  // Names of the chosen pickers' rows, used for the default job name.
-  scopeLabels?: { [field: string]: string }
+  // Names of the rows chosen in pickers, used for the default job name.
+  pickedLabels?: { [field: string]: string }
   configValues: { [field: string]: unknown }
   name?: string
   delay?: string | number
@@ -61,23 +56,20 @@ const collect = (
 
 export const buildJobPayload = (state: CreateJobState) => {
   const { jobType, variant, projectId } = state
-  const jobScope = collect(scopeToFields(jobType.scope), state.scopeValues)
   const schema = variant?.config_schema ?? jobType.config_schema
   const config = collect(schemaToFields(schema), state.configValues)
 
-  let params: { [key: string]: unknown } | undefined
-  if (jobType.variant_key && variant) {
-    params = { [jobType.variant_key]: variant.key, config }
-  } else if (jobType.config_schema) {
-    params = { config }
-  }
+  const params =
+    jobType.variant_key && variant
+      ? { [jobType.variant_key]: variant.key, config }
+      : { config }
 
   const label = variant?.name ?? jobType.name
-  const scopeLabel = Object.values(state.scopeLabels ?? {}).find(Boolean)
+  const pickedLabel = Object.values(state.pickedLabels ?? {}).find(Boolean)
   const name =
     state.name?.trim() ||
     `${label} – ${
-      scopeLabel ?? state.today ?? new Date().toISOString().slice(0, 10)
+      pickedLabel ?? state.today ?? new Date().toISOString().slice(0, 10)
     }`
 
   return {
@@ -86,8 +78,7 @@ export const buildJobPayload = (state: CreateJobState) => {
       delay: Number(state.delay) || 0,
       project_id: projectId,
       job_type_key: jobType.key,
-      ...jobScope,
-      ...(params ? { params } : {}),
+      params,
     },
     startNow: !!state.startNow,
   }

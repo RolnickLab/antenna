@@ -1,12 +1,8 @@
-// Server validation errors arrive as DRF JSON. Config problems are strings of
-// the form "<field>: message" under params.config; scope problems are keyed by
-// the scope field name.
+// Server validation errors arrive as DRF JSON. Problems with a setting are
+// strings of the form "<field>: message" under params.config.
 export const mapServerErrors = (
   data: unknown,
-  {
-    configFields,
-    scopeFields,
-  }: { configFields: string[]; scopeFields: string[] }
+  { configFields }: { configFields: string[] }
 ) => {
   const fieldErrors: { [formName: string]: string } = {}
   const general: string[] = []
@@ -35,8 +31,6 @@ export const mapServerErrors = (
           })
         }
       )
-    } else if (scopeFields.includes(key)) {
-      fieldErrors[`scope.${key}`] = asList(value)[0]
     } else {
       general.push(...asList(value))
     }

@@ -1,10 +1,3 @@
-export interface ServerScopeField {
-  field: string
-  label: string
-  entity: string
-  required: boolean
-}
-
 export interface ServerConfigSchemaProperty {
   title?: string
   description?: string
@@ -41,9 +34,6 @@ export interface ServerJobType {
   name: string
   description?: string
   allowed: boolean
-  scope: ServerScopeField[]
-  required_fields: string[]
-  required_params: string[]
   config_schema: ServerConfigSchema | null
   variant_key: string | null
   variants: ServerJobTypeVariant[]

@@ -1,25 +1,25 @@
-import { ServerJobType, ServerScopeField } from 'data-services/models/job-type'
+import { ServerJobType } from 'data-services/models/job-type'
 import { buildJobPayload } from '../build-job-payload'
-
-const scope = (
-  field: string,
-  overrides: Partial<ServerScopeField> = {}
-): ServerScopeField => ({
-  field,
-  label: field,
-  entity: 'x',
-  required: true,
-  ...overrides,
-})
 
 const mlType: ServerJobType = {
   key: 'ml',
   name: 'ML pipeline',
   allowed: true,
-  scope: [scope('pipeline_id'), scope('source_image_collection_id')],
-  required_fields: [],
-  required_params: [],
-  config_schema: null,
+  config_schema: {
+    required: ['pipeline_id'],
+    properties: {
+      pipeline_id: {
+        type: 'integer',
+        ami_widget: 'entity',
+        ami_entity: 'ml/pipelines',
+      },
+      source_image_collection_id: {
+        type: 'integer',
+        ami_widget: 'entity',
+        ami_entity: 'captures/collections',
+      },
+    },
+  },
   variant_key: null,
   variants: [],
 }
@@ -28,7 +28,7 @@ const postProcessing: ServerJobType = {
   ...mlType,
   key: 'post_processing',
   name: 'Post Processing',
-  scope: [],
+  config_schema: null,
   variant_key: 'task',
   variants: [
     {
@@ -57,13 +57,12 @@ const postProcessing: ServerJobType = {
 }
 
 describe('buildJobPayload', () => {
-  test('ml job puts scope fields at the top level and omits params', () => {
+  test('ml job sends its pipeline and capture set in params', () => {
     const { body, startNow } = buildJobPayload({
       projectId: '7',
       jobType: mlType,
-      scopeValues: { pipeline_id: '3', source_image_collection_id: '12' },
-      scopeLabels: { source_image_collection_id: 'Night 1' },
-      configValues: {},
+      pickedLabels: { source_image_collection_id: 'Night 1' },
+      configValues: { pipeline_id: '3', source_image_collection_id: '12' },
       name: 'My job',
       delay: '5',
       startNow: true,
@@ -73,8 +72,7 @@ describe('buildJobPayload', () => {
       delay: 5,
       project_id: '7',
       job_type_key: 'ml',
-      pipeline_id: 3,
-      source_image_collection_id: 12,
+      params: { config: { pipeline_id: 3, source_image_collection_id: 12 } },
     })
     expect(startNow).toBe(true)
   })
@@ -84,7 +82,6 @@ describe('buildJobPayload', () => {
       projectId: '7',
       jobType: postProcessing,
       variant: postProcessing.variants[0],
-      scopeValues: {},
       configValues: {
         source_image_collection_id: '12',
         occurrence_id: '9',
@@ -104,13 +101,12 @@ describe('buildJobPayload', () => {
     expect(body).not.toHaveProperty('source_image_collection_id')
   })
 
-  test('defaults: name from method and scope label, delay 0, no start', () => {
+  test('defaults: name from method and picked label, delay 0, no start', () => {
     const { body, startNow } = buildJobPayload({
       projectId: '7',
       jobType: postProcessing,
       variant: postProcessing.variants[0],
-      scopeValues: {},
-      scopeLabels: { source_image_collection_id: 'Night 1' },
+      pickedLabels: { source_image_collection_id: 'Night 1' },
       configValues: {},
     })
     expect(body.name).toBe('Class masking – Night 1')
@@ -118,11 +114,10 @@ describe('buildJobPayload', () => {
     expect(startNow).toBe(false)
   })
 
-  test('name falls back to the date without a scope label', () => {
+  test('name falls back to the date without a picked label', () => {
     const { body } = buildJobPayload({
       projectId: '7',
       jobType: mlType,
-      scopeValues: {},
       configValues: {},
       name: '  ',
       today: '2026-09-30',
@@ -133,7 +128,6 @@ describe('buildJobPayload', () => {
   test('own config schema wraps config; empty optional values are omitted', () => {
     const type: ServerJobType = {
       ...mlType,
-      scope: [],
       config_schema: {
         properties: {
           size: { type: 'number' },
@@ -144,7 +138,6 @@ describe('buildJobPayload', () => {
     const { body } = buildJobPayload({
       projectId: '1',
       jobType: type,
-      scopeValues: {},
       configValues: { size: '', ids: '1, 2' },
     })
     expect(body.params).toEqual({ config: { ids: [1, 2] } })

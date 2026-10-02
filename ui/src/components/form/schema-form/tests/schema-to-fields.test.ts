@@ -1,7 +1,6 @@
 import {
   getInitialValue,
   schemaToFields,
-  scopeToFields,
   validateNumber,
 } from '../schema-to-fields'
 
@@ -76,24 +75,6 @@ describe('schemaToFields', () => {
   test('returns no fields for a missing schema', () => {
     expect(schemaToFields(null)).toEqual([])
     expect(schemaToFields({ properties: {} })).toEqual([])
-  })
-})
-
-describe('scopeToFields', () => {
-  test('a job column becomes a required entity picker', () => {
-    const [field] = scopeToFields([
-      {
-        field: 'deployment_id',
-        label: 'Station',
-        entity: 'deployments',
-        required: true,
-      },
-    ])
-    expect(field).toMatchObject({
-      kind: 'entity',
-      required: true,
-      entity: 'deployments',
-    })
   })
 })
 
