@@ -13,11 +13,20 @@ import typing
 
 from django.db.models import Q
 
-from ami.main.models import AlgorithmResult, Classification, Identification, Occurrence, Taxon, User, ValidationReview
+from ami.main.models import (
+    AlgorithmResult,
+    Classification,
+    Identification,
+    Occurrence,
+    TaxaList,
+    Taxon,
+    User,
+    ValidationReview,
+)
+from ami.ml.models.algorithm import Algorithm
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-    from ami.ml.models import Algorithm
 
 COMMENT = ValidationReview.Aspect.COMMENT
 
@@ -48,6 +57,9 @@ class TimelineEntry:
     is_current: bool | None = None
     # For a result: the classifications the run created, best score first.
     classifications: list[Classification] = dataclasses.field(default_factory=list)
+    # For a class masking result: the species list and the classifier it re-scored.
+    taxa_list: TaxaList | None = None
+    source_algorithm: Algorithm | None = None
 
 
 def review_entry(review: ValidationReview) -> TimelineEntry:
@@ -69,8 +81,10 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
 
     A result comes with the classifications its run created, so the history shows the run and
     what it changed as one entry; those classifications are not listed again as predictions.
-    Every other algorithm contributes one prediction, its best. A prediction a run demoted
-    names the result that superseded it. The query count does not grow with the entries.
+    Every other algorithm contributes one prediction, its best. A prediction names the result
+    that superseded it when a result's classification re-scored it, or when a result's
+    classification on the same detection outranks it as a terminal prediction. The query count
+    does not grow with the entries.
     """
     results = list(
         AlgorithmResult.objects.filter(occurrence=occurrence)
@@ -79,14 +93,24 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
     )
     taxon_ids = {result.data.get(key) for result in results for key in ("taxon_before_id", "taxon_after_id")} - {None}
     taxa = {taxon.pk: taxon for taxon in Taxon.objects.filter(pk__in=taxon_ids)} if taxon_ids else {}
+    taxa_lists = _by_id(TaxaList, {result.data.get("taxa_list_id") for result in results})
+    source_algorithms = _by_id(Algorithm, {result.data.get("source_algorithm_id") for result in results})
     created_by_result = _classifications_created_by(results, occurrence)
     created_ids = {c.pk for created in created_by_result.values() for c in created}
-    superseded_by = {
+    rescored_by = {
         c.applied_to_id: result_id
         for result_id, created in created_by_result.items()
         for c in created
         if c.applied_to_id is not None
     }
+    outranked_by = {c.detection_id: result_id for result_id, created in created_by_result.items() for c in created}
+
+    def superseded_by(prediction: Classification) -> int | None:
+        if prediction.pk in rescored_by:
+            return rescored_by[prediction.pk]
+        if prediction.terminal:
+            return outranked_by.get(prediction.detection_id)
+        return None
 
     entries = [
         TimelineEntry(
@@ -101,6 +125,8 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
             payload=result.data,
             is_current=result.is_current,
             classifications=created_by_result.get(result.pk, []),
+            taxa_list=taxa_lists.get(result.data.get("taxa_list_id")),
+            source_algorithm=source_algorithms.get(result.data.get("source_algorithm_id")),
         )
         for result in results
     ]
@@ -140,7 +166,7 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
                 "detection_id": prediction.detection_id,
                 "terminal": prediction.terminal,
                 "applied_to_id": prediction.applied_to_id,
-                "superseded_by_result_id": superseded_by.get(prediction.pk),
+                "superseded_by_result_id": superseded_by(prediction),
             },
         )
         for prediction in _one_prediction_per_algorithm(occurrence)
@@ -149,6 +175,11 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
 
     entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
     return entries
+
+
+def _by_id(model, ids: set) -> dict:
+    ids.discard(None)
+    return {row.pk: row for row in model.objects.filter(pk__in=ids)} if ids else {}
 
 
 def _classifications_created_by(
