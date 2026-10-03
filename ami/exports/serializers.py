@@ -62,6 +62,17 @@ class DataExportSerializer(DefaultSerializer):
             raise serializers.ValidationError(f"Invalid format. Supported formats are: {supported_formats}")
         return value
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        exporter = ExportRegistry.get_exporter(attrs.get("format"))
+        flag = getattr(exporter, "required_feature_flag", None)
+        project = attrs.get("project")
+        if flag and project is not None and not getattr(project.feature_flags, flag, False):
+            raise serializers.ValidationError(
+                {"format": f"The {attrs['format']} export needs the {flag} feature, which is off for this project."}
+            )
+        return attrs
+
     def get_file_url(self, obj):
         return obj.get_absolute_url(request=self.context.get("request"))
 

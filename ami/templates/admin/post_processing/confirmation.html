@@ -15,6 +15,11 @@
 {% block content %}
   <form method="post">
     {% csrf_token %}
+    {% if form.notice %}
+      <ul class="messagelist">
+        <li class="warning">{{ form.notice }}</li>
+      </ul>
+    {% endif %}
     {% block intro %}
       <p>
         You are about to run <strong>{{ task_label }}</strong> on

@@ -14,6 +14,7 @@ from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from ami.base.filters import RelatedIdFilter
@@ -40,7 +41,7 @@ from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobDispatchMode, JobState
+from .models import Job, JobDispatchMode, JobState, PostProcessingJob
 from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
@@ -228,7 +229,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "pipeline",
     ]
 
-    permission_classes = [ObjectPermission]
+    # Anonymous writes are refused before the body is validated; reads stay public.
+    permission_classes = [IsAuthenticatedOrReadOnly, ObjectPermission]
 
     def get_serializer_class(self):
         """
@@ -306,15 +308,16 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         obj = serializer.Meta.model(**serializer.validated_data)
         # Check permissions before saving
         self.check_object_permissions(self.request, obj)
+        start_now = url_boolean_param(self.request, "start_now", default=False)
+        # Check the run permission before saving, so a refusal leaves no job behind. A
+        # post-processing job needs it even unstarted: its creator could neither run nor delete it.
+        if start_now or obj.job_type_key == PostProcessingJob.key:
+            if not obj.check_custom_permission(self.request.user, "run"):
+                raise PermissionDenied("You do not have permission to run this job.")
 
         job: Job = serializer.save()  # type: ignore
-        if url_boolean_param(self.request, "start_now", default=False):
-            if job.check_custom_permission(self.request.user, "run"):
-                # If the user has permission, enqueue the job
-                job.enqueue()
-            else:
-                # If the user does not have permission, raise an error
-                raise PermissionDenied("You do not have permission to run this job.")
+        if start_now:
+            job.enqueue()
 
     def get_queryset(self) -> QuerySet:
         jobs = super().get_queryset()

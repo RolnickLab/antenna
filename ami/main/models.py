@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import pgvector.django
 import PIL.Image
 import pydantic
 from django.apps import apps
@@ -279,6 +280,7 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
     async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
+    tracking: bool = False  # Whether members can run occurrence tracking and edit tracks
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -427,6 +429,20 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
 
+    def get_custom_user_permissions(self, user) -> list[str]:
+        # Reads the permissions once for both the project actions and the tracking check.
+        perms = set(get_perms(user, self))
+        custom_perms = {
+            perm.split("_", 1)[0]
+            for perm in perms
+            if perm.endswith("_project") and perm.split("_", 1)[0] not in ("view", "create", "update", "delete")
+        }
+        # Mirrors what creating and then running a tracking job checks, so the UI can offer it.
+        tracking_job_perms = {Project.Permissions.CREATE_JOB, Project.Permissions.RUN_POST_PROCESSING_JOB}
+        if self.feature_flags.tracking and tracking_job_perms <= perms:
+            custom_perms.add(Project.Permissions.RUN_TRACKING)
+        return list(custom_perms)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
@@ -452,6 +468,8 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
+        # Not a stored permission: reported to the UI when the tracking job permissions and flag all hold.
+        RUN_TRACKING = "run_tracking"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -1441,6 +1459,29 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def update_calculated_fields_for_sessions_and_stations(
+    event_ids: typing.Iterable[int | None], stations_async: bool = True
+) -> None:
+    """Refresh the cached counts of these sessions and of the stations they belong to.
+
+    Call once after occurrences are created, merged or split, which neither the
+    occurrence nor the detection saves do. The project's counts are live and need nothing.
+    The station refresh scans the whole station, so by default it runs in a background
+    task after the transaction commits, keeping it and the station row lock out of the request.
+    """
+    from ami.main.tasks import refresh_deployment_cached_counts
+
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if not pks:
+        return
+    update_calculated_fields_for_events(pks=pks)
+    deployment_ids = list(Deployment.objects.filter(events__pk__in=pks).values_list("pk", flat=True).distinct())
+    if stations_async:
+        transaction.on_commit(lambda: refresh_deployment_cached_counts.delay(deployment_ids))
+    else:
+        refresh_deployment_cached_counts(deployment_ids)
+
+
 def audit_event_lengths(deployment: Deployment):
     logger.info("Checking for unusual event durations")
 
@@ -1648,6 +1689,8 @@ def _group_images_into_events_locked(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
+    tracks_split_count = _split_tracks_at_session_boundaries(deployment, job)
+
     # Realign Occurrence.event_id with each occurrence's detections' current
     # source_image.event_id. Occurrences are bound to an event once at creation
     # time (Detection.associate_new_occurrence and Pipeline.save_results both
@@ -1728,6 +1771,7 @@ def _group_images_into_events_locked(
             "Events created": events_created_count,
             "Events touched": len(touched_event_pks),
             "Empty events deleted": events_deleted_empty,
+            "Occurrences split at a session boundary": tracks_split_count,
             "Duplicate timestamps": duplicate_timestamp_count,
             "Ungrouped captures": ungrouped_captures_count,
             "Captures missing timestamp": no_timestamp_captures_count,
@@ -1738,6 +1782,35 @@ def _group_images_into_events_locked(
         job.save()
 
     return events
+
+
+def _split_tracks_at_session_boundaries(deployment: Deployment, job: "Job | None") -> int:
+    """Split every occurrence in the deployment whose detections now span several sessions.
+
+    Users expect one occurrence per session, so a regroup that draws a session boundary
+    through a track leaves one piece per session. Returns how many occurrences were split.
+    """
+    from ami.main.models_future.tracks import split_at_session_boundaries
+
+    spanning_ids = list(
+        Detection.objects.valid()
+        .filter(occurrence__deployment=deployment)
+        .values("occurrence_id")
+        .annotate(sessions=models.Count("source_image__event", distinct=True))
+        .filter(sessions__gt=1)
+        .values_list("occurrence_id", flat=True)
+    )
+    split_count = 0
+    for occurrence in Occurrence.objects.filter(pk__in=spanning_ids).order_by("pk"):
+        pieces = split_at_session_boundaries(occurrence)
+        if not pieces:
+            continue
+        split_count += 1
+        (job.logger if job else logger).info(
+            f"Split occurrence {occurrence.pk} at a session boundary; "
+            f"new occurrence(s) {[piece.pk for piece in pieces]} hold the later sessions."
+        )
+    return split_count
 
 
 def deployment_events_need_update(deployment: Deployment) -> bool:
@@ -2127,6 +2200,30 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_detections_with_features(self):
+        """Annotate ``detections_with_features`` and the ``detections_valid`` it is out of:
+        valid detections on the capture, and how many of them have a classification that
+        stored a feature embedding. Counted in SQL so the vectors themselves are never
+        loaded. Both come from the same population, so a caller can show one as a share of
+        the other; the cached ``detections_count`` is a different, default-filtered count.
+        """
+
+        def count_valid(**extra):
+            return models.Subquery(
+                Detection.objects.valid()
+                .filter(source_image_id=models.OuterRef("pk"), **extra)
+                .order_by()
+                .values("source_image_id")
+                .annotate(count=models.Count("id", distinct=True))
+                .values("count"),
+                output_field=models.IntegerField(),
+            )
+
+        return self.annotate(
+            detections_valid=Coalesce(count_valid(), 0),
+            detections_with_features=Coalesce(count_valid(classifications__features_2048__isnull=False), 0),
+        )
+
     def with_thumbnails(self):
         """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` decides
         warm/cold in memory instead of firing a SELECT per row.
@@ -2343,6 +2440,24 @@ class SourceImage(BaseModel):
         This will be populated by the query in the ViewSet but here is the query for reference:
         return SourceImage.objects.filter(
         event=self.event, timestamp__lt=self.timestamp).order_by("-timestamp").values("id").first()
+        """
+        return None
+
+    def event_next_capture_with_detections_id(self) -> int | None:
+        """
+        Return the nearest later capture in the event that holds a real detection.
+
+        Populated by the query in the ViewSet (see add_adjacent_captures); ties on
+        timestamp are broken by id.
+        """
+        return None
+
+    def event_prev_capture_with_detections_id(self) -> int | None:
+        """
+        Return the nearest earlier capture in the event that holds a real detection.
+
+        Populated by the query in the ViewSet (see add_adjacent_captures); ties on
+        timestamp are broken by id.
         """
         return None
 
@@ -2943,6 +3058,17 @@ class ClassificationResult(BaseModel):
 
 
 class ClassificationQuerySet(BaseQuerySet):
+    def with_has_features(self):
+        """Annotate ``has_features`` and defer the embedding itself.
+
+        Read paths only need to know whether a feature vector was stored; deferring the
+        2048-float column keeps it out of the row's SELECT. A select_related self-join
+        (``applied_to``) needs its own ``defer("applied_to__features_2048")``.
+        """
+        return self.defer("features_2048").annotate(
+            has_features=models.ExpressionWrapper(Q(features_2048__isnull=False), output_field=models.BooleanField())
+        )
+
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
         # Find the oldest classification for each unique combination
         if project_id:
@@ -2986,6 +3112,11 @@ class Classification(BaseModel):
         models.FloatField(),
         null=True,
         help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+    )
+    features_2048 = pgvector.django.VectorField(
+        dimensions=2048,
+        null=True,
+        help_text="Feature embedding from the model backbone",
     )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
@@ -3197,6 +3328,15 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
+
     # For type hints
     classifications: models.QuerySet["Classification"]
     source_image_id: int
@@ -3328,7 +3468,7 @@ class Detection(BaseModel):
             self.timestamp = self.source_image.timestamp
             needs_update = True
         if save and needs_update:
-            self.save(update_calculated_fields=False)
+            self.save(update_calculated_fields=False, update_fields=["timestamp"])
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -3354,12 +3494,43 @@ class OccurrenceQuerySet(BaseQuerySet):
             them)
           - Occurrences with determination__isnull=True (no taxonomic identification,
             same field bug shape)
+
+        Opening or repairing one occurrence needs the wider set that keeps
+        undetermined ones: see with_real_detections().
+        """
+        return self.with_real_detections().exclude(determination__isnull=True)
+
+    def with_real_detections(self):
+        """
+        Occurrences backed by at least one real bounding box, determined or not.
+
+        This is what the occurrence detail and the track-edit endpoints work over. A
+        reviewer opening or repairing a track has to reach occurrences the list hides,
+        and on a project where only a detector ran every occurrence is undetermined.
+        Null-marker sentinels stay excluded exactly as in valid(), since they carry no
+        box to put in a track.
         """
         has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
-        return self.filter(has_valid_detection).exclude(determination__isnull=True)
+        return self.filter(has_valid_detection)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
+
+    def with_frames_with_vectors(self):
+        """Annotate ``frames_with_vectors``: detections in the occurrence with at least one
+        classification that stored a feature embedding. Counted in SQL so the vectors
+        themselves are never loaded.
+        """
+        subquery = (
+            Detection.objects.filter(occurrence_id=OuterRef("pk"), classifications__features_2048__isnull=False)
+            .order_by()
+            .values("occurrence_id")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+        return self.annotate(
+            frames_with_vectors=Coalesce(models.Subquery(subquery, output_field=models.IntegerField()), 0)
+        )
 
     def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
         """Subquery matching occurrences with any result from the given algorithms —
@@ -3416,10 +3587,15 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.prefetch_related(prefetch_detections_for_list())
 
     def with_detail_prefetches(self):
-        """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
+        """Add what the detail serializer needs: detections + source_image + classifications
+        prefetched, and the ``frames_with_vectors`` count the grouping summary reports."""
         from ami.main.models_future.occurrence import prefetch_detections_for_detail
 
-        return self.prefetch_related(prefetch_detections_for_detail())
+        return (
+            self.select_related("grouping_verified_by")
+            .prefetch_related(prefetch_detections_for_detail())
+            .with_frames_with_vectors()
+        )
 
     def with_best_detection(self):
         """
@@ -3566,7 +3742,12 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         return qs
 
-    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+    def apply_default_filters(
+        self,
+        project: Project | None = None,
+        request: Request | None = None,
+        include_undetermined: bool = False,
+    ):
         """
         Apply all default filters to occurrences based on project settings.
 
@@ -3576,6 +3757,10 @@ class OccurrenceQuerySet(BaseQuerySet):
         Args:
             project: The project whose default filters should be applied
             request: The request object (optional, used to check for apply_defaults=false)
+            include_undetermined: Keep occurrences with no determination, which every
+                default filter would otherwise drop: an undetermined occurrence has
+                neither a score nor a taxon to test against, and on a project where
+                only a detector ran that is all of them.
 
         Returns:
             Filtered queryset with both score and taxa filters applied
@@ -3596,6 +3781,8 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         # Use build_occurrence_default_filters_q to get the combined filter and apply it
         filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+        if include_undetermined:
+            filter_q |= models.Q(determination__isnull=True)
         return self.filter(filter_q)
 
 
@@ -3625,10 +3812,52 @@ class Occurrence(BaseModel):
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
+    # Whether a person has confirmed that this occurrence's set of detections is right —
+    # that they are all the same individual and none are missing. Separate from taxon
+    # verification, which is what an Identification records. Confirmed occurrences are the
+    # ground truth the tracking methods are evaluated against, so anything that changes the
+    # detection set must clear this. See #1272.
+    grouping_verified_at = models.DateTimeField(null=True, blank=True)
+    grouping_verified_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_occurrence_groupings",
+    )
+
+    # Track statistics stored so the occurrence list can sort by them. Written by
+    # ``models_future.track_stats.refresh_track_stats`` whenever tracking or a track edit
+    # changes which detections an occurrence holds; null until then, or when it has none.
+    track_motion = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Path length between frames as a fraction of the frame diagonal. See models_future/track_stats.py.",
+    )
+    track_size_ratio = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Largest box area over the smallest. See models_future/track_stats.py.",
+    )
+    track_distinct_taxa = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Distinct taxa among terminal classifications. See models_future/track_stats.py.",
+    )
+    track_id_agreement = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Share of terminal classifications naming the determination. See models_future/track_stats.py.",
+    )
+
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
     objects = OccurrenceManager()
+
+    @property
+    def grouping_verified(self) -> bool:
+        return self.grouping_verified_at is not None
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -3744,6 +3973,7 @@ class Occurrence(BaseModel):
         classifications = (
             Classification.objects.filter(detection__occurrence=self)
             .select_related("taxon", "algorithm")
+            .with_has_features()
             .filter(
                 score__in=models.Subquery(
                     Classification.objects.filter(detection__occurrence=self)
@@ -3786,6 +4016,32 @@ class Occurrence(BaseModel):
                 logger.warning(f"Could not determine score for {self}")
             else:
                 self.save(update_determination=False)
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        # Editing a track moves detections between occurrences and can leave an
+        # occurrence's determination changed, so it is gated on the permission that
+        # already governs restructuring occurrence records rather than on
+        # identification rights.
+        # Listing merge candidates and scoring a capture's boxes are gated the same way,
+        # so those pickers only open for someone who could complete the edit.
+        if action in (
+            "split_track",
+            "remove_detection",
+            "merge",
+            "merge_candidates",
+            "capture_matches",
+            "add_detections",
+        ):
+            return user.has_perm(Project.Permissions.DELETE_OCCURRENCES, self.get_project())
+        # Confirming a grouping is an expert judgement rather than a restructuring, so
+        # identifying rights are enough — but the roles that restructure occurrences do
+        # not inherit those, and they need to confirm their own corrections.
+        if action in ("verify_grouping", "unverify_grouping"):
+            project = self.get_project()
+            return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, project) or user.has_perm(
+                Project.Permissions.DELETE_OCCURRENCES, project
+            )
+        return super().check_custom_permission(user, action)
 
     class Meta:
         ordering = ["-determination_score"]
@@ -3856,9 +4112,17 @@ def update_occurrence_determination(
         new_score = top_identification.score
     elif not top_identification:
         top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
-            new_determination = top_prediction.taxon
-            new_score = top_prediction.score
+        if top_prediction and top_prediction.taxon:
+            if top_prediction.taxon != current_determination:
+                new_determination = top_prediction.taxon
+                new_score = top_prediction.score
+            elif top_prediction.score != occurrence.determination_score:
+                # Taxon unchanged but a higher-scoring classification has appeared
+                # for the same taxon (e.g. tracking merged a new detection into the
+                # chain whose top species classification scored higher than the
+                # keeper's). Refresh the score so determination_score reflects the
+                # best evidence available across the occurrence's detections.
+                new_score = top_prediction.score
 
     if new_determination and new_determination != current_determination:
         logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")

@@ -15,6 +15,7 @@ import typing
 import uuid
 from urllib.parse import urljoin
 
+import pydantic
 import requests
 from django.db import models
 from django.utils.text import slugify
@@ -344,7 +345,7 @@ def process_images(
     # Check if feature flag is enabled to reprocess existing detections
     if project and project.feature_flags.reprocess_existing_detections:
         # Check if the user wants to reprocess existing detections or ignore them
-        if pipeline_config.get("reprocess_existing_detections", True):
+        if pipeline_config.reprocess_existing_detections:
             reprocess_existing_detections = True
 
     for source_image, url in zip(images, urls):
@@ -807,7 +808,7 @@ def create_classification(
 
     if existing_classification:
         # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
-        NEW_FIELDS = ["logits", "scores", "terminal", "category_map"]
+        NEW_FIELDS = ["logits", "scores", "terminal", "category_map", "features_2048"]
         logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
@@ -824,6 +825,9 @@ def create_classification(
                 if field == "category_map":
                     # Use the foreign key from the classification algorithm
                     setattr(existing_classification, field, classification_algo.category_map)
+                elif field == "features_2048":
+                    # The pipeline response carries this as `features`; the DB column is `features_2048`.
+                    setattr(existing_classification, field, classification_resp.features)
                 else:
                     # Get the value from the classification response
                     setattr(existing_classification, field, getattr(classification_resp, field))
@@ -841,6 +845,7 @@ def create_classification(
             timestamp=classification_resp.timestamp or now(),
             logits=classification_resp.logits,
             scores=classification_resp.scores,
+            features_2048=classification_resp.features,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
         )
@@ -1237,21 +1242,25 @@ class Pipeline(BaseModel):
         """
         Get the configuration for the pipeline request.
 
-        This will be the same as pipeline.default_config, but if a project ID is provided,
-        the project's pipeline config will be used to override the default config.
+        Schema defaults apply first, then pipeline.default_config, then the project's
+        pipeline config when a project ID is provided. Each call builds a new object,
+        so one project's overrides never reach the pipeline default or another project.
+        Invalid values raise a pydantic ValidationError.
         """
-        config = self.default_config
+        default_config = self.default_config
+        if isinstance(default_config, pydantic.BaseModel):
+            default_config = default_config.dict()
+        values = dict(default_config or {})
         if project_id:
             try:
                 project_pipeline_config = self.project_pipeline_configs.get(project_id=project_id)
-                if project_pipeline_config.config:
-                    config.update(project_pipeline_config.config)
+                values.update(project_pipeline_config.config or {})
                 logger.debug(
-                    f"Using ProjectPipelineConfig for Pipeline {self} and Project #{project_id}:" f"config: {config}"
+                    f"Using ProjectPipelineConfig for Pipeline {self} and Project #{project_id}:" f"config: {values}"
                 )
             except self.project_pipeline_configs.model.DoesNotExist as e:
                 logger.warning(f"No project-pipeline config for Pipeline {self} " f"and Project #{project_id}: {e}")
-        return config
+        return PipelineRequestConfigParameters.parse_obj(values)
 
     def collect_images(
         self,
