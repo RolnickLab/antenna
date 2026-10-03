@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections.abc import Callable
 
 import numpy as np
@@ -7,9 +8,13 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.main.models import AlgorithmResult, Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.post_processing.results import BatchResults
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,7 @@ def make_classifications_filtered_by_taxa_list(
     task_logger: logging.Logger = logger,
     on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
@@ -73,6 +79,11 @@ def make_classifications_filtered_by_taxa_list(
 
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
+
+    Every occurrence with a re-scored classification gets one algorithm result, written in
+    the same transaction as the batch that changes it, and its new classifications point at
+    that result (see ``BatchResults``). The result records the probability the list excluded
+    and the source's original top prediction for the occurrence's winning detection.
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
@@ -116,6 +127,13 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
+    results = BatchResults(
+        kind=AlgorithmResult.Kind.CLASS_MASKING,
+        algorithm=new_algorithm,
+        job=job,
+        value_field="excluded_probability",
+        timestamp=timestamp,
+    )
 
     # Sizing the scope and expanding the category map both take time on a large
     # classifier, so report before touching a row.
@@ -180,6 +198,7 @@ def make_classifications_filtered_by_taxa_list(
                     terminal=True,
                     timestamp=classification.timestamp,
                     applied_to=classification,
+                    job=job,
                     created_at=timestamp,
                     updated_at=timestamp,
                 )
@@ -190,6 +209,18 @@ def make_classifications_filtered_by_taxa_list(
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
                     occurrences_to_update.add(detection.occurrence)
+                    # The occurrence's result carries the figures of its winning detection:
+                    # the one whose masked classification scores highest (see BatchResults).
+                    results.note(
+                        detection.occurrence,
+                        {
+                            "excluded_probability": float(1.0 - kept_sum),
+                            "original_taxon_id": classification.taxon_id,
+                            "original_score": classification.score,
+                            "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                        },
+                        rank=score,
+                    )
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
@@ -198,6 +229,7 @@ def make_classifications_filtered_by_taxa_list(
             with transaction.atomic():
                 if classifications_to_demote:
                     Classification.objects.bulk_update(classifications_to_demote, ["terminal", "updated_at"])
+                results.start_batch(occurrences_to_update, classifications_to_add)
                 if classifications_to_add:
                     Classification.objects.bulk_create(classifications_to_add)
                 # Count an occurrence only when saving its new terminal classification
@@ -209,6 +241,7 @@ def make_classifications_filtered_by_taxa_list(
                     occurrence.save(update_determination=True)
                     if occurrence.pk is not None and occurrence.determination_id != prev:
                         changed_occurrence_ids.add(occurrence.pk)
+                results.finish_batch(occurrences_to_update)
 
             classifications_to_demote.clear()
             classifications_to_add.clear()
@@ -368,6 +401,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             task_logger=self.logger,
             on_setup=_on_setup,
             on_batch=_on_batch,
+            job=self.job,
         )
         self.report_stage_metrics(metrics)
         self.logger.info(f"=== Completed {self.name} ===")

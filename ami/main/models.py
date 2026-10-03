@@ -42,6 +42,7 @@ from ami.main.models_future.filters import (
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
+from ami.main.schemas import validate_result_data
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -2963,7 +2964,12 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 
 @final
 class Classification(BaseModel):
-    """The output of a classifier"""
+    """A taxon classification of one detection: the taxon a classifier or a post-processing run assigned it.
+
+    ``job`` records the run that wrote it, when there was one. ``algorithm_result`` is the
+    post-processing result the row was created for, so the occurrence history can show a run
+    with the classifications it produced; classifications from a pipeline leave it empty.
+    """
 
     project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
@@ -2995,7 +3001,16 @@ class Classification(BaseModel):
         null=True,
         related_name="classifications",
     )
-    # job = models.CharField(max_length=255, null=True)
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="classifications"
+    )
+    algorithm_result = models.ForeignKey(
+        "main.AlgorithmResult",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classifications",
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -3189,11 +3204,8 @@ class Detection(BaseModel):
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
-    # detection_job = models.ForeignKey(
-    #     "Job",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    # )
+    # The run that wrote this detection, when there was one.
+    job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="detections")
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
@@ -3813,6 +3825,167 @@ class Occurrence(BaseModel):
             # on large projects). DESC = NULLS FIRST to match the ORM's ORDER BY.
             models.Index(fields=["project", "-determination_score"], name="occur_proj_score_desc_idx"),
         ]
+
+
+def occurrence_project_ids(occurrences: typing.Iterable["Occurrence"]) -> dict[int, int | None]:
+    """The project each occurrence belongs to: its own, or its station's when it has none.
+
+    One query for every occurrence that lacks a project of its own; none when all have one.
+    The value is None for an occurrence with neither, which callers skip with a warning.
+    """
+    occurrences = list(occurrences)
+    projects = {occurrence.pk: occurrence.project_id for occurrence in occurrences}
+    deployment_ids = {
+        occurrence.deployment_id
+        for occurrence in occurrences
+        if occurrence.project_id is None and occurrence.deployment_id is not None
+    }
+    if deployment_ids:
+        station_projects = dict(Deployment.objects.filter(pk__in=deployment_ids).values_list("pk", "project_id"))
+        for occurrence in occurrences:
+            if occurrence.project_id is None and occurrence.deployment_id is not None:
+                projects[occurrence.pk] = station_projects.get(occurrence.deployment_id)
+    return projects
+
+
+class AlgorithmResultQuerySet(BaseQuerySet):
+    def for_occurrence(self, occurrence):
+        return self.filter(occurrence=occurrence)
+
+    def current(self):
+        return self.filter(is_current=True)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.data = validate_result_data(obj.kind, obj.data)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        objs = list(objs)
+        if "data" in fields:
+            for obj in objs:
+                obj.data = validate_result_data(obj.kind, obj.data)
+        return super().bulk_update(objs, fields, *args, **kwargs)
+
+    def record(self, **fields) -> "AlgorithmResult":
+        """Insert one result as the current one for its occurrence, algorithm and kind."""
+        results = self.record_many([self.model(**fields)])
+        if not results:
+            raise ValueError("The occurrence has no project, directly or through its station.")
+        return results[0]
+
+    def record_many(self, results: typing.Iterable["AlgorithmResult"]) -> list["AlgorithmResult"]:
+        """Insert results as current, keeping each occurrence's earlier result of the same algorithm and kind.
+
+        Rows are only inserted, never rewritten, apart from clearing ``is_current`` on the result
+        each new one replaces. A result whose occurrence has no project, directly or through
+        its station, is skipped with a warning rather than failing a run that has already
+        changed data. The returned list holds the results that were written, in order.
+        """
+        results = list(results)
+        if not results:
+            return []
+        projects = occurrence_project_ids(result.occurrence for result in results if result.project_id is None)
+        kept: list[AlgorithmResult] = []
+        groups: dict[tuple[int, str], set[int]] = collections.defaultdict(set)
+        for result in results:
+            if result.project_id is None:
+                result.project_id = projects.get(result.occurrence_id)
+            if result.project_id is None:
+                logger.warning(
+                    f"Not recording the {result.kind} result for Occurrence #{result.occurrence_id}: "
+                    "it has no project, directly or through its station."
+                )
+                continue
+            key = (result.algorithm_id, result.kind)
+            if result.occurrence_id in groups[key]:
+                raise ValueError(
+                    f"Two {result.kind} results for Occurrence #{result.occurrence_id} "
+                    "from one algorithm in one write."
+                )
+            groups[key].add(result.occurrence_id)
+            result.is_current = True
+            kept.append(result)
+        if not kept:
+            return []
+        with transaction.atomic():
+            for (algorithm_id, kind), occurrence_ids in groups.items():
+                self.filter(
+                    occurrence_id__in=occurrence_ids, algorithm_id=algorithm_id, kind=kind, is_current=True
+                ).update(is_current=False)
+            return self.bulk_create(kept)
+
+
+@final
+class AlgorithmResult(BaseModel):
+    """What a post-processing run decided about one occurrence: a record of the run, never an input to it.
+
+    The determination never reads this table. A run that changes an occurrence's taxon does so
+    through the ``Classification`` rows it creates, and those rows point back here through
+    ``Classification.algorithm_result`` so the history can show a run with what it changed.
+    ``data`` holds the run's own figures, validated against the model for ``kind``
+    (ami/main/schemas.py), and ``value`` repeats the one figure lists filter and sort on. The
+    ``extra`` object inside ``data`` is stored, shown and exported only; nothing reads it for
+    logic, and a value a feature needs becomes a typed field. A new result for the same
+    occurrence, algorithm and kind becomes the current one and the earlier ones stay as
+    history. Write through ``AlgorithmResult.objects.record`` or ``record_many``. Tracking and
+    rank roll-ups are the next kinds expected. See #1431.
+    """
+
+    class Kind(models.TextChoices):
+        CLASS_MASKING = "class_masking"
+        SIZE_FILTER = "size_filter"
+
+    # Copied from the occurrence (or its station) when the result is written, so per-project
+    # queries and permission checks need no join.
+    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="algorithm_results")
+    # Indexed together with the timestamp, below.
+    occurrence = models.ForeignKey(
+        Occurrence, on_delete=models.CASCADE, related_name="algorithm_results", db_index=False
+    )
+    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="algorithm_results")
+    # The run that wrote the result. Deleting the job keeps the result, with no run to link to.
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results"
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    # The kind's headline figure, for filtering and sorting: the share of probability outside
+    # the list for class masking, the relative size for the size filter.
+    value = models.FloatField(null=True, blank=True)
+    data = models.JSONField(default=dict, blank=True)
+    is_current = models.BooleanField(default=True)
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    objects = AlgorithmResultQuerySet.as_manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["occurrence", "algorithm", "kind"],
+                condition=Q(is_current=True),
+                name="algorithm_result_current_occurrence",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["occurrence", "-timestamp"], name="algorithm_result_occ_time"),
+            models.Index(
+                fields=["project", "kind", "value"],
+                condition=Q(is_current=True, value__isnull=False),
+                name="algorithm_result_current_value",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"#{self.pk} {self.kind} for Occurrence #{self.occurrence_id} from Algorithm #{self.algorithm_id}"
+
+    def save(self, *args, **kwargs):
+        self.data = validate_result_data(self.kind, self.data)
+        if self.project_id is None:
+            self.project_id = occurrence_project_ids([self.occurrence])[self.occurrence_id]
+        if self.project_id is None:
+            raise ValueError("The occurrence has no project, directly or through its station.")
+        super().save(*args, **kwargs)
 
 
 def update_occurrence_determination(

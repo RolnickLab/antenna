@@ -28,10 +28,13 @@ export const MachinePrediction = ({
   currentUser,
   identification,
   occurrence,
+  subTitle,
 }: {
   currentUser?: UserInfo
   identification: Identification
   occurrence: Occurrence
+  /** Replaces the terminal/intermediate label, e.g. to say which run superseded the prediction. */
+  subTitle?: string
 }) => {
   const [open, setOpen] = useState(false)
   const { classification, error, isLoading } = useClassificationDetails(
@@ -62,9 +65,10 @@ export const MachinePrediction = ({
         onOpenChange={setOpen}
         open={open}
         subTitle={
-          identification.terminal
+          subTitle ??
+          (identification.terminal
             ? translate(STRING.TERMINAL_CLASSIFICATION)
-            : translate(STRING.INTERMEDIATE_CLASSIFICATION)
+            : translate(STRING.INTERMEDIATE_CLASSIFICATION))
         }
         title={
           identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
