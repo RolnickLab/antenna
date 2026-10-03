@@ -11,6 +11,7 @@ class BaseExporter(ABC):
     """Base class for all data export handlers."""
 
     file_format = ""  # To be defined in child classes
+    filename_label = ""  # Optional slug token inserted into export filenames (e.g. "dwca_draft-2026-04")
     serializer_class = None
     filter_backends = []
 
