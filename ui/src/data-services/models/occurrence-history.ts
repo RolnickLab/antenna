@@ -44,21 +44,26 @@ export interface ServerHistoryClassification {
 }
 
 interface ServerDeterminationChangePayload {
-  taxon_after_id: number | null
-  taxon_before_id: number | null
+  determination_after_id: number | null
+  determination_before_id: number | null
+  /** Whatever else the method returned; stored as JSON and not interpreted. */
+  extra: Record<string, unknown>
 }
 
 export interface ServerClassMaskingPayload
   extends ServerDeterminationChangePayload {
-  detection_ids: number[]
-  source_algorithm_id: number
-  taxa_list_id: number
+  /** The share of the source classifier's probability on classes outside the species list. */
+  excluded_probability: number
+  /** Where the class that wins after masking ranked before it; 1 means it was already the top. */
+  new_winner_original_rank: number | null
+  original_score: number | null
+  original_taxon_id: number | null
 }
 
 export interface ServerSizeFilterPayload
   extends ServerDeterminationChangePayload {
-  detection_ids: number[]
-  size_threshold: number
+  /** The filtered detection's box area as a fraction of its image. */
+  relative_size: number
 }
 
 export interface ServerIdentificationPayload {
@@ -76,8 +81,6 @@ export interface ServerPredictionPayload {
   terminal: boolean | null
 }
 
-export type ReviewVerdict = 'confirmed' | 'rejected'
-
 interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
   algorithm: ServerHistoryAlgorithm | null
   /** For a result: the classifications its run created, best score first. */
@@ -87,7 +90,10 @@ interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
   /** For a result: whether it is the latest of its kind, not replaced by a later run. */
   is_current: boolean | null
   job: ServerHistoryJob | null
+  /** For a class masking result: the source classifier's top taxon before masking. */
+  original_taxon: ServerHistoryTaxon | null
   payload: Payload
+  /** A prediction's score, or a result's headline value. */
   score: number | null
   /** For a class masking result: the classifier whose predictions the run re-scored. */
   source_algorithm: ServerHistoryAlgorithm | null
@@ -99,7 +105,6 @@ interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
   timestamp: string
   type: Type
   user: ServerHistoryUser | null
-  verdict: ReviewVerdict | null
   withdrawn: boolean
 }
 
@@ -116,12 +121,6 @@ export type SizeFilterResultEntry = ServerHistoryEntryBase<
 export type AlgorithmResultEntry =
   | ClassMaskingResultEntry
   | SizeFilterResultEntry
-export type CommentReviewEntry = ServerHistoryEntryBase<
-  'review',
-  'comment',
-  Record<string, never>
->
-export type ReviewEntry = CommentReviewEntry
 export type IdentificationEntry = ServerHistoryEntryBase<
   'identification',
   null,
@@ -135,7 +134,6 @@ export type PredictionEntry = ServerHistoryEntryBase<
 
 export type ServerOccurrenceHistoryEntry =
   | AlgorithmResultEntry
-  | ReviewEntry
   | IdentificationEntry
   | PredictionEntry
 
@@ -153,10 +151,8 @@ export type TimelineItem =
       supersededBy?: AlgorithmResultEntry
     }
   | { type: 'algorithm_result'; id: string; entry: AlgorithmResultEntry }
-  | { type: 'review'; id: string; entry: ReviewEntry }
 
 const ALGORITHM_RESULT_SUBTYPES: string[] = ['class_masking', 'size_filter']
-const REVIEW_SUBTYPES: string[] = ['comment']
 
 export const convertHistoryTaxon = (taxon: ServerHistoryTaxon) =>
   new Taxon({ ...taxon, id: `${taxon.id}`, cover_image_url: null })
@@ -264,10 +260,6 @@ export const getTimelineItems = ({
       case 'algorithm_result':
         return isAlgorithmResult(entry)
           ? [{ type: 'algorithm_result', id, entry }]
-          : []
-      case 'review':
-        return REVIEW_SUBTYPES.includes(entry.subtype)
-          ? [{ type: 'review', id, entry }]
           : []
       default:
         return []
