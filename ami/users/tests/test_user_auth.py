@@ -1,5 +1,9 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
+from django.core import mail
 from django.db.utils import IntegrityError
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -48,3 +52,24 @@ class UserAuthTestCase(APITestCase):
             User.objects.create_user(email="testemail@example.com")  # type: ignore
             User.objects.create_user(email="testEMAIL@example.com")  # type: ignore
             User.objects.create_user(email="TESTemail@example.com")  # type: ignore
+
+
+class PasswordResetEmailTestCase(APITestCase):
+    """The reset email must name the product and link to the frontend, not to the API host."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="reset@example.com", password="testpassword")  # type: ignore
+        self.url = reverse("api:user-reset-password")
+
+    def test_subject_uses_site_name_setting(self):
+        response = self.client.post(self.url, {"email": "reset@example.com"})
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Password reset on Antenna")
+
+    @override_settings(DOMAIN="antenna.example.org")
+    def test_link_uses_domain_setting_instead_of_site_record(self):
+        Site.objects.update_or_create(id=settings.SITE_ID, defaults={"domain": "api.example.org"})
+        self.client.post(self.url, {"email": "reset@example.com"})
+        self.assertIn("//antenna.example.org/auth/reset-password-confirm?uid=", mail.outbox[0].body)
+        self.assertNotIn("api.example.org", mail.outbox[0].body)

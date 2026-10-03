@@ -59,6 +59,8 @@ SENDGRID_API_KEY=
 # MANDRILL_API_KEY=
 # From address for sent emails.
 DJANGO_DEFAULT_FROM_EMAIL=
+# Hostname of the web app, used for links in account emails (e.g. antenna.insectai.org).
+DJANGO_FRONTEND_DOMAIN=
 
 # Newrelic
 # ------------------------------------------------------------------------------
