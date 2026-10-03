@@ -16,6 +16,7 @@ import uuid
 from django.test import TestCase
 
 from ami.main.models import (
+    AlgorithmResult,
     Classification,
     Detection,
     Occurrence,
@@ -382,6 +383,94 @@ class TestPostProcessingClassMasking(TestCase):
         new_clf = Classification.objects.filter(detection=det, terminal=True).exclude(algorithm=self.algorithm).first()
         self.assertIsNotNone(new_clf)
         self.assertEqual(new_clf.taxon, self.species_taxa[0])
+
+    # ----- algorithm results -----------------------------------------------
+
+    def _masking_fixture(self, name: str = "History list") -> tuple[TaxaList, Detection, Occurrence]:
+        """One occurrence whose top class (index 2) the taxa list excludes, so masking re-scores it."""
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name=name)
+        taxa_list.taxa.set(self.species_taxa[:2])
+        det, occ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+        occ.save()
+        return taxa_list, det, occ
+
+    def test_a_rescored_occurrence_gets_one_result_linked_to_the_classification_it_created(self):
+        taxa_list, det, occ = self._masking_fixture()
+
+        # The second run finds nothing left to mask, so the first run's result stays the only one.
+        for _ in range(2):
+            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertTrue(result.is_current)
+        self.assertEqual(result.project_id, self.project.pk)
+        self.assertTrue(result.algorithm.key.startswith(f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"))
+        self.assertEqual(
+            result.data,
+            {
+                "taxa_list_id": taxa_list.pk,
+                "source_algorithm_id": self.algorithm.pk,
+                "detection_ids": [det.pk],
+                "taxon_before_id": self.species_taxa[2].pk,
+                "taxon_after_id": self.species_taxa[0].pk,
+            },
+        )
+        masked = result.classifications.get()
+        self.assertEqual((masked.taxon, masked.terminal), (self.species_taxa[0], True))
+        self.assertEqual(masked.applied_to.taxon, self.species_taxa[2])
+
+    def test_an_occurrence_masking_does_not_change_gets_no_result(self):
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name="Keeps everything")
+        taxa_list.taxa.set(self.species_taxa)
+        det, occ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=occ).exists())
+
+    def test_an_occurrence_spanning_batches_gets_one_result_covering_every_batch(self):
+        taxa_list, det1, occ = self._masking_fixture()
+        det2 = Detection.objects.create(source_image=self.collection.images.first(), bbox=[0, 0, 100, 100])
+        occ.detections.add(det2)
+        logits = [2.0, 1.0, 5.0]
+        self._create_classification_with_logits(det2, self.species_taxa[2], _softmax(logits), logits)
+        new_algorithm = Algorithm.objects.create(
+            name="masked_span",
+            key="masked_span_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(detection__in=[det1, det2]),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+            batch_size=1,
+        )
+
+        result = AlgorithmResult.objects.get(occurrence=occ)
+        self.assertEqual(result.data["detection_ids"], sorted([det1.pk, det2.pk]))
+        self.assertEqual(result.data["taxon_after_id"], self.species_taxa[0].pk)
+        self.assertEqual(result.classifications.count(), 2)
+
+    def test_an_occurrence_without_a_project_is_still_rescored_but_gets_no_result(self):
+        """A missing project must not fail a run after it has changed data; the result is skipped with a warning."""
+        taxa_list, det, occ = self._masking_fixture()
+        Occurrence.objects.filter(pk=occ.pk).update(project=None, deployment=None)
+
+        with self.assertLogs("ami.main.models", level="WARNING") as logs:
+            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        self.assertIn(f"Occurrence #{occ.pk}", logs.output[0])
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, self.species_taxa[0])
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=occ).exists())
+        self.assertIsNone(Classification.objects.get(applied_to__detection=det).algorithm_result)
 
     # ----- batched commit + heartbeat -------------------------------------
 

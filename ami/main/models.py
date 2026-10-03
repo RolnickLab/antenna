@@ -4011,6 +4011,13 @@ class AlgorithmResultQuerySet(BaseQuerySet):
             obj.data = validate_result_data(obj.kind, obj.data)
         return super().bulk_create(objs, *args, **kwargs)
 
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        objs = list(objs)
+        if "data" in fields:
+            for obj in objs:
+                obj.data = validate_result_data(obj.kind, obj.data)
+        return super().bulk_update(objs, fields, *args, **kwargs)
+
     def record(self, **fields) -> "AlgorithmResult":
         """Insert one result as the current one for its occurrence, algorithm and kind."""
         results = self.record_many([self.model(**fields)])
