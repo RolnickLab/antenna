@@ -66,14 +66,21 @@ class DataExport(BaseModel):
         return filters_display
 
     def generate_filename(self):
-        """Generates a slugified filename using project name and export ID."""
+        """Generates a slugified filename using project name and export ID.
+
+        When the exporter sets a non-empty `filename_label` (e.g. "taxa_list"),
+        the label is inserted between the project slug and the export id so
+        users can tell formats apart in their downloads folder.
+        """
         from ami.exports.registry import ExportRegistry
 
         registry = ExportRegistry.get_exporter(self.format)
         assert registry, f"Export format '{self.format}' not found in registry"
         extension = registry.file_format
+        label = getattr(registry, "filename_label", "") or ""
         project_slug = slugify(self.project.name)  # Convert project name to a slug
-        return f"{project_slug}_export-{self.pk}.{extension}"
+        label_token = f"{label}_" if label else ""
+        return f"{project_slug}_{label_token}export-{self.pk}.{extension}"
 
     def save_export_file(self, file_temp_path):
         """
