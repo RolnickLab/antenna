@@ -4075,10 +4075,12 @@ class AlgorithmResult(BaseModel):
     through the ``Classification`` rows it creates, and those rows point back here through
     ``Classification.algorithm_result`` so the history can show a run with what it changed.
     ``data`` holds the run's own figures, validated against the model for ``kind``
-    (ami/main/schemas.py), and ``value`` repeats the one figure lists filter and sort on. A new
-    result for the same occurrence, algorithm and kind becomes the current one and the earlier
-    ones stay as history. Write through ``AlgorithmResult.objects.record`` or ``record_many``.
-    Tracking and rank roll-ups are the next kinds expected. See #1431.
+    (ami/main/schemas.py), and ``value`` repeats the one figure lists filter and sort on. The
+    ``extra`` object inside ``data`` is stored, shown and exported only; nothing reads it for
+    logic, and a value a feature needs becomes a typed field. A new result for the same
+    occurrence, algorithm and kind becomes the current one and the earlier ones stay as
+    history. Write through ``AlgorithmResult.objects.record`` or ``record_many``. Tracking and
+    rank roll-ups are the next kinds expected. See #1431.
     """
 
     class Kind(models.TextChoices):
@@ -4098,8 +4100,8 @@ class AlgorithmResult(BaseModel):
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results"
     )
     kind = models.CharField(max_length=32, choices=Kind.choices)
-    # The kind's headline figure, for filtering and sorting: the excluded probability for class
-    # masking, the relative size for the size filter.
+    # The kind's headline figure, for filtering and sorting: the share of probability outside
+    # the list for class masking, the relative size for the size filter.
     value = models.FloatField(null=True, blank=True)
     data = models.JSONField(default=dict, blank=True)
     is_current = models.BooleanField(default=True)
