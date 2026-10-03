@@ -65,13 +65,17 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
       list:
         entry.taxa_list?.name ??
         translate(STRING.HISTORY_SPECIES_LIST_ID, {
-          id: `${entry.payload.taxa_list_id}`,
+          id: `${entry.job?.config?.taxa_list_id}`,
         }),
     })
   }
 
   return entry.algorithm?.name
 }
+
+/** A fraction as a percentage with at most one decimal, e.g. 0.0315 reads "3.2%". */
+const formatPercent = (fraction: number) =>
+  `${Math.round(fraction * 1000) / 10}%`
 
 /** The determination row, left out when there was no determination before or after. */
 const getDeterminationStats = (
@@ -118,35 +122,64 @@ export const AlgorithmResult = ({
     entry.taxon
   )
   switch (entry.subtype) {
-    case 'class_masking':
-      stats.push({
-        label: translate(STRING.HISTORY_SPECIES_LIST),
-        value: (
-          <Link
-            className="underline underline-offset-4"
-            to={APP_ROUTES.TAXA_LIST_DETAILS({
-              projectId: projectId as string,
-              taxaListId: `${entry.payload.taxa_list_id}`,
-            })}
-          >
-            {entry.taxa_list?.name ??
-              translate(STRING.HISTORY_SPECIES_LIST_ID, {
-                id: `${entry.payload.taxa_list_id}`,
+    case 'class_masking': {
+      const taxaListId = entry.taxa_list?.id ?? entry.job?.config?.taxa_list_id
+      if (taxaListId !== undefined) {
+        stats.push({
+          label: translate(STRING.HISTORY_SPECIES_LIST),
+          value: (
+            <Link
+              className="underline underline-offset-4"
+              to={APP_ROUTES.TAXA_LIST_DETAILS({
+                projectId: projectId as string,
+                taxaListId: `${taxaListId}`,
               })}
-          </Link>
-        ),
-      })
-      break
-    case 'size_filter':
+            >
+              {entry.taxa_list?.name ??
+                translate(STRING.HISTORY_SPECIES_LIST_ID, {
+                  id: `${taxaListId}`,
+                })}
+            </Link>
+          ),
+        })
+      }
       stats.push({
-        label: translate(STRING.HISTORY_SIZE_THRESHOLD),
-        value: entry.payload.size_threshold,
+        label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
+        value: formatPercent(entry.payload.excluded_probability),
+      })
+      if (entry.original_taxon) {
+        stats.push({
+          label: translate(STRING.HISTORY_ORIGINAL_PREDICTION),
+          value:
+            entry.payload.original_score !== null
+              ? `${
+                  entry.original_taxon.name
+                } (${entry.payload.original_score.toFixed(2)})`
+              : entry.original_taxon.name,
+        })
+      }
+      break
+    }
+    case 'size_filter': {
+      const threshold = entry.job?.config?.size_threshold
+      stats.push({
+        label: translate(STRING.HISTORY_DETECTION_SIZE),
+        value:
+          typeof threshold === 'number'
+            ? translate(STRING.HISTORY_DETECTION_SIZE_WITH_THRESHOLD, {
+                size: formatPercent(entry.payload.relative_size),
+                threshold: formatPercent(threshold),
+              })
+            : translate(STRING.HISTORY_DETECTION_SIZE_VALUE, {
+                size: formatPercent(entry.payload.relative_size),
+              }),
       })
       break
+    }
   }
   stats.push({
     label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
-    value: entry.payload.detection_ids.length,
+    value: entry.classifications.length,
   })
   getJobSettings(entry.job).forEach(({ key, value }) => {
     const label = SETTING_LABELS[key]

@@ -21,6 +21,7 @@ const base = {
   comment: '',
   is_current: null,
   job: null,
+  original_taxon: null,
   score: null,
   source_algorithm: null,
   subtype: null,
@@ -29,7 +30,6 @@ const base = {
   taxon_before: null,
   timestamp: '2026-04-29T22:00:00',
   user: null,
-  verdict: null,
   withdrawn: false,
 }
 
@@ -66,15 +66,6 @@ const predictionEntry = (
   type: 'prediction',
 })
 
-const comment = (id: number): ServerOccurrenceHistoryEntry => ({
-  ...base,
-  comment: 'The second detection is another moth',
-  id,
-  payload: {},
-  subtype: 'comment',
-  type: 'review',
-})
-
 const classMasking: ServerOccurrenceHistoryEntry = {
   ...base,
   algorithm: { id: 12, key: 'mask', name: 'Masked classifier' },
@@ -98,13 +89,17 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   ],
   id: 5,
   is_current: true,
+  original_taxon: XESTIA,
   payload: {
-    detection_ids: [1, 2],
-    source_algorithm_id: 7,
-    taxa_list_id: 2,
-    taxon_after_id: 3,
-    taxon_before_id: 4,
+    determination_after_id: 3,
+    determination_before_id: 4,
+    excluded_probability: 0.38,
+    extra: {},
+    new_winner_original_rank: 2,
+    original_score: 0.83,
+    original_taxon_id: 4,
   },
+  score: 0.38,
   subtype: 'class_masking',
   taxon: NOCTUA,
   taxon_before: XESTIA,
@@ -138,32 +133,16 @@ const ownPrediction = (
 describe('getTimelineItems', () => {
   test('maps each entry type to its card, keeping the server order', () => {
     const items = getTimelineItems({
-      entries: [
-        comment(9),
-        classMasking,
-        identificationEntry(2),
-        predictionEntry(6),
-      ],
+      entries: [classMasking, identificationEntry(2), predictionEntry(6)],
       identifications: [],
       predictions: [],
     })
 
     expect(items.map((item) => item.type)).toEqual([
-      'review',
       'algorithm_result',
       'identification',
       'prediction',
     ])
-  })
-
-  test('leaves out a review aspect it has no card for', () => {
-    const items = getTimelineItems({
-      entries: [{ ...comment(8), subtype: 'grouping' } as never],
-      identifications: [],
-      predictions: [],
-    })
-
-    expect(items).toEqual([])
   })
 
   test("reuses the occurrence's own records, which carry the viewer's permissions", () => {
