@@ -2964,7 +2964,12 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 
 @final
 class Classification(BaseModel):
-    """The output of a classifier"""
+    """A taxon classification of one detection: the taxon a classifier or a post-processing run assigned it.
+
+    ``job`` records the run that wrote it, when there was one. ``algorithm_result`` is the
+    post-processing result the row was created for, so the occurrence history can show a run
+    with the classifications it produced; classifications from a pipeline leave it empty.
+    """
 
     project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
@@ -2996,7 +3001,16 @@ class Classification(BaseModel):
         null=True,
         related_name="classifications",
     )
-    # job = models.CharField(max_length=255, null=True)
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="classifications"
+    )
+    algorithm_result = models.ForeignKey(
+        "main.AlgorithmResult",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classifications",
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -3190,11 +3204,8 @@ class Detection(BaseModel):
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
-    # detection_job = models.ForeignKey(
-    #     "Job",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    # )
+    # The run that wrote this detection, when there was one.
+    job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="detections")
 
     similarity_vector = models.JSONField(null=True, blank=True)
 

@@ -672,6 +672,24 @@ class TestPipeline(TestCase):
 
         # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
+    def test_save_results_records_the_job_on_the_rows_it_creates(self):
+        from ami.jobs.models import Job
+
+        first_job = Job.objects.create(project=self.project, name="First run", pipeline=self.pipeline)
+        second_job = Job.objects.create(project=self.project, name="Second run", pipeline=self.pipeline)
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+
+        save_results(results, job_id=first_job.pk)
+        # A second run returning the same boxes and labels reuses the rows, which keep the first job.
+        save_results(results, job_id=second_job.pk)
+
+        detections = Detection.objects.filter(source_image__in=self.test_images)
+        classifications = Classification.objects.filter(detection__in=detections)
+        self.assertTrue(detections.exists())
+        self.assertTrue(classifications.exists())
+        self.assertEqual(set(detections.values_list("job_id", flat=True)), {first_job.pk})
+        self.assertEqual(set(classifications.values_list("job_id", flat=True)), {first_job.pk})
+
     def test_skip_existing_when_all_matching(self):
         """
         When processing images, skip images that have already been processed by the same set of algorithms.
