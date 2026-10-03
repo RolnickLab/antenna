@@ -4,7 +4,7 @@ import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
 import {
   getFallbackTimelineItems,
-  getJobConfigSummary,
+  getJobSettings,
   getResultPrediction,
   getTimelineItems,
   ServerOccurrenceHistoryEntry,
@@ -22,7 +22,9 @@ const base = {
   is_current: null,
   job: null,
   score: null,
+  source_algorithm: null,
   subtype: null,
+  taxa_list: null,
   taxon: null,
   taxon_before: null,
   timestamp: '2026-04-29T22:00:00',
@@ -188,7 +190,7 @@ describe('getTimelineItems', () => {
       {
         applied: true,
         comment: 'Looks right',
-        user: { id: '9', name: 'Unnamed user' },
+        user: { id: '9', name: 'Anonymous user' },
         userPermissions: [],
       }
     )
@@ -196,7 +198,11 @@ describe('getTimelineItems', () => {
 
   test('names the result that superseded a demoted prediction', () => {
     const items = getTimelineItems({
-      entries: [classMasking, predictionEntry(6, XESTIA, 5), predictionEntry(8)],
+      entries: [
+        classMasking,
+        predictionEntry(6, XESTIA, 5),
+        predictionEntry(8),
+      ],
       identifications: [],
       predictions: [],
     })
@@ -331,25 +337,30 @@ describe('getOccurrenceHistoryQueryKey', () => {
   })
 })
 
-describe('getJobConfigSummary', () => {
-  test('lists the settings a job ran with, leaving out unset ones', () => {
+describe('getJobSettings', () => {
+  test('lists the settings a job ran with, leaving out unset ones and those shown elsewhere', () => {
     expect(
-      getJobConfigSummary({
+      getJobSettings({
         config: {
           occurrence_id: 4,
+          reweight: true,
           size_threshold: 0.01,
           source_image_collection_id: null,
+          taxa_list_id: 2,
         },
         id: 1,
         name: 'Size filter',
       })
-    ).toBe('occurrence_id: 4, size_threshold: 0.01')
+    ).toEqual([
+      { key: 'occurrence_id', value: 4 },
+      { key: 'reweight', value: true },
+    ])
   })
 
   test('is empty for a job without settings', () => {
-    expect(getJobConfigSummary({ config: null, id: 1, name: 'Pipeline' })).toBe(
-      ''
+    expect(getJobSettings({ config: null, id: 1, name: 'Pipeline' })).toEqual(
+      []
     )
-    expect(getJobConfigSummary(null)).toBe('')
+    expect(getJobSettings(null)).toEqual([])
   })
 })

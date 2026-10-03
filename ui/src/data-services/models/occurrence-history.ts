@@ -21,6 +21,11 @@ export interface ServerHistoryAlgorithm {
   name: string
 }
 
+export interface ServerHistoryTaxaList {
+  id: number
+  name: string
+}
+
 export interface ServerHistoryJob {
   /** The settings a post-processing job ran with; null for other jobs. */
   config: Record<string, unknown> | null
@@ -84,7 +89,11 @@ interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
   job: ServerHistoryJob | null
   payload: Payload
   score: number | null
+  /** For a class masking result: the classifier whose predictions the run re-scored. */
+  source_algorithm: ServerHistoryAlgorithm | null
   subtype: Subtype
+  /** For a class masking result: the species list the run kept. */
+  taxa_list: ServerHistoryTaxaList | null
   taxon: ServerHistoryTaxon | null
   taxon_before: ServerHistoryTaxon | null
   timestamp: string
@@ -381,14 +390,25 @@ export const getResultPrediction = (
   }
 }
 
-/** A job's settings as "name: value" pairs, leaving out unset ones, for a one-line summary. */
-export const getJobConfigSummary = (job: ServerHistoryJob | null) =>
+export interface JobSetting {
+  key: string
+  value: unknown
+}
+
+/** Settings the result card already shows in a row of their own. */
+const SETTINGS_SHOWN_ELSEWHERE = [
+  'algorithm_id',
+  'size_threshold',
+  'taxa_list_id',
+]
+
+/** A job's remaining settings, leaving out unset ones and those the card shows elsewhere. */
+export const getJobSettings = (job: ServerHistoryJob | null): JobSetting[] =>
   Object.entries(job?.config ?? {})
-    .filter(([, value]) => value !== null && value !== undefined)
-    .map(
-      ([name, value]) =>
-        `${name}: ${
-          typeof value === 'object' ? JSON.stringify(value) : `${value}`
-        }`
+    .filter(
+      ([key, value]) =>
+        value !== null &&
+        value !== undefined &&
+        !SETTINGS_SHOWN_ELSEWHERE.includes(key)
     )
-    .join(', ')
+    .map(([key, value]) => ({ key, value }))

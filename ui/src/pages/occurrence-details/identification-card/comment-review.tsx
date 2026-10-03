@@ -4,16 +4,9 @@ import { IdentificationCard } from 'nova-ui-kit'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { getUserLabel } from 'utils/user/getUserLabel'
-import { UserInfo } from 'utils/user/types'
 import { HistoryTime, HistoryTypeBadge } from './history-stats'
 
-export const CommentReview = ({
-  currentUser,
-  entry,
-}: {
-  currentUser?: UserInfo
-  entry: CommentReviewEntry
-}) => (
+export const CommentReview = ({ entry }: { entry: CommentReviewEntry }) => (
   <div>
     <HistoryTime
       label={getFormatedDateTimeString({ date: new Date(entry.timestamp) })}
@@ -30,7 +23,7 @@ export const CommentReview = ({
         entry.withdrawn ? translate(STRING.HISTORY_WITHDRAWN) : undefined
       }
       title={translate(STRING.HISTORY_COMMENT_BY, {
-        name: getUserLabel(entry.user, currentUser),
+        name: getUserLabel(entry.user),
       })}
       titleAddon={
         <HistoryTypeBadge label={translate(STRING.HISTORY_COMMENT)} />
