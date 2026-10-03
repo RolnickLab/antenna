@@ -52,7 +52,7 @@ interface ServerDeterminationChangePayload {
 
 export interface ServerClassMaskingPayload
   extends ServerDeterminationChangePayload {
-  /** The share of the source classifier's probability on classes outside the species list. */
+  /** The share of the source classifier's probability outside the species list. */
   excluded_probability: number
   /** Where the class that wins after masking ranked before it; 1 means it was already the top. */
   new_winner_original_rank: number | null
