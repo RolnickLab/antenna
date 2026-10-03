@@ -2158,12 +2158,11 @@ class HistoryClassificationSerializer(serializers.Serializer):
 class OccurrenceHistoryEntrySerializer(serializers.Serializer):
     """One entry of an occurrence's history, newest first. ``type`` says which table it came from."""
 
-    type = serializers.ChoiceField(choices=["algorithm_result", "review", "identification", "prediction"])
+    type = serializers.ChoiceField(choices=["algorithm_result", "identification", "prediction"])
     id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
     timestamp = serializers.DateTimeField()
     subtype = serializers.CharField(
-        allow_null=True,
-        help_text="An algorithm result's kind (class_masking, size_filter) or a review's aspect (comment).",
+        allow_null=True, help_text="An algorithm result's kind (class_masking, size_filter)."
     )
     user = HistoryUserSerializer(allow_null=True)
     algorithm = HistoryAlgorithmSerializer(allow_null=True)
@@ -2172,25 +2171,24 @@ class OccurrenceHistoryEntrySerializer(serializers.Serializer):
         allow_null=True, help_text="The identified or predicted taxon, or the determination after a result."
     )
     taxon_before = HistoryTaxonSerializer(allow_null=True, help_text="The determination before a result.")
-    score = serializers.FloatField(allow_null=True, help_text="A prediction's score.")
+    score = serializers.FloatField(
+        allow_null=True, help_text="A prediction's score, or a result's headline value (see its kind)."
+    )
     payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
     classifications = HistoryClassificationSerializer(
         many=True, help_text="For a result: the classifications its run created, best score first."
     )
-    taxa_list = HistoryTaxaListSerializer(allow_null=True, help_text="For class masking: the species list used.")
-    source_algorithm = HistoryAlgorithmSerializer(
-        allow_null=True, help_text="For class masking: the classifier whose predictions were re-scored."
+    original_taxon = HistoryTaxonSerializer(
+        allow_null=True, help_text="For class masking: the source classifier's top taxon before masking."
     )
-    verdict = serializers.CharField(allow_null=True, help_text="A review's verdict: confirmed or rejected.")
+    taxa_list = HistoryTaxaListSerializer(
+        allow_null=True, help_text="For class masking: the species list used, from the job's settings."
+    )
+    source_algorithm = HistoryAlgorithmSerializer(
+        allow_null=True, help_text="For class masking: the classifier re-scored, from the job's settings."
+    )
     comment = serializers.CharField(allow_blank=True)
     withdrawn = serializers.BooleanField()
     is_current = serializers.BooleanField(
         allow_null=True, help_text="For a result: whether it is the latest of its kind, not replaced by a later run."
     )
-
-
-class OccurrenceReviewCreateSerializer(serializers.Serializer):
-    """A review to add to an occurrence. Only comments are written here."""
-
-    aspect = serializers.ChoiceField(choices=["comment"], default="comment")
-    comment = serializers.CharField(max_length=10000, trim_whitespace=True)

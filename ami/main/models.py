@@ -43,7 +43,7 @@ from ami.main.models_future.filters import (
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
-from ami.main.schemas import validate_result_data, validate_review_payload
+from ami.main.schemas import validate_result_data
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -3949,12 +3949,6 @@ class Occurrence(BaseModel):
             else:
                 self.save(update_determination=False)
 
-    def check_custom_permission(self, user, action: str) -> bool:
-        # Leaving a comment (the reviews action) takes the rights to identify the occurrence.
-        if action == "reviews":
-            return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, self.get_project())
-        return super().check_custom_permission(user, action)
-
     class Meta:
         ordering = ["-determination_score"]
         indexes = [
@@ -4080,10 +4074,11 @@ class AlgorithmResult(BaseModel):
     The determination never reads this table. A run that changes an occurrence's taxon does so
     through the ``Classification`` rows it creates, and those rows point back here through
     ``Classification.algorithm_result`` so the history can show a run with what it changed.
-    ``data`` holds the details, validated against the schema for ``kind`` (ami/main/schemas.py).
-    A new result for the same occurrence, algorithm and kind becomes the current one and the
-    earlier ones stay as history. Write through ``AlgorithmResult.objects.record`` or
-    ``record_many``. See #1431.
+    ``data`` holds the run's own figures, validated against the model for ``kind``
+    (ami/main/schemas.py), and ``value`` repeats the one figure lists filter and sort on. A new
+    result for the same occurrence, algorithm and kind becomes the current one and the earlier
+    ones stay as history. Write through ``AlgorithmResult.objects.record`` or ``record_many``.
+    Tracking and rank roll-ups are the next kinds expected. See #1431.
     """
 
     class Kind(models.TextChoices):
@@ -4103,6 +4098,9 @@ class AlgorithmResult(BaseModel):
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results"
     )
     kind = models.CharField(max_length=32, choices=Kind.choices)
+    # The kind's headline figure, for filtering and sorting: the excluded probability for class
+    # masking, the relative size for the size filter.
+    value = models.FloatField(null=True, blank=True)
     data = models.JSONField(default=dict, blank=True)
     is_current = models.BooleanField(default=True)
     timestamp = models.DateTimeField(default=timezone.now)
@@ -4119,6 +4117,11 @@ class AlgorithmResult(BaseModel):
         ]
         indexes = [
             models.Index(fields=["occurrence", "-timestamp"], name="algorithm_result_occ_time"),
+            models.Index(
+                fields=["project", "kind", "value"],
+                condition=Q(is_current=True, value__isnull=False),
+                name="algorithm_result_current_value",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -4126,65 +4129,6 @@ class AlgorithmResult(BaseModel):
 
     def save(self, *args, **kwargs):
         self.data = validate_result_data(self.kind, self.data)
-        if self.project_id is None:
-            self.project_id = occurrence_project_ids([self.occurrence])[self.occurrence_id]
-        if self.project_id is None:
-            raise ValueError("The occurrence has no project, directly or through its station.")
-        super().save(*args, **kwargs)
-
-
-@final
-class ValidationReview(BaseModel):
-    """What a person said about one occurrence: for now a comment; tracking adds its grouping verdict.
-
-    ``aspect`` names what was reviewed and ``verdict`` the person's call on it; a comment has
-    no verdict. ``reviewed_result`` is the algorithm result the review answers, when there is
-    one. ``withdrawn`` marks a review taken back without deleting it. See #1431.
-    """
-
-    class Aspect(models.TextChoices):
-        COMMENT = "comment"
-
-    class Verdict(models.TextChoices):
-        CONFIRMED = "confirmed"
-        REJECTED = "rejected"
-
-    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="validation_reviews")
-    # Indexed together with the timestamp, below.
-    occurrence = models.ForeignKey(
-        Occurrence, on_delete=models.CASCADE, related_name="validation_reviews", db_index=False
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="validation_reviews"
-    )
-    aspect = models.CharField(max_length=32, choices=Aspect.choices)
-    verdict = models.CharField(max_length=16, choices=Verdict.choices, null=True, blank=True)
-    reviewed_result = models.ForeignKey(
-        AlgorithmResult, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviews"
-    )
-    payload = models.JSONField(default=dict, blank=True)
-    comment = models.TextField(blank=True, default="")
-    withdrawn = models.BooleanField(default=False)
-    timestamp = models.DateTimeField(default=timezone.now)
-
-    class Meta:
-        constraints = [
-            # A comment carries text and no verdict; every other aspect needs a verdict.
-            models.CheckConstraint(
-                check=(Q(aspect="comment", verdict__isnull=True) & ~Q(comment=""))
-                | (~Q(aspect="comment") & Q(verdict__isnull=False)),
-                name="validation_review_verdict_by_aspect",
-            ),
-        ]
-        indexes = [
-            models.Index(fields=["occurrence", "-timestamp"], name="validation_review_occ_time"),
-        ]
-
-    def __str__(self) -> str:
-        return f"#{self.pk} {self.aspect} {self.verdict or ''} by User #{self.user_id}".strip()
-
-    def save(self, *args, **kwargs):
-        self.payload = validate_review_payload(self.aspect, self.payload)
         if self.project_id is None:
             self.project_id = occurrence_project_ids([self.occurrence])[self.occurrence_id]
         if self.project_id is None:
