@@ -458,6 +458,48 @@ class TestPostProcessingClassMasking(TestCase):
             "Only the occurrence whose determination changed (occ1) counts",
         )
 
+    def test_rescored_unchanged_winner_keeps_the_occurrence_visible(self):
+        """When masking re-scores a classification without changing its winner, the
+        occurrence takes the new score, so a winner that rises above the project's
+        score threshold is no longer hidden by the stale lower score. See #1461."""
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+        taxa_list = TaxaList.objects.create(name="Visibility test")
+        taxa_list.taxa.set(self.species_taxa[:2])  # excludes index 2
+
+        new_algorithm = Algorithm.objects.create(
+            name="masked_visibility",
+            key="masked_visibility_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+        # Index 0 wins before and after masking. Its original probability is below the
+        # threshold (about 0.44); dropping the excluded index 2 and renormalising lifts
+        # it above (about 0.73).
+        logits = [1.0, 0.0, 0.9]
+        det, occ = self._detection_with_occurrence()
+        clf = self._create_classification_with_logits(det, self.species_taxa[0], _softmax(logits), logits)
+        occ.save(update_determination=True)
+        self.assertEqual(occ.determination, self.species_taxa[0])
+        self.assertLess(occ.determination_score, 0.5)
+        visible = Occurrence.objects.filter(pk=occ.pk).apply_default_filters(project=self.project, request=None)
+        self.assertFalse(visible.exists(), "Sanity: hidden by the threshold before masking")
+
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk=clf.pk),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+        masked = Classification.objects.get(detection=det, algorithm=new_algorithm, terminal=True)
+        self.assertGreater(masked.score, 0.5)
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, self.species_taxa[0], "Winner is unchanged")
+        self.assertAlmostEqual(occ.determination_score, masked.score)
+        self.assertTrue(visible.exists(), "The re-scored occurrence passes the default score filter")
+
     # ----- reweight toggle ------------------------------------------------
 
     def test_reweight_false_winner_identical_scores_differ(self):
