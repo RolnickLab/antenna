@@ -42,6 +42,7 @@ from ami.main.models_future.filters import (
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
+from ami.main.schemas import validate_result_data, validate_review_payload
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -3813,6 +3814,208 @@ class Occurrence(BaseModel):
             # on large projects). DESC = NULLS FIRST to match the ORM's ORDER BY.
             models.Index(fields=["project", "-determination_score"], name="occur_proj_score_desc_idx"),
         ]
+
+
+def occurrence_project_ids(occurrences: typing.Iterable["Occurrence"]) -> dict[int, int | None]:
+    """The project each occurrence belongs to: its own, or its station's when it has none.
+
+    One query for every occurrence that lacks a project of its own; none when all have one.
+    The value is None for an occurrence with neither, which callers skip with a warning.
+    """
+    occurrences = list(occurrences)
+    projects = {occurrence.pk: occurrence.project_id for occurrence in occurrences}
+    deployment_ids = {
+        occurrence.deployment_id
+        for occurrence in occurrences
+        if occurrence.project_id is None and occurrence.deployment_id is not None
+    }
+    if deployment_ids:
+        station_projects = dict(Deployment.objects.filter(pk__in=deployment_ids).values_list("pk", "project_id"))
+        for occurrence in occurrences:
+            if occurrence.project_id is None and occurrence.deployment_id is not None:
+                projects[occurrence.pk] = station_projects.get(occurrence.deployment_id)
+    return projects
+
+
+class AlgorithmResultQuerySet(BaseQuerySet):
+    def for_occurrence(self, occurrence):
+        return self.filter(occurrence=occurrence)
+
+    def current(self):
+        return self.filter(is_current=True)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.data = validate_result_data(obj.kind, obj.data)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def record(self, **fields) -> "AlgorithmResult":
+        """Insert one result as the current one for its occurrence, algorithm and kind."""
+        results = self.record_many([self.model(**fields)])
+        if not results:
+            raise ValueError("The occurrence has no project, directly or through its station.")
+        return results[0]
+
+    def record_many(self, results: typing.Iterable["AlgorithmResult"]) -> list["AlgorithmResult"]:
+        """Insert results as current, keeping each occurrence's earlier result of the same algorithm and kind.
+
+        Rows are only inserted, never rewritten, apart from clearing ``is_current`` on the result
+        each new one replaces. A result whose occurrence has no project, directly or through
+        its station, is skipped with a warning rather than failing a run that has already
+        changed data. The returned list holds the results that were written, in order.
+        """
+        results = list(results)
+        if not results:
+            return []
+        projects = occurrence_project_ids(result.occurrence for result in results if result.project_id is None)
+        kept: list[AlgorithmResult] = []
+        groups: dict[tuple[int, str], set[int]] = collections.defaultdict(set)
+        for result in results:
+            if result.project_id is None:
+                result.project_id = projects.get(result.occurrence_id)
+            if result.project_id is None:
+                logger.warning(
+                    f"Not recording the {result.kind} result for Occurrence #{result.occurrence_id}: "
+                    "it has no project, directly or through its station."
+                )
+                continue
+            key = (result.algorithm_id, result.kind)
+            if result.occurrence_id in groups[key]:
+                raise ValueError(
+                    f"Two {result.kind} results for Occurrence #{result.occurrence_id} "
+                    "from one algorithm in one write."
+                )
+            groups[key].add(result.occurrence_id)
+            result.is_current = True
+            kept.append(result)
+        if not kept:
+            return []
+        with transaction.atomic():
+            for (algorithm_id, kind), occurrence_ids in groups.items():
+                self.filter(
+                    occurrence_id__in=occurrence_ids, algorithm_id=algorithm_id, kind=kind, is_current=True
+                ).update(is_current=False)
+            return self.bulk_create(kept)
+
+
+@final
+class AlgorithmResult(BaseModel):
+    """What a post-processing run decided about one occurrence: a record of the run, never an input to it.
+
+    The determination never reads this table. A run that changes an occurrence's taxon does so
+    through the ``Classification`` rows it creates, and those rows point back here through
+    ``Classification.algorithm_result`` so the history can show a run with what it changed.
+    ``data`` holds the details, validated against the schema for ``kind`` (ami/main/schemas.py).
+    A new result for the same occurrence, algorithm and kind becomes the current one and the
+    earlier ones stay as history. Write through ``AlgorithmResult.objects.record`` or
+    ``record_many``. See #1431.
+    """
+
+    class Kind(models.TextChoices):
+        CLASS_MASKING = "class_masking"
+        SIZE_FILTER = "size_filter"
+
+    # Copied from the occurrence (or its station) when the result is written, so per-project
+    # queries and permission checks need no join.
+    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="algorithm_results")
+    # Indexed together with the timestamp, below.
+    occurrence = models.ForeignKey(
+        Occurrence, on_delete=models.CASCADE, related_name="algorithm_results", db_index=False
+    )
+    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="algorithm_results")
+    # The run that wrote the result. Deleting the job keeps the result, with no run to link to.
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results"
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    data = models.JSONField(default=dict, blank=True)
+    is_current = models.BooleanField(default=True)
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    objects = AlgorithmResultQuerySet.as_manager()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["occurrence", "algorithm", "kind"],
+                condition=Q(is_current=True),
+                name="algorithm_result_current_occurrence",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["occurrence", "-timestamp"], name="algorithm_result_occ_time"),
+        ]
+
+    def __str__(self) -> str:
+        return f"#{self.pk} {self.kind} for Occurrence #{self.occurrence_id} from Algorithm #{self.algorithm_id}"
+
+    def save(self, *args, **kwargs):
+        self.data = validate_result_data(self.kind, self.data)
+        if self.project_id is None:
+            self.project_id = occurrence_project_ids([self.occurrence])[self.occurrence_id]
+        if self.project_id is None:
+            raise ValueError("The occurrence has no project, directly or through its station.")
+        super().save(*args, **kwargs)
+
+
+@final
+class ValidationReview(BaseModel):
+    """What a person said about one occurrence: for now a comment; tracking adds its grouping verdict.
+
+    ``aspect`` names what was reviewed and ``verdict`` the person's call on it; a comment has
+    no verdict. ``reviewed_result`` is the algorithm result the review answers, when there is
+    one. ``withdrawn`` marks a review taken back without deleting it. See #1431.
+    """
+
+    class Aspect(models.TextChoices):
+        COMMENT = "comment"
+
+    class Verdict(models.TextChoices):
+        CONFIRMED = "confirmed"
+        REJECTED = "rejected"
+
+    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="validation_reviews")
+    # Indexed together with the timestamp, below.
+    occurrence = models.ForeignKey(
+        Occurrence, on_delete=models.CASCADE, related_name="validation_reviews", db_index=False
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="validation_reviews"
+    )
+    aspect = models.CharField(max_length=32, choices=Aspect.choices)
+    verdict = models.CharField(max_length=16, choices=Verdict.choices, null=True, blank=True)
+    reviewed_result = models.ForeignKey(
+        AlgorithmResult, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviews"
+    )
+    payload = models.JSONField(default=dict, blank=True)
+    comment = models.TextField(blank=True, default="")
+    withdrawn = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            # A comment carries text and no verdict; every other aspect needs a verdict.
+            models.CheckConstraint(
+                check=(Q(aspect="comment", verdict__isnull=True) & ~Q(comment=""))
+                | (~Q(aspect="comment") & Q(verdict__isnull=False)),
+                name="validation_review_verdict_by_aspect",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["occurrence", "-timestamp"], name="validation_review_occ_time"),
+        ]
+
+    def __str__(self) -> str:
+        return f"#{self.pk} {self.aspect} {self.verdict or ''} by User #{self.user_id}".strip()
+
+    def save(self, *args, **kwargs):
+        self.payload = validate_review_payload(self.aspect, self.payload)
+        if self.project_id is None:
+            self.project_id = occurrence_project_ids([self.occurrence])[self.occurrence_id]
+        if self.project_id is None:
+            raise ValueError("The occurrence has no project, directly or through its station.")
+        super().save(*args, **kwargs)
 
 
 def update_occurrence_determination(
