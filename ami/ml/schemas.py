@@ -168,6 +168,23 @@ class DetectionRequest(pydantic.BaseModel):
     algorithm: AlgorithmReference
 
 
+class EmbeddingResponse(pydantic.BaseModel):
+    """A feature vector for one detection, and the algorithm whose backbone produced it.
+
+    It is carried on the detection rather than on a classification, so storing it can never
+    add a prediction. Only vectors from the same algorithm are comparable.
+    """
+
+    features: list[float] = pydantic.Field(description="The feature vector.")
+    algorithm: AlgorithmReference
+
+    @pydantic.validator("features")
+    def _features_not_empty(cls, v):
+        if not v:
+            raise ValueError("features must contain at least one value")
+        return v
+
+
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
     bbox: BoundingBox | None = None
@@ -176,6 +193,13 @@ class DetectionResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     crop_image_url: str | None = None
     classifications: list[ClassificationResponse] = []
+    embeddings: list[EmbeddingResponse] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Feature vectors for this detection, at most one per algorithm, including detections "
+            "the moth/non-moth filter rejected. Only vectors from the same algorithm are comparable."
+        ),
+    )
 
 
 class PipelineRequestConfigParameters(dict):
