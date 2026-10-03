@@ -1,11 +1,12 @@
 """What the small size filter writes: a "Not identifiable" classification per flagged detection, in batches."""
 
 import logging
+from unittest import mock
 
 from django.test import TestCase
 
 from ami.jobs.models import Job, PostProcessingJob
-from ami.main.models import Detection, Occurrence, SourceImage, Taxon
+from ami.main.models import AlgorithmResult, Detection, Occurrence, SourceImage, Taxon
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 
@@ -89,3 +90,59 @@ class SizeFilterJobTestCase(SizeFilterTestCase):
         classification = occurrence.detections.get().classifications.get(taxon__name="Not identifiable")
         self.assertEqual(classification.job_id, job.pk)
         self.assertEqual(job.classifications.get().pk, classification.pk)
+        self.assertEqual(job.algorithm_results.get().pk, classification.algorithm_result_id)
+
+
+class SizeFilterResultsTestCase(SizeFilterTestCase):
+    """The size filter leaves one algorithm result per occurrence it flags, written with the batch that flags it."""
+
+    def records(self):
+        return AlgorithmResult.objects.filter(kind=AlgorithmResult.Kind.SIZE_FILTER).order_by("pk")
+
+    def test_a_flagged_occurrence_gets_one_result_linked_to_the_classifications_it_created(self):
+        occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
+        Detection.objects.create(
+            source_image=self.captures[1],
+            bbox=[0, 0, 12, 12],
+            timestamp=self.captures[1].timestamp,
+            occurrence=occurrence,
+        )
+
+        self.run_filter(occurrence)
+
+        result = self.records().get()
+        detection_ids = sorted(occurrence.detections.values_list("pk", flat=True))
+        self.assertEqual((result.occurrence_id, result.project_id), (occurrence.pk, self.project.pk))
+        self.assertEqual(result.algorithm.key, "small_size_filter")
+        self.assertEqual(
+            result.data,
+            {
+                "size_threshold": 0.01,
+                "detection_ids": detection_ids,
+                "taxon_before_id": self.taxon.pk,
+                "taxon_after_id": Taxon.objects.get(name="Not identifiable").pk,
+            },
+        )
+        self.assertEqual(sorted(result.classifications.values_list("detection_id", flat=True)), detection_ids)
+
+    def test_a_second_run_replaces_the_current_result_and_keeps_the_first(self):
+        occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
+        for _ in range(2):
+            self.run_filter(occurrence)
+        first, second = self.records()
+        self.assertEqual((first.is_current, second.is_current), (False, True))
+
+    def test_an_occurrence_with_nothing_flagged_gets_no_result(self):
+        occurrence = self._singleton(self.captures[0], [0, 0, 500, 500])
+        self.run_filter(occurrence)
+        self.assertFalse(self.records().exists())
+
+    def test_a_batch_that_fails_leaves_neither_its_classifications_nor_its_result(self):
+        occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
+
+        with mock.patch.object(Occurrence, "save", side_effect=RuntimeError("determination update failed")):
+            with self.assertRaises(RuntimeError):
+                self.run_filter(occurrence)
+
+        self.assertFalse(self.records().exists())
+        self.assertFalse(occurrence.detections.get().classifications.filter(taxon__name="Not identifiable").exists())

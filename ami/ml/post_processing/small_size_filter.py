@@ -1,9 +1,19 @@
 import pydantic
+from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
+from ami.main.models import (
+    AlgorithmResult,
+    Classification,
+    Detection,
+    Occurrence,
+    SourceImageCollection,
+    Taxon,
+    TaxonRank,
+)
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.post_processing.results import BatchResults
 from ami.ml.schemas import BoundingBox
 
 
@@ -90,33 +100,43 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         updated_occurrence_ids: set[int] = set()
         modified_occurrences = 0
         checked = 0
+        # One algorithm result per flagged occurrence, written with the batch that flags it.
+        results = BatchResults(
+            kind=AlgorithmResult.Kind.SIZE_FILTER,
+            algorithm=self.algorithm,
+            job=self.job,
+            data={"size_threshold": threshold},
+        )
 
         def flush(i: int) -> None:
-            """Write the rows gathered so far and report progress as of detection ``i``."""
+            """Write the rows gathered so far, in one transaction, and report progress as of detection ``i``."""
             nonlocal checked, modified_detections, modified_occurrences
             checked = i
             modified_detections += len(detections_to_update)
 
-            self.logger.info(f"Creating {len(classifications_to_create)} new classifications")
-            Classification.objects.bulk_create(classifications_to_create)
-            classifications_to_create.clear()
+            with transaction.atomic():
+                results.start_batch(occcurrences_to_update, classifications_to_create)
+                self.logger.info(f"Creating {len(classifications_to_create)} new classifications")
+                Classification.objects.bulk_create(classifications_to_create)
+                classifications_to_create.clear()
 
-            self.logger.info(f"Marking {len(detections_to_update)} detections as {not_identifiable_taxon.name}")
-            for det in detections_to_update:
-                det.updated_at = timezone.now()
-            Detection.objects.bulk_update(detections_to_update, ["updated_at"])
-            detections_to_update.clear()
+                self.logger.info(f"Marking {len(detections_to_update)} detections as {not_identifiable_taxon.name}")
+                for det in detections_to_update:
+                    det.updated_at = timezone.now()
+                Detection.objects.bulk_update(detections_to_update, ["updated_at"])
+                detections_to_update.clear()
 
-            self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
-            for occ in occcurrences_to_update:
-                # Count an occurrence only when flagging its detection actually
-                # changes the determination. Re-saving recomputes it in place, so
-                # an occurrence pinned to a human identification keeps its taxon
-                # and must not inflate the metric.
-                prev_determination_id = occ.determination_id
-                occ.save(update_determination=True)
-                if occ.pk is not None and occ.determination_id != prev_determination_id:
-                    updated_occurrence_ids.add(occ.pk)
+                self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
+                for occ in occcurrences_to_update:
+                    # Count an occurrence only when flagging its detection actually
+                    # changes the determination. Re-saving recomputes it in place, so
+                    # an occurrence pinned to a human identification keeps its taxon
+                    # and must not inflate the metric.
+                    prev_determination_id = occ.determination_id
+                    occ.save(update_determination=True)
+                    if occ.pk is not None and occ.determination_id != prev_determination_id:
+                        updated_occurrence_ids.add(occ.pk)
+                results.finish_batch(occcurrences_to_update)
             modified_occurrences = len(updated_occurrence_ids)
             occcurrences_to_update.clear()
 
@@ -176,6 +196,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 detections_to_update.add(det)
                 if det.occurrence is not None:
                     occcurrences_to_update.add(det.occurrence)
+                    results.note(det.occurrence, det.pk)
                 self.logger.debug(f"Marking detection {det.pk} as {not_identifiable_taxon.name}")
 
         flush(i)

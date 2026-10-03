@@ -8,9 +8,10 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.main.models import AlgorithmResult, Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.post_processing.results import BatchResults
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -79,6 +80,10 @@ def make_classifications_filtered_by_taxa_list(
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
 
+    Every occurrence with a re-scored classification gets one algorithm result, written in
+    the same transaction as the batch that changes it, and its new classifications point at
+    that result (see ``BatchResults``).
+
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
     taxa_in_list = set(taxa_list.taxa.all())
@@ -121,6 +126,13 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
+    results = BatchResults(
+        kind=AlgorithmResult.Kind.CLASS_MASKING,
+        algorithm=new_algorithm,
+        job=job,
+        data={"taxa_list_id": taxa_list.pk, "source_algorithm_id": algorithm.pk},
+        timestamp=timestamp,
+    )
 
     # Sizing the scope and expanding the category map both take time on a large
     # classifier, so report before touching a row.
@@ -196,6 +208,7 @@ def make_classifications_filtered_by_taxa_list(
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
                     occurrences_to_update.add(detection.occurrence)
+                    results.note(detection.occurrence, detection.pk)
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
@@ -204,6 +217,7 @@ def make_classifications_filtered_by_taxa_list(
             with transaction.atomic():
                 if classifications_to_demote:
                     Classification.objects.bulk_update(classifications_to_demote, ["terminal", "updated_at"])
+                results.start_batch(occurrences_to_update, classifications_to_add)
                 if classifications_to_add:
                     Classification.objects.bulk_create(classifications_to_add)
                 # Count an occurrence only when saving its new terminal classification
@@ -215,6 +229,7 @@ def make_classifications_filtered_by_taxa_list(
                     occurrence.save(update_determination=True)
                     if occurrence.pk is not None and occurrence.determination_id != prev:
                         changed_occurrence_ids.add(occurrence.pk)
+                results.finish_batch(occurrences_to_update)
 
             classifications_to_demote.clear()
             classifications_to_add.clear()
