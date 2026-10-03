@@ -226,6 +226,7 @@ export enum STRING {
   MESSAGE_VALUE_MISSING,
 
   /* NAV_ITEM */
+  NO,
   NAV_ITEM_ABOUT,
   NAV_ITEM_ALGORITHMS,
   NAV_ITEM_CAPTURE_SETS,
@@ -328,9 +329,12 @@ export enum STRING {
   HISTORY_DETERMINATION_CHANGED,
   HISTORY_DETERMINATION_UNCHANGED,
   HISTORY_EMPTY,
-  HISTORY_JOB_SETTINGS,
+  HISTORY_MASKING_SUBTITLE,
   HISTORY_LOAD_ERROR,
   HISTORY_PREDICTION,
+  HISTORY_SETTING_CAPTURE_SET,
+  HISTORY_SETTING_OCCURRENCE,
+  HISTORY_SETTING_REWEIGHT,
   HISTORY_SIZE_FILTER,
   HISTORY_SIZE_THRESHOLD,
   HISTORY_SPECIES_LIST,
@@ -388,7 +392,6 @@ export enum STRING {
   TIP,
   UNKNOWN_ERROR,
   UNKNOWN,
-  UNNAMED_USER,
   UPDATING_DATA,
   UPLOAD_CAPTURES,
   USER_INFO,
@@ -399,6 +402,7 @@ export enum STRING {
   VIEW_IN_SESSION,
   VIEW_OCCURRENCES,
   VIEW_SETTINGS,
+  YES,
   YOU,
 }
 
@@ -661,6 +665,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
+  [STRING.NO]: 'No',
   [STRING.NAV_ITEM_ABOUT]: 'About',
   [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
   [STRING.NAV_ITEM_CAPTURE_SETS]: 'Capture sets',
@@ -783,10 +788,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.HISTORY_DETERMINATION_CHANGED]: '{{before}} → {{after}}',
   [STRING.HISTORY_DETERMINATION_UNCHANGED]: '{{name}} (unchanged)',
   [STRING.HISTORY_EMPTY]: 'Nothing has happened to this occurrence yet.',
-  [STRING.HISTORY_JOB_SETTINGS]: 'Settings',
+  [STRING.HISTORY_MASKING_SUBTITLE]: '{{algorithm}}, filtered by {{list}}',
   [STRING.HISTORY_LOAD_ERROR]:
     'Could not load the full history. Showing identifications and predictions only.',
   [STRING.HISTORY_PREDICTION]: 'Prediction',
+  [STRING.HISTORY_SETTING_CAPTURE_SET]: 'Capture set',
+  [STRING.HISTORY_SETTING_OCCURRENCE]: 'Occurrence',
+  [STRING.HISTORY_SETTING_REWEIGHT]: 'Re-weighted scores',
   [STRING.HISTORY_SIZE_FILTER]: 'Size filter',
   [STRING.HISTORY_SIZE_THRESHOLD]: 'Size threshold',
   [STRING.HISTORY_SPECIES_LIST]: 'Species list',
@@ -843,7 +851,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TIP]: 'Tip',
   [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UNKNOWN]: 'Unknown',
-  [STRING.UNNAMED_USER]: 'Unnamed user',
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.UPLOAD_CAPTURES]: 'Upload captures',
   [STRING.USER_INFO]: 'User info',
@@ -854,6 +861,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.VIEW_IN_SESSION]: 'View in session',
   [STRING.VIEW_OCCURRENCES]: 'View occurrences',
   [STRING.VIEW_SETTINGS]: 'View settings',
+  [STRING.YES]: 'Yes',
   [STRING.YOU]: 'You',
 }
 

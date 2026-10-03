@@ -1,7 +1,7 @@
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import {
   AlgorithmResultEntry,
-  getJobConfigSummary,
+  getJobSettings,
   getResultPrediction,
   ServerHistoryTaxon,
 } from 'data-services/models/occurrence-history'
@@ -32,9 +32,46 @@ const SUBTYPES = {
   size_filter: { icon: RulerIcon, label: STRING.HISTORY_SIZE_FILTER },
 }
 
+/** Labels for the job settings shown as rows; a setting not listed here shows its raw key. */
+const SETTING_LABELS: Partial<Record<string, STRING>> = {
+  occurrence_id: STRING.HISTORY_SETTING_OCCURRENCE,
+  reweight: STRING.HISTORY_SETTING_REWEIGHT,
+  source_image_collection_id: STRING.HISTORY_SETTING_CAPTURE_SET,
+}
+
 /** What to call a result's kind, e.g. "Class masking", for the card and for predictions it superseded. */
 export const getResultKindLabel = (entry: AlgorithmResultEntry) =>
   translate(SUBTYPES[entry.subtype].label)
+
+const formatSettingValue = (key: string, value: unknown) => {
+  if (typeof value === 'boolean') {
+    return translate(value ? STRING.YES : STRING.NO)
+  }
+  if (key.endsWith('_id')) {
+    return `#${value}`
+  }
+
+  return typeof value === 'object' ? JSON.stringify(value) : `${value}`
+}
+
+/** The card's subtitle: for class masking the classifier and species list, otherwise the algorithm's name. */
+const getSubTitle = (entry: AlgorithmResultEntry) => {
+  if (entry.subtype === 'class_masking') {
+    return translate(STRING.HISTORY_MASKING_SUBTITLE, {
+      algorithm:
+        entry.source_algorithm?.name ??
+        entry.algorithm?.name ??
+        translate(STRING.VALUE_NOT_AVAILABLE),
+      list:
+        entry.taxa_list?.name ??
+        translate(STRING.HISTORY_SPECIES_LIST_ID, {
+          id: `${entry.payload.taxa_list_id}`,
+        }),
+    })
+  }
+
+  return entry.algorithm?.name
+}
 
 /** The determination row, left out when there was no determination before or after. */
 const getDeterminationStats = (
@@ -92,9 +129,10 @@ export const AlgorithmResult = ({
               taxaListId: `${entry.payload.taxa_list_id}`,
             })}
           >
-            {translate(STRING.HISTORY_SPECIES_LIST_ID, {
-              id: `${entry.payload.taxa_list_id}`,
-            })}
+            {entry.taxa_list?.name ??
+              translate(STRING.HISTORY_SPECIES_LIST_ID, {
+                id: `${entry.payload.taxa_list_id}`,
+              })}
           </Link>
         ),
       })
@@ -110,8 +148,14 @@ export const AlgorithmResult = ({
     label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
     value: entry.payload.detection_ids.length,
   })
+  getJobSettings(entry.job).forEach(({ key, value }) => {
+    const label = SETTING_LABELS[key]
+    stats.push({
+      label: label !== undefined ? translate(label) : key,
+      value: formatSettingValue(key, value),
+    })
+  })
   if (entry.job) {
-    const configSummary = getJobConfigSummary(entry.job)
     stats.push({
       label: translate(STRING.FIELD_LABEL_JOB),
       value: (
@@ -126,12 +170,6 @@ export const AlgorithmResult = ({
         </Link>
       ),
     })
-    if (configSummary) {
-      stats.push({
-        label: translate(STRING.HISTORY_JOB_SETTINGS),
-        value: <span className="break-all">{configSummary}</span>,
-      })
-    }
   }
 
   return (
@@ -141,8 +179,8 @@ export const AlgorithmResult = ({
       />
       <IdentificationCard
         avatar={<Icon className="w-4 h-4 text-generic-white" />}
-        subTitle={entry.algorithm ? getResultKindLabel(entry) : undefined}
-        title={entry.algorithm?.name ?? getResultKindLabel(entry)}
+        subTitle={getSubTitle(entry)}
+        title={getResultKindLabel(entry)}
         titleAddon={
           <HistoryTypeBadge
             label={translate(STRING.HISTORY_ALGORITHM_RESULT)}
