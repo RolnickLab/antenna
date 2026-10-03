@@ -383,14 +383,19 @@ class TestPostProcessingClassMasking(TestCase):
         self.assertTrue(result.is_current)
         self.assertEqual(result.project_id, self.project.pk)
         self.assertTrue(result.algorithm.key.startswith(f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"))
+        # Index 2 held e^5 / (e^2 + e^1 + e^5) of the probability and was excluded; index 0 was second.
+        scores = _softmax([2.0, 1.0, 5.0])
+        self.assertAlmostEqual(result.value, scores[2])
+        self.assertAlmostEqual(result.data.pop("excluded_probability"), scores[2])
+        self.assertAlmostEqual(result.data.pop("original_score"), scores[2])
         self.assertEqual(
             result.data,
             {
-                "taxa_list_id": taxa_list.pk,
-                "source_algorithm_id": self.algorithm.pk,
-                "detection_ids": [det.pk],
-                "taxon_before_id": self.species_taxa[2].pk,
-                "taxon_after_id": self.species_taxa[0].pk,
+                "original_taxon_id": self.species_taxa[2].pk,
+                "new_winner_original_rank": 2,
+                "determination_before_id": self.species_taxa[2].pk,
+                "determination_after_id": self.species_taxa[0].pk,
+                "extra": {},
             },
         )
         masked = result.classifications.get()
@@ -430,9 +435,10 @@ class TestPostProcessingClassMasking(TestCase):
         )
 
         result = AlgorithmResult.objects.get(occurrence=occ)
-        self.assertEqual(result.data["detection_ids"], sorted([det1.pk, det2.pk]))
-        self.assertEqual(result.data["taxon_after_id"], self.species_taxa[0].pk)
-        self.assertEqual(result.classifications.count(), 2)
+        self.assertEqual(result.data["determination_after_id"], self.species_taxa[0].pk)
+        self.assertEqual(
+            sorted(result.classifications.values_list("detection_id", flat=True)), sorted([det1.pk, det2.pk])
+        )
 
     def test_an_occurrence_without_a_project_is_still_rescored_but_gets_no_result(self):
         """A missing project must not fail a run after it has changed data; the result is skipped with a warning."""

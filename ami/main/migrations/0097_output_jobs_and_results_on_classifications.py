@@ -10,7 +10,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
     dependencies = [
         ("jobs", "0023_alter_job_job_type_key"),
-        ("main", "0096_algorithm_results_and_validation_reviews"),
+        ("main", "0096_algorithm_results"),
     ]
 
     operations = [

@@ -1,4 +1,4 @@
-"""Algorithm results, validation reviews, and the occurrence history endpoint that reads them."""
+"""Algorithm results and the occurrence history endpoint that reads them."""
 
 import contextlib
 import datetime
@@ -20,18 +20,17 @@ from ami.main.models import (
     SourceImage,
     TaxaList,
     Taxon,
-    ValidationReview,
 )
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, ProjectManager
+from ami.users.roles import BasicMember, ProjectManager
 
 # Measured: two savepoints, the project, the occurrence, then the results with their algorithm and
-# job, their taxa, the classifications they created, reviews, identifications and predictions. A
-# class masking result adds one query each for the species lists and source algorithms, whatever
+# job, their taxa, the classifications they created, identifications and predictions. A class
+# masking job's settings add one query each for the species lists and source algorithms, whatever
 # the number of entries.
-HISTORY_QUERIES = 10
+HISTORY_QUERIES = 9
 
 SIZE_FILTER = AlgorithmResult.Kind.SIZE_FILTER
 CLASS_MASKING = AlgorithmResult.Kind.CLASS_MASKING
@@ -62,9 +61,10 @@ class AlgorithmResultTestCase(TestCase):
 
     def test_data_that_does_not_fit_its_kind_is_refused_on_every_write_path(self):
         for label, data in (
-            ("missing field", {"size_threshold": 0.001}),
-            ("wrong type", {"size_threshold": "small", "detection_ids": []}),
-            ("unknown field", {"size_threshold": 0.001, "detection_ids": [], "note": "x"}),
+            ("missing field", {}),
+            ("wrong type", {"relative_size": "small"}),
+            ("unknown field", {"relative_size": 0.001, "note": "x"}),
+            ("extra that is not JSON", {"relative_size": 0.001, "extra": {"when": object()}}),
         ):
             with self.subTest(label):
                 with self.assertRaises(ValueError):
@@ -81,9 +81,12 @@ class AlgorithmResultTestCase(TestCase):
             occurrence=self.occurrence,
             algorithm=self.algorithm,
             kind=SIZE_FILTER,
-            data={"size_threshold": 0.01, "detection_ids": []},
+            value=0.001,
+            data={"relative_size": 0.001, "extra": {"service": "size-filter 1.2"}},
         )
-        result.data["size_threshold"] = "small"
+        self.assertEqual(result.value, 0.001)
+        self.assertEqual(result.data["extra"], {"service": "size-filter 1.2"})
+        result.data["relative_size"] = "small"
         with self.assertRaises(ValueError):
             AlgorithmResult.objects.bulk_update([result], ["data"])
 
@@ -92,13 +95,13 @@ class AlgorithmResultTestCase(TestCase):
             occurrence=self.occurrence,
             algorithm=self.algorithm,
             kind=SIZE_FILTER,
-            data={"size_threshold": 0.01, "detection_ids": [1]},
+            data={"relative_size": 0.01},
         )
         other_occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
         second, untouched = AlgorithmResult.objects.record_many(
             [
-                self._size_filter({"size_threshold": 0.02, "detection_ids": [1]}),
-                self._size_filter({"size_threshold": 0.02, "detection_ids": [2]}, occurrence=other_occurrence),
+                self._size_filter({"relative_size": 0.02}),
+                self._size_filter({"relative_size": 0.02}, occurrence=other_occurrence),
             ]
         )
         first.refresh_from_db()
@@ -108,64 +111,33 @@ class AlgorithmResultTestCase(TestCase):
         self.assertEqual(AlgorithmResult.objects.for_occurrence(self.occurrence).current().get().pk, second.pk)
 
     def test_the_database_holds_one_current_result_per_occurrence_algorithm_and_kind(self):
-        self._size_filter({"size_threshold": 0.01, "detection_ids": []}).save()
+        self._size_filter({"relative_size": 0.01}).save()
         with transaction.atomic(), self.assertRaises(IntegrityError):
-            self._size_filter({"size_threshold": 0.02, "detection_ids": []}).save()
+            self._size_filter({"relative_size": 0.02}).save()
 
     def test_project_comes_from_the_occurrence_or_its_station_and_a_result_with_neither_is_skipped(self):
         other = Project.objects.create(name="Another project")
         Occurrence.objects.filter(pk=self.occurrence.pk).update(project=None)
         self.occurrence.refresh_from_db()
-        result = self._size_filter({"size_threshold": 0.01, "detection_ids": []})
+        result = self._size_filter({"relative_size": 0.01})
         result.save()
         self.assertEqual(result.project_id, self.project.pk)
 
         Occurrence.objects.filter(pk=self.occurrence.pk).update(project=other)
         self.occurrence.refresh_from_db()
         self.assertEqual(
-            AlgorithmResult.objects.record_many([self._size_filter({"size_threshold": 0.02, "detection_ids": []})])[
-                0
-            ].project_id,
+            AlgorithmResult.objects.record_many([self._size_filter({"relative_size": 0.02})])[0].project_id,
             other.pk,
         )
 
         Occurrence.objects.filter(pk=self.occurrence.pk).update(project=None, deployment=None)
         self.occurrence.refresh_from_db()
         with self.assertLogs("ami.main.models", level="WARNING"):
-            written = AlgorithmResult.objects.record_many(
-                [self._size_filter({"size_threshold": 0.03, "detection_ids": []})]
-            )
+            written = AlgorithmResult.objects.record_many([self._size_filter({"relative_size": 0.03})])
         self.assertEqual(written, [])
         with self.assertRaises(ValueError):
-            self._size_filter({"size_threshold": 0.03, "detection_ids": []}).save()
+            self._size_filter({"relative_size": 0.03}).save()
         self.assertEqual(AlgorithmResult.objects.count(), 2)
-
-
-class ValidationReviewTestCase(TestCase):
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
-        self.user = User.objects.create_user(email="review-model@insectai.org")  # type: ignore
-
-    def test_a_comment_has_text_and_no_verdict(self):
-        for label, fields in (
-            ("comment with a verdict", {"comment": "x", "verdict": "confirmed"}),
-            ("empty comment", {"comment": ""}),
-        ):
-            with self.subTest(label), transaction.atomic(), self.assertRaises(IntegrityError):
-                ValidationReview.objects.create(occurrence=self.occurrence, user=self.user, aspect="comment", **fields)
-        with self.assertRaises(ValueError):
-            ValidationReview.objects.create(
-                occurrence=self.occurrence, user=self.user, aspect="comment", comment="x", payload={"extra": 1}
-            )
-
-    def test_a_review_takes_its_occurrences_project(self):
-        Occurrence.objects.filter(pk=self.occurrence.pk).update(project=None)
-        self.occurrence.refresh_from_db()
-        review = ValidationReview.objects.create(
-            occurrence=self.occurrence, user=self.user, aspect="comment", comment="x"
-        )
-        self.assertEqual(review.project_id, self.project.pk)
 
 
 class OccurrenceFixtureTestCase(APITestCase):
@@ -223,7 +195,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         return response.data
 
     def _add_history(self, start: datetime.datetime, rounds: int = 1) -> None:
-        """Per round: a size filter result with the classification it created, an identification and a comment."""
+        """Per round: a size filter result with the classification it created, and an identification."""
         for i in range(rounds):
             at = start + datetime.timedelta(hours=4 * i)
             result = AlgorithmResult.objects.record(
@@ -231,11 +203,11 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 algorithm=self.size_filter,
                 job=self.job,
                 kind=SIZE_FILTER,
+                value=0.001,
                 data={
-                    "size_threshold": 0.01,
-                    "detection_ids": [self.detections[0].pk],
-                    "taxon_before_id": self.other_taxon.pk,
-                    "taxon_after_id": self.taxon.pk,
+                    "relative_size": 0.001,
+                    "determination_before_id": self.other_taxon.pk,
+                    "determination_after_id": self.taxon.pk,
                 },
                 timestamp=at,
             )
@@ -252,13 +224,6 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 occurrence=self.occurrence, user=self.reader, taxon=self.other_taxon, comment=f"round {i}"
             )
             Identification.objects.filter(pk=identification.pk).update(created_at=at + datetime.timedelta(hours=1))
-            ValidationReview.objects.create(
-                occurrence=self.occurrence,
-                user=self.manager,
-                aspect="comment",
-                comment=f"note {i}",
-                timestamp=at + datetime.timedelta(hours=2),
-            )
 
     def test_entries_are_merged_newest_first_and_a_result_carries_the_classifications_it_created(self):
         # Predictions are stamped with created_at (now), so the history rows sit in the past.
@@ -266,18 +231,16 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         data = self.get()
 
         types = [entry["type"] for entry in data]
-        self.assertEqual(types[-3:], ["review", "identification", "algorithm_result"])
+        self.assertEqual(types[-2:], ["identification", "algorithm_result"])
         # The fixture's detections share one tied top prediction, shown once; the result's
         # classification is shown inside the result, not as a prediction of its own.
-        self.assertEqual(types[:-3], ["prediction"])
+        self.assertEqual(types[:-2], ["prediction"])
         self.assertIsNone(data[0]["algorithm"])
         timestamps = [entry["timestamp"] for entry in data]
         self.assertEqual(timestamps, sorted(timestamps, reverse=True))
 
-        review, identification, result = data[-3:]
-        self.assertEqual(set(review["user"]), {"id", "name", "image"})
-        self.assertEqual(review["user"]["id"], self.manager.pk)
-        self.assertEqual((review["subtype"], review["comment"], review["verdict"]), ("comment", "note 0", None))
+        identification, result = data[-2:]
+        self.assertEqual(set(identification["user"]), {"id", "name", "image"})
         self.assertEqual(identification["user"]["id"], self.reader.pk)
         self.assertEqual(identification["taxon"]["id"], self.other_taxon.pk)
         self.assertEqual(identification["payload"]["comment"], "round 0")
@@ -287,6 +250,9 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(result["job"], {"id": self.job.pk, "name": self.job.name, "config": {"size_threshold": 0.01}})
         self.assertEqual(result["taxon"]["id"], self.taxon.pk)
         self.assertEqual(result["taxon_before"]["id"], self.other_taxon.pk)
+        self.assertEqual(result["score"], 0.001)
+        self.assertEqual(result["payload"]["relative_size"], 0.001)
+        self.assertIsNone(result["original_taxon"])
         created = Classification.objects.get(algorithm=self.size_filter)
         self.assertEqual(
             result["classifications"],
@@ -308,19 +274,27 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         classifier = Algorithm.objects.create(name="Classifier", key="classifier-history-test")
         masker = Algorithm.objects.create(name="Masked classifier", key="masker-history-test")
         taxa_list = TaxaList.objects.create(name="Kept species")
+        job = Job.objects.create(
+            project=self.project,
+            name="Masking run",
+            job_type_key="post_processing",
+            params={"task": "class_masking", "config": {"taxa_list_id": taxa_list.pk, "algorithm_id": classifier.pk}},
+        )
         original = Classification.objects.get(detection=self.detections[1])
         Classification.objects.filter(pk=original.pk).update(terminal=False, algorithm=classifier)
         result = AlgorithmResult.objects.record(
             occurrence=self.occurrence,
             algorithm=masker,
-            job=self.job,
+            job=job,
             kind=CLASS_MASKING,
+            value=0.4,
             data={
-                "taxa_list_id": taxa_list.pk,
-                "source_algorithm_id": classifier.pk,
-                "detection_ids": [self.detections[1].pk],
-                "taxon_before_id": self.taxon.pk,
-                "taxon_after_id": self.other_taxon.pk,
+                "excluded_probability": 0.4,
+                "original_taxon_id": self.taxon.pk,
+                "original_score": 0.9,
+                "new_winner_original_rank": 2,
+                "determination_before_id": self.taxon.pk,
+                "determination_after_id": self.other_taxon.pk,
             },
         )
         masked = Classification.objects.create(
@@ -330,7 +304,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             algorithm=masker,
             timestamp=datetime.datetime.now(),
             applied_to=original,
-            job=self.job,
+            job=job,
             algorithm_result=result,
         )
         data = self.get()
@@ -352,6 +326,8 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertIsNone(predictions[None]["payload"]["superseded_by_result_id"])
         self.assertEqual(result_entry["taxa_list"], {"id": taxa_list.pk, "name": "Kept species"})
         self.assertEqual(result_entry["source_algorithm"]["key"], classifier.key)
+        self.assertEqual(result_entry["original_taxon"]["id"], self.taxon.pk)
+        self.assertEqual(result_entry["score"], 0.4)
 
     def test_a_terminal_prediction_outranked_on_its_detection_is_superseded(self):
         """The size filter does not demote the prediction it outranks, so the link is the shared detection."""
@@ -362,7 +338,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             algorithm=self.size_filter,
             job=self.job,
             kind=SIZE_FILTER,
-            data={"size_threshold": 0.01, "detection_ids": [self.detections[3].pk]},
+            data={"relative_size": 0.001},
         )
         Classification.objects.create(
             detection=self.detections[3],
@@ -414,7 +390,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 with CaptureQueriesContext(connection) as queries, self.assertNumQueries(HISTORY_QUERIES):
                     response = self.client.get(self.url())
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(len(response.data), 3 * total + 1)
+                self.assertEqual(len(response.data), 2 * total + 1)
                 self.assertFalse(
                     [q["sql"] for q in queries.captured_queries if '"main_classification"."scores"' in q["sql"]]
                 )
@@ -445,61 +421,3 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
         self.assertEqual(detail.status_code, 404)
         self.assertEqual(self.client.get(self.url()).status_code, 200)
-
-
-class OccurrenceCommentEndpointTestCase(OccurrenceFixtureTestCase):
-    """POST /occurrences/{id}/reviews/ leaves a comment, for whoever may identify on the project."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.identifier = User.objects.create_user(email="comment-identifier@insectai.org")  # type: ignore
-        Identifier.assign_user(self.identifier, self.project)
-        self.superuser = User.objects.create_superuser(email="comment-super@insectai.org")  # type: ignore
-        self.outsider = User.objects.create_user(email="comment-outsider@insectai.org")  # type: ignore
-
-    def comment(self, user: User | None, body: dict | None = None):
-        self.client.force_authenticate(user=user)
-        return self.client.post(
-            f"/api/v2/occurrences/{self.occurrence.pk}/reviews/?project_id={self.project.pk}",
-            body if body is not None else {"comment": "  The second detection is a different moth.  "},
-            format="json",
-        )
-
-    def test_a_comment_is_stored_as_a_review_and_returned_as_a_history_entry(self):
-        response = self.comment(self.identifier)
-        self.assertEqual(response.status_code, 201, response.data)
-        review = ValidationReview.objects.get()
-        self.assertEqual((review.aspect, review.verdict, review.user), ("comment", None, self.identifier))
-        self.assertEqual(review.comment, "The second detection is a different moth.")
-        self.assertEqual(review.project_id, self.project.pk)
-        self.assertEqual((response.data["type"], response.data["id"]), ("review", review.pk))
-        self.assertNotIn("email", str(response.data))
-
-    def test_an_empty_comment_or_another_aspect_is_refused(self):
-        for body in ({"comment": "   "}, {"aspect": "grouping", "comment": "x"}):
-            with self.subTest(body=body):
-                self.assertEqual(self.comment(self.identifier, body).status_code, 400)
-        self.assertFalse(ValidationReview.objects.exists())
-
-    def test_permission_matrix(self):
-        """Whoever may identify may comment; a basic member, a non-member and anonymous may not."""
-        expected = {
-            "identifier": 201,
-            "project manager": 201,
-            "superuser": 201,
-            "basic member": 403,
-            "non-member": 403,
-            "anonymous": 401,
-        }
-        users = {
-            "identifier": self.identifier,
-            "project manager": self.manager,
-            "superuser": self.superuser,
-            "basic member": self.reader,
-            "non-member": self.outsider,
-            "anonymous": None,
-        }
-        for label, user in users.items():
-            with self.subTest(user=label):
-                self.assertEqual(self.comment(user).status_code, expected[label])
-        self.assertEqual(ValidationReview.objects.count(), 3)

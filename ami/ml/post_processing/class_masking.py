@@ -82,7 +82,8 @@ def make_classifications_filtered_by_taxa_list(
 
     Every occurrence with a re-scored classification gets one algorithm result, written in
     the same transaction as the batch that changes it, and its new classifications point at
-    that result (see ``BatchResults``).
+    that result (see ``BatchResults``). The result records the probability the list excluded
+    and the source's original top prediction for the occurrence's winning detection.
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
@@ -130,7 +131,7 @@ def make_classifications_filtered_by_taxa_list(
         kind=AlgorithmResult.Kind.CLASS_MASKING,
         algorithm=new_algorithm,
         job=job,
-        data={"taxa_list_id": taxa_list.pk, "source_algorithm_id": algorithm.pk},
+        value_field="excluded_probability",
         timestamp=timestamp,
     )
 
@@ -208,7 +209,18 @@ def make_classifications_filtered_by_taxa_list(
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
                     occurrences_to_update.add(detection.occurrence)
-                    results.note(detection.occurrence, detection.pk)
+                    # The occurrence's result carries the figures of its winning detection:
+                    # the one whose masked classification scores highest (see BatchResults).
+                    results.note(
+                        detection.occurrence,
+                        {
+                            "excluded_probability": float(1.0 - kept_sum),
+                            "original_taxon_id": classification.taxon_id,
+                            "original_score": classification.score,
+                            "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                        },
+                        rank=score,
+                    )
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
