@@ -1,0 +1,57 @@
+name: Production Image Build
+
+# Checks that the production Django image still builds and loads. The build
+# loads Django settings while compiling translations, so a settings or code
+# change can break it even when the backend tests pass with their own
+# environment. Only docs and frontend changes are skipped, matching the
+# backend test workflow.
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths-ignore: ["docs/**", "ui/**"]
+
+  push:
+    branches: ["main"]
+    paths-ignore: ["docs/**", "ui/**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The worker compose file builds from the same Dockerfile, so this one
+      # build covers both the web and worker images.
+      - name: Build the production Django image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: compose/production/django/Dockerfile
+          push: false
+          load: true
+          tags: antenna-backend:dependency-check
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Loads every installed app, model and URL route inside the built image,
+      # which catches a dependency that installs but fails to import. It uses
+      # the same minimal test settings as the Dockerfile's compilemessages
+      # step, and bypasses the entrypoint, which waits for a database.
+      - name: Smoke-test the built image
+        run: >-
+          docker run --rm --network none
+          -e DATABASE_URL=""
+          -e CELERY_BROKER_URL=""
+          -e DJANGO_SETTINGS_MODULE=config.settings.test
+          --entrypoint python
+          antenna-backend:dependency-check
+          manage.py check
