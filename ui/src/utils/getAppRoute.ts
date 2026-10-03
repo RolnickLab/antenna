@@ -10,6 +10,7 @@ type FilterType =
   | 'event'
   | 'include_unobserved'
   | 'occurrence'
+  | 'similar_to'
   | 'source_image_collection'
   | 'source_image_single'
   | 'taxa_list_id'
