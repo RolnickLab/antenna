@@ -34,6 +34,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.embeddings import algorithm_with_most_vectors, representative_embeddings
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
@@ -1501,6 +1502,9 @@ class OccurrenceFilterSet(FilterSet):
         fields = list(OCCURRENCE_FILTERSET_FIELDS)
 
 
+VISUAL_SIMILARITY_ORDERINGS = ("visual_similarity", "-visual_similarity")
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1554,11 +1558,94 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             qs = qs.with_detail_prefetches()  # type: ignore
 
+        ordering = self.request.query_params.get("ordering")
+        if ordering in VISUAL_SIMILARITY_ORDERINGS:
+            qs = self._order_by_visual_similarity(qs, project, descending=ordering.startswith("-"))
+
         return qs
+
+    def _order_by_visual_similarity(self, qs: QuerySet["Occurrence"], project: Project | None, descending: bool):
+        """Sort by cosine distance from a seed occurrence's feature vector, most similar first.
+
+        One algorithm's vectors only (``similarity_algorithm``, or the one with the most vectors
+        in the project): distances between algorithms are meaningless. The seed is
+        ``similar_to``, or the most recently updated occurrence with such a vector that the
+        default filters show. Occurrences without a vector sort last, in both directions.
+        Not an ``ordering_fields`` entry, so the ordering filter leaves this ordering alone.
+        """
+        if project is None:
+            raise api_exceptions.ValidationError({"ordering": "Sorting by visual similarity requires a project_id."})
+        if not Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists():
+            return qs  # Already empty for this user, and the seed must not say more than that.
+        params = self.request.query_params
+        algorithm_id = SingleParamSerializer[int].clean(
+            "similarity_algorithm", serializers.IntegerField(required=False, min_value=1), params
+        )
+        if algorithm_id is None:
+            algorithm_id = algorithm_with_most_vectors(project)
+            if algorithm_id is None:
+                raise api_exceptions.ValidationError(
+                    {"ordering": "No feature vectors have been stored for this project yet."}
+                )
+        visible = Occurrence.objects.visible_for_user(self.request.user).valid().filter(project=project)
+        seed_id = SingleParamSerializer[int].clean(
+            "similar_to", serializers.IntegerField(required=False, min_value=1), params
+        )
+        if seed_id is None:
+            seed_id = (
+                visible.apply_default_filters(project, self.request)
+                .with_vectors(algorithm_id)
+                .order_by("-updated_at")
+                .values_list("pk", flat=True)
+                .first()
+            )
+            if seed_id is None:
+                raise api_exceptions.ValidationError(
+                    {"ordering": f"No occurrence in this project has a feature vector from algorithm #{algorithm_id}."}
+                )
+        elif not visible.filter(pk=seed_id).exists():
+            raise api_exceptions.ValidationError({"similar_to": f"Occurrence #{seed_id} is not in this project."})
+        seed_vector = representative_embeddings(seed_id, algorithm_id).values_list("vector", flat=True).first()
+        if seed_vector is None:
+            raise api_exceptions.ValidationError(
+                {"similar_to": f"Occurrence #{seed_id} has no feature vector from algorithm #{algorithm_id}."}
+            )
+        distance = models.F("visual_similarity")
+        return qs.with_visual_similarity(seed_vector, algorithm_id).order_by(  # type: ignore[attr-defined]
+            distance.desc(nulls_last=True) if descending else distance.asc(nulls_last=True), "-pk"
+        )
 
     @extend_schema(
         parameters=[
             project_id_doc_param,
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Besides the usual fields, `visual_similarity` (or `-visual_similarity`) sorts by cosine "
+                    "distance from a seed occurrence's feature vector, most similar first; occurrences without "
+                    "a vector come last."
+                ),
+                required=False,
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                name="similar_to",
+                description=(
+                    "With `ordering=visual_similarity`: the id of the occurrence to compare against. Defaults to "
+                    "the most recently updated occurrence that has a feature vector."
+                ),
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="similarity_algorithm",
+                description=(
+                    "With `ordering=visual_similarity`: the id of the algorithm whose feature vectors to compare. "
+                    "Defaults to the algorithm with the most vectors in the project."
+                ),
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
             OpenApiParameter(
                 name="classification_threshold",
                 description="Filter occurrences by minimum determination score.",
