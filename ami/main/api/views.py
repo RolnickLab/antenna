@@ -34,6 +34,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.history import add_comment, occurrence_timeline, review_entry
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
@@ -82,7 +83,9 @@ from .serializers import (
     ExampleOccurrenceSerializer,
     IdentificationSerializer,
     ModelAgreementSerializer,
+    OccurrenceHistoryEntrySerializer,
     OccurrenceListSerializer,
+    OccurrenceReviewCreateSerializer,
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
@@ -1536,11 +1539,23 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    # Actions that read or add to one occurrence's history. They build their own queries and
+    # never serialize the occurrence, and the default filters, which shape lists, do not hide it.
+    HISTORY_ACTIONS = ("history", "reviews")
+
+    def get_permissions(self):
+        # Commenting is open to whoever may identify (see Occurrence.check_custom_permission).
+        if self.action == "reviews":
+            return [ObjectPermission()]
+        return super().get_permissions()
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
         qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
+        if self.action in self.HISTORY_ACTIONS:
+            return qs
         qs = qs.select_related(
             "determination",
             "deployment",
@@ -1588,6 +1603,36 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=OccurrenceHistoryEntrySerializer(many=True))
+    @action(detail=True, methods=["get"], name="history", pagination_class=None)
+    def history(self, request: Request, pk=None) -> Response:
+        """Everything that happened to this occurrence, newest first.
+
+        Merges post-processing results with the classifications they created, people's
+        comments, identifications and predictions into one list. Visible to whoever can
+        open the occurrence itself.
+        """
+        occurrence = self.get_object()
+        entries = occurrence_timeline(occurrence)
+        return Response(OccurrenceHistoryEntrySerializer(entries, many=True, context={"request": request}).data)
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        request=OccurrenceReviewCreateSerializer,
+        responses={201: OccurrenceHistoryEntrySerializer},
+    )
+    @action(detail=True, methods=["post"], name="reviews")
+    def reviews(self, request: Request, pk=None) -> Response:
+        """Leave a comment on this occurrence. It shows in the occurrence's history."""
+        occurrence = self.get_object()
+        body = OccurrenceReviewCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        review = add_comment(occurrence, request.user, body.validated_data["comment"])
+        return Response(
+            OccurrenceHistoryEntrySerializer(review_entry(review), context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")
