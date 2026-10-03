@@ -95,6 +95,7 @@ export const Occurrences = () => {
             <DefaultFiltersControl field="apply_defaults" />
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
+            <FilterControl field="similar_to" readonly />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
               <>

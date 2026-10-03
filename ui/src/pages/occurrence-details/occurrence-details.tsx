@@ -5,11 +5,12 @@ import {
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useOccurrenceHistory } from 'data-services/hooks/occurrences/useOccurrenceHistory'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { SearchIcon } from 'lucide-react'
+import { ImagesIcon, SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
   Box,
   Button,
+  buttonVariants,
   CodeBlock,
   IdentificationScore,
   InfoBlockField,
@@ -18,7 +19,7 @@ import {
 } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -62,6 +63,12 @@ export const OccurrenceDetails = ({
     projectId,
   })
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
+  const similarOccurrencesRoute = `${APP_ROUTES.OCCURRENCES({
+    projectId: projectId as string,
+  })}?${new URLSearchParams({
+    ordering: 'visual_similarity',
+    similar_to: occurrence.id,
+  })}`
 
   const blueprintItems = useMemo(
     () =>
@@ -171,6 +178,13 @@ export const OccurrenceDetails = ({
               />
             </BasicTooltip>
           ) : null}
+          <Link
+            className={buttonVariants({ size: 'small', variant: 'outline' })}
+            to={similarOccurrencesRoute}
+          >
+            <ImagesIcon className="w-4 h-4" />
+            <span>{translate(STRING.SHOW_SIMILAR_OCCURRENCES)}</span>
+          </Link>
           {canUpdate && (
             <>
               <Agree

@@ -195,6 +195,13 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     field: 'not_tag_id',
   },
   {
+    label: translate(STRING.FIELD_LABEL_SIMILAR_TO),
+    field: 'similar_to',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_SIMILAR_TO),
+    },
+  },
+  {
     label: 'Taxon',
     field: 'taxon',
   },
