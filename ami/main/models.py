@@ -3828,8 +3828,6 @@ def update_occurrence_determination(
     The `occurrence` object may already have a different un-saved determination set
     so it is necessary to retrieve the current determination from the database, but
     this can also be passed in as an argument to avoid an extra database query.
-
-    @TODO Add tests for this important method!
     """
     needs_update = False
 
@@ -3850,13 +3848,17 @@ def update_occurrence_determination(
     new_determination = None
     new_score = None
 
+    # Pick the winner first and compare each cached field to it separately. The score
+    # can change while the taxon stays the same (class masking re-scores a classification
+    # without changing its winner), and a stale score hides the occurrence below the
+    # project's score threshold. See #1461.
     top_identification = occurrence.best_identification
-    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
+    if top_identification and top_identification.taxon:
         new_determination = top_identification.taxon
         new_score = top_identification.score
     elif not top_identification:
         top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
+        if top_prediction and top_prediction.taxon:
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
@@ -3865,7 +3867,7 @@ def update_occurrence_determination(
         occurrence.determination = new_determination
         needs_update = True
 
-    if new_score and new_score != occurrence.determination_score:
+    if new_score is not None and new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True
