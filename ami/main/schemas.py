@@ -4,7 +4,8 @@ Each model records only what the run alone knows: figures computed while it ran 
 occurrence's determination before and after, which cannot be derived later. Anything that lives
 elsewhere is left out: the settings are on the job, the classifications a run created point at
 the result, and the new taxon is on those classifications. ``extra`` takes whatever else a
-method or processing service returns, kept as JSON and not interpreted.
+method or processing service returns. Nothing reads ``extra`` for logic: it is stored, shown and
+exported only. When a feature needs a value from it, that value becomes a typed field.
 
 Adding a kind means adding a model here and registering it in ``ALGORITHM_RESULT_DATA_SCHEMAS``;
 tracking (merges, statistics) and rank roll-ups (``rank_rollup``) are the next ones expected.
@@ -17,7 +18,8 @@ import pydantic
 
 
 class ResultData(pydantic.BaseModel):
-    # Whatever else the method returned, stored as JSON and never read by Antenna.
+    # Whatever else the method returned. Stored, shown and exported only, never read for logic;
+    # a value a feature needs is promoted to a typed field on the kind's model.
     extra: dict[str, Any] = {}
 
     @pydantic.validator("extra")
@@ -38,8 +40,9 @@ class DeterminationSnapshot(ResultData):
 class ClassMaskingResultData(DeterminationSnapshot):
     """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
 
-    # The share of the source classifier's probability on classes outside the species list:
-    # one minus the kept mass of the unmasked softmax.
+    # The share of the source classifier's probability outside the species list: one minus the
+    # kept mass of the unmasked softmax. A measure of what the list removed, not an
+    # out-of-distribution score.
     excluded_probability: float
     # The source classifier's top prediction before masking.
     original_taxon_id: int | None = None

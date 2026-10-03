@@ -787,7 +787,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.HISTORY_DETERMINATION_CHANGED]: '{{before}} → {{after}}',
   [STRING.HISTORY_DETERMINATION_UNCHANGED]: '{{name}} (unchanged)',
   [STRING.HISTORY_EMPTY]: 'Nothing has happened to this occurrence yet.',
-  [STRING.HISTORY_EXCLUDED_PROBABILITY]: 'Probability outside the list',
+  [STRING.HISTORY_EXCLUDED_PROBABILITY]:
+    'Share of probability outside the list',
   [STRING.HISTORY_MASKING_SUBTITLE]: '{{algorithm}}, filtered by {{list}}',
   [STRING.HISTORY_ORIGINAL_PREDICTION]: 'Original top prediction',
   [STRING.HISTORY_LOAD_ERROR]:
