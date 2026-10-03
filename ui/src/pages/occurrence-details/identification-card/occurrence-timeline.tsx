@@ -100,13 +100,7 @@ export const OccurrenceTimeline = ({
               />
             )
           case 'review':
-            return (
-              <CommentReview
-                key={item.id}
-                currentUser={currentUser}
-                entry={item.entry}
-              />
-            )
+            return <CommentReview key={item.id} entry={item.entry} />
         }
       })}
     </>
