@@ -252,6 +252,15 @@ class Algorithm(BaseModel):
         help_text=("A URI to the weights or model details. Could be a public web URL or object store path."),
     )
 
+    embedding_dimensions = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The length of the feature vectors this algorithm has stored. Set from the first vector "
+            "stored; vectors of any other length are refused, because they could not be compared."
+        ),
+    )
+
     category_map = models.ForeignKey(
         AlgorithmCategoryMap,
         on_delete=models.CASCADE,
