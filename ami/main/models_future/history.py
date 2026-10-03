@@ -1,8 +1,8 @@
 """An occurrence's history: what algorithms and people did to it, newest first.
 
-What a post-processing run decided about an occurrence is an ``AlgorithmResult`` and what a
-person said about it is a ``ValidationReview``. Identifications and predictions keep their own
-tables, and ``occurrence_timeline`` merges all four into one list for the history endpoint.
+What a post-processing run decided about an occurrence is an ``AlgorithmResult``. Identifications
+and predictions keep their own tables, and ``occurrence_timeline`` merges all three into one list
+for the history endpoint.
 """
 
 from __future__ import annotations
@@ -13,27 +13,11 @@ import typing
 
 from django.db.models import Q
 
-from ami.main.models import (
-    AlgorithmResult,
-    Classification,
-    Identification,
-    Occurrence,
-    TaxaList,
-    Taxon,
-    User,
-    ValidationReview,
-)
+from ami.main.models import AlgorithmResult, Classification, Identification, Occurrence, TaxaList, Taxon, User
 from ami.ml.models.algorithm import Algorithm
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-
-COMMENT = ValidationReview.Aspect.COMMENT
-
-
-def add_comment(occurrence: Occurrence, user: User, comment: str) -> ValidationReview:
-    """Leave a note on an occurrence: a review with ``aspect = comment`` and no verdict."""
-    return ValidationReview.objects.create(occurrence=occurrence, user=user, aspect=COMMENT, comment=comment)
 
 
 @dataclasses.dataclass
@@ -51,33 +35,20 @@ class TimelineEntry:
     taxon_before: Taxon | None = None
     score: float | None = None
     payload: dict = dataclasses.field(default_factory=dict)
-    verdict: str | None = None
     comment: str = ""
     withdrawn: bool = False
     is_current: bool | None = None
     # For a result: the classifications the run created, best score first.
     classifications: list[Classification] = dataclasses.field(default_factory=list)
-    # For a class masking result: the species list and the classifier it re-scored.
+    # For a class masking result: the source classifier's top taxon before masking, the species
+    # list and the classifier, the latter two from the job's settings.
+    original_taxon: Taxon | None = None
     taxa_list: TaxaList | None = None
     source_algorithm: Algorithm | None = None
 
 
-def review_entry(review: ValidationReview) -> TimelineEntry:
-    return TimelineEntry(
-        type="review",
-        id=review.pk,
-        timestamp=review.timestamp,
-        subtype=review.aspect,
-        user=review.user,
-        payload=review.payload,
-        verdict=review.verdict,
-        comment=review.comment,
-        withdrawn=review.withdrawn,
-    )
-
-
 def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
-    """Results, reviews, identifications and predictions of one occurrence, merged newest first.
+    """Results, identifications and predictions of one occurrence, merged newest first.
 
     A result comes with the classifications its run created, so the history shows the run and
     what it changed as one entry; those classifications are not listed again as predictions.
@@ -91,10 +62,17 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
         .select_related("algorithm", "job")
         .order_by("-timestamp", "-pk")
     )
-    taxon_ids = {result.data.get(key) for result in results for key in ("taxon_before_id", "taxon_after_id")} - {None}
-    taxa = {taxon.pk: taxon for taxon in Taxon.objects.filter(pk__in=taxon_ids)} if taxon_ids else {}
-    taxa_lists = _by_id(TaxaList, {result.data.get("taxa_list_id") for result in results})
-    source_algorithms = _by_id(Algorithm, {result.data.get("source_algorithm_id") for result in results})
+    settings = {result.pk: _job_settings(result.job) for result in results}
+    taxa = _by_id(
+        Taxon,
+        {
+            result.data.get(key)
+            for result in results
+            for key in ("determination_before_id", "determination_after_id", "original_taxon_id")
+        },
+    )
+    taxa_lists = _by_id(TaxaList, {config.get("taxa_list_id") for config in settings.values()})
+    source_algorithms = _by_id(Algorithm, {config.get("algorithm_id") for config in settings.values()})
     created_by_result = _classifications_created_by(results, occurrence)
     created_ids = {c.pk for created in created_by_result.values() for c in created}
     rescored_by = {
@@ -120,19 +98,18 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
             subtype=result.kind,
             algorithm=result.algorithm,
             job=result.job,
-            taxon=taxa.get(result.data.get("taxon_after_id")),
-            taxon_before=taxa.get(result.data.get("taxon_before_id")),
+            taxon=taxa.get(result.data.get("determination_after_id")),
+            taxon_before=taxa.get(result.data.get("determination_before_id")),
+            score=result.value,
             payload=result.data,
             is_current=result.is_current,
             classifications=created_by_result.get(result.pk, []),
-            taxa_list=taxa_lists.get(result.data.get("taxa_list_id")),
-            source_algorithm=source_algorithms.get(result.data.get("source_algorithm_id")),
+            original_taxon=taxa.get(result.data.get("original_taxon_id")),
+            taxa_list=taxa_lists.get(settings[result.pk].get("taxa_list_id")),
+            source_algorithm=source_algorithms.get(settings[result.pk].get("algorithm_id")),
         )
         for result in results
     ]
-
-    reviews = ValidationReview.objects.filter(occurrence=occurrence).select_related("user")
-    entries.extend(review_entry(review) for review in reviews)
 
     identifications = Identification.objects.filter(occurrence=occurrence).select_related("user", "taxon")
     entries.extend(
@@ -175,6 +152,12 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
 
     entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
     return entries
+
+
+def _job_settings(job: Job | None) -> dict:
+    """The settings a post-processing job ran with, or an empty dict for any other job."""
+    config = (job.params or {}).get("config") if job is not None else None
+    return config if isinstance(config, dict) else {}
 
 
 def _by_id(model, ids: set) -> dict:

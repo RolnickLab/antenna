@@ -105,7 +105,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
             kind=AlgorithmResult.Kind.SIZE_FILTER,
             algorithm=self.algorithm,
             job=self.job,
-            data={"size_threshold": threshold},
+            value_field="relative_size",
         )
 
         def flush(i: int) -> None:
@@ -196,7 +196,8 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 detections_to_update.add(det)
                 if det.occurrence is not None:
                     occcurrences_to_update.add(det.occurrence)
-                    results.note(det.occurrence, det.pk)
+                    # The occurrence's result carries the size of its smallest flagged detection.
+                    results.note(det.occurrence, {"relative_size": rel_area}, rank=-rel_area)
                 self.logger.debug(f"Marking detection {det.pk} as {not_identifiable_taxon.name}")
 
         flush(i)
