@@ -2103,6 +2103,11 @@ class HistoryTaxonSerializer(serializers.Serializer):
     rank = serializers.CharField()
 
 
+class HistoryTaxaListSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
 class HistoryClassificationSerializer(serializers.Serializer):
     """A classification a post-processing run created, shown inside the run's result."""
 
@@ -2137,6 +2142,10 @@ class OccurrenceHistoryEntrySerializer(serializers.Serializer):
     payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
     classifications = HistoryClassificationSerializer(
         many=True, help_text="For a result: the classifications its run created, best score first."
+    )
+    taxa_list = HistoryTaxaListSerializer(allow_null=True, help_text="For class masking: the species list used.")
+    source_algorithm = HistoryAlgorithmSerializer(
+        allow_null=True, help_text="For class masking: the classifier whose predictions were re-scored."
     )
     verdict = serializers.CharField(allow_null=True, help_text="A review's verdict: confirmed or rejected.")
     comment = serializers.CharField(allow_blank=True)

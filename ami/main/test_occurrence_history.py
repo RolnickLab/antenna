@@ -18,6 +18,7 @@ from ami.main.models import (
     Occurrence,
     Project,
     SourceImage,
+    TaxaList,
     Taxon,
     ValidationReview,
 )
@@ -27,7 +28,9 @@ from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, ProjectManager
 
 # Measured: two savepoints, the project, the occurrence, then the results with their algorithm and
-# job, their taxa, the classifications they created, reviews, identifications and predictions.
+# job, their taxa, the classifications they created, reviews, identifications and predictions. A
+# class masking result adds one query each for the species lists and source algorithms, whatever
+# the number of entries.
 HISTORY_QUERIES = 10
 
 SIZE_FILTER = AlgorithmResult.Kind.SIZE_FILTER
@@ -304,6 +307,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         """Class masking demotes the original classification and links its replacement to the result."""
         classifier = Algorithm.objects.create(name="Classifier", key="classifier-history-test")
         masker = Algorithm.objects.create(name="Masked classifier", key="masker-history-test")
+        taxa_list = TaxaList.objects.create(name="Kept species")
         original = Classification.objects.get(detection=self.detections[1])
         Classification.objects.filter(pk=original.pk).update(terminal=False, algorithm=classifier)
         result = AlgorithmResult.objects.record(
@@ -312,8 +316,8 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             job=self.job,
             kind=CLASS_MASKING,
             data={
-                "taxa_list_id": 1,
-                "source_algorithm_id": 1,
+                "taxa_list_id": taxa_list.pk,
+                "source_algorithm_id": classifier.pk,
                 "detection_ids": [self.detections[1].pk],
                 "taxon_before_id": self.taxon.pk,
                 "taxon_after_id": self.other_taxon.pk,
@@ -346,31 +350,33 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(demoted["payload"]["superseded_by_result_id"], result.pk)
         self.assertFalse(demoted["payload"]["terminal"])
         self.assertIsNone(predictions[None]["payload"]["superseded_by_result_id"])
+        self.assertEqual(result_entry["taxa_list"], {"id": taxa_list.pk, "name": "Kept species"})
+        self.assertEqual(result_entry["source_algorithm"]["key"], classifier.key)
 
-    def test_a_classification_without_a_result_link_is_matched_to_its_jobs_result(self):
+    def test_a_terminal_prediction_outranked_on_its_detection_is_superseded(self):
+        """The size filter does not demote the prediction it outranks, so the link is the shared detection."""
+        # The fixture's tied predictions resolve to the latest one, on the last detection.
+        outranked = self.detections[3].classifications.get()
         result = AlgorithmResult.objects.record(
             occurrence=self.occurrence,
             algorithm=self.size_filter,
             job=self.job,
             kind=SIZE_FILTER,
-            data={"size_threshold": 0.01, "detection_ids": [self.detections[0].pk]},
+            data={"size_threshold": 0.01, "detection_ids": [self.detections[3].pk]},
         )
-        created = Classification.objects.create(
-            detection=self.detections[0],
-            taxon=self.taxon,
-            score=0.1,
+        Classification.objects.create(
+            detection=self.detections[3],
+            taxon=self.other_taxon,
+            score=1.0,
             algorithm=self.size_filter,
             timestamp=datetime.datetime.now(),
-            job=self.job,
+            algorithm_result=result,
         )
         data = self.get()
 
-        result_entry = next(entry for entry in data if entry["type"] == "algorithm_result")
-        self.assertEqual(result_entry["id"], result.pk)
-        self.assertEqual([c["id"] for c in result_entry["classifications"]], [created.pk])
-        predictions = [e for e in data if e["type"] == "prediction"]
-        self.assertEqual([e["algorithm"] for e in predictions], [None])
-        self.assertNotEqual(predictions[0]["id"], created.pk)
+        prediction = next(entry for entry in data if entry["type"] == "prediction")
+        self.assertEqual(prediction["id"], outranked.pk)
+        self.assertEqual(prediction["payload"]["superseded_by_result_id"], result.pk)
 
     def test_each_algorithm_shows_one_prediction_preferring_terminal_then_latest(self):
         """Tied top scores would otherwise show the same prediction once per detection."""
