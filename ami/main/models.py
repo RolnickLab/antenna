@@ -3799,6 +3799,12 @@ class Occurrence(BaseModel):
             else:
                 self.save(update_determination=False)
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        # Leaving a comment (the reviews action) takes the rights to identify the occurrence.
+        if action == "reviews":
+            return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, self.get_project())
+        return super().check_custom_permission(user, action)
+
     class Meta:
         ordering = ["-determination_score"]
         indexes = [

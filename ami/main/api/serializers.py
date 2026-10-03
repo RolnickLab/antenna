@@ -2065,3 +2065,89 @@ class ModelAgreementSerializer(serializers.Serializer):
         required=False,
         help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )
+
+
+class HistoryUserSerializer(serializers.Serializer):
+    """A person in an occurrence's history: name and picture only, never an email address."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    image = serializers.ImageField(allow_null=True)
+
+
+class HistoryAlgorithmSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+
+
+class HistoryJobSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    config = serializers.SerializerMethodField(
+        help_text=(
+            "The settings a post-processing job ran with, as its task validated them. "
+            "Null for other jobs, and for a post-processing job whose stored config is not an object."
+        )
+    )
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_config(self, job) -> dict | None:
+        config = (job.params or {}).get("config")
+        return config if isinstance(config, dict) else None
+
+
+class HistoryTaxonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.CharField()
+
+
+class HistoryClassificationSerializer(serializers.Serializer):
+    """A classification a post-processing run created, shown inside the run's result."""
+
+    id = serializers.IntegerField()
+    taxon = HistoryTaxonSerializer()
+    score = serializers.FloatField(allow_null=True)
+    terminal = serializers.BooleanField()
+    detection_id = serializers.IntegerField()
+    applied_to_id = serializers.IntegerField(
+        allow_null=True, help_text="The classification this one re-scored and demoted, when there is one."
+    )
+
+
+class OccurrenceHistoryEntrySerializer(serializers.Serializer):
+    """One entry of an occurrence's history, newest first. ``type`` says which table it came from."""
+
+    type = serializers.ChoiceField(choices=["algorithm_result", "review", "identification", "prediction"])
+    id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
+    timestamp = serializers.DateTimeField()
+    subtype = serializers.CharField(
+        allow_null=True,
+        help_text="An algorithm result's kind (class_masking, size_filter) or a review's aspect (comment).",
+    )
+    user = HistoryUserSerializer(allow_null=True)
+    algorithm = HistoryAlgorithmSerializer(allow_null=True)
+    job = HistoryJobSerializer(allow_null=True)
+    taxon = HistoryTaxonSerializer(
+        allow_null=True, help_text="The identified or predicted taxon, or the determination after a result."
+    )
+    taxon_before = HistoryTaxonSerializer(allow_null=True, help_text="The determination before a result.")
+    score = serializers.FloatField(allow_null=True, help_text="A prediction's score.")
+    payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
+    classifications = HistoryClassificationSerializer(
+        many=True, help_text="For a result: the classifications its run created, best score first."
+    )
+    verdict = serializers.CharField(allow_null=True, help_text="A review's verdict: confirmed or rejected.")
+    comment = serializers.CharField(allow_blank=True)
+    withdrawn = serializers.BooleanField()
+    is_current = serializers.BooleanField(
+        allow_null=True, help_text="For a result: whether it is the latest of its kind, not replaced by a later run."
+    )
+
+
+class OccurrenceReviewCreateSerializer(serializers.Serializer):
+    """A review to add to an occurrence. Only comments are written here."""
+
+    aspect = serializers.ChoiceField(choices=["comment"], default="comment")
+    comment = serializers.CharField(max_length=10000, trim_whitespace=True)
