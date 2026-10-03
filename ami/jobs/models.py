@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import random
 import time
@@ -913,6 +914,12 @@ class PostProcessingJob(JobType):
             raise ValueError(f"Unknown post-processing task '{task_key}'")
 
         task = task_cls(job=job, **config)
+        # Store the config as the task's schema validated it, defaults included, so the job
+        # records exactly what this run used. The occurrence history shows it.
+        validated_config = json.loads(task.config.json())
+        if validated_config != config:
+            job.params = {**params, "config": validated_config}
+            job.save(update_fields=["params", "updated_at"])
         task.run()
         job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
