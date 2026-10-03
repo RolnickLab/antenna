@@ -15,6 +15,7 @@ import typing
 import uuid
 from urllib.parse import urljoin
 
+import numpy as np
 import requests
 from django.db import models
 from django.utils.text import slugify
@@ -27,6 +28,7 @@ from ami.main.models import (
     Classification,
     Deployment,
     Detection,
+    DetectionEmbedding,
     Occurrence,
     Project,
     SourceImage,
@@ -34,6 +36,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    as_half_precision,
     bbox_is_null,
     update_calculated_fields_for_events,
     update_occurrence_determination,
@@ -683,6 +686,112 @@ def create_detections(
     return existing_detections + new_detections
 
 
+# Boxes are matched to responses at this precision, so a service that re-serialises the
+# coordinates it was sent still lands its vectors on the same detections.
+BOX_MATCH_DECIMALS = 3
+
+
+def _box_key(source_image_id, coordinates) -> tuple:
+    return (str(source_image_id), tuple(round(float(value), BOX_MATCH_DECIMALS) for value in coordinates))
+
+
+class EmbeddingDimensionMismatch(PipelineNotConfigured):
+    """A vector's length differs from the length its algorithm has produced before."""
+
+
+def _check_embedding_dimensions(algorithm: Algorithm, lengths: set[int]) -> None:
+    """Refuse vectors whose length differs from the algorithm's, recording it on first sight.
+
+    Vectors of different lengths can never be compared, so each algorithm keeps one length.
+    """
+    if algorithm.embedding_dimensions is None:
+        if len(lengths) > 1:
+            raise EmbeddingDimensionMismatch(
+                f"Algorithm {algorithm.key} sent vectors of several lengths in one batch: {sorted(lengths)}"
+            )
+        (length,) = lengths
+        # Conditional update: the first batch to record a length wins over a concurrent one.
+        Algorithm.objects.filter(pk=algorithm.pk, embedding_dimensions__isnull=True).update(
+            embedding_dimensions=length
+        )
+        algorithm.refresh_from_db(fields=["embedding_dimensions"])
+    wrong = lengths - {algorithm.embedding_dimensions}
+    if wrong:
+        raise EmbeddingDimensionMismatch(
+            f"Algorithm {algorithm.key} produces {algorithm.embedding_dimensions}-dimension vectors; "
+            f"refusing vectors of length {sorted(wrong)}."
+        )
+
+
+def create_detection_embeddings(
+    detections: list[Detection],
+    detection_responses: list[DetectionResponse],
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+    job_id: int | None = None,
+) -> list[DetectionEmbedding]:
+    """
+    Store the feature vectors sent with each detection, one row per (detection, algorithm, key).
+
+    Writes are insert-mostly (see ``DetectionEmbeddingQuerySet.store``): saving the same results
+    twice changes nothing, and a new vector for a pair replaces the old one. Only
+    ``DetectionEmbedding`` rows are written, never a classification, so no determination can
+    change. A vector with a value half precision cannot hold (NaN, infinity, beyond 65504) is
+    skipped with a warning.
+
+    Responses are matched to ``detections`` by image and box (see ``BOX_MATCH_DECIMALS``), the
+    key ``get_or_create_detection`` reuses detections by, because detection creation returns
+    existing detections ahead of new ones and pairing by position would swap vectors. An
+    algorithm key the pipeline has not registered raises ``PipelineNotConfigured``, as it does
+    for classifications, and a vector whose length differs from its algorithm's raises
+    ``EmbeddingDimensionMismatch``. ``job_id`` records the job whose results stored each vector.
+    Returns the embeddings that were sent to the store (written or unchanged).
+    """
+    by_box = {
+        _box_key(detection.source_image_id, detection.bbox): detection
+        for detection in detections
+        if detection.bbox is not None
+    }
+    embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
+    lengths_by_algorithm: dict[str, set[int]] = collections.defaultdict(set)
+    unmatched = not_finite = 0
+    for detection_resp in detection_responses:
+        if detection_resp.bbox is None or not detection_resp.embeddings:
+            continue
+        detection = by_box.get(_box_key(detection_resp.source_image_id, detection_resp.bbox.dict().values()))
+        if detection is None:
+            unmatched += 1
+            continue
+        for embedding_resp in detection_resp.embeddings:
+            try:
+                algorithm = algorithms_known[embedding_resp.algorithm.key]
+            except KeyError as err:
+                raise PipelineNotConfigured(
+                    f"Embedding algorithm {embedding_resp.algorithm.key} is not a known algorithm. "
+                    "The processing service must declare it in the /info endpoint. "
+                    f"Known algorithms: {list(algorithms_known.keys())}"
+                ) from err
+            if not np.isfinite(as_half_precision(embedding_resp.features)).all():
+                not_finite += 1
+                continue
+            lengths_by_algorithm[algorithm.key].add(len(embedding_resp.features))
+            embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
+                detection=detection, algorithm=algorithm, vector=embedding_resp.features, job_id=job_id
+            )
+
+    for key, lengths in lengths_by_algorithm.items():
+        _check_embedding_dimensions(algorithms_known[key], lengths)
+
+    if unmatched:
+        logger.warning(f"Skipped the vectors of {unmatched} returned boxes that match no stored detection.")
+    if not_finite:
+        logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
+    if embeddings:
+        written, unchanged = DetectionEmbedding.objects.store(embeddings.values())
+        logger.info(f"Stored {written} feature vectors ({unchanged} unchanged) for {len(detections)} detections.")
+    return list(embeddings.values())
+
+
 def create_category_map_for_classification(
     classification_resp: ClassificationResponse,
     logger: logging.Logger = logger,
@@ -1082,6 +1191,16 @@ def save_results(
     # New rows record the job that wrote them; rows that already existed keep theirs.
     detections = create_detections(
         detections=results.detections,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+        job_id=job.pk if job else None,
+    )
+
+    # Before classifications, so an unregistered embedding algorithm stops the batch at the
+    # same point an unregistered classification algorithm does.
+    create_detection_embeddings(
+        detections=detections,
+        detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
         job_id=job.pk if job else None,
