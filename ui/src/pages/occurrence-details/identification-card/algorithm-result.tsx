@@ -128,8 +128,8 @@ export const AlgorithmResult = ({
   )
   switch (entry.subtype) {
     case 'class_masking': {
-      const taxaListId = entry.taxa_list?.id ?? entry.job?.config?.taxa_list_id
-      if (taxaListId !== undefined) {
+      // Link only a list that still exists; a deleted one shows its id as plain text.
+      if (entry.taxa_list) {
         stats.push({
           label: translate(STRING.HISTORY_SPECIES_LIST),
           value: (
@@ -137,15 +137,19 @@ export const AlgorithmResult = ({
               className="underline underline-offset-4"
               to={APP_ROUTES.TAXA_LIST_DETAILS({
                 projectId: projectId as string,
-                taxaListId: `${taxaListId}`,
+                taxaListId: `${entry.taxa_list.id}`,
               })}
             >
-              {entry.taxa_list?.name ??
-                translate(STRING.HISTORY_SPECIES_LIST_ID, {
-                  id: `${taxaListId}`,
-                })}
+              {entry.taxa_list.name}
             </Link>
           ),
+        })
+      } else if (entry.job?.config?.taxa_list_id != null) {
+        stats.push({
+          label: translate(STRING.HISTORY_SPECIES_LIST),
+          value: translate(STRING.HISTORY_SPECIES_LIST_ID, {
+            id: `${entry.job.config.taxa_list_id}`,
+          }),
         })
       }
       stats.push({
@@ -184,7 +188,7 @@ export const AlgorithmResult = ({
   }
   stats.push({
     label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
-    value: entry.classifications.length,
+    value: new Set(entry.classifications.map((c) => c.detection_id)).size,
   })
   getJobSettings(entry.job).forEach(({ key, value }) => {
     const label = SETTING_LABELS[key]

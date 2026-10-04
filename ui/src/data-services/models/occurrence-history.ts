@@ -39,7 +39,8 @@ export interface ServerHistoryClassification {
   detection_id: number
   id: number
   score: number | null
-  taxon: ServerHistoryTaxon
+  /** Null when the taxon was deleted. */
+  taxon: ServerHistoryTaxon | null
   terminal: boolean
 }
 
@@ -367,8 +368,10 @@ export const getResultPrediction = (
   entry: AlgorithmResultEntry,
   determinationTaxonId?: string
 ): ResultPrediction | undefined => {
-  const [best] = entry.classifications
-  if (!best) {
+  const best = entry.classifications.find(
+    (classification) => classification.taxon !== null
+  )
+  if (!best?.taxon) {
     return undefined
   }
   const taxon = convertHistoryTaxon(best.taxon)

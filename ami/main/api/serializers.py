@@ -2146,7 +2146,7 @@ class HistoryClassificationSerializer(serializers.Serializer):
     """A classification a post-processing run created, shown inside the run's result."""
 
     id = serializers.IntegerField()
-    taxon = HistoryTaxonSerializer()
+    taxon = HistoryTaxonSerializer(allow_null=True)
     score = serializers.FloatField(allow_null=True)
     terminal = serializers.BooleanField()
     detection_id = serializers.IntegerField()
