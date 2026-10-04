@@ -81,7 +81,14 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
         for c in created
         if c.applied_to_id is not None
     }
-    outranked_by = {c.detection_id: result_id for result_id, created in created_by_result.items() for c in created}
+    # Only a classification that re-scored nothing (the size filter's) supersedes by detection; a
+    # re-scored one names its original through applied_to, so other classifiers stay unmarked.
+    outranked_by = {
+        c.detection_id: result_id
+        for result_id, created in created_by_result.items()
+        for c in created
+        if c.applied_to_id is None
+    }
 
     def superseded_by(prediction: Classification) -> int | None:
         if prediction.pk in rescored_by:
