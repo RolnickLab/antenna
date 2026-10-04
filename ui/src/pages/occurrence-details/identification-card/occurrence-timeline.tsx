@@ -54,7 +54,7 @@ export const OccurrenceTimeline = ({
           {translate(STRING.HISTORY_LOAD_ERROR)}
         </p>
       ) : null}
-      {!isLoading && !items.length ? (
+      {!isLoading && !error && !items.length ? (
         <p className="px-2 body-small text-muted-foreground">
           {translate(STRING.HISTORY_EMPTY)}
         </p>

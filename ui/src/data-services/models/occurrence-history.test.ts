@@ -35,6 +35,7 @@ const base = {
 
 const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
   ...base,
+  comment: 'Looks right',
   id,
   payload: {
     agreed_with_identification_id: null,

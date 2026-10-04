@@ -54,6 +54,15 @@ const formatSettingValue = (key: string, value: unknown) => {
   return typeof value === 'object' ? JSON.stringify(value) : `${value}`
 }
 
+/** The list's id when only the job's settings name it, e.g. after the list was deleted. */
+const getSpeciesListFallback = (entry: AlgorithmResultEntry) => {
+  const id = entry.job?.config?.taxa_list_id
+
+  return id !== undefined && id !== null
+    ? translate(STRING.HISTORY_SPECIES_LIST_ID, { id: `${id}` })
+    : translate(STRING.VALUE_NOT_AVAILABLE)
+}
+
 /** The card's subtitle: for class masking the classifier and species list, otherwise the algorithm's name. */
 const getSubTitle = (entry: AlgorithmResultEntry) => {
   if (entry.subtype === 'class_masking') {
@@ -62,11 +71,7 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
         entry.source_algorithm?.name ??
         entry.algorithm?.name ??
         translate(STRING.VALUE_NOT_AVAILABLE),
-      list:
-        entry.taxa_list?.name ??
-        translate(STRING.HISTORY_SPECIES_LIST_ID, {
-          id: `${entry.job?.config?.taxa_list_id}`,
-        }),
+      list: entry.taxa_list?.name ?? getSpeciesListFallback(entry),
     })
   }
 

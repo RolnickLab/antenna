@@ -165,7 +165,7 @@ const toIdentification = (
 
   return {
     applied: taxon.id === determinationTaxonId,
-    comment: entry.payload.comment,
+    comment: entry.comment,
     createdAt: entry.timestamp,
     id: `${entry.id}`,
     overridden: entry.payload.withdrawn,
