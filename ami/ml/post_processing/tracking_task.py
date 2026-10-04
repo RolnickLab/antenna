@@ -128,8 +128,8 @@ class TrackingConfig(pydantic.BaseModel):
         True,
         title="Only track sessions that have not been tracked",
         description=(
-            "Skip a session when any of its occurrences already holds more than one detection. Turn this off "
-            "to track the session again."
+            "Skip a session when any of its occurrences already holds more than one detection. Turned off, a "
+            "run can add links and merges to such a session, but it never undoes earlier ones."
         ),
     )
 
