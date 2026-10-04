@@ -19,12 +19,7 @@ class Migration(migrations.Migration):
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                (
-                    "kind",
-                    models.CharField(
-                        choices=[("class_masking", "Class Masking"), ("size_filter", "Size Filter")], max_length=32
-                    ),
-                ),
+                ("kind", models.CharField(max_length=32)),
                 ("value", models.FloatField(blank=True, null=True)),
                 ("data", models.JSONField(blank=True, default=dict)),
                 ("is_current", models.BooleanField(default=True)),

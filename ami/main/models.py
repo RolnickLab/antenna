@@ -3951,11 +3951,45 @@ class AlgorithmResultQuerySet(BaseQuerySet):
         if not kept:
             return []
         with transaction.atomic():
+            # Lock the occurrences in a stable order, so two runs writing results for the same
+            # occurrence wait for each other instead of both inserting a current row.
+            list(
+                Occurrence.objects.select_for_update()
+                .filter(pk__in={result.occurrence_id for result in kept})
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
             for (algorithm_id, kind), occurrence_ids in groups.items():
                 self.filter(
                     occurrence_id__in=occurrence_ids, algorithm_id=algorithm_id, kind=kind, is_current=True
                 ).update(is_current=False)
             return self.bulk_create(kept)
+
+    def move_to_occurrence(self, kept: "Occurrence", absorbed_ids: typing.Iterable[int]) -> int:
+        """Move the results of occurrences merged into ``kept``, so their history follows the merge.
+
+        Each algorithm and kind keeps one current result on ``kept``: its own if it has one,
+        otherwise the latest moved one. The other moved results stay as history. Returns the
+        number of results moved.
+        """
+        absorbed_ids = set(absorbed_ids) - {kept.pk}
+        if not absorbed_ids:
+            return 0
+        with transaction.atomic():
+            current_keys = set(self.filter(occurrence=kept, is_current=True).values_list("algorithm_id", "kind"))
+            demote: list[int] = []
+            for pk, algorithm_id, kind in (
+                self.filter(occurrence_id__in=absorbed_ids, is_current=True)
+                .order_by("-timestamp", "-pk")
+                .values_list("pk", "algorithm_id", "kind")
+            ):
+                if (algorithm_id, kind) in current_keys:
+                    demote.append(pk)
+                else:
+                    current_keys.add((algorithm_id, kind))
+            if demote:
+                self.filter(pk__in=demote).update(is_current=False)
+            return self.filter(occurrence_id__in=absorbed_ids).update(occurrence=kept)
 
 
 @final
@@ -3990,7 +4024,9 @@ class AlgorithmResult(BaseModel):
     job = models.ForeignKey(
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results"
     )
-    kind = models.CharField(max_length=32, choices=Kind.choices)
+    # No ``choices``: the registry of data models in ami/main/schemas.py is the list of kinds,
+    # and every write path rejects a kind without one, so a new kind needs no migration.
+    kind = models.CharField(max_length=32)
     # The kind's headline figure, for filtering and sorting: the share of probability outside
     # the list for class masking, the relative size for the size filter.
     value = models.FloatField(null=True, blank=True)

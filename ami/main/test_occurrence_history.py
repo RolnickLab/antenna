@@ -110,6 +110,30 @@ class AlgorithmResultTestCase(TestCase):
         self.assertEqual(AlgorithmResult.objects.for_occurrence(self.occurrence).count(), 2)
         self.assertEqual(AlgorithmResult.objects.for_occurrence(self.occurrence).current().get().pk, second.pk)
 
+    def test_merging_moves_results_and_keeps_one_current_per_algorithm_and_kind(self):
+        """The kept occurrence's current result wins a collision; otherwise the latest moved one stays current."""
+        other_algorithm = Algorithm.objects.create(name="Second size filter", key="size-filter-merge-test")
+        absorbed = [Occurrence.objects.create(project=self.project, deployment=self.deployment) for _ in range(3)]
+
+        def record(occurrence, algorithm, size):
+            return AlgorithmResult.objects.record(
+                occurrence=occurrence, algorithm=algorithm, kind=SIZE_FILTER, data={"relative_size": size}
+            )
+
+        kept_current = record(self.occurrence, self.algorithm, 0.01)
+        history = record(absorbed[0], self.algorithm, 0.02)
+        colliding = record(absorbed[0], self.algorithm, 0.03)
+        older = record(absorbed[1], other_algorithm, 0.04)
+        latest = record(absorbed[2], other_algorithm, 0.05)
+
+        moved = AlgorithmResult.objects.move_to_occurrence(self.occurrence, [o.pk for o in absorbed])
+
+        self.assertEqual(moved, 4)
+        results = {r.pk: r for r in AlgorithmResult.objects.filter(occurrence=self.occurrence)}
+        self.assertEqual(set(results), {kept_current.pk, history.pk, colliding.pk, older.pk, latest.pk})
+        current = {pk for pk, r in results.items() if r.is_current}
+        self.assertEqual(current, {kept_current.pk, latest.pk})
+
     def test_the_database_holds_one_current_result_per_occurrence_algorithm_and_kind(self):
         self._size_filter({"relative_size": 0.01}).save()
         with transaction.atomic(), self.assertRaises(IntegrityError):
