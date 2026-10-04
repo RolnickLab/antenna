@@ -282,6 +282,16 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         )
         original = Classification.objects.get(detection=self.detections[1])
         Classification.objects.filter(pk=original.pk).update(terminal=False, algorithm=classifier)
+        # A second classifier on the same detection that the run did not re-score.
+        bystander_algorithm = Algorithm.objects.create(name="Second classifier", key="bystander-history-test")
+        bystander = Classification.objects.create(
+            detection=self.detections[1],
+            taxon=self.taxon,
+            score=0.99,
+            terminal=True,
+            algorithm=bystander_algorithm,
+            timestamp=datetime.datetime.now(),
+        )
         result = AlgorithmResult.objects.record(
             occurrence=self.occurrence,
             algorithm=masker,
@@ -318,7 +328,9 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             for entry in data
             if entry["type"] == "prediction"
         }
-        self.assertEqual(set(predictions), {None, classifier.key})
+        self.assertEqual(set(predictions), {None, classifier.key, bystander_algorithm.key})
+        self.assertEqual(predictions[bystander_algorithm.key]["id"], bystander.pk)
+        self.assertIsNone(predictions[bystander_algorithm.key]["payload"]["superseded_by_result_id"])
         demoted = predictions[classifier.key]
         self.assertEqual(demoted["id"], original.pk)
         self.assertEqual(demoted["payload"]["superseded_by_result_id"], result.pk)
