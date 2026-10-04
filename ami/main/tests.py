@@ -1,5 +1,6 @@
 import copy
 import datetime
+import io
 import logging
 import typing
 from io import BytesIO
@@ -8538,3 +8539,233 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
         html = self._get_html("/api/v2/identifications/")
         self._assert_number_input(html, "occurrence")
         self._assert_number_input(html, "taxon")
+
+
+class TestRegroupSplitsOccurrences(TestCase):
+    """Regrouping never leaves one occurrence spanning two sessions.
+
+    The captures are two bursts three hours apart: one session under a 6-hour gap, two
+    under a 2-hour gap. An occurrence built across all of them is what an earlier grouping
+    leaves behind when a later regroup draws a boundary through it.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        self.taxon, self.other_taxon = list(Taxon.objects.filter(projects=self.project).order_by("pk")[:2])
+        self.user = User.objects.create_user(email="regroup-identifier@insectai.org")  # type: ignore[attr-defined]
+        start = datetime.datetime(2024, 6, 1, 22, 0)
+        self.captures = [
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                timestamp=start + datetime.timedelta(minutes=minutes),
+                path=f"test/regroup-split-{i}.jpg",
+                width=640,
+                height=480,
+            )
+            for i, minutes in enumerate([0, 1, 2, 180, 181, 182])
+        ]
+
+    def _group(self, gap_hours: int) -> list[Event]:
+        group_images_into_events(self.deployment, max_time_gap=datetime.timedelta(hours=gap_hours))
+        for capture in self.captures:
+            capture.refresh_from_db()
+        return list(Event.objects.filter(deployment=self.deployment).order_by("start"))
+
+    def _make_occurrence(self, captures: list[SourceImage]) -> tuple[Occurrence, list[Detection]]:
+        occurrence = Occurrence.objects.create(
+            event=captures[0].event, deployment=self.deployment, project=self.project
+        )
+        detections = []
+        for capture in captures:
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+            detection.classifications.create(taxon=self.taxon, score=0.9, timestamp=capture.timestamp)
+            detections.append(detection)
+        for earlier, later in zip(detections, detections[1:]):
+            earlier.next_detection = later
+            earlier.save(update_fields=["next_detection"])
+        occurrence.save()
+        return occurrence, detections
+
+    def _split_one_occurrence(self) -> tuple[Occurrence, Occurrence, list[Detection], list[Event]]:
+        self._group(gap_hours=6)
+        occurrence, detections = self._make_occurrence(self.captures)
+        events = self._group(gap_hours=2)
+        self.assertEqual(len(events), 2)
+        piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
+        occurrence.refresh_from_db()
+        return occurrence, piece, detections, events
+
+    def _detection_ids(self, occurrence: Occurrence) -> list[int]:
+        return list(occurrence.detections.order_by("timestamp").values_list("pk", flat=True))
+
+    def test_an_occurrence_across_a_new_boundary_is_split_into_one_per_session(self):
+        occurrence, piece, detections, (first, second) = self._split_one_occurrence()
+
+        self.assertEqual(self._detection_ids(occurrence), [d.pk for d in detections[:3]])
+        self.assertEqual(self._detection_ids(piece), [d.pk for d in detections[3:]])
+        self.assertEqual(occurrence.event_id, first.pk)
+        self.assertEqual(piece.event_id, second.pk)
+        self.assertEqual(piece.determination_id, self.taxon.pk)
+        self.assertEqual(first.occurrences_count, 1)
+        self.assertEqual(second.occurrences_count, 1)
+        self.assertEqual(piece.track_motion, 0.0)
+
+    def test_the_link_between_the_pieces_is_kept(self):
+        _, _, detections, _ = self._split_one_occurrence()
+
+        boundary = Detection.objects.get(pk=detections[2].pk)
+        self.assertEqual(boundary.next_detection_id, detections[3].pk)
+
+    def test_merging_sessions_leaves_occurrences_untouched(self):
+        self._group(gap_hours=2)
+        early, early_detections = self._make_occurrence(self.captures[:3])
+        late, late_detections = self._make_occurrence(self.captures[3:])
+
+        (merged,) = self._group(gap_hours=6)
+
+        self.assertEqual(Occurrence.objects.filter(deployment=self.deployment).count(), 2)
+        self.assertEqual(self._detection_ids(early), [d.pk for d in early_detections])
+        self.assertEqual(self._detection_ids(late), [d.pk for d in late_detections])
+        self.assertEqual(
+            set(Occurrence.objects.filter(deployment=self.deployment).values_list("event_id", flat=True)),
+            {merged.pk},
+        )
+
+    def test_identifications_are_copied_to_every_piece(self):
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_occurrence(self.captures)
+        superseded = Identification.objects.create(occurrence=occurrence, user=self.user, taxon=self.taxon)
+        current = Identification.objects.create(
+            occurrence=occurrence, user=self.user, taxon=self.other_taxon, comment="Wing pattern checked."
+        )
+
+        self._group(gap_hours=2)
+
+        occurrence.refresh_from_db()
+        piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
+        self.assertEqual(set(occurrence.identifications.values_list("pk", flat=True)), {superseded.pk, current.pk})
+        note = f"Copied from occurrence {occurrence.pk} when regrouping split it at a session boundary."
+        copies = {(i.taxon_id, i.user_id, i.withdrawn, i.created_at, i.comment) for i in piece.identifications.all()}
+        superseded.refresh_from_db()
+        self.assertEqual(
+            copies,
+            {
+                (self.taxon.pk, self.user.pk, True, superseded.created_at, note),
+                (self.other_taxon.pk, self.user.pk, False, current.created_at, f"Wing pattern checked.\n{note}"),
+            },
+        )
+        self.assertFalse(
+            piece.identifications.filter(
+                models.Q(agreed_with_identification__isnull=False) | models.Q(agreed_with_prediction__isnull=False)
+            ).exists()
+        )
+        self.assertEqual(occurrence.determination_id, self.other_taxon.pk)
+        self.assertEqual(piece.determination_id, self.other_taxon.pk)
+
+
+class TrackStatsTestCase(TestCase):
+    """The stored occurrence statistics follow their documented definitions and refresh in bulk."""
+
+    FRAME_WIDTH = 300
+    FRAME_HEIGHT = 400  # a 300x400 image has a diagonal of exactly 500
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
+        SourceImage.objects.filter(deployment=self.deployment).update(width=self.FRAME_WIDTH, height=self.FRAME_HEIGHT)
+        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        self.event = self.captures[0].event
+        taxa = list(Taxon.objects.filter(projects=self.project).order_by("pk")[:3])
+        assert len(taxa) == 3, "Fixture must provide three taxa to disagree with"
+        self.taxon_a, self.taxon_b, self.taxon_c = taxa
+
+        # Centres (5,5) -> (35,45) -> (65,85): two steps of 50 px over a 500 px diagonal.
+        # Areas 100, 100, 400. Terminal labels A, A, B plus a non-terminal C to ignore.
+        self.multi = self._make_occurrence(
+            [
+                ([0, 0, 10, 10], [(self.taxon_a, 0.9, True)]),
+                ([30, 40, 40, 50], [(self.taxon_a, 0.85, True)]),
+                ([55, 75, 75, 95], [(self.taxon_b, 0.8, True), (self.taxon_c, 0.5, False)]),
+            ]
+        )
+        self.single = self._make_occurrence([([10, 10, 20, 20], [(self.taxon_a, 0.7, True)])])
+
+    def _make_occurrence(self, frames: list[tuple[list[int], list[tuple[Taxon, float, bool]]]]) -> Occurrence:
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for capture, (bbox, labels) in zip(self.captures, frames):
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=bbox, occurrence=occurrence
+            )
+            for taxon, score, terminal in labels:
+                detection.classifications.create(
+                    taxon=taxon, score=score, timestamp=capture.timestamp, terminal=terminal
+                )
+        # Pin the determination the agreement is measured against, independent of how save() picks one.
+        Occurrence.objects.filter(pk=occurrence.pk).update(determination=self.taxon_a, determination_score=0.9)
+        return occurrence
+
+    def _stored(self, occurrence: Occurrence) -> dict:
+        from ami.main.models_future.track_stats import TRACK_STAT_FIELDS
+
+        return Occurrence.objects.filter(pk=occurrence.pk).values(*TRACK_STAT_FIELDS).get()
+
+    def test_stats_follow_the_documented_definitions(self):
+        from ami.main.models_future.track_stats import refresh_track_stats
+
+        refresh_track_stats(self.multi, self.single)
+
+        stored = self._stored(self.multi)
+        self.assertAlmostEqual(stored["track_motion"], 100 / 500, places=4)
+        self.assertAlmostEqual(stored["track_size_ratio"], 4.0, places=4)
+        self.assertEqual(stored["track_distinct_taxa"], 2, "A non-terminal classification must not count as a taxon")
+        self.assertAlmostEqual(stored["track_id_agreement"], 2 / 3, places=4)
+        self.assertEqual(
+            self._stored(self.single),
+            {"track_motion": 0.0, "track_size_ratio": 1.0, "track_distinct_taxa": 1, "track_id_agreement": 1.0},
+        )
+
+    def test_stats_are_null_until_stored_and_the_refresh_updates_the_instance(self):
+        from ami.main.models_future.track_stats import refresh_track_stats
+
+        self.assertEqual(set(self._stored(self.multi).values()), {None})
+        refresh_track_stats(self.multi)
+        self.assertEqual(self.multi.track_motion, 0.2)
+
+    def test_refresh_is_three_queries_however_many_occurrences(self):
+        from cachalot.api import cachalot_disabled
+
+        from ami.main.models_future.track_stats import refresh_track_stats
+
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            refresh_track_stats(self.multi, self.single)
+        self.assertEqual(len(ctx.captured_queries), 3)
+
+    def test_an_occurrence_with_no_detections_is_set_back_to_null(self):
+        from ami.main.models_future.track_stats import refresh_track_stats
+
+        refresh_track_stats(self.multi)
+        self.multi.detections.update(occurrence=None)
+        refresh_track_stats(self.multi)
+        self.assertEqual(set(self._stored(self.multi).values()), {None})
+
+    def test_the_backfill_command_stores_stats_for_multi_detection_occurrences(self):
+        from django.core.management import call_command
+
+        out = io.StringIO()
+        call_command("backfill_track_stats", project=self.project.pk, stdout=out)
+        self.assertIn("1 multi-detection occurrences", out.getvalue())
+        self.assertEqual(self._stored(self.multi)["track_motion"], 0.2)
+        self.assertIsNone(self._stored(self.single)["track_motion"], "Single detections are skipped by default")
+
+        call_command("backfill_track_stats", project=self.project.pk, only_multi_detection=False, stdout=out)
+        self.assertEqual(self._stored(self.single)["track_motion"], 0.0)
+
+    def test_the_backfill_command_refuses_an_unknown_project(self):
+        from django.core.management import CommandError, call_command
+
+        with self.assertRaises(CommandError):
+            call_command("backfill_track_stats", project=0)

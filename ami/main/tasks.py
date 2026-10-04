@@ -23,3 +23,12 @@ def refresh_project_cached_counts(project_id: int) -> None:
 
     logger.info(f"Refreshing cached counts for project {project.pk} ({project.name})")
     project.update_related_calculated_fields()
+
+
+@celery_app.task(ignore_result=True)
+def refresh_deployment_cached_counts(deployment_ids: list[int]) -> None:
+    """Refresh the cached counts of these stations after occurrences were created, merged or split."""
+    from ami.main.models import Deployment
+
+    for deployment in Deployment.objects.filter(pk__in=deployment_ids):
+        deployment.update_calculated_fields(save=True)

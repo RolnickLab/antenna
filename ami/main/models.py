@@ -1441,6 +1441,28 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def update_calculated_fields_for_sessions_and_stations(
+    event_ids: typing.Iterable[int | None], stations_async: bool = True
+) -> None:
+    """Refresh the cached counts of these sessions and of the stations they belong to.
+
+    Call once after occurrences are created, merged or split, which neither the
+    occurrence nor the detection saves do. The station refresh scans the whole station, so by
+    default it runs in a background task after the transaction commits.
+    """
+    from ami.main.tasks import refresh_deployment_cached_counts
+
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if not pks:
+        return
+    update_calculated_fields_for_events(pks=pks)
+    deployment_ids = list(Deployment.objects.filter(events__pk__in=pks).values_list("pk", flat=True).distinct())
+    if stations_async:
+        transaction.on_commit(lambda: refresh_deployment_cached_counts.delay(deployment_ids))
+    else:
+        refresh_deployment_cached_counts(deployment_ids)
+
+
 def audit_event_lengths(deployment: Deployment):
     logger.info("Checking for unusual event durations")
 
@@ -1648,6 +1670,8 @@ def _group_images_into_events_locked(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
+    occurrences_split_count = _split_occurrences_at_session_boundaries(deployment, job)
+
     # Realign Occurrence.event_id with each occurrence's detections' current
     # source_image.event_id. Occurrences are bound to an event once at creation
     # time (Detection.associate_new_occurrence and Pipeline.save_results both
@@ -1728,6 +1752,7 @@ def _group_images_into_events_locked(
             "Events created": events_created_count,
             "Events touched": len(touched_event_pks),
             "Empty events deleted": events_deleted_empty,
+            "Occurrences split at a session boundary": occurrences_split_count,
             "Duplicate timestamps": duplicate_timestamp_count,
             "Ungrouped captures": ungrouped_captures_count,
             "Captures missing timestamp": no_timestamp_captures_count,
@@ -1738,6 +1763,35 @@ def _group_images_into_events_locked(
         job.save()
 
     return events
+
+
+def _split_occurrences_at_session_boundaries(deployment: Deployment, job: "Job | None") -> int:
+    """Split every occurrence in the deployment whose detections now span several sessions.
+
+    An occurrence is expected to belong to one session, so a regroup that draws a session
+    boundary through it leaves one piece per session. Returns how many occurrences were split.
+    """
+    from ami.main.models_future.tracks import split_at_session_boundaries
+
+    spanning_ids = list(
+        Detection.objects.valid()
+        .filter(occurrence__deployment=deployment)
+        .values("occurrence_id")
+        .annotate(sessions=models.Count("source_image__event", distinct=True))
+        .filter(sessions__gt=1)
+        .values_list("occurrence_id", flat=True)
+    )
+    split_count = 0
+    for occurrence in Occurrence.objects.filter(pk__in=spanning_ids).order_by("pk"):
+        pieces = split_at_session_boundaries(occurrence)
+        if not pieces:
+            continue
+        split_count += 1
+        (job.logger if job else logger).info(
+            f"Split occurrence {occurrence.pk} at a session boundary; "
+            f"new occurrence(s) {[piece.pk for piece in pieces]} hold the later sessions."
+        )
+    return split_count
 
 
 def deployment_events_need_update(deployment: Deployment) -> bool:
@@ -3239,6 +3293,15 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
+
     # For type hints
     classifications: models.QuerySet["Classification"]
     source_image_id: int
@@ -3402,8 +3465,17 @@ class OccurrenceQuerySet(BaseQuerySet):
           - Occurrences with determination__isnull=True (no taxonomic identification,
             same field bug shape)
         """
+        return self.with_real_detections().exclude(determination__isnull=True)
+
+    def with_real_detections(self):
+        """
+        Occurrences backed by at least one real bounding box, determined or not.
+
+        Null-marker sentinels stay excluded exactly as in valid(), since they carry no box.
+        Used where undetermined occurrences must be reachable, such as the tracks export.
+        """
         has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
-        return self.filter(has_valid_detection).exclude(determination__isnull=True)
+        return self.filter(has_valid_detection)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
@@ -3687,6 +3759,30 @@ class Occurrence(BaseModel):
     event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
+
+    # Statistics stored so occurrences can be sorted by them. Written by
+    # ``models_future.track_stats.refresh_track_stats`` whenever tracking or a regroup changes
+    # which detections an occurrence holds; null until then, or when it has none.
+    track_motion = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Path length between captures as a fraction of the image diagonal. See track_stats.py.",
+    )
+    track_size_ratio = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Largest box area over the smallest. See models_future/track_stats.py.",
+    )
+    track_distinct_taxa = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Distinct taxa among terminal classifications. See models_future/track_stats.py.",
+    )
+    track_id_agreement = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Share of terminal classifications naming the determination. See models_future/track_stats.py.",
+    )
 
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
