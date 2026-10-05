@@ -11,6 +11,7 @@ from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Identification, Occurrence, SourceImage, TaxaList, Taxon
+from ami.main.models_future.references import Ref, job_setting_references, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 from ami.users.models import User
@@ -149,6 +150,32 @@ class AlgorithmResultTestCase(TestCase):
 
     def test_the_model_lives_in_the_ml_app(self):
         self.assertEqual(AlgorithmResult._meta.app_label, "ml")
+
+
+class ReferenceTestCase(TestCase):
+    """Ids shown in the history become {type, id, name}; a deleted row keeps its id with no name."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+
+    def test_resolves_each_type_in_one_query_and_marks_missing_rows(self):
+        taxa_list = TaxaList.objects.create(name="Kept species")
+        algorithm = Algorithm.objects.create(name="Classifier", key="ref-test-classifier")
+        wanted = [("taxa_list", taxa_list.pk), ("algorithm", algorithm.pk), ("taxa_list", 999999)]
+        with no_query_cache(), self.assertNumQueries(2):
+            refs = resolve_references(wanted)
+        self.assertEqual(refs[("taxa_list", taxa_list.pk)], Ref("taxa_list", taxa_list.pk, "Kept species"))
+        self.assertEqual(refs[("algorithm", algorithm.pk)].name, "Classifier")
+        self.assertEqual(refs[("taxa_list", 999999)], Ref("taxa_list", 999999, None))
+
+    def test_job_settings_yield_only_known_integer_references(self):
+        config = {"taxa_list_id": 3, "source_image_collection_id": 5, "size_threshold": 0.01, "algorithm_id": "x"}
+        self.assertEqual(
+            sorted(job_setting_references(config)),
+            [("source_image_collection_id", "capture_set", 5), ("taxa_list_id", "taxa_list", 3)],
+        )
+        self.assertEqual(job_setting_references(None), [])
+        self.assertEqual(job_setting_references(["not", "a", "dict"]), [])  # type: ignore[arg-type]
 
 
 class OccurrenceFixtureTestCase(APITestCase):
