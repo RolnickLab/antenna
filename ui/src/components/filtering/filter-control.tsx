@@ -1,5 +1,6 @@
 import { XIcon } from 'lucide-react'
 import { Button, InfoTooltip } from 'nova-ui-kit'
+import { useId } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
@@ -69,6 +70,7 @@ export const FilterControl = ({
 }: FilterControlProps) => {
   const { filters, addFilter, clearFilter } = useFilters()
   const filter = filters.find((filter) => filter.field === field)
+  const labelId = useId()
   const FilterComponent = ComponentMap[field]
 
   if (!filter || !FilterComponent) {
@@ -82,12 +84,20 @@ export const FilterControl = ({
   return (
     <div>
       <div className="min-h-8 flex items-center gap-1">
-        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+        <span
+          id={labelId}
+          className="text-muted-foreground body-overline-small font-bold pt-0.5"
+        >
           {filter.label}
         </span>
         {filter.tooltip ? <InfoTooltip {...filter.tooltip} /> : null}
       </div>
-      <div className="flex items-center justify-between gap-2">
+      {/* Names the control and its clear button for screen readers (WCAG technique ARIA17). */}
+      <div
+        aria-labelledby={labelId}
+        className="flex items-center justify-between gap-2"
+        role="group"
+      >
         <FilterComponent
           data={data}
           error={filter.error}
