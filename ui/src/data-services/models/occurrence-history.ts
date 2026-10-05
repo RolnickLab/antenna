@@ -1,7 +1,13 @@
+import { Ref } from 'utils/references'
 import { getUserLabel } from 'utils/user/getUserLabel'
 import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
 import { Taxon } from './taxa'
+
+/*
+ * The server types below mirror the OccurrenceHistoryEntry components in the OpenAPI schema;
+ * replace them with generated types when the UI adopts OpenAPI generation.
+ */
 
 export interface ServerHistoryTaxon {
   id: number
@@ -21,117 +27,116 @@ export interface ServerHistoryAlgorithm {
   name: string
 }
 
-export interface ServerHistoryTaxaList {
-  id: number
-  name: string
-}
-
 export interface ServerHistoryJob {
   /** The settings a post-processing job ran with; null for other jobs. */
   config: Record<string, unknown> | null
   id: number
   name: string
+  /** Settings that name another record, by setting key. */
+  references: Record<string, Ref>
+}
+
+/** The classification a run's classification replaced, when there was one and it still exists. */
+export interface ServerReplacedClassification {
+  id: number
+  score: number | null
+  taxon: ServerHistoryTaxon | null
 }
 
 /** A classification a post-processing run created, listed inside the run's result. */
-export interface ServerHistoryClassification {
-  applied_to_id: number | null
+export interface ServerCreatedClassification {
   detection_id: number
   id: number
+  replaced: ServerReplacedClassification | null
   score: number | null
   /** Null when the taxon was deleted. */
   taxon: ServerHistoryTaxon | null
   terminal: boolean
 }
 
-interface ServerDeterminationChangePayload {
+interface ServerDeterminationSnapshot {
   determination_after_id: number | null
   determination_before_id: number | null
   /** Whatever else the method returned; stored as JSON and not interpreted. */
   extra: Record<string, unknown>
 }
 
-export interface ServerClassMaskingPayload
-  extends ServerDeterminationChangePayload {
+export interface ClassMaskingResultData extends ServerDeterminationSnapshot {
   /** The share of the source classifier's probability outside the species list. */
   excluded_probability: number
   /** Where the class that wins after masking ranked before it; 1 means it was already the top. */
   new_winner_original_rank: number | null
-  original_score: number | null
-  original_taxon_id: number | null
 }
 
-export interface ServerSizeFilterPayload
-  extends ServerDeterminationChangePayload {
+export interface SizeFilterResultData extends ServerDeterminationSnapshot {
   /** The filtered detection's box area as a fraction of its image. */
   relative_size: number
 }
 
-export interface ServerIdentificationPayload {
+export interface ServerIdentificationDetails {
   agreed_with_identification_id: number | null
   agreed_with_prediction_id: number | null
   comment: string
   withdrawn: boolean
 }
 
-export interface ServerPredictionPayload {
+export interface ServerPredictionDetails {
   applied_to_id: number | null
-  detection_id: number | null
+  detection_id: number
   /** The result of the run that re-scored and demoted this prediction, when one did. */
   superseded_by_result_id: number | null
-  terminal: boolean | null
+  terminal: boolean
 }
 
-interface ServerHistoryEntryBase<Type extends string, Subtype, Payload> {
+/** The fields every entry has. */
+interface ServerHistoryEntryBase {
   algorithm: ServerHistoryAlgorithm | null
-  /** For a result: the classifications its run created, best score first. */
-  classifications: ServerHistoryClassification[]
-  comment: string
   id: number
-  /** For a result: whether it is the latest of its kind, not replaced by a later run. */
-  is_current: boolean | null
   job: ServerHistoryJob | null
-  /** For a class masking result: the source classifier's top taxon before masking. */
-  original_taxon: ServerHistoryTaxon | null
-  payload: Payload
   /** A prediction's score, or a result's headline value. */
   score: number | null
-  /** For a class masking result: the classifier whose predictions the run re-scored. */
-  source_algorithm: ServerHistoryAlgorithm | null
-  subtype: Subtype
-  /** For a class masking result: the species list the run kept. */
-  taxa_list: ServerHistoryTaxaList | null
+  /** The identified or predicted taxon; null for a result. */
   taxon: ServerHistoryTaxon | null
-  taxon_before: ServerHistoryTaxon | null
   timestamp: string
-  type: Type
   user: ServerHistoryUser | null
-  withdrawn: boolean
 }
 
-export type ClassMaskingResultEntry = ServerHistoryEntryBase<
-  'algorithm_result',
+interface ServerResultEntry<Kind extends string, Data>
+  extends ServerHistoryEntryBase {
+  /** The classifications the run created, best score first. */
+  classifications: ServerCreatedClassification[]
+  data: Data
+  /** Data fields that name another record, by field. */
+  data_references: Record<string, Ref>
+  determination_after: ServerHistoryTaxon | null
+  determination_before: ServerHistoryTaxon | null
+  /** Whether it is the latest of its kind, not replaced by a later run. */
+  is_current: boolean
+  kind: Kind
+  type: 'algorithm_result'
+}
+
+export type ClassMaskingResultEntry = ServerResultEntry<
   'class_masking',
-  ServerClassMaskingPayload
+  ClassMaskingResultData
 >
-export type SizeFilterResultEntry = ServerHistoryEntryBase<
-  'algorithm_result',
+export type SizeFilterResultEntry = ServerResultEntry<
   'size_filter',
-  ServerSizeFilterPayload
+  SizeFilterResultData
 >
 export type AlgorithmResultEntry =
   | ClassMaskingResultEntry
   | SizeFilterResultEntry
-export type IdentificationEntry = ServerHistoryEntryBase<
-  'identification',
-  null,
-  ServerIdentificationPayload
->
-export type PredictionEntry = ServerHistoryEntryBase<
-  'prediction',
-  null,
-  ServerPredictionPayload
->
+
+export interface IdentificationEntry extends ServerHistoryEntryBase {
+  details: ServerIdentificationDetails
+  type: 'identification'
+}
+
+export interface PredictionEntry extends ServerHistoryEntryBase {
+  details: ServerPredictionDetails
+  type: 'prediction'
+}
 
 export type ServerOccurrenceHistoryEntry =
   | AlgorithmResultEntry
@@ -148,12 +153,15 @@ export type TimelineItem =
       type: 'prediction'
       id: string
       prediction: MachinePrediction
+      /** The job that wrote the prediction, when the history names one. */
+      job?: Ref
       /** The result of the run that demoted this prediction, when one did. */
       supersededBy?: AlgorithmResultEntry
     }
   | { type: 'algorithm_result'; id: string; entry: AlgorithmResultEntry }
 
-const ALGORITHM_RESULT_SUBTYPES: string[] = ['class_masking', 'size_filter']
+/** The result kinds this UI has a card for; results of any other kind are skipped. */
+const ALGORITHM_RESULT_KINDS: string[] = ['class_masking', 'size_filter']
 
 export const convertHistoryTaxon = (taxon: ServerHistoryTaxon) =>
   new Taxon({ ...taxon, id: `${taxon.id}`, cover_image_url: null })
@@ -166,10 +174,10 @@ const toIdentification = (
 
   return {
     applied: taxon.id === determinationTaxonId,
-    comment: entry.comment,
+    comment: entry.details.comment,
     createdAt: entry.timestamp,
     id: `${entry.id}`,
-    overridden: entry.payload.withdrawn,
+    overridden: entry.details.withdrawn,
     taxon,
     user: entry.user
       ? {
@@ -199,7 +207,7 @@ const toPrediction = (
     overridden: taxon.id !== determinationTaxonId,
     score: entry.score ?? 0,
     taxon,
-    terminal: !!entry.payload.terminal,
+    terminal: entry.details.terminal,
     userPermissions: [],
   }
 }
@@ -208,7 +216,7 @@ const isAlgorithmResult = (
   entry: ServerOccurrenceHistoryEntry
 ): entry is AlgorithmResultEntry =>
   entry.type === 'algorithm_result' &&
-  ALGORITHM_RESULT_SUBTYPES.includes(entry.subtype)
+  ALGORITHM_RESULT_KINDS.includes(entry.kind)
 
 /**
  * The history as cards to render, newest first. Identifications and predictions reuse the
@@ -251,11 +259,14 @@ export const getTimelineItems = ({
             ? toPrediction({ ...entry, algorithm, taxon }, determinationTaxonId)
             : undefined)
         const supersededBy = results.find(
-          (result) => result.id === entry.payload.superseded_by_result_id
+          (result) => result.id === entry.details.superseded_by_result_id
         )
+        const job: Ref | undefined = entry.job
+          ? { type: 'job', id: entry.job.id, name: entry.job.name }
+          : undefined
 
         return prediction
-          ? [{ type: 'prediction', id, prediction, supersededBy }]
+          ? [{ type: 'prediction', id, prediction, job, supersededBy }]
           : []
       }
       case 'algorithm_result':
@@ -388,16 +399,14 @@ export const getResultPrediction = (
 export interface JobSetting {
   key: string
   value: unknown
+  /** The record the setting names, when it names one. */
+  ref?: Ref
 }
 
 /** Settings the result card already shows in a row of their own. */
-const SETTINGS_SHOWN_ELSEWHERE = [
-  'algorithm_id',
-  'size_threshold',
-  'taxa_list_id',
-]
+const SETTINGS_SHOWN_ELSEWHERE = ['size_threshold']
 
-/** A job's remaining settings, leaving out unset ones and those the card shows elsewhere. */
+/** A job's settings with the records they name, leaving out unset ones and those shown elsewhere. */
 export const getJobSettings = (job: ServerHistoryJob | null): JobSetting[] =>
   Object.entries(job?.config ?? {})
     .filter(
@@ -406,4 +415,4 @@ export const getJobSettings = (job: ServerHistoryJob | null): JobSetting[] =>
         value !== undefined &&
         !SETTINGS_SHOWN_ELSEWHERE.includes(key)
     )
-    .map(([key, value]) => ({ key, value }))
+    .map(([key, value]) => ({ key, value, ref: job?.references[key] }))

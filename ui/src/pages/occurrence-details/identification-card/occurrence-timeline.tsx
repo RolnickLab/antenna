@@ -77,6 +77,7 @@ export const OccurrenceTimeline = ({
                 key={item.id}
                 currentUser={currentUser}
                 identification={item.prediction}
+                job={item.job}
                 occurrence={occurrence}
                 subTitle={
                   item.supersededBy

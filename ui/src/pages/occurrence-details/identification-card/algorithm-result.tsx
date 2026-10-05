@@ -18,6 +18,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { Ref } from 'utils/references'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import {
@@ -25,53 +26,57 @@ import {
   HistoryStats,
   HistoryTime,
   HistoryTypeBadge,
+  RefValue,
 } from './history-stats'
 
-const SUBTYPES = {
+const KINDS = {
   class_masking: { icon: FilterIcon, label: STRING.HISTORY_CLASS_MASKING },
   size_filter: { icon: RulerIcon, label: STRING.HISTORY_SIZE_FILTER },
 }
 
 /** Labels for the job settings shown as rows; a setting not listed here shows its raw key. */
 const SETTING_LABELS: Partial<Record<string, STRING>> = {
+  algorithm_id: STRING.HISTORY_SETTING_CLASSIFIER,
   occurrence_id: STRING.HISTORY_SETTING_OCCURRENCE,
   reweight: STRING.HISTORY_SETTING_REWEIGHT,
   source_image_collection_id: STRING.HISTORY_SETTING_CAPTURE_SET,
+  taxa_list_id: STRING.HISTORY_SPECIES_LIST,
 }
 
 /** What to call a result's kind, e.g. "Class masking", for the card and for predictions it superseded. */
 export const getResultKindLabel = (entry: AlgorithmResultEntry) =>
-  translate(SUBTYPES[entry.subtype].label)
+  translate(KINDS[entry.kind].label)
 
-const formatSettingValue = (key: string, value: unknown) => {
+const formatSettingValue = (value: unknown) => {
   if (typeof value === 'boolean') {
     return translate(value ? STRING.YES : STRING.NO)
-  }
-  if (key.endsWith('_id')) {
-    return `#${value}`
   }
 
   return typeof value === 'object' ? JSON.stringify(value) : `${value}`
 }
 
-/** The list's id when only the job's settings name it, e.g. after the list was deleted. */
-const getSpeciesListFallback = (entry: AlgorithmResultEntry) => {
-  const id = entry.job?.config?.taxa_list_id
+/** A reference's name, or its id when the record was deleted. */
+const getRefLabel = (reference?: Ref) => {
+  if (!reference) {
+    return translate(STRING.VALUE_NOT_AVAILABLE)
+  }
 
-  return id !== undefined && id !== null
-    ? translate(STRING.HISTORY_SPECIES_LIST_ID, { id: `${id}` })
-    : translate(STRING.VALUE_NOT_AVAILABLE)
+  return (
+    reference.name ??
+    translate(STRING.HISTORY_RECORD_ID, { id: `${reference.id}` })
+  )
 }
 
 /** The card's subtitle: for class masking the classifier and species list, otherwise the algorithm's name. */
 const getSubTitle = (entry: AlgorithmResultEntry) => {
-  if (entry.subtype === 'class_masking') {
+  if (entry.kind === 'class_masking') {
+    const references = entry.job?.references ?? {}
+
     return translate(STRING.HISTORY_MASKING_SUBTITLE, {
-      algorithm:
-        entry.source_algorithm?.name ??
-        entry.algorithm?.name ??
-        translate(STRING.VALUE_NOT_AVAILABLE),
-      list: entry.taxa_list?.name ?? getSpeciesListFallback(entry),
+      algorithm: references.algorithm_id
+        ? getRefLabel(references.algorithm_id)
+        : entry.algorithm?.name ?? translate(STRING.VALUE_NOT_AVAILABLE),
+      list: getRefLabel(references.taxa_list_id),
     })
   }
 
@@ -115,7 +120,7 @@ export const AlgorithmResult = ({
   occurrence: Occurrence
 }) => {
   const { projectId } = useParams()
-  const { icon: Icon } = SUBTYPES[entry.subtype]
+  const { icon: Icon } = KINDS[entry.kind]
   const prediction = getResultPrediction(
     entry,
     occurrence.determinationTaxon?.id
@@ -123,48 +128,26 @@ export const AlgorithmResult = ({
   const showAgree = occurrence.userPermissions.includes(UserPermission.Update)
 
   const stats: HistoryStat[] = getDeterminationStats(
-    entry.taxon_before,
-    entry.taxon
+    entry.determination_before,
+    entry.determination_after
   )
-  switch (entry.subtype) {
+  switch (entry.kind) {
     case 'class_masking': {
-      // Link only a list that still exists; a deleted one shows its id as plain text.
-      if (entry.taxa_list) {
-        stats.push({
-          label: translate(STRING.HISTORY_SPECIES_LIST),
-          value: (
-            <Link
-              className="underline underline-offset-4"
-              to={APP_ROUTES.TAXA_LIST_DETAILS({
-                projectId: projectId as string,
-                taxaListId: `${entry.taxa_list.id}`,
-              })}
-            >
-              {entry.taxa_list.name}
-            </Link>
-          ),
-        })
-      } else if (entry.job?.config?.taxa_list_id != null) {
-        stats.push({
-          label: translate(STRING.HISTORY_SPECIES_LIST),
-          value: translate(STRING.HISTORY_SPECIES_LIST_ID, {
-            id: `${entry.job.config.taxa_list_id}`,
-          }),
-        })
-      }
       stats.push({
         label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
-        value: formatPercent(entry.payload.excluded_probability),
+        value: formatPercent(entry.data.excluded_probability),
       })
-      if (entry.original_taxon) {
+      // The top prediction before masking: what the run's best classification replaced.
+      const replaced = entry.classifications.find(
+        (c) => c.taxon !== null
+      )?.replaced
+      if (replaced?.taxon) {
         stats.push({
           label: translate(STRING.HISTORY_ORIGINAL_PREDICTION),
           value:
-            entry.payload.original_score !== null
-              ? `${
-                  entry.original_taxon.name
-                } (${entry.payload.original_score.toFixed(2)})`
-              : entry.original_taxon.name,
+            replaced.score !== null
+              ? `${replaced.taxon.name} (${replaced.score.toFixed(2)})`
+              : replaced.taxon.name,
         })
       }
       break
@@ -176,11 +159,11 @@ export const AlgorithmResult = ({
         value:
           typeof threshold === 'number'
             ? translate(STRING.HISTORY_DETECTION_SIZE_WITH_THRESHOLD, {
-                size: formatPercent(entry.payload.relative_size),
+                size: formatPercent(entry.data.relative_size),
                 threshold: formatPercent(threshold),
               })
             : translate(STRING.HISTORY_DETECTION_SIZE_VALUE, {
-                size: formatPercent(entry.payload.relative_size),
+                size: formatPercent(entry.data.relative_size),
               }),
       })
       break
@@ -190,26 +173,25 @@ export const AlgorithmResult = ({
     label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
     value: new Set(entry.classifications.map((c) => c.detection_id)).size,
   })
-  getJobSettings(entry.job).forEach(({ key, value }) => {
+  getJobSettings(entry.job).forEach(({ key, value, ref }) => {
     const label = SETTING_LABELS[key]
     stats.push({
       label: label !== undefined ? translate(label) : key,
-      value: formatSettingValue(key, value),
+      value: ref ? (
+        <RefValue projectId={projectId as string} reference={ref} />
+      ) : (
+        formatSettingValue(value)
+      ),
     })
   })
   if (entry.job) {
     stats.push({
       label: translate(STRING.FIELD_LABEL_JOB),
       value: (
-        <Link
-          className="underline underline-offset-4"
-          to={APP_ROUTES.JOB_DETAILS({
-            projectId: projectId as string,
-            jobId: `${entry.job.id}`,
-          })}
-        >
-          {entry.job.name}
-        </Link>
+        <RefValue
+          projectId={projectId as string}
+          reference={{ type: 'job', id: entry.job.id, name: entry.job.name }}
+        />
       ),
     })
   }
