@@ -251,11 +251,6 @@ DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="Antenna <noreply@
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 EMAIL_SUBJECT_PREFIX = env("DJANGO_EMAIL_SUBJECT_PREFIX", default="[Antenna]")
 
-# Product name and frontend hostname used in account emails such as password resets.
-# Without a DOMAIN, links fall back to the Site record, which can hold the API hostname.
-SITE_NAME = env("DJANGO_SITE_NAME", default="Antenna")  # type: ignore[no-untyped-call]
-DOMAIN = env("DJANGO_FRONTEND_DOMAIN", default="")  # type: ignore[no-untyped-call]
-
 # TCP keepalive (shared by Redis cache and Celery/RabbitMQ broker)
 # ------------------------------------------------------------------------------
 # Without SO_KEEPALIVE set on the client socket, the kernel never sends
