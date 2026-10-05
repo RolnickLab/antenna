@@ -1448,10 +1448,29 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceJobFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences by the job that wrote one of their detections or classifications.
+    """
+
+    query_param = "job"
+
+    def filter_queryset(self, request, queryset, view):
+        job_id = SingleParamSerializer[int].clean(
+            param_name=self.query_param,
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=request.query_params,
+        )
+        if job_id is None:
+            return queryset
+        return queryset.written_by_job(job_id)
+
+
 OCCURRENCE_FILTER_BACKENDS = (
     CustomOccurrenceDeterminationFilter,
     OccurrenceCollectionFilter,
     OccurrenceAlgorithmFilter,
+    OccurrenceJobFilter,
     OccurrenceDateFilter,
     OccurrenceVerified,
     OccurrenceVerifiedByMeFilter,
@@ -1555,6 +1574,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="collection_id",
                 description="Filter occurrences by the capture set their detections' captures belong to.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="job",
+                description="Filter occurrences by the job that wrote one of their detections or classifications.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),

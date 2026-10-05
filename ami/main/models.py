@@ -3387,6 +3387,17 @@ class OccurrenceQuerySet(BaseQuerySet):
         """Occurrences with no result from any of the given algorithms."""
         return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
 
+    def written_by_job(self, job_id: int) -> "OccurrenceQuerySet":
+        """Occurrences with a detection or a classification written by the given job.
+
+        Identifications are not matched: people make them, not jobs. Two EXISTS subqueries
+        return each occurrence once, where a join would return one row per matching result.
+        """
+        return self.filter(
+            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+        )
+
     def with_timestamps(self):
         """
         These are timestamps used for filtering and ordering in the UI.

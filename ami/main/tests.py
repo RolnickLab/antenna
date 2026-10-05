@@ -7242,6 +7242,112 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         self.assertEqual(included & excluded, set())
 
 
+class TestOccurrenceJobFilter(APITestCase):
+    """
+    Covers the ``?job=`` occurrence filter: occurrences with a detection or a
+    classification written by the given job. Each occurrence must appear once, however
+    many of its rows the job wrote, and a malformed id must be a 400, not a 500.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Job Filter Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occ-job-filter.jpg",
+        )
+        self.taxon = Taxon.objects.create(name="Occurrence Job Filter Taxon")
+        self.algorithm = Algorithm.objects.create(name="Job Filter Algorithm", version=1, task_type="classification")
+        self.job = Job.objects.create(project=self.project, name="Job under test")
+        self.other_job = Job.objects.create(project=self.project, name="Other job")
+
+        # The job wrote the detection only.
+        self.occ_detected = self._make_occurrence([(self.job, [None])])
+        # The job wrote a classification on another job's detection.
+        self.occ_classified = self._make_occurrence([(self.other_job, [self.job])])
+        # The job wrote three detections and their classifications: the duplicate-row trap.
+        self.occ_multi = self._make_occurrence([(self.job, [self.job, self.job])] * 3)
+        # Only the other job, and no job at all, must not match.
+        self.occ_other = self._make_occurrence([(self.other_job, [self.other_job])])
+        self.occ_none = self._make_occurrence([(None, [None])])
+
+    def _make_occurrence(self, detections) -> Occurrence:
+        """``detections`` is a list of (detection job, [classification jobs])."""
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+            determination_score=0.9,
+        )
+        for detection_job, classification_jobs in detections:
+            detection = Detection.objects.create(
+                source_image=self.source_image,
+                bbox=[0.0, 0.0, 1.0, 1.0],
+                occurrence=occ,
+                job=detection_job,
+            )
+            for classification_job in classification_jobs:
+                detection.classifications.create(
+                    taxon=self.taxon,
+                    algorithm=self.algorithm,
+                    score=0.9,
+                    timestamp=datetime.datetime.now(),
+                    job=classification_job,
+                )
+        return occ
+
+    def _list(self, job_param):
+        return self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&job={job_param}&limit=50")
+
+    def test_returns_each_occurrence_the_job_wrote_once(self):
+        response = self._list(self.job.pk)
+        self.assertEqual(response.status_code, 200)
+        ids = [row["id"] for row in response.json()["results"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
+        self.assertEqual(response.json()["count"], 3)
+
+    def test_other_job_matches_only_its_own_occurrences(self):
+        response = self._list(self.other_job.pk)
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(ids, {self.occ_classified.pk, self.occ_other.pk})
+
+    def test_non_integer_job_is_a_bad_request(self):
+        response = self._list("abc")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("job", response.json())
+
+    def test_filtered_list_query_count(self):
+        """Pins the query count of a filtered list over several matching rows, so a filter
+        that starts querying per occurrence fails here. Cachalot is off so every query counts."""
+        from cachalot.api import cachalot_disabled
+
+        disabled = cachalot_disabled()
+        disabled.__enter__()
+        try:
+            # Most of these are the list's existing per-row cost, not the filter: see #1461.
+            with self.assertNumQueries(65):
+                response = self._list(self.job.pk)
+        finally:
+            # cachalot_disabled() does not restore itself when the block raises.
+            disabled.__exit__(None, None, None)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 3)
+
+
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):
     """
     Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
