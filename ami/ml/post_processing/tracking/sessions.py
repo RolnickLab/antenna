@@ -1,4 +1,4 @@
-"""Operations that keep tracked occurrences consistent with session boundaries.
+"""Session locking and splitting of occurrences at session boundaries, for tracking and regrouping.
 
 Tracking links the detections of one insect through ``Detection.next_detection`` and attaches
 the chain to a single occurrence. Chains never cross a session boundary, but regrouping
@@ -16,7 +16,6 @@ from django.db.models import F
 from ami.main.models import Detection, Event, Identification, Occurrence, SourceImage, update_occurrence_determination
 
 # Order of detections within an occurrence: capture time, then capture, then detection.
-# The split and the tracks export both use it, so they agree on what "next" is.
 CAPTURE_ORDER = (F("source_image__timestamp").asc(nulls_last=True), "source_image_id", "pk")
 
 

@@ -1,10 +1,14 @@
+"""The tracking post-processing task: links detections across consecutive captures and merges each chain.
+
+The matching rules live in ``matching.py`` and the settings in ``config.py``, both free of Django;
+this module reads and writes the database around them.
+"""
+
 import collections
 import logging
-import math
 import typing
 from collections.abc import Iterable, Iterator, Sequence
 
-import pydantic
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.utils import timezone
@@ -20,187 +24,12 @@ from ami.main.models import (
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
-from ami.main.models_future.tracks import lock_sessions
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
-COST_NOTE = (
-    "The default is a starting point that is still being tuned by experiment. "
-    "It suits captures taken about 20 seconds apart."
-)
-
-
-class TrackingConfig(pydantic.BaseModel):
-    """Scope and tunables for a tracking run.
-
-    Scope: exactly one of ``source_image_collection_id`` or ``event_ids`` says
-    which sessions to track. A capture set is the bulk path; an explicit event
-    list is what the Events admin page sends.
-
-    The matching cost between two detections in consecutive captures is
-    ``iou_weight * (1 - IoU) + size_weight * (1 - size ratio) + distance_weight * (distance / diagonal)``.
-    Two detections are linked only when the cost is below ``cost_threshold`` and
-    every enabled limit passes. The field titles and descriptions are the help text
-    shown on the admin form.
-    """
-
-    source_image_collection_id: int | None = None
-    event_ids: list[int] = []
-
-    cost_threshold: float = pydantic.Field(
-        1.0,
-        title="Cost cutoff",
-        ge=0,
-        description=(
-            "Two detections in neighbouring captures are only linked when their matching cost is below this "
-            "value. The cost adds up how little the boxes overlap, how different their sizes are, and how far "
-            "apart their centres are. Lower values link fewer detections and make fewer mistakes. " + COST_NOTE
-        ),
-    )
-    iou_weight: float = pydantic.Field(
-        1.0,
-        title="Overlap weight",
-        ge=0,
-        description=("How strongly poor overlap between two boxes raises the cost. 0 ignores overlap. " + COST_NOTE),
-    )
-    size_weight: float = pydantic.Field(
-        1.0,
-        title="Size weight",
-        ge=0,
-        description=("How strongly a difference in box area raises the cost. 0 ignores size. " + COST_NOTE),
-    )
-    distance_weight: float = pydantic.Field(
-        1.0,
-        title="Distance weight",
-        ge=0,
-        description=(
-            "How strongly the distance between box centres, measured as a share of the image diagonal, "
-            "raises the cost. 0 ignores distance. " + COST_NOTE
-        ),
-    )
-
-    min_iou: float | None = pydantic.Field(
-        None,
-        title="Minimum overlap",
-        ge=0,
-        le=1,
-        description=(
-            "Never link two detections whose boxes overlap by less than this (0 to 1, where 1 is identical "
-            "boxes). Leave blank for no limit."
-        ),
-    )
-    min_size_ratio: float | None = pydantic.Field(
-        None,
-        title="Minimum size ratio",
-        ge=0,
-        le=1,
-        description=(
-            "Never link two detections when the smaller box has less than this share of the area of the larger "
-            "one (0 to 1). Leave blank for no limit."
-        ),
-    )
-    max_distance: float | None = pydantic.Field(
-        None,
-        title="Maximum distance",
-        ge=0,
-        description=(
-            "Never link two detections whose box centres are further apart than this share of the image "
-            "diagonal (for example 0.1 is ten percent). Leave blank for no limit."
-        ),
-    )
-    max_capture_interval_seconds: float | None = pydantic.Field(
-        None,
-        title="Maximum time between captures",
-        gt=0,
-        description=(
-            "Never link detections in two neighbouring captures taken further apart than this many seconds. "
-            "Leave blank for no limit."
-        ),
-    )
-
-    skip_if_human_identifications: bool = pydantic.Field(
-        True,
-        title="Skip sessions with human identifications",
-        description="Leave a session alone when someone has already identified one of its occurrences.",
-    )
-    require_fresh_event: bool = pydantic.Field(
-        True,
-        title="Only track sessions that have not been tracked",
-        description=(
-            "Skip a session when any of its occurrences already holds more than one detection. Turned off, a "
-            "run can add links and merges to such a session, but it never undoes earlier ones."
-        ),
-    )
-
-    @pydantic.root_validator(skip_on_failure=True)
-    def _exactly_one_scope(cls, values: dict) -> dict:
-        scopes = [values.get("source_image_collection_id"), values.get("event_ids") or None]
-        if sum(s is not None for s in scopes) != 1:
-            raise ValueError("Provide exactly one of source_image_collection_id or event_ids")
-        return values
-
-    class Config:
-        extra = "forbid"
-
-
-def iou(bb1, bb2) -> float:
-    xA = max(bb1[0], bb2[0])
-    yA = max(bb1[1], bb2[1])
-    xB = min(bb1[2], bb2[2])
-    yB = min(bb1[3], bb2[3])
-    inter = max(0, xB - xA + 1) * max(0, yB - yA + 1)
-    area1 = (bb1[2] - bb1[0] + 1) * (bb1[3] - bb1[1] + 1)
-    area2 = (bb2[2] - bb2[0] + 1) * (bb2[3] - bb2[1] + 1)
-    union = area1 + area2 - inter
-    return inter / union if union > 0 else 0.0
-
-
-def box_ratio(bb1, bb2) -> float:
-    area1 = (bb1[2] - bb1[0] + 1) * (bb1[3] - bb1[1] + 1)
-    area2 = (bb2[2] - bb2[0] + 1) * (bb2[3] - bb2[1] + 1)
-    return min(area1, area2) / max(area1, area2)
-
-
-def distance_ratio(bb1, bb2, img_diag: float) -> float:
-    cx1 = (bb1[0] + bb1[2]) / 2
-    cy1 = (bb1[1] + bb1[3]) / 2
-    cx2 = (bb2[0] + bb2[2]) / 2
-    cy2 = (bb2[1] + bb2[3]) / 2
-    dist = math.sqrt((cx2 - cx1) ** 2 + (cy2 - cy1) ** 2)
-    return dist / img_diag if img_diag > 0 else 1.0
-
-
-def image_diagonal(width: int, height: int) -> int:
-    return int(math.ceil(math.sqrt(width**2 + height**2)))
-
-
-def pair_cost(bb1, bb2, diag: float, config: TrackingConfig) -> float | None:
-    """Matching cost between two detections; lower means more likely the same insect.
-
-    Returns None when the pair fails an enabled limit, so it is never a candidate however
-    low its cost. With default weights the cost is the plain sum of the three terms.
-    """
-    overlap = iou(bb1, bb2)
-    size_ratio = box_ratio(bb1, bb2)
-    distance = distance_ratio(bb1, bb2, diag)
-    if config.min_iou is not None and overlap < config.min_iou:
-        return None
-    if config.min_size_ratio is not None and size_ratio < config.min_size_ratio:
-        return None
-    if config.max_distance is not None and distance > config.max_distance:
-        return None
-    return (
-        config.iou_weight * (1 - overlap) + config.size_weight * (1 - size_ratio) + config.distance_weight * distance
-    )
-
-
-def captures_too_far_apart(first: SourceImage, second: SourceImage, config: TrackingConfig) -> bool:
-    """Is the gap between two captures over the interval limit? A missing timestamp counts as too far."""
-    if config.max_capture_interval_seconds is None:
-        return False
-    if first.timestamp is None or second.timestamp is None:
-        return True
-    return abs((second.timestamp - first.timestamp).total_seconds()) > config.max_capture_interval_seconds
+from .config import TrackingConfig
+from .matching import captures_too_far_apart, image_diagonal, select_links
+from .sessions import lock_sessions
 
 
 def event_is_fresh(event: Event) -> tuple[bool, str]:
@@ -345,39 +174,6 @@ def assign_occurrences_from_detection_chains(
     }
 
 
-def select_links(
-    current_detections: Sequence[Detection],
-    next_detections: Sequence[Detection],
-    diag: float,
-    config: TrackingConfig,
-) -> list[tuple[Detection, Detection, float]]:
-    """The links to make between two adjacent captures, lowest cost first; nothing is saved.
-
-    A pair is a candidate when it passes every enabled limit and its cost is below the cutoff.
-    Candidates are taken lowest cost first, and each detection is linked at most once on either side.
-    """
-    candidates: list[tuple[Detection, Detection, float]] = []
-    for det in current_detections:
-        for nxt in next_detections:
-            cost = pair_cost(det.bbox, nxt.bbox, diag, config)
-            if cost is not None and cost < config.cost_threshold:
-                candidates.append((det, nxt, cost))
-
-    # Secondary keys keep tied costs deterministic across runs.
-    candidates.sort(key=lambda x: (x[2], x[0].pk, x[1].pk))
-
-    claimed_current: set[int] = set()
-    claimed_next: set[int] = set()
-    links: list[tuple[Detection, Detection, float]] = []
-    for det, nxt, cost in candidates:
-        if det.pk in claimed_current or nxt.pk in claimed_next:
-            continue
-        claimed_current.add(det.pk)
-        claimed_next.add(nxt.pk)
-        links.append((det, nxt, cost))
-    return links
-
-
 def save_links(links: Iterable[tuple[Detection, Detection, float]], logger: logging.Logger) -> None:
     """Store each link as ``next_detection``, first detaching any other detection that points at the target."""
     links = list(links)
@@ -401,19 +197,22 @@ def iter_transition_links(
     transitions = len(source_images) - 1
     for i in range(transitions):
         cur, nxt = source_images[i], source_images[i + 1]
-        if captures_too_far_apart(cur, nxt, config):
+        if captures_too_far_apart(cur.timestamp, nxt.timestamp, config):
             yield []
             continue
         if not cur.width or not cur.height:
             logger.warning(f"Capture {cur.pk} has no dimensions; not comparing it with the next capture.")
             yield None
             continue
-        yield select_links(
-            list(cur.detections.valid()),
-            list(nxt.detections.valid()),
+        current = {det.pk: det for det in cur.detections.valid()}
+        following = {det.pk: det for det in nxt.detections.valid()}
+        links = select_links(
+            [(pk, det.bbox) for pk, det in current.items()],
+            [(pk, det.bbox) for pk, det in following.items()],
             image_diagonal(cur.width, cur.height),
             config,
         )
+        yield [(current[from_id], following[to_id], cost) for from_id, to_id, cost in links]
 
 
 def assign_occurrences_by_tracking_images(
@@ -432,7 +231,8 @@ def assign_occurrences_by_tracking_images(
     transitions = len(source_images) - 1
     links = skipped_for_dimensions = 0
     skipped_for_interval = sum(
-        captures_too_far_apart(source_images[i], source_images[i + 1], config) for i in range(transitions)
+        captures_too_far_apart(source_images[i].timestamp, source_images[i + 1].timestamp, config)
+        for i in range(transitions)
     )
     # Per-session atomic boundary: a crash mid-session rolls back this session only.
     with transaction.atomic():

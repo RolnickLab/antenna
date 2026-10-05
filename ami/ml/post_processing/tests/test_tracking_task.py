@@ -2,21 +2,14 @@ import datetime
 import logging
 import typing
 
-import pydantic
-from django.test import SimpleTestCase, TestCase
+from django.test import TestCase
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Event, Identification, Occurrence, Taxon
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.registry import get_postprocessing_task
-from ami.ml.post_processing.tracking_task import (
-    TrackingConfig,
-    TrackingTask,
-    assign_occurrences_from_detection_chains,
-    captures_too_far_apart,
-    pair_cost,
-    select_links,
-)
+from ami.ml.post_processing.tracking import TrackingTask
+from ami.ml.post_processing.tracking.task import assign_occurrences_from_detection_chains
 from ami.tests.fixtures.main import create_taxa, setup_test_project
 from ami.tests.fixtures.tracking import add_detection, create_session
 from ami.users.tests.factories import UserFactory
@@ -24,113 +17,6 @@ from ami.users.tests.factories import UserFactory
 logger = logging.getLogger(__name__)
 
 BOX = [100, 100, 200, 200]
-DIAG = 1000 * 2**0.5
-
-
-def _config(**kwargs) -> TrackingConfig:
-    return TrackingConfig(event_ids=[1], **kwargs)
-
-
-class TestTrackingConfig(SimpleTestCase):
-    def test_defaults_are_the_plain_sum_baseline_with_every_limit_off(self):
-        config = _config()
-        self.assertEqual(
-            (config.cost_threshold, config.iou_weight, config.size_weight, config.distance_weight),
-            (1.0, 1.0, 1.0, 1.0),
-        )
-        for name in ("min_iou", "min_size_ratio", "max_distance", "max_capture_interval_seconds"):
-            self.assertIsNone(getattr(config, name), name)
-        self.assertTrue(config.skip_if_human_identifications)
-        self.assertTrue(config.require_fresh_event)
-
-    def test_exactly_one_scope(self):
-        with self.assertRaises(pydantic.ValidationError):
-            TrackingConfig()
-        with self.assertRaises(pydantic.ValidationError):
-            TrackingConfig(source_image_collection_id=1, event_ids=[1])
-        TrackingConfig(source_image_collection_id=1)
-
-    def test_values_outside_their_range_are_rejected(self):
-        for bad in (
-            {"min_iou": 1.5},
-            {"min_size_ratio": -0.1},
-            {"max_distance": -1},
-            {"max_capture_interval_seconds": 0},
-            {"iou_weight": -1},
-            {"cost_threshold": -1},
-            {"unknown_option": 1},
-        ):
-            with self.subTest(bad), self.assertRaises(pydantic.ValidationError):
-                _config(**bad)
-
-    def test_every_tunable_has_a_title_and_help_text(self):
-        for name, field in TrackingConfig.__fields__.items():
-            if name in ("source_image_collection_id", "event_ids"):
-                continue
-            self.assertTrue(field.field_info.title, name)
-            self.assertTrue(field.field_info.description, name)
-
-    def test_task_is_registered(self):
-        self.assertIs(get_postprocessing_task("tracking"), TrackingTask)
-
-
-class TestPairCost(SimpleTestCase):
-    def test_default_cost_is_the_plain_sum_of_the_three_terms(self):
-        shifted = [150, 100, 250, 200]
-        # IoU with the +1 pixel convention: overlap 51x101, union 2*101*101 - 51*101.
-        expected = (1 - 51 * 101 / (2 * 101 * 101 - 51 * 101)) + 0.0 + 50 / DIAG
-        self.assertAlmostEqual(pair_cost(BOX, shifted, DIAG, _config()), expected)
-
-    def test_identical_boxes_cost_nothing(self):
-        self.assertAlmostEqual(pair_cost(BOX, BOX, DIAG, _config()), 0.0)
-
-    def test_weights_scale_their_term(self):
-        shifted = [150, 100, 250, 200]
-        base = pair_cost(BOX, shifted, DIAG, _config())
-        no_overlap_term = pair_cost(BOX, shifted, DIAG, _config(iou_weight=0))
-        self.assertAlmostEqual(base - no_overlap_term, 1 - 51 * 101 / (2 * 101 * 101 - 51 * 101))
-        self.assertAlmostEqual(pair_cost(BOX, shifted, DIAG, _config(distance_weight=2)), base + 50 / DIAG)
-        smaller = [100, 100, 150, 150]
-        self.assertAlmostEqual(
-            pair_cost(BOX, smaller, DIAG, _config(size_weight=0)),
-            pair_cost(BOX, smaller, DIAG, _config(size_weight=3)) - 3 * (1 - 51 * 51 / (101 * 101)),
-        )
-
-    def test_each_enabled_limit_rejects_a_pair_that_fails_it(self):
-        shifted = [150, 100, 250, 200]  # IoU about 0.33, same size, centres 50 px apart
-        smaller = [100, 100, 150, 150]  # smaller box: size ratio about 0.25
-        self.assertIsNotNone(pair_cost(BOX, shifted, DIAG, _config(min_iou=0.3)))
-        self.assertIsNone(pair_cost(BOX, shifted, DIAG, _config(min_iou=0.5)))
-        self.assertIsNotNone(pair_cost(BOX, smaller, DIAG, _config(min_size_ratio=0.2)))
-        self.assertIsNone(pair_cost(BOX, smaller, DIAG, _config(min_size_ratio=0.5)))
-        self.assertIsNotNone(pair_cost(BOX, shifted, DIAG, _config(max_distance=0.05)))
-        self.assertIsNone(pair_cost(BOX, shifted, DIAG, _config(max_distance=0.03)))
-
-    def test_a_pair_failing_a_limit_is_not_a_candidate_even_at_a_huge_cutoff(self):
-        class Det:
-            def __init__(self, pk, bbox):
-                self.pk, self.bbox = pk, bbox
-
-        links = select_links(
-            [Det(1, BOX)], [Det(2, [150, 100, 250, 200])], DIAG, _config(min_iou=0.9, cost_threshold=99)
-        )
-        self.assertEqual(links, [])
-
-
-class TestIntervalLimit(SimpleTestCase):
-    def test_interval_limit(self):
-        class Capture:
-            def __init__(self, timestamp):
-                self.timestamp = timestamp
-
-        t0 = datetime.datetime(2026, 7, 1, 22, 0, 0)
-        near, far = Capture(t0 + datetime.timedelta(seconds=20)), Capture(t0 + datetime.timedelta(seconds=45))
-        first = Capture(t0)
-        self.assertFalse(captures_too_far_apart(first, far, _config()))
-        config = _config(max_capture_interval_seconds=30)
-        self.assertFalse(captures_too_far_apart(first, near, config))
-        self.assertTrue(captures_too_far_apart(first, far, config))
-        self.assertTrue(captures_too_far_apart(first, Capture(None), config))
 
 
 class _TrackingCase(TestCase):
@@ -146,6 +32,11 @@ class _TrackingCase(TestCase):
 
     def occurrence_sizes(self, event: Event) -> list[int]:
         return sorted(o.detections.count() for o in Occurrence.objects.filter(event=event))
+
+
+class TestRegistration(TestCase):
+    def test_task_is_registered(self):
+        self.assertIs(get_postprocessing_task("tracking"), TrackingTask)
 
 
 class TestTrackingRun(_TrackingCase):

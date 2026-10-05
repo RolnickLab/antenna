@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from ami.jobs.models import Job
 from ami.main.models import Project, SourceImageCollection
-from ami.ml.post_processing.tracking_task import TrackingConfig
+from ami.ml.post_processing.tracking import TrackingConfig
 from ami.tests.fixtures.main import create_captures, setup_test_project
 from ami.users.models import User
 

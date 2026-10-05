@@ -20,7 +20,7 @@ from ami.ml.post_processing.admin.tracking_actions import build_tracking_jobs_fo
 from ami.ml.post_processing.admin.tracking_form import TrackingActionForm
 from ami.ml.post_processing.class_masking import ClassMaskingTask
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
-from ami.ml.post_processing.tracking_task import TrackingTask
+from ami.ml.post_processing.tracking import TrackingTask
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (

@@ -1771,7 +1771,7 @@ def _split_occurrences_at_session_boundaries(deployment: Deployment, job: "Job |
     An occurrence is expected to belong to one session, so a regroup that draws a session
     boundary through it leaves one piece per session. Returns how many occurrences were split.
     """
-    from ami.main.models_future.tracks import split_at_session_boundaries
+    from ami.ml.post_processing.tracking.sessions import split_at_session_boundaries
 
     spanning_ids = list(
         Detection.objects.valid()

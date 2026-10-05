@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ami.ml.post_processing.admin.forms import SchemaActionForm
-from ami.ml.post_processing.tracking_task import TrackingConfig
+from ami.ml.post_processing.tracking import TrackingConfig
 
 
 class TrackingActionForm(SchemaActionForm):
