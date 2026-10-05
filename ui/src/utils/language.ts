@@ -696,7 +696,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_CAPTURE_SET]:
     'A capture set is a group of captures. A capture set contains all or some captures in a project. Capture sets are useful when specifying what captures to process.',
   [STRING.TOOLTIP_JOB_FILTER]:
-    'Show occurrences with a detection or classification created by this job. The 100 most recent processing and post-processing jobs are listed.',
+    'Show occurrences created or updated by this job. The 100 most recent processing and post-processing jobs are listed.',
   [STRING.TOOLTIP_CAPTURE]:
     'A capture is a source image, collected from a monitoring station. During processing, detections are extracted from captures.',
   [STRING.TOOLTIP_DEPLOYMENT]:

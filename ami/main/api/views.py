@@ -1451,7 +1451,7 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
 
 class OccurrenceJobFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the job that wrote one of their detections or classifications.
+    Filter occurrences created or updated by a job.
     """
 
     query_param = "job"
@@ -1464,7 +1464,7 @@ class OccurrenceJobFilter(filters.BaseFilterBackend):
         )
         if job_id is None:
             return queryset
-        return queryset.written_by_job(job_id)
+        return queryset.created_or_updated_by_job(job_id)
 
 
 OCCURRENCE_FILTER_BACKENDS = (
@@ -1580,7 +1580,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             ),
             OpenApiParameter(
                 name="job",
-                description="Filter occurrences by the job that wrote one of their detections or classifications.",
+                description="Filter occurrences created or updated by a job.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),

@@ -3387,8 +3387,11 @@ class OccurrenceQuerySet(BaseQuerySet):
         """Occurrences with no result from any of the given algorithms."""
         return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
 
-    def written_by_job(self, job_id: int) -> "OccurrenceQuerySet":
-        """Occurrences with a detection or a classification written by the given job.
+    def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
+        """Occurrences created or updated by the given job.
+
+        An occurrence matches when the job created one of its detections, or a classification
+        on one of them, so several jobs can match the same occurrence.
 
         Identifications are not matched: people make them, not jobs. Two EXISTS subqueries
         return each occurrence once, where a join would return one row per matching result.
