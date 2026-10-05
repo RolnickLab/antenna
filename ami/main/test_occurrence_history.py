@@ -18,11 +18,10 @@ from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_pro
 from ami.users.models import User
 from ami.users.roles import BasicMember, ProjectManager
 
-# Measured: two savepoints, the project, the occurrence, then the results with their algorithm and
-# job, their taxa, the classifications they created, identifications and predictions. A class
-# masking job's settings add one query each for the species lists and source algorithms, whatever
-# the number of entries.
-HISTORY_QUERIES = 9
+# Measured: two savepoints, the project, the occurrence, the results with their algorithm and job,
+# their taxa, the classifications they created, the classifications those replaced, identifications,
+# predictions with their jobs, and one query per type of record the entries name (here species lists).
+HISTORY_QUERIES = 11
 
 SIZE_FILTER = AlgorithmResult.Kind.SIZE_FILTER
 CLASS_MASKING = AlgorithmResult.Kind.CLASS_MASKING
@@ -179,6 +178,36 @@ class ReferenceTestCase(TestCase):
         self.assertEqual(job_setting_references(["not", "a", "dict"]), [])  # type: ignore[arg-type]
 
 
+class OccurrenceHistorySchemaTestCase(TestCase):
+    """The OpenAPI schema publishes one history-entry component per result kind, typed by its data model."""
+
+    def test_every_result_kind_has_a_typed_component(self):
+        from drf_spectacular.generators import SchemaGenerator
+
+        from ami.ml.results.schemas import result_kinds
+
+        components = SchemaGenerator(api_version="api").get_schema(request=None, public=True)["components"]["schemas"]
+
+        def resolve(schema: dict) -> dict:
+            # drf-spectacular moves every enum into its own named component.
+            return components[schema["$ref"].rsplit("/", 1)[-1]] if "$ref" in schema else schema
+
+        entry_names = [ref["$ref"].rsplit("/", 1)[-1] for ref in components["OccurrenceHistoryEntry"]["oneOf"]]
+        for kind in result_kinds():
+            name = "".join(part.title() for part in kind.split("_")) + "ResultEntry"
+            with self.subTest(kind):
+                self.assertIn(name, entry_names)
+                props = components[name]["properties"]
+                self.assertEqual(resolve(props["kind"])["enum"], [kind])
+                self.assertEqual(resolve(props["type"])["enum"], ["algorithm_result"])
+                self.assertIn("extra", props["data"]["properties"])
+        self.assertIn("IdentificationEntry", entry_names)
+        self.assertIn("PredictionEntry", entry_names)
+        self.assertIn(
+            "excluded_probability", components["ClassMaskingResultEntry"]["properties"]["data"]["properties"]
+        )
+
+
 class OccurrenceFixtureTestCase(APITestCase):
     """One occurrence of four classified detections, with a project manager and a basic member."""
 
@@ -282,16 +311,20 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(set(identification["user"]), {"id", "name", "image"})
         self.assertEqual(identification["user"]["id"], self.reader.pk)
         self.assertEqual(identification["taxon"]["id"], self.other_taxon.pk)
-        self.assertEqual(identification["payload"]["comment"], "round 0")
-        self.assertEqual(result["subtype"], "size_filter")
+        self.assertEqual(identification["details"]["comment"], "round 0")
+        self.assertEqual(result["kind"], "size_filter")
         self.assertTrue(result["is_current"])
         self.assertEqual(result["algorithm"]["key"], self.size_filter.key)
-        self.assertEqual(result["job"], {"id": self.job.pk, "name": self.job.name, "config": {"size_threshold": 0.01}})
-        self.assertEqual(result["taxon"]["id"], self.taxon.pk)
-        self.assertEqual(result["taxon_before"]["id"], self.other_taxon.pk)
+        self.assertEqual(
+            result["job"],
+            {"id": self.job.pk, "name": self.job.name, "config": {"size_threshold": 0.01}, "references": {}},
+        )
+        self.assertIsNone(result["taxon"])
+        self.assertEqual(result["determination_after"]["id"], self.taxon.pk)
+        self.assertEqual(result["determination_before"]["id"], self.other_taxon.pk)
         self.assertEqual(result["score"], 0.001)
-        self.assertEqual(result["payload"]["relative_size"], 0.001)
-        self.assertIsNone(result["original_taxon"])
+        self.assertEqual(result["data"]["relative_size"], 0.001)
+        self.assertEqual(result["data_references"], {})
         created = Classification.objects.get(algorithm=self.size_filter)
         self.assertEqual(
             result["classifications"],
@@ -302,7 +335,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                     "score": 0.1,
                     "terminal": True,
                     "detection_id": self.detections[0].pk,
-                    "applied_to_id": None,
+                    "replaced": None,
                 }
             ],
         )
@@ -367,14 +400,22 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         }
         self.assertEqual(set(predictions), {None, classifier.key, bystander_algorithm.key})
         self.assertEqual(predictions[bystander_algorithm.key]["id"], bystander.pk)
-        self.assertIsNone(predictions[bystander_algorithm.key]["payload"]["superseded_by_result_id"])
+        self.assertIsNone(predictions[bystander_algorithm.key]["details"]["superseded_by_result_id"])
         demoted = predictions[classifier.key]
         self.assertEqual(demoted["id"], original.pk)
-        self.assertEqual(demoted["payload"]["superseded_by_result_id"], result.pk)
-        self.assertFalse(demoted["payload"]["terminal"])
-        self.assertIsNone(predictions[None]["payload"]["superseded_by_result_id"])
-        self.assertEqual(result_entry["taxa_list"], {"id": taxa_list.pk, "name": "Kept species"})
-        self.assertEqual(result_entry["source_algorithm"]["key"], classifier.key)
+        self.assertEqual(demoted["details"]["superseded_by_result_id"], result.pk)
+        self.assertFalse(demoted["details"]["terminal"])
+        self.assertIsNone(predictions[None]["details"]["superseded_by_result_id"])
+        self.assertEqual(
+            result_entry["job"]["references"],
+            {
+                "taxa_list_id": {"type": "taxa_list", "id": taxa_list.pk, "name": "Kept species"},
+                "algorithm_id": {"type": "algorithm", "id": classifier.pk, "name": classifier.name},
+            },
+        )
+        # The top prediction before masking is the classification the masked one replaced.
+        self.assertEqual(result_entry["classifications"][0]["replaced"]["id"], original.pk)
+        self.assertEqual(result_entry["classifications"][0]["replaced"]["taxon"]["id"], self.taxon.pk)
         self.assertEqual(result_entry["score"], 0.4)
 
     def test_a_terminal_prediction_outranked_on_its_detection_is_superseded(self):
@@ -400,7 +441,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
 
         prediction = next(entry for entry in data if entry["type"] == "prediction")
         self.assertEqual(prediction["id"], outranked.pk)
-        self.assertEqual(prediction["payload"]["superseded_by_result_id"], result.pk)
+        self.assertEqual(prediction["details"]["superseded_by_result_id"], result.pk)
 
     def test_each_algorithm_shows_one_prediction_preferring_terminal_then_latest(self):
         """Tied top scores would otherwise show the same prediction once per detection."""
@@ -431,9 +472,15 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
 
     def test_query_count_does_not_grow_with_the_entries_and_no_score_arrays_are_loaded(self):
         self.client.force_authenticate(user=self.reader)
+        # A setting that names a record, and created classifications that replaced one, so the
+        # reference and replaced-classification queries are counted too.
+        self.job.params = {"config": {"size_threshold": 0.01, "taxa_list_id": TaxaList.objects.create(name="L").pk}}
+        self.job.save()
+        original = Classification.objects.get(detection=self.detections[0])
         now = datetime.datetime.now()
         for rounds, total in ((1, 1), (2, 3)):
             self._add_history(now - datetime.timedelta(days=3 * total), rounds=rounds)
+            Classification.objects.filter(algorithm=self.size_filter).update(applied_to=original)
             with self.subTest(rounds=total), no_query_cache():
                 with CaptureQueriesContext(connection) as queries, self.assertNumQueries(HISTORY_QUERIES):
                     response = self.client.get(self.url())

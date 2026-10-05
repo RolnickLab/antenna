@@ -2,7 +2,7 @@ import collections
 import datetime
 
 from django.db.models import QuerySet
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.fields import SkipField
@@ -15,6 +15,7 @@ from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
+from ami.ml.results.schemas import data_json_schema, result_kind_title, result_kinds
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
@@ -2115,7 +2116,23 @@ class HistoryAlgorithmSerializer(serializers.Serializer):
     key = serializers.CharField()
 
 
+class HistoryTaxonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    rank = serializers.CharField()
+
+
+class RefSerializer(serializers.Serializer):
+    """Another record the history mentions. ``name`` is null when it no longer exists."""
+
+    type = serializers.CharField(help_text="What kind of record: job, taxa_list, capture_set, algorithm, ...")
+    id = serializers.IntegerField()
+    name = serializers.CharField(allow_null=True)
+
+
 class HistoryJobSerializer(serializers.Serializer):
+    """A job in the history. ``references`` is filled per entry by ``HistoryEntryBaseSerializer``."""
+
     id = serializers.IntegerField()
     name = serializers.CharField()
     config = serializers.SerializerMethodField(
@@ -2124,6 +2141,9 @@ class HistoryJobSerializer(serializers.Serializer):
             "Null for other jobs, and for a post-processing job whose stored config is not an object."
         )
     )
+    references = serializers.DictField(
+        child=RefSerializer(), read_only=True, help_text="Settings that name another record, by setting key."
+    )
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_config(self, job) -> dict | None:
@@ -2131,64 +2151,120 @@ class HistoryJobSerializer(serializers.Serializer):
         return config if isinstance(config, dict) else None
 
 
-class HistoryTaxonSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    rank = serializers.CharField()
-
-
-class HistoryTaxaListSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-
-
-class HistoryClassificationSerializer(serializers.Serializer):
-    """A classification a post-processing run created, shown inside the run's result."""
-
+class ReplacedClassificationSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     taxon = HistoryTaxonSerializer(allow_null=True)
     score = serializers.FloatField(allow_null=True)
-    terminal = serializers.BooleanField()
-    detection_id = serializers.IntegerField()
-    applied_to_id = serializers.IntegerField(
-        allow_null=True, help_text="The classification this one re-scored and demoted, when there is one."
-    )
 
 
-class OccurrenceHistoryEntrySerializer(serializers.Serializer):
-    """One entry of an occurrence's history, newest first. ``type`` says which table it came from."""
+class CreatedClassificationSerializer(serializers.Serializer):
+    """A classification a run created, and the one it replaced (null when none, or when it was deleted)."""
 
-    type = serializers.ChoiceField(choices=["algorithm_result", "identification", "prediction"])
+    id = serializers.IntegerField(source="classification.id")
+    taxon = HistoryTaxonSerializer(source="classification.taxon", allow_null=True)
+    score = serializers.FloatField(source="classification.score", allow_null=True)
+    terminal = serializers.BooleanField(source="classification.terminal")
+    detection_id = serializers.IntegerField(source="classification.detection_id")
+    replaced = ReplacedClassificationSerializer(allow_null=True)
+
+
+class HistoryEntryBaseSerializer(serializers.Serializer):
+    """The fields every entry of an occurrence's history has."""
+
     id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
     timestamp = serializers.DateTimeField()
-    subtype = serializers.CharField(
-        allow_null=True, help_text="An algorithm result's kind (class_masking, size_filter)."
-    )
     user = HistoryUserSerializer(allow_null=True)
     algorithm = HistoryAlgorithmSerializer(allow_null=True)
-    job = HistoryJobSerializer(allow_null=True)
-    taxon = HistoryTaxonSerializer(
-        allow_null=True, help_text="The identified or predicted taxon, or the determination after a result."
-    )
-    taxon_before = HistoryTaxonSerializer(allow_null=True, help_text="The determination before a result.")
+    job = serializers.SerializerMethodField()
+    taxon = HistoryTaxonSerializer(allow_null=True, help_text="The identified or predicted taxon.")
     score = serializers.FloatField(
         allow_null=True, help_text="A prediction's score, or a result's headline value (see its kind)."
     )
-    payload = serializers.JSONField(help_text="Details that depend on the type and subtype.")
-    classifications = HistoryClassificationSerializer(
-        many=True, help_text="For a result: the classifications its run created, best score first."
-    )
-    original_taxon = HistoryTaxonSerializer(
-        allow_null=True, help_text="For class masking: the source classifier's top taxon before masking."
-    )
-    taxa_list = HistoryTaxaListSerializer(
-        allow_null=True, help_text="For class masking: the species list used, from the job's settings."
-    )
-    source_algorithm = HistoryAlgorithmSerializer(
-        allow_null=True, help_text="For class masking: the classifier re-scored, from the job's settings."
-    )
+
+    @extend_schema_field(HistoryJobSerializer(allow_null=True))
+    def get_job(self, entry) -> dict | None:
+        if entry.job is None:
+            return None
+        return {
+            **HistoryJobSerializer(entry.job).data,
+            "references": {key: RefSerializer(ref).data for key, ref in entry.job_references.items()},
+        }
+
+
+class IdentificationDetailsSerializer(serializers.Serializer):
     comment = serializers.CharField(allow_blank=True)
     withdrawn = serializers.BooleanField()
-    is_current = serializers.BooleanField(
-        allow_null=True, help_text="For a result: whether it is the latest of its kind, not replaced by a later run."
+    agreed_with_identification_id = serializers.IntegerField(allow_null=True)
+    agreed_with_prediction_id = serializers.IntegerField(allow_null=True)
+
+
+class PredictionDetailsSerializer(serializers.Serializer):
+    detection_id = serializers.IntegerField()
+    terminal = serializers.BooleanField()
+    applied_to_id = serializers.IntegerField(
+        allow_null=True, help_text="The classification this one re-scored and demoted, when there is one."
     )
+    superseded_by_result_id = serializers.IntegerField(
+        allow_null=True, help_text="The algorithm result whose classification replaced this one."
+    )
+
+
+class IdentificationEntrySerializer(HistoryEntryBaseSerializer):
+    type = serializers.ChoiceField(choices=["identification"])
+    details = IdentificationDetailsSerializer()
+
+
+class PredictionEntrySerializer(HistoryEntryBaseSerializer):
+    type = serializers.ChoiceField(choices=["prediction"])
+    details = PredictionDetailsSerializer()
+
+
+class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
+    """What a post-processing run decided about the occurrence, with the classifications it created."""
+
+    type = serializers.ChoiceField(choices=["algorithm_result"])
+    kind = serializers.CharField()
+    data = serializers.JSONField(help_text="The kind's figures, validated against its data model.")
+    data_references = serializers.DictField(
+        child=RefSerializer(), help_text="Data fields that name another record, by field."
+    )
+    determination_before = HistoryTaxonSerializer(allow_null=True)
+    determination_after = HistoryTaxonSerializer(allow_null=True)
+    classifications = CreatedClassificationSerializer(
+        many=True, help_text="The classifications the run created, best score first."
+    )
+    is_current = serializers.BooleanField(
+        help_text="Whether it is the latest of its kind, not replaced by a later run."
+    )
+
+
+def _result_entry_component(kind: str) -> type[serializers.Serializer]:
+    """An OpenAPI-only serializer for one kind: ``kind`` is a literal and ``data`` is the kind's schema."""
+    name = result_kind_title(kind)
+    data_field = extend_schema_field(data_json_schema(kind))(type(f"{name}DataField", (serializers.JSONField,), {}))
+    return type(
+        f"{name}ResultEntrySerializer",
+        (AlgorithmResultEntrySerializer,),
+        {"kind": serializers.ChoiceField(choices=[kind]), "data": data_field()},
+    )
+
+
+# The history endpoint's response: a plain oneOf with literal ``type`` and ``kind`` fields, one
+# component per result kind, so a client generated from the schema can narrow ``data`` by kind.
+OCCURRENCE_HISTORY_ENTRY_SCHEMA = PolymorphicProxySerializer(
+    component_name="OccurrenceHistoryEntry",
+    serializers=[IdentificationEntrySerializer, PredictionEntrySerializer]
+    + [_result_entry_component(kind) for kind in result_kinds()],
+    resource_type_field_name=None,
+    many=True,
+)
+
+HISTORY_ENTRY_SERIALIZERS = {
+    "identification": IdentificationEntrySerializer,
+    "prediction": PredictionEntrySerializer,
+    "algorithm_result": AlgorithmResultEntrySerializer,
+}
+
+
+def serialize_history(entries, context) -> list[dict]:
+    return [HISTORY_ENTRY_SERIALIZERS[entry.type](entry, context=context).data for entry in entries]

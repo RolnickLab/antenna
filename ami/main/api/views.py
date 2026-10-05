@@ -69,6 +69,7 @@ from ..models import (
     verified_taxon_counts,
 )
 from .serializers import (
+    OCCURRENCE_HISTORY_ENTRY_SCHEMA,
     BulkIdentificationRequestSerializer,
     BulkIdentificationResponseSerializer,
     ClassificationListSerializer,
@@ -85,7 +86,6 @@ from .serializers import (
     ExampleOccurrenceSerializer,
     IdentificationSerializer,
     ModelAgreementSerializer,
-    OccurrenceHistoryEntrySerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
@@ -107,6 +107,7 @@ from .serializers import (
     TaxonSearchResultSerializer,
     TaxonSerializer,
     TopIdentifiersResponseSerializer,
+    serialize_history,
 )
 
 logger = logging.getLogger(__name__)
@@ -1583,7 +1584,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(parameters=[project_id_doc_param], responses=OccurrenceHistoryEntrySerializer(many=True))
+    @extend_schema(parameters=[project_id_doc_param], responses=OCCURRENCE_HISTORY_ENTRY_SCHEMA)
     @action(detail=True, methods=["get"], name="history", pagination_class=None)
     def history(self, request: Request, pk=None) -> Response:
         """Everything that happened to this occurrence, newest first.
@@ -1593,7 +1594,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         """
         occurrence = self.get_object()
         entries = occurrence_timeline(occurrence)
-        return Response(OccurrenceHistoryEntrySerializer(entries, many=True, context={"request": request}).data)
+        return Response(serialize_history(entries, {"request": request}))
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")
