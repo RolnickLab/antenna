@@ -115,6 +115,7 @@ export const Occurrences = () => {
                 'deployment__research_site',
                 'algorithm',
                 'not_algorithm',
+                'job',
               ],
               activeFilters
             )}
@@ -127,6 +128,7 @@ export const Occurrences = () => {
             <FilterControl field="deployment__research_site" />
             <FilterControl field="algorithm" />
             <FilterControl field="not_algorithm" />
+            <FilterControl field="job" />
           </FilterSection>
         </div>
         <div className="w-full overflow-hidden">

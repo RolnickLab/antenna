@@ -17,6 +17,7 @@ import { TagFilter } from './filters/tag-filter'
 import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
+import { JobFilter } from './filters/job-filter'
 import { FilterProps } from './filters/types'
 import { ProcessingStatusFilter } from './filters/processing-status-filter'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
@@ -37,6 +38,7 @@ const ComponentMap: {
   event: SessionFilter,
   processed: ProcessingStatusFilter,
   include_unobserved: BooleanFilter,
+  job: JobFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
   not_tag_id: TagFilter,

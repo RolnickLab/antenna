@@ -109,6 +109,16 @@ const JobSummary = ({ job }: { job: Job }) => {
             value={job.pipeline.name}
           />
         ) : null}
+        {job.type.key === 'ml' || job.type.key === 'post_processing' ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_OCCURRENCES)}
+            value={translate(STRING.VIEW_OCCURRENCES)}
+            to={getAppRoute({
+              to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
+              filters: { job: job.id },
+            })}
+          />
+        ) : null}
         {job.sourceImage ? (
           <InputValue
             label={translate(STRING.FIELD_LABEL_CAPTURE)}
