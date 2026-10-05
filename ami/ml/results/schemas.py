@@ -12,6 +12,11 @@ from typing import Any
 import pydantic
 
 
+def reference(ref_type: str, default: Any = None) -> Any:
+    """Declare a data field that holds another record's id; the history resolves it to ``{type, id, name}``."""
+    return pydantic.Field(default, reference=ref_type)
+
+
 class AlgorithmResultData(pydantic.BaseModel):
     # Stored, shown and exported only, never read for logic; a value a feature needs becomes a typed field.
     extra: dict[str, Any] = {}
