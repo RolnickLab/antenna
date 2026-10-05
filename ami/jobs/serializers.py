@@ -199,6 +199,11 @@ class JobChoiceSerializer(DefaultSerializer):
     set choices: no counts or nested objects, so the choices query stays cheap.
     """
 
+    def get_permissions(self, instance, instance_data):
+        # A picker needs no per-job permissions, and resolving them costs several queries per row.
+        instance_data["user_permissions"] = []
+        return instance_data
+
     class Meta:
         model = Job
         fields = ["id", "name", "details", "job_type_key", "created_at"]
