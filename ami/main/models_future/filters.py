@@ -40,16 +40,16 @@ def build_taxa_recursive_filter_q(
 
     Examples:
         Direct Taxa model filtering:
-            >>> include_taxa = project.default_filters_include_taxa.all()
-            >>> exclude_taxa = project.default_filters_exclude_taxa.all()
-            >>> taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="")
-            >>> taxa = Taxon.objects.filter(taxa_q)
+            include_taxa = project.default_filters_include_taxa.all()
+            exclude_taxa = project.default_filters_exclude_taxa.all()
+            taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="")
+            taxa = Taxon.objects.filter(taxa_q)
 
         Combining with other filters:
-            >>> score_q = build_occurrence_score_threshold_q(0.8, "")
-            >>> taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, "determination")
-            >>> combined_q = score_q & taxa_q & Q(determination__isnull=False)
-            >>> occurrences = Occurrence.objects.filter(combined_q)
+            score_q = build_occurrence_score_threshold_q(0.8, "")
+            taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, "determination")
+            combined_q = score_q & taxa_q & Q(determination__isnull=False)
+            occurrences = Occurrence.objects.filter(combined_q)
     """
     result_q = Q()
 
@@ -113,12 +113,12 @@ def build_occurrence_score_threshold_q(
 
     Examples:
         Direct occurrence filtering with custom threshold:
-            >>> score_q = build_occurrence_score_threshold_q(0.9, occurrence_accessor="")
-            >>> high_confidence = Occurrence.objects.filter(score_q)
+            score_q = build_occurrence_score_threshold_q(0.9, occurrence_accessor="")
+            high_confidence = Occurrence.objects.filter(score_q)
 
         Event-level filtering:
-            >>> score_q = build_occurrence_score_threshold_q(0.8, occurrence_accessor="occurrences")
-            >>> events = Event.objects.filter(score_q).distinct()
+            score_q = build_occurrence_score_threshold_q(0.8, occurrence_accessor="occurrences")
+            events = Event.objects.filter(score_q).distinct()
     """
     # Add __ separator if accessor is not empty
     prefix = f"{occurrence_accessor}__" if occurrence_accessor else ""
@@ -156,37 +156,36 @@ def build_occurrence_default_filters_q(
 
     Examples:
         Direct Occurrence filtering:
-            >>> filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
-            >>> occurrences = Occurrence.objects.filter(filter_q)
+            occurrences = Occurrence.objects.filter(filter_q)
 
         Event with occurrence counts:
-            >>> filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="occurrences")
-            >>> events = Event.objects.annotate(
-            ...     filtered_occ_count=Count('occurrences', filter=filter_q, distinct=True),
-            ...     filtered_taxa_count=Count('occurrences__determination', filter=filter_q, distinct=True)
-            ... ).filter(filtered_occ_count__gt=0)
+            filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="occurrences")
+            events = Event.objects.annotate(
+                filtered_occ_count=Count('occurrences', filter=filter_q, distinct=True),
+                filtered_taxa_count=Count('occurrences__determination', filter=filter_q, distinct=True)
+            ).filter(filtered_occ_count__gt=0)
 
         SourceImage with detection counts:
-            >>> filter_q = build_occurrence_default_filters_q(
-            ...     project, request, occurrence_accessor="detections__occurrence"
-            ... )
-            >>> images = SourceImage.objects.annotate(
-            ...     filtered_count=Count('detections__occurrence', filter=filter_q, distinct=True)
-            ... ).filter(filtered_count__gt=0)
+            filter_q = build_occurrence_default_filters_q(
+                project, request, occurrence_accessor="detections__occurrence"
+            )
+            images = SourceImage.objects.annotate(
+                filtered_count=Count('detections__occurrence', filter=filter_q, distinct=True)
+            ).filter(filtered_count__gt=0)
 
         Collection with nested relationships:
-            >>> filter_q = build_occurrence_default_filters_q(
-            ...     project, request, occurrence_accessor="images__detections__occurrence"
-            ... )
-            >>> collections = SourceImageCollection.objects.annotate(
-            ...     occ_count=Count('images__detections__occurrence', filter=filter_q, distinct=True),
-            ...     taxa_count=Count('images__detections__occurrence__determination', filter=filter_q, distinct=True)
-            ... )
+            filter_q = build_occurrence_default_filters_q(
+                project, request, occurrence_accessor="images__detections__occurrence"
+            )
+            collections = SourceImageCollection.objects.annotate(
+                occ_count=Count('images__detections__occurrence', filter=filter_q, distinct=True),
+                taxa_count=Count('images__detections__occurrence__determination', filter=filter_q, distinct=True)
+            )
 
         Bypassing default filters (pass apply_defaults=false in query params):
-            >>> # Example: /api/occurrences/?apply_defaults=false
-            >>> filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
-            >>> # Returns Q() - no filtering applied
+            # Example: /api/occurrences/?apply_defaults=false
+            filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+            # Returns Q() - no filtering applied
     """
     if project is None:
         return Q()
