@@ -1,8 +1,9 @@
 """An occurrence's history: what algorithms and people did to it, newest first.
 
-What a post-processing run decided about an occurrence is an ``AlgorithmResult``. Identifications
-and predictions keep their own tables, and ``occurrence_timeline`` merges all three into one list
-for the history endpoint.
+``occurrence_timeline`` merges an occurrence's algorithm results, identifications and predictions
+into one list of ``OccurrenceTimelineEntry`` for the history endpoint. What a post-processing run
+decided about an occurrence is an ``AlgorithmResult``; identifications and predictions keep their
+own tables.
 """
 
 from __future__ import annotations
@@ -11,83 +12,84 @@ import dataclasses
 import datetime
 import typing
 
-from django.db.models import Q
-
-from ami.main.models import Classification, Identification, Occurrence, TaxaList, Taxon, User
+from ami.main.models import Classification, Identification, Occurrence, Taxon, User
+from ami.main.models_future.references import Ref, job_setting_references, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
+from ami.ml.results.schemas import reference_fields
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
 
 
 @dataclasses.dataclass
-class TimelineEntry:
-    """One entry of the merged history, in the shape ``OccurrenceHistoryEntrySerializer`` reads."""
+class CreatedClassification:
+    """A classification a run created, with the one it replaced (through applied_to), if that still exists."""
 
-    type: str
+    classification: Classification
+    replaced: Classification | None
+
+
+@dataclasses.dataclass
+class OccurrenceTimelineEntry:
+    """One entry of an occurrence's merged history. Sections below say which fields each type fills."""
+
+    # --- Every entry
+    type: str  # "algorithm_result" | "identification" | "prediction"
     id: int
     timestamp: datetime.datetime
-    subtype: str | None = None
-    user: User | None = None
-    algorithm: Algorithm | None = None
-    job: Job | None = None
-    taxon: Taxon | None = None
-    taxon_before: Taxon | None = None
-    score: float | None = None
-    payload: dict = dataclasses.field(default_factory=dict)
-    comment: str = ""
-    withdrawn: bool = False
+    user: User | None = None  # identification
+    algorithm: Algorithm | None = None  # result, prediction
+    job: Job | None = None  # result, prediction
+    job_references: dict[str, Ref] = dataclasses.field(default_factory=dict)  # setting key -> Ref
+    taxon: Taxon | None = None  # identification, prediction
+    score: float | None = None  # prediction's score; result's value
+    # --- Algorithm result
+    kind: str | None = None
+    data: dict = dataclasses.field(default_factory=dict)  # validated per kind
+    data_references: dict[str, Ref] = dataclasses.field(default_factory=dict)  # data field -> Ref
+    determination_before: Taxon | None = None
+    determination_after: Taxon | None = None
+    classifications: list[CreatedClassification] = dataclasses.field(default_factory=list)
     is_current: bool | None = None
-    # For a result: the classifications the run created, best score first.
-    classifications: list[Classification] = dataclasses.field(default_factory=list)
-    # For a class masking result: the source classifier's top taxon before masking, the species
-    # list and the classifier, the latter two from the job's settings.
-    original_taxon: Taxon | None = None
-    taxa_list: TaxaList | None = None
-    source_algorithm: Algorithm | None = None
+    # --- Identification and prediction
+    details: dict = dataclasses.field(default_factory=dict)
 
 
-def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
+def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]:
     """Results, identifications and predictions of one occurrence, merged newest first.
 
     A result comes with the classifications its run created, so the history shows the run and
     what it changed as one entry; those classifications are not listed again as predictions.
     Every other algorithm contributes one prediction, its best. A prediction names the result
     that superseded it when a result's classification re-scored it, or when a result's
-    classification on the same detection outranks it as a terminal prediction. The query count
-    does not grow with the entries.
+    classification on the same detection outranks it as a terminal prediction. Ids the entries
+    show are resolved to references with one query per type. The query count does not grow
+    with the entries.
     """
     results = list(
         AlgorithmResult.objects.filter(occurrence=occurrence)
         .select_related("algorithm", "job")
         .order_by("-timestamp", "-pk")
     )
-    settings = {result.pk: _job_settings(result.job) for result in results}
     taxa = _by_id(
         Taxon,
-        {
-            result.data.get(key)
-            for result in results
-            for key in ("determination_before_id", "determination_after_id", "original_taxon_id")
-        },
+        {result.data.get(key) for result in results for key in ("determination_before_id", "determination_after_id")},
     )
-    taxa_lists = _by_id(TaxaList, {config.get("taxa_list_id") for config in settings.values()})
-    source_algorithms = _by_id(Algorithm, {config.get("algorithm_id") for config in settings.values()})
     created_by_result = _classifications_created_by(results, occurrence)
-    created_ids = {c.pk for created in created_by_result.values() for c in created}
+    created_ids = {c.classification.pk for created in created_by_result.values() for c in created}
     rescored_by = {
-        c.applied_to_id: result_id
+        c.classification.applied_to_id: result_id
         for result_id, created in created_by_result.items()
         for c in created
-        if c.applied_to_id is not None
+        if c.classification.applied_to_id is not None
     }
     # Only a classification that re-scored nothing (the size filter's) supersedes by detection; a
     # re-scored one names its original through applied_to, so other classifiers stay unmarked.
     outranked_by = {
-        c.detection_id: result_id
+        c.classification.detection_id: result_id
         for result_id, created in created_by_result.items()
         for c in created
-        if c.applied_to_id is None
+        if c.classification.applied_to_id is None
     }
 
     def superseded_by(prediction: Classification) -> int | None:
@@ -98,38 +100,33 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
         return None
 
     entries = [
-        TimelineEntry(
+        OccurrenceTimelineEntry(
             type="algorithm_result",
             id=result.pk,
             timestamp=result.timestamp,
-            subtype=result.kind,
             algorithm=result.algorithm,
             job=result.job,
-            taxon=taxa.get(result.data.get("determination_after_id")),
-            taxon_before=taxa.get(result.data.get("determination_before_id")),
             score=result.value,
-            payload=result.data,
-            is_current=result.is_current,
+            kind=result.kind,
+            data=result.data,
+            determination_before=taxa.get(result.data.get("determination_before_id")),
+            determination_after=taxa.get(result.data.get("determination_after_id")),
             classifications=created_by_result.get(result.pk, []),
-            original_taxon=taxa.get(result.data.get("original_taxon_id")),
-            taxa_list=taxa_lists.get(settings[result.pk].get("taxa_list_id")),
-            source_algorithm=source_algorithms.get(settings[result.pk].get("algorithm_id")),
+            is_current=result.is_current,
         )
         for result in results
     ]
 
     identifications = Identification.objects.filter(occurrence=occurrence).select_related("user", "taxon")
     entries.extend(
-        TimelineEntry(
+        OccurrenceTimelineEntry(
             type="identification",
             id=identification.pk,
             timestamp=identification.created_at,
             user=identification.user,
             taxon=identification.taxon,
-            comment=identification.comment or "",
-            withdrawn=identification.withdrawn,
-            payload={
-                "comment": identification.comment,
+            details={
+                "comment": identification.comment or "",
                 "withdrawn": identification.withdrawn,
                 "agreed_with_identification_id": identification.agreed_with_identification_id,
                 "agreed_with_prediction_id": identification.agreed_with_prediction_id,
@@ -139,14 +136,15 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
     )
 
     entries.extend(
-        TimelineEntry(
+        OccurrenceTimelineEntry(
             type="prediction",
             id=prediction.pk,
             timestamp=prediction.created_at,
             algorithm=prediction.algorithm,
+            job=prediction.job,
             taxon=prediction.taxon,
             score=prediction.score,
-            payload={
+            details={
                 "detection_id": prediction.detection_id,
                 "terminal": prediction.terminal,
                 "applied_to_id": prediction.applied_to_id,
@@ -157,8 +155,32 @@ def occurrence_timeline(occurrence: Occurrence) -> list[TimelineEntry]:
         if prediction.pk not in created_ids
     )
 
+    _resolve_entry_references(entries)
     entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
     return entries
+
+
+def _resolve_entry_references(entries: list[OccurrenceTimelineEntry]) -> None:
+    """Fill each entry's job and data references, resolving every id the entries name at once."""
+    job_refs = {
+        id(entry): job_setting_references(_job_settings(entry.job)) for entry in entries if entry.job is not None
+    }
+    data_refs = {
+        id(entry): [
+            (field, ref_type, entry.data[field])
+            for field, ref_type in reference_fields(entry.kind).items()
+            if isinstance(entry.data.get(field), int)
+        ]
+        for entry in entries
+        if entry.type == "algorithm_result"
+    }
+    wanted = [(ref_type, ref_id) for refs in (*job_refs.values(), *data_refs.values()) for _, ref_type, ref_id in refs]
+    if not wanted:
+        return
+    resolved = resolve_references(wanted)
+    for entry in entries:
+        entry.job_references = {key: resolved[(t, i)] for key, t, i in job_refs.get(id(entry), [])}
+        entry.data_references = {field: resolved[(t, i)] for field, t, i in data_refs.get(id(entry), [])}
 
 
 def _job_settings(job: Job | None) -> dict:
@@ -174,34 +196,41 @@ def _by_id(model, ids: set) -> dict:
 
 def _classifications_created_by(
     results: list[AlgorithmResult], occurrence: Occurrence
-) -> dict[int, list[Classification]]:
+) -> dict[int, list[CreatedClassification]]:
     """The classifications each result's run created on the occurrence, keyed by result id.
 
-    A classification names its result directly through ``algorithm_result``. One written by a
-    run before that link existed is matched through its job instead; when that job left more
-    than one result on the occurrence, the latest takes it.
+    A classification names its result through ``algorithm_result``. Each comes with the
+    classification it replaced, read in one more query.
     """
     if not results:
         return {}
-    result_by_job = {}
-    for result in reversed(results):
-        if result.job_id is not None:
-            result_by_job[result.job_id] = result.pk
-    created = (
-        Classification.objects.filter(detection__occurrence=occurrence)
-        .filter(
-            Q(algorithm_result_id__in=[result.pk for result in results])
-            | Q(algorithm_result__isnull=True, job_id__in=list(result_by_job))
+    created = list(
+        Classification.objects.filter(
+            detection__occurrence=occurrence, algorithm_result_id__in=[result.pk for result in results]
         )
         .select_related("taxon", "algorithm")
         # The score arrays can hold tens of thousands of values per row and are not shown here.
         .defer("scores", "logits")
         .order_by("-score", "-pk")
     )
-    by_result: dict[int, list[Classification]] = {}
+    # A separate query, not select_related("applied_to"): .defer() does not reach a self-join,
+    # so the replaced rows' score arrays would load.
+    replaced_ids = {c.applied_to_id for c in created if c.applied_to_id is not None}
+    replaced = (
+        {
+            c.pk: c
+            for c in Classification.objects.filter(pk__in=replaced_ids)
+            .select_related("taxon")
+            .only("pk", "score", "taxon", "taxon__name", "taxon__rank")
+        }
+        if replaced_ids
+        else {}
+    )
+    by_result: dict[int, list[CreatedClassification]] = {}
     for classification in created:
-        result_id = classification.algorithm_result_id or result_by_job[classification.job_id]
-        by_result.setdefault(result_id, []).append(classification)
+        by_result.setdefault(classification.algorithm_result_id, []).append(
+            CreatedClassification(classification, replaced.get(classification.applied_to_id))
+        )
     return by_result
 
 
@@ -217,7 +246,7 @@ def _one_prediction_per_algorithm(occurrence: Occurrence) -> list[Classification
         return (score, prediction.terminal, prediction.created_at, prediction.pk)
 
     best: dict[int | None, Classification] = {}
-    for prediction in occurrence.predictions().defer("scores", "logits"):
+    for prediction in occurrence.predictions().select_related("job").defer("scores", "logits"):
         current = best.get(prediction.algorithm_id)
         if current is None or rank(prediction) > rank(current):
             best[prediction.algorithm_id] = prediction

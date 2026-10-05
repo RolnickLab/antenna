@@ -11,6 +11,7 @@ from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Identification, Occurrence, SourceImage, TaxaList, Taxon
+from ami.main.models_future.history import occurrence_timeline
 from ami.main.models_future.references import Ref, job_setting_references, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
@@ -468,3 +469,94 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/?project_id={self.project.pk}")
         self.assertEqual(detail.status_code, 404)
         self.assertEqual(self.client.get(self.url()).status_code, 200)
+
+    def test_a_result_lists_what_each_created_classification_replaced(self):
+        classifier = Algorithm.objects.create(name="Classifier", key="replaced-test-classifier")
+        masker = Algorithm.objects.create(name="Masked", key="replaced-test-masker")
+        original = Classification.objects.get(detection=self.detections[1])
+        Classification.objects.filter(pk=original.pk).update(terminal=False, algorithm=classifier)
+        result = AlgorithmResult.objects.record(
+            occurrence=self.occurrence,
+            algorithm=masker,
+            kind=CLASS_MASKING,
+            value=0.4,
+            data={"excluded_probability": 0.4},
+        )
+        masked = Classification.objects.create(
+            detection=self.detections[1],
+            taxon=self.other_taxon,
+            score=0.9,
+            algorithm=masker,
+            timestamp=datetime.datetime.now(),
+            applied_to=original,
+            algorithm_result=result,
+        )
+        # The original was deleted (applied_to is SET_NULL until #1472), so nothing is shown as replaced.
+        orphan = Classification.objects.create(
+            detection=self.detections[2],
+            taxon=self.other_taxon,
+            score=0.8,
+            algorithm=masker,
+            timestamp=datetime.datetime.now(),
+            applied_to=None,
+            algorithm_result=result,
+        )
+        entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
+        by_id = {c.classification.pk: c for c in entry.classifications}
+        self.assertEqual(by_id[masked.pk].replaced.pk, original.pk)
+        self.assertEqual(by_id[masked.pk].replaced.taxon_id, original.taxon_id)
+        self.assertIsNone(by_id[orphan.pk].replaced)
+
+    def test_classifications_link_to_a_result_only_through_algorithm_result(self):
+        """A classification sharing the result's job but not linked to it stays an ordinary prediction."""
+        AlgorithmResult.objects.record(
+            occurrence=self.occurrence,
+            algorithm=self.size_filter,
+            job=self.job,
+            kind=SIZE_FILTER,
+            data={"relative_size": 0.001},
+        )
+        unlinked = Classification.objects.create(
+            detection=self.detections[0],
+            taxon=self.taxon,
+            score=0.99,
+            algorithm=self.size_filter,
+            timestamp=datetime.datetime.now(),
+            job=self.job,
+        )
+        entries = occurrence_timeline(self.occurrence)
+        result_entry = next(e for e in entries if e.type == "algorithm_result")
+        self.assertEqual(result_entry.classifications, [])
+        self.assertIn(unlinked.pk, [e.id for e in entries if e.type == "prediction"])
+
+    def test_predictions_carry_the_job_that_wrote_them(self):
+        Classification.objects.filter(detection__occurrence=self.occurrence).update(job=self.job)
+        predictions = [e for e in occurrence_timeline(self.occurrence) if e.type == "prediction"]
+        self.assertTrue(predictions)
+        self.assertTrue(all(e.job == self.job for e in predictions))
+
+    def test_job_settings_are_resolved_to_references(self):
+        taxa_list = TaxaList.objects.create(name="Kept species")
+        self.job.params = {"config": {"taxa_list_id": taxa_list.pk, "size_threshold": 0.01}}
+        self.job.save()
+        AlgorithmResult.objects.record(
+            occurrence=self.occurrence,
+            algorithm=self.size_filter,
+            job=self.job,
+            kind=SIZE_FILTER,
+            data={"relative_size": 0.001},
+        )
+        entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
+        self.assertEqual(entry.job_references, {"taxa_list_id": Ref("taxa_list", taxa_list.pk, "Kept species")})
+
+    def test_a_result_without_a_job_has_no_settings_or_references(self):
+        AlgorithmResult.objects.record(
+            occurrence=self.occurrence,
+            algorithm=self.size_filter,
+            job=None,
+            kind=SIZE_FILTER,
+            data={"relative_size": 0.001},
+        )
+        entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
+        self.assertIsNone(entry.job)
+        self.assertEqual(entry.job_references, {})
