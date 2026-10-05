@@ -3751,30 +3751,6 @@ class Occurrence(BaseModel):
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
-    # Statistics stored so occurrences can be sorted by them. Written by
-    # ``models_future.track_stats.refresh_track_stats`` whenever tracking or a regroup changes
-    # which detections an occurrence holds; null until then, or when it has none.
-    track_motion = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Path length between captures as a fraction of the image diagonal. See track_stats.py.",
-    )
-    track_size_ratio = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Largest box area over the smallest. See models_future/track_stats.py.",
-    )
-    track_distinct_taxa = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Distinct taxa among terminal classifications. See models_future/track_stats.py.",
-    )
-    track_id_agreement = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Share of terminal classifications naming the determination. See models_future/track_stats.py.",
-    )
-
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 

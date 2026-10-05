@@ -14,7 +14,6 @@ from django.db import transaction
 from django.db.models import F
 
 from ami.main.models import Detection, Event, Identification, Occurrence, SourceImage, update_occurrence_determination
-from ami.main.models_future.track_stats import refresh_track_stats
 
 # Order of detections within an occurrence: capture time, then capture, then detection.
 # The split and the tracks export both use it, so they agree on what "next" is.
@@ -83,7 +82,6 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     _copy_identifications(occurrence, pieces)
     for piece in [occurrence, *pieces]:
         update_occurrence_determination(piece, save=True)
-    refresh_track_stats(occurrence, *pieces)
     return pieces
 
 

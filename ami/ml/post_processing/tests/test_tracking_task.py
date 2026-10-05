@@ -149,7 +149,7 @@ class _TrackingCase(TestCase):
 
 
 class TestTrackingRun(_TrackingCase):
-    def test_a_still_insect_is_folded_into_one_occurrence_and_stats_are_stored(self):
+    def test_a_still_insect_is_folded_into_one_occurrence(self):
         captures = create_session(self.deployment, [[BOX], [BOX], [BOX]], self.taxa[0])
         event = captures[0].event
         self.assertEqual(Occurrence.objects.filter(event=event).count(), 3)
@@ -157,9 +157,6 @@ class TestTrackingRun(_TrackingCase):
         self.run_task(event)
 
         self.assertEqual(self.occurrence_sizes(event), [3])
-        occurrence = Occurrence.objects.get(event=event)
-        self.assertIsNotNone(occurrence.track_motion)
-        self.assertIsNotNone(occurrence.track_size_ratio)
         self.assertEqual(Detection.objects.filter(source_image__event=event, next_detection__isnull=False).count(), 2)
         event.refresh_from_db()
         self.assertEqual(event.occurrences_count, 1)
