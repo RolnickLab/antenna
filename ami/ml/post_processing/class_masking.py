@@ -8,10 +8,11 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import AlgorithmResult, Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
+from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.post_processing.base import BasePostProcessingTask
-from ami.ml.post_processing.results import BatchResults
+from ami.ml.results.writer import AlgorithmResultWriter
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -84,7 +85,7 @@ def make_classifications_filtered_by_taxa_list(
 
     Every occurrence with a re-scored classification gets one algorithm result, written in
     the same transaction as the batch that changes it, and its new classifications point at
-    that result (see ``BatchResults``). The result records the probability the list excluded
+    that result (see ``AlgorithmResultWriter``). The result records the probability the list excluded
     and the source's original top prediction for the occurrence's winning detection.
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
@@ -129,7 +130,7 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
-    results = BatchResults(
+    results = AlgorithmResultWriter(
         kind=AlgorithmResult.Kind.CLASS_MASKING,
         algorithm=new_algorithm,
         job=job,
@@ -212,13 +213,11 @@ def make_classifications_filtered_by_taxa_list(
                 if detection is not None and detection.occurrence is not None:
                     occurrences_to_update.add(detection.occurrence)
                     # The occurrence's result carries the figures of its winning detection:
-                    # the one whose masked classification scores highest (see BatchResults).
+                    # the one whose masked classification scores highest (see AlgorithmResultWriter).
                     results.note(
                         detection.occurrence,
                         {
                             "excluded_probability": float(1.0 - kept_sum),
-                            "original_taxon_id": classification.taxon_id,
-                            "original_score": classification.score,
                             "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
                         },
                         rank=score,

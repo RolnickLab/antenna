@@ -13,8 +13,8 @@ import typing
 
 from django.db.models import Q
 
-from ami.main.models import AlgorithmResult, Classification, Identification, Occurrence, TaxaList, Taxon, User
-from ami.ml.models.algorithm import Algorithm
+from ami.main.models import Classification, Identification, Occurrence, TaxaList, Taxon, User
+from ami.ml.models import Algorithm, AlgorithmResult
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job

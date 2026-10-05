@@ -16,7 +16,6 @@ import uuid
 from django.test import TestCase
 
 from ami.main.models import (
-    AlgorithmResult,
     Classification,
     Detection,
     Occurrence,
@@ -27,7 +26,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, AlgorithmCategoryMap
+from ami.ml.models import Algorithm, AlgorithmCategoryMap, AlgorithmResult
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.class_masking import ClassMaskingTask, make_classifications_filtered_by_taxa_list
 from ami.tests.fixtures.main import create_taxa, setup_test_project
@@ -411,11 +410,9 @@ class TestPostProcessingClassMasking(TestCase):
         scores = _softmax([2.0, 1.0, 5.0])
         self.assertAlmostEqual(result.value, scores[2])
         self.assertAlmostEqual(result.data.pop("excluded_probability"), scores[2])
-        self.assertAlmostEqual(result.data.pop("original_score"), scores[2])
         self.assertEqual(
             result.data,
             {
-                "original_taxon_id": self.species_taxa[2].pk,
                 "new_winner_original_rank": 2,
                 "determination_before_id": self.species_taxa[2].pk,
                 "determination_after_id": self.species_taxa[0].pk,
@@ -424,6 +421,9 @@ class TestPostProcessingClassMasking(TestCase):
         )
         masked = result.classifications.get()
         self.assertEqual((masked.taxon, masked.terminal), (self.species_taxa[0], True))
+        # The top prediction before masking is the classification the masked one replaced.
+        self.assertEqual(masked.applied_to.taxon, self.species_taxa[2])
+        self.assertAlmostEqual(masked.applied_to.score, scores[2])
         self.assertEqual(masked.applied_to.taxon, self.species_taxa[2])
 
     def test_an_occurrence_masking_does_not_change_gets_no_result(self):
@@ -467,9 +467,9 @@ class TestPostProcessingClassMasking(TestCase):
     def test_an_occurrence_without_a_project_is_still_rescored_but_gets_no_result(self):
         """A missing project must not fail a run after it has changed data; the result is skipped with a warning."""
         taxa_list, det, occ = self._masking_fixture()
-        Occurrence.objects.filter(pk=occ.pk).update(project=None, deployment=None)
+        Occurrence.objects.filter(pk=occ.pk).update(project=None)
 
-        with self.assertLogs("ami.main.models", level="WARNING") as logs:
+        with self.assertLogs("ami.ml.models.algorithm_result", level="WARNING") as logs:
             ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
 
         self.assertIn(f"Occurrence #{occ.pk}", logs.output[0])
