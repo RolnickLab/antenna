@@ -244,7 +244,7 @@ Bucket: ami
 
 The local environment uses the `console` email backend. To view emails sent by the platform, check the console output (run the `docker compose logs -f django celeryworker` command).
 
-Links and the site name in account emails, such as password resets, come from the Site record. Set its domain to your web app's hostname in the Django admin (Sites), then restart the web container.
+Links and the site name in account emails, such as password resets, come from the Site record. In the Django admin (Sites), set the Domain name to your web app's hostname and the Display name to the name users should see, then restart the web container.
 
 ## Database
 
