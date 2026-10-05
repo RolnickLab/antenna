@@ -47,6 +47,16 @@ Every PR body opens with:
 1. **`## Summary`** — a short, plain-language paragraph stating the purpose of the change and its effect for the user, operator, or system. Written so the whole team can read it; implementation detail belongs in `## Detailed Description` below.
 2. **`### List of Changes`** — a numbered list or a table. Each change has, at minimum, a plain user-effect description. Optionally add a column for the technical/implementation detail, plus any other helpful columns (affected area, risk, migration). Lead with the user-effect; do not reduce it to a bare list of class or method names.
 
+### Screenshots: attach them with `gh --attach`
+
+UI changes get screenshots in the PR body. GitHub CLI 2.99 and later uploads them directly, so there is no need to host images on a branch, a fork, or a bucket:
+
+1. Write the body with a relative reference where each image belongs: `![The job filter, open](./03-job-filter.png)`.
+2. From the directory holding the screenshots, run `gh pr edit <N> --body-file body.md --attach './03-job-filter.png'`, repeating `--attach` for each file. Each referenced file is uploaded and its reference is rewritten in place to a `github.com/user-attachments/assets/...` URL; files the body does not reference are appended at the end. The same flag works on `gh pr create`, `gh pr comment`, and the `gh issue` commands.
+3. Check the result: no `](./` references should remain in the body, and each asset URL should load.
+
+This repository is public. Before attaching, look at each screenshot for real project, station, or job names from production data, and prefer a test project; an uploaded asset stays reachable by its URL even after the reference is removed.
+
 ### Examples
 
 Real titles from this repository, drafted mechanism-first and then rewritten to lead with the effect:
