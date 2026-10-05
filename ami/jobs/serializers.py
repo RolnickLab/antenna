@@ -192,6 +192,14 @@ class MinimalJobSerializer(DefaultSerializer):
         fields = ["id", "pipeline_slug"]
 
 
+class JobChoiceSerializer(DefaultSerializer):
+    """What a job dropdown needs to name a job."""
+
+    class Meta:
+        model = Job
+        fields = ["id", "name", "details", "job_type_key", "created_at"]
+
+
 class MLJobTasksRequestSerializer(serializers.Serializer):
     """POST /jobs/{id}/tasks/ — request body sent by a processing service to fetch work.
 

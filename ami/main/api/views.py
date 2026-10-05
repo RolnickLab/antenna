@@ -942,8 +942,8 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         return response
 
 
-class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
-    """Sends a whole project's capture set choices in one response.
+class ChoicesPagination(LimitOffsetPaginationWithPermissions):
+    """Sends a dropdown's choices in one response.
 
     Dropdowns cannot page, so the limit is set here rather than by each caller. It is
     capped as well as defaulted, so no caller can ask for a larger one.
@@ -1035,7 +1035,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         # Sorting by a count would fail here, since the counts are never annotated.
         self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]
         queryset = self.filter_queryset(self.get_queryset())
-        paginator = CaptureSetChoicesPagination()
+        paginator = ChoicesPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = SourceImageCollectionNestedSerializer(page, many=True, context=self.get_serializer_context())
         return paginator.get_paginated_response(serializer.data)

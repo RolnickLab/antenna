@@ -12,7 +12,7 @@ from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
@@ -37,11 +37,12 @@ from ami.jobs.tasks import (
     update_pipeline_pull_services_seen,
 )
 from ami.main.api.schemas import project_id_doc_param
-from ami.main.api.views import DefaultViewSet
+from ami.main.api.views import ChoicesPagination, DefaultViewSet
+from ami.main.models import Project
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobDispatchMode, JobState
-from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
+from .models import Job, JobDispatchMode, JobState, MLJob, PostProcessingJob
+from .serializers import JobChoiceSerializer, JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,29 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 data=self.request.query_params,
             )
         return context
+
+    @extend_schema(parameters=[project_id_doc_param], responses=JobChoiceSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request):
+        """Choices for the occurrence job filter: jobs that can write detections or classifications.
+
+        Most recently created first, in one capped response, like the capture set choices.
+        Failed and older jobs are included, since they may have written results.
+        """
+        project = self.get_active_project()
+        if project is None:
+            raise ValidationError({"project_id": "This parameter is required."})
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+        queryset = (
+            Job.objects.filter(project=project, job_type_key__in=[MLJob.key, PostProcessingJob.key])
+            .only("id", "name", "job_type_key", "created_at", "project_id")
+            .order_by("-created_at", "-pk")
+        )
+        paginator = ChoicesPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = JobChoiceSerializer(page, many=True, context=self.get_serializer_context())
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=True, methods=["post"], name="run")
     def run(self, request, pk=None):
