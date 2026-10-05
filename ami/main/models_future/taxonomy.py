@@ -622,18 +622,16 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
 
         logging.info(f"Updated parents for {len(bulk_update_data)} taxa")
 
-    # This function is said to be an example for a future feature, but the issue or other asset to create
-    # that feature is unknown.
-    # def with_children(self):
-    #     qs = self.get_queryset()
-    #     # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
+    def with_children(self):
+        qs = self.get_queryset()
+        # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
 
-    #     # example for single taxon:
-    #     taxon = Taxon.objects.get(pk=1)
-    #     taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
-    #     # add them to the queryset
-    #     qs = qs.annotate(children=models.Subquery(taxa.values("id")))
-    #     return qs
+        # example for single taxon:
+        taxon = Taxon.objects.get(pk=1)
+        taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
+        # add them to the queryset
+        qs = qs.annotate(children=models.Subquery(taxa.values("id")))
+        return qs
 
     def with_occurrence_counts(self) -> models.QuerySet:
         """
@@ -963,9 +961,12 @@ class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
 class TaxaList(BaseModel):
     """A checklist of taxa"""
 
+<<<<<<< HEAD
     reference_type = "taxa_list"
     reference_name_field = "name"
 
+=======
+>>>>>>> 6c6dd45e (Moved code from ami.main.models to ami.main.models_future.taxonomy:)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
