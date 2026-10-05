@@ -1784,11 +1784,16 @@ class TestJobChoices(APITestCase):
         response = self.client.get("/api/v2/jobs/choices/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_jobs_in_a_draft_project_are_hidden_from_non_members(self):
+    def test_jobs_in_a_draft_project_are_listed_for_members_only(self):
         draft_project = Project.objects.create(name="Draft job picker project", owner=self.user, draft=True)
         Job.objects.create(project=draft_project, name="Secret", job_type_key=MLJob.key)
-        response = self.client.get(f"/api/v2/jobs/choices/?project_id={draft_project.pk}")
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        url = f"/api/v2/jobs/choices/?project_id={draft_project.pk}"
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_404_NOT_FOUND)
+
+        self.client.force_authenticate(self.user)  # The owner is a member of their project.
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.json()["results"]], ["Secret"])
 
     def test_a_dropdown_gets_one_capped_response_instead_of_pages(self):
         Job.objects.bulk_create(

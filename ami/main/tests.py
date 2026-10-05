@@ -7330,23 +7330,27 @@ class TestOccurrenceJobFilter(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("job", response.json())
 
-    def test_filtered_list_query_count(self):
-        """Pins the query count of a filtered list over several matching rows, so a filter
-        that starts querying per occurrence fails here. Cachalot is off so every query counts."""
+    def test_filter_stays_inside_the_occurrence_query(self):
+        """The filter adds no queries of its own: one statement for the rows and one for the count,
+        with no ids read into Python first and no query per occurrence. Cachalot is off so every
+        query counts."""
         from cachalot.api import cachalot_disabled
+
+        def filtered():
+            return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
 
         disabled = cachalot_disabled()
         disabled.__enter__()
         try:
-            # Most of these are the list's existing per-row cost, not the filter: unfiltered, the same
-            # endpoint runs 99 queries for the five occurrences in this fixture.
-            with self.assertNumQueries(65):
-                response = self._list(self.job.pk)
+            with self.assertNumQueries(1):
+                ids = {occurrence.pk for occurrence in filtered()}
+            with self.assertNumQueries(1):
+                count = filtered().count()
         finally:
             # cachalot_disabled() does not restore itself when the block raises.
             disabled.__exit__(None, None, None)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["count"], 3)
+        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
+        self.assertEqual(count, 3)
 
 
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):
