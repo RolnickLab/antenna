@@ -17,27 +17,24 @@ const XESTIA = { id: 4, name: 'Xestia c-nigrum', rank: 'SPECIES' }
 
 const base = {
   algorithm: null,
-  classifications: [],
-  comment: '',
-  is_current: null,
   job: null,
-  original_taxon: null,
   score: null,
-  source_algorithm: null,
-  subtype: null,
-  taxa_list: null,
   taxon: null,
-  taxon_before: null,
   timestamp: '2026-04-29T22:00:00',
   user: null,
-  withdrawn: false,
+}
+
+const JOB = {
+  config: { taxa_list_id: 2 },
+  id: 30,
+  name: 'Masking run',
+  references: { taxa_list_id: { type: 'taxa_list', id: 2, name: 'Kept' } },
 }
 
 const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
   ...base,
-  comment: 'Looks right',
   id,
-  payload: {
+  details: {
     agreed_with_identification_id: null,
     agreed_with_prediction_id: null,
     comment: 'Looks right',
@@ -51,12 +48,14 @@ const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
 const predictionEntry = (
   id: number,
   taxon: typeof NOCTUA | null = XESTIA,
-  supersededByResultId: number | null = null
+  supersededByResultId: number | null = null,
+  job: typeof JOB | null = null
 ): ServerOccurrenceHistoryEntry => ({
   ...base,
   algorithm: { id: 7, key: 'classifier', name: 'Classifier' },
   id,
-  payload: {
+  job,
+  details: {
     applied_to_id: null,
     detection_id: 1,
     superseded_by_result_id: supersededByResultId,
@@ -72,38 +71,37 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   algorithm: { id: 12, key: 'mask', name: 'Masked classifier' },
   classifications: [
     {
-      applied_to_id: 6,
       detection_id: 1,
       id: 20,
+      replaced: { id: 6, score: 0.83, taxon: XESTIA },
       score: 0.7,
       taxon: NOCTUA,
       terminal: true,
     },
     {
-      applied_to_id: 7,
       detection_id: 2,
       id: 21,
+      replaced: null,
       score: 0.4,
       taxon: XESTIA,
       terminal: true,
     },
   ],
-  id: 5,
-  is_current: true,
-  original_taxon: XESTIA,
-  payload: {
+  data: {
     determination_after_id: 3,
     determination_before_id: 4,
     excluded_probability: 0.38,
     extra: {},
     new_winner_original_rank: 2,
-    original_score: 0.83,
-    original_taxon_id: 4,
   },
+  data_references: {},
+  determination_after: NOCTUA,
+  determination_before: XESTIA,
+  id: 5,
+  is_current: true,
+  job: JOB,
+  kind: 'class_masking',
   score: 0.38,
-  subtype: 'class_masking',
-  taxon: NOCTUA,
-  taxon_before: XESTIA,
   type: 'algorithm_result',
 }
 
@@ -191,10 +189,24 @@ describe('getTimelineItems', () => {
     expect(items[2]).not.toHaveProperty('supersededBy', expect.anything())
   })
 
-  test('drops unknown subtypes and predictions without a taxon', () => {
+  test('carries the job that wrote a prediction as a reference', () => {
+    const items = getTimelineItems({
+      entries: [predictionEntry(6, XESTIA, null, JOB), predictionEntry(8)],
+      identifications: [],
+      predictions: [],
+    })
+
+    expect(items[0]).toMatchObject({
+      job: { type: 'job', id: 30, name: 'Masking run' },
+    })
+    expect(items[1]).not.toHaveProperty('job', expect.anything())
+  })
+
+  test('drops results of a kind it has no card for, and predictions without a taxon', () => {
+    // A kind the server added before the UI has a card for it, e.g. tracking.
     const unknown = {
       ...classMasking,
-      subtype: 'something_new',
+      kind: 'tracking',
     } as unknown as ServerOccurrenceHistoryEntry
 
     expect(
@@ -318,7 +330,8 @@ describe('getOccurrenceHistoryQueryKey', () => {
 })
 
 describe('getJobSettings', () => {
-  test('lists the settings a job ran with, leaving out unset ones and those shown elsewhere', () => {
+  test('lists the settings a job ran with and the records they name, leaving out unset ones', () => {
+    const deletedList = { type: 'taxa_list', id: 2, name: null }
     expect(
       getJobSettings({
         config: {
@@ -330,17 +343,27 @@ describe('getJobSettings', () => {
         },
         id: 1,
         name: 'Size filter',
+        references: {
+          occurrence_id: { type: 'occurrence', id: 4, name: '#4' },
+          taxa_list_id: deletedList,
+        },
       })
     ).toEqual([
-      { key: 'occurrence_id', value: 4 },
-      { key: 'reweight', value: true },
+      {
+        key: 'occurrence_id',
+        value: 4,
+        ref: { type: 'occurrence', id: 4, name: '#4' },
+      },
+      { key: 'reweight', value: true, ref: undefined },
+      // A deleted list keeps its reference with no name, so the card shows its id as text.
+      { key: 'taxa_list_id', value: 2, ref: deletedList },
     ])
   })
 
   test('is empty for a job without settings', () => {
-    expect(getJobSettings({ config: null, id: 1, name: 'Pipeline' })).toEqual(
-      []
-    )
+    expect(
+      getJobSettings({ config: null, id: 1, name: 'Pipeline', references: {} })
+    ).toEqual([])
     expect(getJobSettings(null)).toEqual([])
   })
 })

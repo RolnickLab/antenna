@@ -20,18 +20,23 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { Ref } from 'utils/references'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
+import { HistoryStats, RefValue } from './history-stats'
 import machineAvatar from './machine-avatar.svg'
 
 export const MachinePrediction = ({
   currentUser,
   identification,
+  job,
   occurrence,
   subTitle,
 }: {
   currentUser?: UserInfo
   identification: Identification
+  /** The job that wrote the prediction, shown as a row when the history names one. */
+  job?: Ref
   occurrence: Occurrence
   /** Replaces the terminal/intermediate label, e.g. to say which run superseded the prediction. */
   subTitle?: string
@@ -107,6 +112,18 @@ export const MachinePrediction = ({
             />
           )}
         </MachinePredictionDetails>
+        {job ? (
+          <HistoryStats
+            stats={[
+              {
+                label: translate(STRING.FIELD_LABEL_JOB),
+                value: (
+                  <RefValue projectId={projectId as string} reference={job} />
+                ),
+              },
+            ]}
+          />
+        ) : null}
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
             <FetchDetails
