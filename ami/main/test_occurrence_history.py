@@ -10,18 +10,8 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
-from ami.main.models import (
-    AlgorithmResult,
-    Classification,
-    Detection,
-    Identification,
-    Occurrence,
-    Project,
-    SourceImage,
-    TaxaList,
-    Taxon,
-)
-from ami.ml.models import Algorithm
+from ami.main.models import Classification, Detection, Identification, Occurrence, SourceImage, TaxaList, Taxon
+from ami.ml.models import Algorithm, AlgorithmResult
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 from ami.users.models import User
 from ami.users.roles import BasicMember, ProjectManager
@@ -107,8 +97,8 @@ class AlgorithmResultTestCase(TestCase):
         first.refresh_from_db()
         self.assertFalse(first.is_current)
         self.assertTrue(second.is_current and untouched.is_current)
-        self.assertEqual(AlgorithmResult.objects.for_occurrence(self.occurrence).count(), 2)
-        self.assertEqual(AlgorithmResult.objects.for_occurrence(self.occurrence).current().get().pk, second.pk)
+        self.assertEqual(self.occurrence.algorithm_results.count(), 2)
+        self.assertEqual(self.occurrence.algorithm_results.current().get().pk, second.pk)
 
     def test_merging_moves_results_and_keeps_one_current_per_algorithm_and_kind(self):
         """The kept occurrence's current result wins a collision; otherwise the latest moved one stays current."""
@@ -139,29 +129,26 @@ class AlgorithmResultTestCase(TestCase):
         with transaction.atomic(), self.assertRaises(IntegrityError):
             self._size_filter({"relative_size": 0.02}).save()
 
-    def test_project_comes_from_the_occurrence_or_its_station_and_a_result_with_neither_is_skipped(self):
-        other = Project.objects.create(name="Another project")
-        Occurrence.objects.filter(pk=self.occurrence.pk).update(project=None)
-        self.occurrence.refresh_from_db()
+    def test_project_comes_from_the_occurrence_and_a_result_without_one_is_skipped(self):
         result = self._size_filter({"relative_size": 0.01})
         result.save()
         self.assertEqual(result.project_id, self.project.pk)
 
-        Occurrence.objects.filter(pk=self.occurrence.pk).update(project=other)
-        self.occurrence.refresh_from_db()
-        self.assertEqual(
-            AlgorithmResult.objects.record_many([self._size_filter({"relative_size": 0.02})])[0].project_id,
-            other.pk,
-        )
-
-        Occurrence.objects.filter(pk=self.occurrence.pk).update(project=None, deployment=None)
-        self.occurrence.refresh_from_db()
-        with self.assertLogs("ami.main.models", level="WARNING"):
-            written = AlgorithmResult.objects.record_many([self._size_filter({"relative_size": 0.03})])
-        self.assertEqual(written, [])
+        orphan = Occurrence.objects.create(project=None, deployment=self.deployment)
+        with self.assertLogs("ami.ml.models.algorithm_result", level="WARNING"):
+            written = AlgorithmResult.objects.record_many(
+                [
+                    self._size_filter({"relative_size": 0.02}),
+                    self._size_filter({"relative_size": 0.03}, occurrence=orphan),
+                ]
+            )
+        # The occurrence with a project still gets its result; the other is skipped, not fatal.
+        self.assertEqual([r.occurrence_id for r in written], [self.occurrence.pk])
         with self.assertRaises(ValueError):
-            self._size_filter({"relative_size": 0.03}).save()
-        self.assertEqual(AlgorithmResult.objects.count(), 2)
+            self._size_filter({"relative_size": 0.03}, occurrence=orphan).save()
+
+    def test_the_model_lives_in_the_ml_app(self):
+        self.assertEqual(AlgorithmResult._meta.app_label, "ml")
 
 
 class OccurrenceFixtureTestCase(APITestCase):
@@ -324,8 +311,6 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             value=0.4,
             data={
                 "excluded_probability": 0.4,
-                "original_taxon_id": self.taxon.pk,
-                "original_score": 0.9,
                 "new_winner_original_rank": 2,
                 "determination_before_id": self.taxon.pk,
                 "determination_after_id": self.other_taxon.pk,
@@ -362,7 +347,6 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertIsNone(predictions[None]["payload"]["superseded_by_result_id"])
         self.assertEqual(result_entry["taxa_list"], {"id": taxa_list.pk, "name": "Kept species"})
         self.assertEqual(result_entry["source_algorithm"]["key"], classifier.key)
-        self.assertEqual(result_entry["original_taxon"]["id"], self.taxon.pk)
         self.assertEqual(result_entry["score"], 0.4)
 
     def test_a_terminal_prediction_outranked_on_its_detection_is_superseded(self):

@@ -3,17 +3,10 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from ami.main.models import (
-    AlgorithmResult,
-    Classification,
-    Detection,
-    Occurrence,
-    SourceImageCollection,
-    Taxon,
-    TaxonRank,
-)
+from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
+from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.post_processing.base import BasePostProcessingTask
-from ami.ml.post_processing.results import BatchResults
+from ami.ml.results.writer import AlgorithmResultWriter
 from ami.ml.schemas import BoundingBox
 
 
@@ -101,7 +94,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         modified_occurrences = 0
         checked = 0
         # One algorithm result per flagged occurrence, written with the batch that flags it.
-        results = BatchResults(
+        results = AlgorithmResultWriter(
             kind=AlgorithmResult.Kind.SIZE_FILTER,
             algorithm=self.algorithm,
             job=self.job,

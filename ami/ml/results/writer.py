@@ -1,7 +1,7 @@
 """One algorithm result per occurrence a post-processing run touches, written inside each batch.
 
 A run that re-scores or flags detections changes classifications and determinations in batches,
-each in its own transaction. ``BatchResults`` writes the result rows in those same transactions,
+each in its own transaction. ``AlgorithmResultWriter`` writes the result rows in those same transactions,
 so a batch either lands with its results or not at all. Every occurrence the run touches gets
 exactly one current result: it is created by the first batch that touches the occurrence, before
 the classifications that batch inserts so they can point at it, and later batches update it with
@@ -14,14 +14,15 @@ from __future__ import annotations
 import datetime
 import typing
 
-from ami.main.models import AlgorithmResult, Classification, Occurrence
+from ami.ml.models import AlgorithmResult
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+    from ami.main.models import Classification, Occurrence
     from ami.ml.models import Algorithm
 
 
-class BatchResults:
+class AlgorithmResultWriter:
     def __init__(
         self,
         *,
@@ -38,7 +39,7 @@ class BatchResults:
         self.value_field = value_field
         self.timestamp = timestamp
         self.results: dict[int, AlgorithmResult] = {}
-        # Occurrences with no project, directly or through their station; tried once, then left alone.
+        # Occurrences with no project; tried once, then left alone.
         self.skipped: set[int] = set()
         # Per occurrence, the figures of the detection that represents it so far, with their rank.
         self.figures: dict[int, tuple[float, dict]] = {}

@@ -6,7 +6,8 @@ from unittest import mock
 from django.test import TestCase
 
 from ami.jobs.models import Job, PostProcessingJob
-from ami.main.models import AlgorithmResult, Detection, Occurrence, SourceImage, Taxon
+from ami.main.models import Detection, Occurrence, SourceImage, Taxon
+from ami.ml.models import AlgorithmResult
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 
