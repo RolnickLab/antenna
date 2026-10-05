@@ -17,5 +17,5 @@ models/
 ├── occurrence.py       # Occurrence rendering
 ├── projects.py         # Project, Device, Site, Deployment
 ├── storage.py          # S3StorageSource, SourceImageUpload
-└── taxonomy.py         # Taxon, TaxaList, Tag
+└── taxonomy.py         # Taxon, TaxaList, Tag, and releated DB model classes and methods
 """
