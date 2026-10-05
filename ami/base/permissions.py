@@ -172,6 +172,24 @@ class ObjectPermission(permissions.BasePermission):
         return obj.check_permission(request.user, view.action)
 
 
+TRACKING_NOT_ENABLED_MESSAGE = "Tracking is not enabled for this project."
+
+
+class TrackingEnabled(permissions.BasePermission):
+    """
+    Refuse an action on an object whose project has not opted into tracking.
+
+    Pair it after ObjectPermission, so a user without rights on the object gets the
+    usual refusal rather than a hint about the project's settings.
+    """
+
+    message = TRACKING_NOT_ENABLED_MESSAGE
+
+    def has_object_permission(self, request, view, obj: BaseModel):
+        project = obj.get_project() if hasattr(obj, "get_project") else None
+        return bool(project and project.feature_flags.tracking)
+
+
 class ProjectPipelineConfigPermission(ObjectPermission):
     """
     Permission for the nested project pipelines route (/projects/{pk}/pipelines/).
