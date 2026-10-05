@@ -9,6 +9,9 @@ from urllib.parse import urlparse, urlunparse
 import django_stubs_ext
 import environ
 
+# A leaf module (pydantic only, no Django imports), so settings can read the result kinds.
+from ami.ml.results.schemas import result_kind_title, result_kinds
+
 # Monkeypatching Django, so stubs will work for all generics,
 # see: https://github.com/typeddjango/django-stubs
 django_stubs_ext.monkeypatch()
@@ -554,6 +557,14 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # Names for the single-value enums that tag each occurrence history entry (see
+    # OCCURRENCE_HISTORY_ENTRY_SCHEMA); without them drf-spectacular falls back to hashed names.
+    "ENUM_NAME_OVERRIDES": {
+        "AlgorithmResultEntryTypeEnum": ["algorithm_result"],
+        "IdentificationEntryTypeEnum": ["identification"],
+        "PredictionEntryTypeEnum": ["prediction"],
+        **{f"{result_kind_title(kind)}ResultKindEnum": [kind] for kind in result_kinds()},
+    },
 }
 # Your stuff...
 # ------------------------------------------------------------------------------

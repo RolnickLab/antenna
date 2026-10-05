@@ -61,6 +61,11 @@ def result_kinds() -> list[str]:
     return list(ALGORITHM_RESULT_DATA_SCHEMAS)
 
 
+def result_kind_title(kind: str) -> str:
+    """The kind in CamelCase, for OpenAPI component names: ``class_masking`` -> ``ClassMasking``."""
+    return "".join(part.title() for part in kind.split("_"))
+
+
 def _schema_for(kind: str) -> type[AlgorithmResultData]:
     schema = ALGORITHM_RESULT_DATA_SCHEMAS.get(kind)
     if schema is None:
