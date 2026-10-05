@@ -5,7 +5,7 @@ DJANGO_DEBUG=True
 DJANGO_LOG_LEVEL=INFO
 IPYTHONDIR=/app/.ipython
 
-# Default superuser for local development
+# Default superuser for the demo project, if created.
 DJANGO_SUPERUSER_EMAIL=antenna@insectai.org
 DJANGO_SUPERUSER_PASSWORD=localadmin
 
@@ -32,6 +32,9 @@ CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS
 # Default in settings is 8. Lower to 2-4 on memory-constrained dev laptops —
 # each prefork worker is a separate Python process with its own DB connection.
 # CELERY_WORKER_CONCURRENCY=4
+
+# Email backend to use.
+DJANGO_EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
 
 # Attempting to keep Flower from showing workers as offline
 # FLOWER_BROKER_API=REDIS_URL
