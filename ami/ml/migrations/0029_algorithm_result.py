@@ -36,6 +36,7 @@ class Migration(migrations.Migration):
                     "job",
                     models.ForeignKey(
                         blank=True,
+                        db_index=False,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="algorithm_results",
@@ -68,6 +69,7 @@ class Migration(migrations.Migration):
                         fields=["project", "kind", "value"],
                         name="algorithm_result_current_value",
                     ),
+                    models.Index(fields=["job", "occurrence"], name="algorithm_result_job_occ"),
                 ],
             },
         ),

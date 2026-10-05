@@ -3547,15 +3547,17 @@ class OccurrenceQuerySet(BaseQuerySet):
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
 
-        An occurrence matches when the job created one of its detections, or a classification
-        on one of them, so several jobs can match the same occurrence.
+        An occurrence matches when the job created one of its detections, a classification
+        on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
 
-        Identifications are not matched: people make them, not jobs. Two EXISTS subqueries
-        return each occurrence once, where a join would return one row per matching result.
+        Identifications are not matched: people make them, not jobs. EXISTS subqueries return
+        each occurrence once, where a join would return one row per matching result.
         """
+        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
         return self.filter(
             Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
             | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
         )
 
     def with_timestamps(self):
