@@ -3465,17 +3465,8 @@ class OccurrenceQuerySet(BaseQuerySet):
           - Occurrences with determination__isnull=True (no taxonomic identification,
             same field bug shape)
         """
-        return self.with_real_detections().exclude(determination__isnull=True)
-
-    def with_real_detections(self):
-        """
-        Occurrences backed by at least one real bounding box, determined or not.
-
-        Null-marker sentinels stay excluded exactly as in valid(), since they carry no box.
-        Used where undetermined occurrences must be reachable, such as the tracks export.
-        """
         has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
-        return self.filter(has_valid_detection)
+        return self.filter(has_valid_detection).exclude(determination__isnull=True)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
