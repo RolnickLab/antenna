@@ -432,6 +432,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 - [ ] No PII in serializers: nested user serializers expose name/image only — never `email`.
 - [ ] Every query param parsed via `SingleParamSerializer` (`ami/base/serializers.py`) or `url_boolean_param` (`ami/utils/fields.py`) so invalid input returns 400, not 500. Test the `?param=abc` case.
 - [ ] Aggregation happens in SQL. Add an `assertNumQueries` test with a **multi-row** fixture — single-row fixtures cannot catch N+1 (example: `ami/ml/tests.py:1006`). Use strict `==` counts in assertions.
+- [ ] Per-row permissions: `DefaultSerializer` resolves the user's object permissions for **every row** it serializes (a project lookup, Guardian `get_perms`, and custom job permissions), so a new list, nested, or dropdown serializer silently costs several queries per row. A serializer that does not need permissions overrides `get_permissions` to return an empty list (`ClassificationNestedSerializer`); one that does caches them once per request (`TaxaListSerializer.get_permissions`). Cachalot hides the repeats in manual testing, so pin it with a test, with cachalot disabled, that the query count is the same at two list sizes (example: `test_query_count_does_not_grow_with_the_number_of_jobs` in `ami/jobs/tests/test_jobs.py`, added in #1471).
 - [ ] Reuse existing patterns before writing new ones — see `docs/claude/reference/canonical-patterns.md`.
 
 ### Any model change
