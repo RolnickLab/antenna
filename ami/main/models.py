@@ -2995,7 +2995,9 @@ class Classification(BaseModel):
         null=True,
         related_name="classifications",
     )
-    # job = models.CharField(max_length=255, null=True)
+    job = models.ForeignKey(
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="classifications"
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -3189,11 +3191,8 @@ class Detection(BaseModel):
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
-    # detection_job = models.ForeignKey(
-    #     "Job",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    # )
+    # The run that wrote this detection, when there was one.
+    job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="detections")
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
