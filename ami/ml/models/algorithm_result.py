@@ -146,8 +146,9 @@ class AlgorithmResult(BaseModel):
     )
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="algorithm_results")
     # The run that wrote the result. Deleting the job keeps the result, with no run to link to.
+    # Indexed together with the occurrence, below.
     job = models.ForeignKey(
-        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results"
+        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="algorithm_results", db_index=False
     )
     # No ``choices``: the registry of data models in ami/ml/results/schemas.py is the list of kinds,
     # and every write path rejects a kind without one, so a new kind needs no migration.
@@ -176,6 +177,8 @@ class AlgorithmResult(BaseModel):
                 condition=Q(is_current=True, value__isnull=False),
                 name="algorithm_result_current_value",
             ),
+            # Leads with the job, for the ?job= occurrence filter and for deleting a job.
+            models.Index(fields=["job", "occurrence"], name="algorithm_result_job_occ"),
         ]
 
     def __str__(self) -> str:

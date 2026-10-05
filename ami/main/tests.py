@@ -42,6 +42,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
@@ -7244,8 +7245,8 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
 
 class TestOccurrenceJobFilter(APITestCase):
     """
-    Covers the ``?job=`` occurrence filter: occurrences with a detection or a
-    classification written by the given job. Each occurrence must appear once, however
+    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification
+    or an algorithm result written by the given job. Each occurrence must appear once, however
     many of its rows the job wrote, and a malformed id must be a 400, not a 500.
     """
 
@@ -7281,6 +7282,15 @@ class TestOccurrenceJobFilter(APITestCase):
         # Only the other job, and no job at all, must not match.
         self.occ_other = self._make_occurrence([(self.other_job, [self.other_job])])
         self.occ_none = self._make_occurrence([(None, [None])])
+        # The job wrote only an algorithm result, as a post-processing run that changes no prediction does.
+        self.occ_result = self._make_occurrence([(None, [None])])
+        AlgorithmResult.objects.record(
+            occurrence=self.occ_result,
+            algorithm=self.algorithm,
+            job=self.job,
+            kind=AlgorithmResult.Kind.SIZE_FILTER,
+            data={"relative_size": 0.001},
+        )
 
     def _make_occurrence(self, detections) -> Occurrence:
         """``detections`` is a list of (detection job, [classification jobs])."""
@@ -7316,8 +7326,10 @@ class TestOccurrenceJobFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         ids = [row["id"] for row in response.json()["results"]]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
-        self.assertEqual(response.json()["count"], 3)
+        self.assertEqual(
+            set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk}
+        )
+        self.assertEqual(response.json()["count"], 4)
 
     def test_other_job_matches_only_its_own_occurrences(self):
         response = self._list(self.other_job.pk)
@@ -7349,8 +7361,8 @@ class TestOccurrenceJobFilter(APITestCase):
         finally:
             # cachalot_disabled() does not restore itself when the block raises.
             disabled.__exit__(None, None, None)
-        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
-        self.assertEqual(count, 3)
+        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk})
+        self.assertEqual(count, 4)
 
 
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):
