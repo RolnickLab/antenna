@@ -943,7 +943,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
 
 
 class ChoicesPagination(LimitOffsetPaginationWithPermissions):
-    """Sends a dropdown's choices in one response.
+    """Sends a dropdown's choices in one response. Used by the capture set and job choices.
 
     Dropdowns cannot page, so the limit is set here rather than by each caller. It is
     capped as well as defaulted, so no caller can ask for a larger one.
@@ -1031,6 +1031,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         Returns only what those consumers need to name a capture set, most recently
         updated first, and enough of them that a dropdown never has to page. A project
         with more capture sets than the cap needs the search field in #1380.
+        ``JobViewSet.choices`` (ami/jobs/views.py) follows the same pattern.
         """
         # Sorting by a count would fail here, since the counts are never annotated.
         self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]

@@ -263,8 +263,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     def choices(self, request):
         """Choices for the occurrence job filter: jobs that can write detections or classifications.
 
-        Most recently created first, in one capped response, like the capture set choices.
-        Failed and older jobs are included, since they may have written results.
+        Follows the capture set choices pattern (``SourceImageCollectionViewSet.choices`` in
+        ami/main/api/views.py, #1381): a slim serializer, most recent first, and one response
+        capped by ``ChoicesPagination``. Failed and older jobs are included, since they may
+        have written results.
         """
         project = self.get_active_project()
         if project is None:

@@ -10,6 +10,7 @@ type JobOption = { id: string; name: string }
 
 const getLabel = (job: JobOption) => `${job.name} (#${job.id})`
 
+// Same choices endpoint pattern as CaptureSetFilter; see JobViewSet.choices.
 export const JobFilter = ({ onAdd, onClear, value }: FilterProps) => {
   const { projectId } = useParams()
   const { entities = [], isLoading } = useEntities(API_ROUTES.JOB_CHOICES, {

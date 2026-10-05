@@ -193,7 +193,11 @@ class MinimalJobSerializer(DefaultSerializer):
 
 
 class JobChoiceSerializer(DefaultSerializer):
-    """What a job dropdown needs to name a job."""
+    """What a job dropdown needs to name a job.
+
+    The job counterpart of ``SourceImageCollectionNestedSerializer``, which serves the capture
+    set choices: no counts or nested objects, so the choices query stays cheap.
+    """
 
     class Meta:
         model = Job
