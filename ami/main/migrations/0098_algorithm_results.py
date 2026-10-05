@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ("jobs", "0023_alter_job_job_type_key"),
         ("ml", "0028_normalize_empty_endpoint_url_to_null"),
-        ("main", "0095_grant_sync_deployment_to_mldatamanager"),
+        ("main", "0097_detection_and_classification_job_indexes"),
     ]
 
     operations = [
