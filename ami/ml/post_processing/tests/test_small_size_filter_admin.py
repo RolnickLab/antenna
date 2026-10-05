@@ -94,6 +94,7 @@ class TestSmallSizeFilterCreatesJob(_SmallSizeFilterAdminCase):
         self.assertEqual(job.params["task"], "small_size_filter")
         self.assertEqual(job.params["config"]["size_threshold"], 0.001)
         self.assertEqual(job.params["config"]["source_image_collection_id"], self.collection.pk)
+        self.assertEqual(job.source_image_collection_id, self.collection.pk)  # same column as an API-made job
 
     def test_success_message_links_to_the_created_job(self):
         """The post-run admin message links each created Job to its admin change

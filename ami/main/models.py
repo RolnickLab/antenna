@@ -279,6 +279,10 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
     async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
+    # Post-processing methods offered in the Create Job dialog. Each one is off until a project
+    # turns it on; then ML data managers and project managers can run it with any settings.
+    class_masking: bool = False
+    small_size_filter: bool = False
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:

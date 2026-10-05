@@ -40,7 +40,7 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Algorithm.objects.all()
     serializer_class = AlgorithmSerializer
-    filterset_fields = ["name", "version"]
+    filterset_fields = ["name", "version", "task_type"]
     ordering_fields = [
         "id",
         "created_at",

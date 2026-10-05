@@ -57,6 +57,8 @@ const Content = ({
         className
       )}
       tabIndex={-1}
+      // No dialog here renders a Radix Description; this opts out of its warning.
+      aria-describedby={undefined}
       onOpenAutoFocus={onOpenAutoFocus}
     >
       <div className={styles.dialogContent}>
