@@ -7338,7 +7338,8 @@ class TestOccurrenceJobFilter(APITestCase):
         disabled = cachalot_disabled()
         disabled.__enter__()
         try:
-            # Most of these are the list's existing per-row cost, not the filter: see #1461.
+            # Most of these are the list's existing per-row cost, not the filter: unfiltered, the same
+            # endpoint runs 99 queries for the five occurrences in this fixture.
             with self.assertNumQueries(65):
                 response = self._list(self.job.pk)
         finally:
