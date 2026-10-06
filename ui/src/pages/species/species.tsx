@@ -148,6 +148,7 @@ export const Species = () => {
       <div className="flex flex-col gap-6 md:flex-row">
         <div className="space-y-6">
           <FilterSection defaultOpen>
+            <DefaultFiltersControl field="apply_defaults" />
             <FilterControl field="event" readonly />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
@@ -158,7 +159,6 @@ export const Species = () => {
             )}
             <FilterControl field="verified" />
             <FilterControl field="include_unobserved" />
-            <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
             title={translate(STRING.MORE_FILTERS)}

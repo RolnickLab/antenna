@@ -92,6 +92,7 @@ export const Occurrences = () => {
         <div className="space-y-6">
           <OccurrenceStats projectId={projectId} filters={filters} />
           <FilterSection defaultOpen>
+            <DefaultFiltersControl field="apply_defaults" />
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
             <FilterControl field="taxon" />
@@ -103,7 +104,6 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
-            <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
             title={translate(STRING.MORE_FILTERS)}
@@ -115,6 +115,7 @@ export const Occurrences = () => {
                 'deployment__research_site',
                 'algorithm',
                 'not_algorithm',
+                'job',
               ],
               activeFilters
             )}
@@ -127,6 +128,7 @@ export const Occurrences = () => {
             <FilterControl field="deployment__research_site" />
             <FilterControl field="algorithm" />
             <FilterControl field="not_algorithm" />
+            <FilterControl field="job" />
           </FilterSection>
         </div>
         <div className="w-full overflow-hidden">

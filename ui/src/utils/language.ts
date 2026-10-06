@@ -280,6 +280,7 @@ export enum STRING {
   /* TOOLTIPS */
   TOOLTIP_ALGORITHM,
   TOOLTIP_CAPTURE_SET,
+  TOOLTIP_JOB_FILTER,
   TOOLTIP_CAPTURE,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
@@ -382,6 +383,7 @@ export enum STRING {
   VERIFIED_OCCURRENCES,
   VERIFIED,
   VIEW_IN_SESSION,
+  VIEW_OCCURRENCES,
   VIEW_SETTINGS,
   YOU,
 }
@@ -702,6 +704,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'An algorithm is used in a pipeline for processing captures.',
   [STRING.TOOLTIP_CAPTURE_SET]:
     'A capture set is a group of captures. A capture set contains all or some captures in a project. Capture sets are useful when specifying what captures to process.',
+  [STRING.TOOLTIP_JOB_FILTER]:
+    'Show occurrences created or updated by this job. The 100 most recent processing and post-processing jobs are listed.',
   [STRING.TOOLTIP_CAPTURE]:
     'A capture is a source image, collected from a monitoring station. During processing, detections are extracted from captures.',
   [STRING.TOOLTIP_DEPLOYMENT]:
@@ -820,6 +824,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.VERIFIED_OCCURRENCES]: 'Verified occurrences',
   [STRING.VERIFIED]: 'Verified',
   [STRING.VIEW_IN_SESSION]: 'View in session',
+  [STRING.VIEW_OCCURRENCES]: 'View occurrences',
   [STRING.VIEW_SETTINGS]: 'View settings',
   [STRING.YOU]: 'You',
 }

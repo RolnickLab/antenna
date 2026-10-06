@@ -25,7 +25,7 @@ def reverse_noop(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0095_grant_sync_deployment_to_mldatamanager"),
+        ("main", "0097_detection_and_classification_job_indexes"),
     ]
 
     operations = [
