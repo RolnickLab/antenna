@@ -4,7 +4,6 @@ import typing
 from urllib.parse import urljoin
 
 import pydantic
-from cachalot.api import cachalot_disabled
 
 from ami.main.models import DEFAULT_EMBEDDING_KEY, Detection, SourceImageCollection
 from ami.ml.embeddings.reader import detections_missing_vectors
@@ -63,10 +62,7 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
             raise ValueError(msg)
 
         missing = self._missing_detections(collection, pipeline, config.key)
-        # The "what is still missing" reads bypass the query cache: it can keep serving the answer from
-        # before the vectors were stored, which would make a second run send everything again.
-        with cachalot_disabled():
-            capture_ids = sorted(missing.order_by().values_list("source_image_id", flat=True).distinct())
+        capture_ids = sorted(missing.order_by().values_list("source_image_id", flat=True).distinct())
         self.logger.info(
             f"=== Starting {self.name}: {len(capture_ids)} captures of capture set {collection.pk} "
             f"have detections without a vector from pipeline {pipeline} ==="
@@ -93,12 +89,11 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
         }
         self.report_stage_metrics(totals)
         for start in range(0, len(capture_ids), config.batch_size):
-            with cachalot_disabled():
-                batch = list(
-                    missing.filter(source_image_id__in=capture_ids[start : start + config.batch_size])
-                    .select_related("source_image__deployment__data_source", "detection_algorithm")
-                    .order_by("source_image_id", "pk")
-                )
+            batch = list(
+                missing.filter(source_image_id__in=capture_ids[start : start + config.batch_size])
+                .select_related("source_image__deployment__data_source", "detection_algorithm")
+                .order_by("source_image_id", "pk")
+            )
             response = process_detections(pipeline, endpoint_url, batch, collection.project_id)
             result = save_embedding_results(response, self.job, pipeline, config.key)
             totals["Captures"] += len({detection.source_image_id for detection in batch})
