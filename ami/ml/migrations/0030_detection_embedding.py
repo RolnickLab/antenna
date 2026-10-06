@@ -1,5 +1,5 @@
-# Additive: an empty table. The vector column is stored uncompressed out of line (STORAGE
-# EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1453.
+# Additive: an empty table and a nullable column. The vector column is stored uncompressed out of
+# line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1453.
 
 import django.db.models.deletion
 import django.utils.timezone
@@ -9,12 +9,21 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("ml", "0029_algorithm_embedding_dimensions"),
+        ("main", "0097_detection_and_classification_job_indexes"),
         ("jobs", "0023_alter_job_job_type_key"),
-        ("main", "0096_enable_pgvector_extension"),
+        ("ml", "0029_enable_pgvector"),
     ]
 
     operations = [
+        migrations.AddField(
+            model_name="algorithm",
+            name="embedding_dimensions",
+            field=models.PositiveIntegerField(
+                blank=True,
+                help_text="The length of the feature vectors this algorithm has stored. Set from the first vector stored; vectors of any other length are refused, because they could not be compared.",
+                null=True,
+            ),
+        ),
         migrations.CreateModel(
             name="DetectionEmbedding",
             fields=[
@@ -67,17 +76,17 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="detectionembedding",
             constraint=models.CheckConstraint(
-                check=models.Q(("key", ""), _negated=True), name="main_detectionembedding_key_not_empty"
+                check=models.Q(("key", ""), _negated=True), name="ml_detectionembedding_key_not_empty"
             ),
         ),
         migrations.AddConstraint(
             model_name="detectionembedding",
             constraint=models.UniqueConstraint(
-                fields=("detection", "algorithm", "key"), name="main_detectionembedding_unique_detection_algorithm_key"
+                fields=("detection", "algorithm", "key"), name="ml_detectionembedding_unique_detection_algorithm_key"
             ),
         ),
         migrations.RunSQL(
-            sql="ALTER TABLE main_detectionembedding ALTER COLUMN vector SET STORAGE EXTERNAL",
+            sql="ALTER TABLE ml_detectionembedding ALTER COLUMN vector SET STORAGE EXTERNAL",
             reverse_sql=migrations.RunSQL.noop,
         ),
     ]

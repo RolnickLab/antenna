@@ -28,7 +28,6 @@ from ami.main.models import (
     Classification,
     Deployment,
     Detection,
-    DetectionEmbedding,
     Occurrence,
     Project,
     SourceImage,
@@ -36,13 +35,13 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
-    as_half_precision,
     bbox_is_null,
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,

@@ -14,10 +14,10 @@ from django.test import SimpleTestCase, TestCase
 from django.test.utils import CaptureQueriesContext
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Deployment, Detection, DetectionEmbedding, SourceImage
+from ami.main.models import Classification, Deployment, Detection, SourceImage
 from ami.main.models_future.embeddings import vectors_for_detections
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models import Algorithm, Pipeline
+from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
 from ami.ml.models.pipeline import (
     EmbeddingDimensionMismatch,
     create_detection_embeddings,
@@ -361,7 +361,7 @@ class TestPgvectorGuard(SimpleTestCase):
         import importlib
         from unittest import mock
 
-        migration = importlib.import_module("ami.main.migrations.0096_enable_pgvector_extension")
+        migration = importlib.import_module("ami.ml.migrations.0029_enable_pgvector")
         cursor = mock.MagicMock()
         cursor.__enter__.return_value.fetchone.return_value = row
         schema_editor = mock.Mock()
@@ -383,7 +383,7 @@ class TestEmbeddingColumn(TestCase):
             cursor.execute(
                 """
                 SELECT format_type(atttypid, atttypmod), attstorage FROM pg_attribute
-                WHERE attrelid = 'main_detectionembedding'::regclass AND attname = 'vector'
+                WHERE attrelid = 'ml_detectionembedding'::regclass AND attname = 'vector'
                 """
             )
             self.assertEqual(cursor.fetchone(), ("halfvec", "e"))
