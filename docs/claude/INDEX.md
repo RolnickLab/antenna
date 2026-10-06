@@ -11,6 +11,7 @@ archived.
 |---|---|
 | `reference/canonical-patterns.md` | Existing helpers/patterns to reuse before writing new ones, with file:line refs (SingleParamSerializer, ProjectMixin, permissions, schemas, fixtures). Keywords: reuse, helpers, conventions, DRF |
 | `reference/query-patterns.md` | DB model relationship table, composite indexes, prefetch/select_related patterns, full custom QuerySet method catalog, query anti-patterns. Keywords: N+1, indexes, ORM, performance |
+| `reference/feature-vectors.md` | How detection feature vectors are stored and queried: one row per (detection, algorithm, key), the one-model-per-query rule, query patterns Q1-Q6 with functions and indexes, anti-patterns, logits, HNSW, precision. Keywords: embeddings, pgvector, halfvec, similarity |
 | `reference/api-stats-pattern.md` | How to add aggregate/leaderboard/chart endpoints (`/<entity>/stats/<kind>/`): GenericViewSet + @action, pure querysets in models_future. Keywords: stats, charts, aggregation |
 | `reference/monitoring-async-jobs.md` | Monitoring/debugging async_api (NATS JetStream) jobs: ORM, REST, consumer state, Redis counters, worker logs. Keywords: NATS, async, jobs, monitoring |
 | `reference/worktree-testing.md` | Testing git-worktree changes against the main Docker stack: bind-mount route vs duplicate-stack route, caveats, cleanup. Keywords: worktree, docker compose, override |
