@@ -111,6 +111,31 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   value: 0.38,
 }
 
+const tracking: ServerOccurrenceHistoryEntry = {
+  ...base,
+  algorithm: { id: 8, key: 'tracking', name: 'Occurrence tracking' },
+  classifications: [],
+  data: {
+    detection_count: 3,
+    determination_after_id: 3,
+    determination_before_id: 3,
+    distinct_taxa: 1,
+    extra: {},
+    id_agreement: null,
+    merged_occurrence_ids: [11, 12],
+    motion: 0.0141,
+    size_ratio: 1.15,
+  },
+  data_references: {},
+  determination_after: NOCTUA,
+  determination_before: NOCTUA,
+  id: 6,
+  is_current: true,
+  kind: 'tracking',
+  score: 0.0141,
+  type: 'algorithm_result',
+}
+
 const ownIdentification: HumanIdentification = {
   comment: '',
   createdAt: '2026-04-29T22:00:00',
@@ -147,6 +172,18 @@ describe('getTimelineItems', () => {
       'algorithm_result',
       'identification',
       'prediction',
+    ])
+  })
+
+  test('builds a card for a tracking result', () => {
+    const items = getTimelineItems({
+      entries: [tracking],
+      identifications: [],
+      predictions: [],
+    })
+
+    expect(items).toMatchObject([
+      { type: 'algorithm_result', entry: { kind: 'tracking' } },
     ])
   })
 
@@ -209,10 +246,10 @@ describe('getTimelineItems', () => {
   })
 
   test('drops results of a kind it has no card for, and predictions without a taxon', () => {
-    // A kind the server added before the UI has a card for it, e.g. tracking.
+    // A kind the server added before the UI has a card for it, e.g. a rank roll-up.
     const unknown = {
       ...classMasking,
-      kind: 'tracking',
+      kind: 'rank_rollup',
     } as unknown as ServerOccurrenceHistoryEntry
 
     expect(

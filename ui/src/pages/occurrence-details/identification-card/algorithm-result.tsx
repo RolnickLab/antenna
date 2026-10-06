@@ -6,7 +6,7 @@ import {
   ServerHistoryTaxon,
 } from 'data-services/models/occurrence-history'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { FilterIcon, RulerIcon } from 'lucide-react'
+import { FilterIcon, RouteIcon, RulerIcon } from 'lucide-react'
 import {
   BasicTooltip,
   IdentificationCard,
@@ -32,6 +32,7 @@ import {
 const KINDS = {
   class_masking: { icon: FilterIcon, label: STRING.HISTORY_CLASS_MASKING },
   size_filter: { icon: RulerIcon, label: STRING.HISTORY_SIZE_FILTER },
+  tracking: { icon: RouteIcon, label: STRING.HISTORY_TRACKING },
 }
 
 /** What to call a result's kind, e.g. "Class masking", for the card and for predictions it superseded. */
@@ -153,11 +154,50 @@ export const AlgorithmResult = ({
       })
       break
     }
+    case 'tracking': {
+      const { data } = entry
+      stats.push(
+        {
+          label: translate(STRING.HISTORY_TRACKING_DETECTIONS),
+          value: data.detection_count,
+        },
+        {
+          label: translate(STRING.HISTORY_TRACKING_MOVEMENT),
+          value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
+            distance: formatPercent(data.motion),
+          }),
+        },
+        {
+          label: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE),
+          value: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE_VALUE, {
+            ratio: `${Math.round(data.size_ratio * 100) / 100}`,
+          }),
+        },
+        {
+          label: translate(STRING.HISTORY_TRACKING_TAXA),
+          value: data.distinct_taxa,
+        },
+        {
+          label: translate(STRING.HISTORY_TRACKING_AGREEMENT),
+          value:
+            data.id_agreement !== null
+              ? formatPercent(data.id_agreement)
+              : translate(STRING.VALUE_NOT_AVAILABLE),
+        },
+        {
+          label: translate(STRING.HISTORY_TRACKING_MERGED),
+          value: data.merged_occurrence_ids.length,
+        }
+      )
+      break
+    }
   }
-  stats.push({
-    label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
-    value: new Set(entry.classifications.map((c) => c.detection_id)).size,
-  })
+  if (entry.kind !== 'tracking') {
+    stats.push({
+      label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
+      value: new Set(entry.classifications.map((c) => c.detection_id)).size,
+    })
+  }
   getJobSettings(entry.job).forEach(({ label, value, ref }) => {
     stats.push({
       label,

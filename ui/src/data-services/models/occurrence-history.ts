@@ -81,6 +81,20 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
   relative_size: number
 }
 
+export interface TrackingResultData extends ServerDeterminationSnapshot {
+  /** The share of those classifications naming the determination after the run; null when there are none. */
+  id_agreement: number | null
+  detection_count: number
+  /** Distinct taxa among the terminal classifications of the occurrence's detections. */
+  distinct_taxa: number
+  /** Occurrences the run folded into this one; they no longer exist. */
+  merged_occurrence_ids: number[]
+  /** The path length between detection centres as a fraction of the image diagonal. */
+  motion: number
+  /** The largest box area over the smallest. */
+  size_ratio: number
+}
+
 export interface ServerIdentificationDetails {
   agreed_with_identification_id: number | null
   agreed_with_prediction_id: number | null
@@ -131,9 +145,14 @@ export type SizeFilterResultEntry = ServerResultEntry<
   'size_filter',
   SizeFilterResultData
 >
+export type TrackingResultEntry = ServerResultEntry<
+  'tracking',
+  TrackingResultData
+>
 export type AlgorithmResultEntry =
   | ClassMaskingResultEntry
   | SizeFilterResultEntry
+  | TrackingResultEntry
 
 export interface IdentificationEntry extends ServerHistoryEntryBase {
   details: ServerIdentificationDetails
@@ -168,7 +187,11 @@ export type TimelineItem =
   | { type: 'algorithm_result'; id: string; entry: AlgorithmResultEntry }
 
 /** The result kinds this UI has a card for; results of any other kind are skipped. */
-const ALGORITHM_RESULT_KINDS: string[] = ['class_masking', 'size_filter']
+const ALGORITHM_RESULT_KINDS: string[] = [
+  'class_masking',
+  'size_filter',
+  'tracking',
+]
 
 export const convertHistoryTaxon = (taxon: ServerHistoryTaxon) =>
   new Taxon({ ...taxon, id: `${taxon.id}`, cover_image_url: null })
