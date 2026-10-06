@@ -42,6 +42,13 @@ Algorithm results are its output side.
 Results are not tied to the framework. A pipeline step that decides something per occurrence can write
 them the same way, with `AlgorithmResult.objects.record_many`.
 
+A kind is not tied to a task either; today's two happen to be one each. A task can write several kinds
+(one `AlgorithmResultWriter` per kind), and several tasks or pipeline steps can write the same kind and
+share its data model and card. Each method keeps its own current result, because "current" is per
+occurrence, algorithm and kind. The history labels settings from the job's task, not from the kind.
+One rule when a run writes several kinds: pass the classifications it creates to only one writer's
+`start_batch`, because `start_batch` points each of them at that writer's result for its occurrence.
+
 ## Adding a result kind
 
 ### 1. Describe the result's data
