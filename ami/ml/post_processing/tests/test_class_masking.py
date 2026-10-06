@@ -253,6 +253,30 @@ class TestPostProcessingClassMasking(TestCase):
         occ.refresh_from_db()
         self.assertEqual(occ.determination, self.species_taxa[1], "Occurrence determination follows the masked result")
 
+    def test_task_run_records_the_job_on_new_classifications_only(self):
+        from ami.jobs.models import Job
+
+        logits = [0.5, 3.0, 3.5]
+        taxa_list = TaxaList.objects.create(name="Regional list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+        job = Job.objects.create(project=self.project, name="Class masking job test", job_type_key="post_processing")
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        ClassMaskingTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        ).run()
+
+        new_clf = Classification.objects.get(detection=det, terminal=True, applied_to=original)
+        self.assertEqual(new_clf.job_id, job.pk)
+        original.refresh_from_db()
+        self.assertIsNone(original.job_id, "The source classification keeps the job it had")
+
     def test_rerun_does_not_duplicate_masked_classifications(self):
         """Re-running the same mask must not create a second masked classification for
         a source already re-scored, even if that source became terminal again in between.

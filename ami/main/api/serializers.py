@@ -1105,6 +1105,7 @@ class ClassificationSerializer(DefaultSerializer):
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
     applied_to = ClassificationAppliedToSerializer(read_only=True)
+    job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this classification.")
 
     class Meta:
         model = Classification
@@ -1118,6 +1119,7 @@ class ClassificationSerializer(DefaultSerializer):
             "logits",
             "top_n",
             "applied_to",
+            "job",
             "created_at",
             "updated_at",
         ]
@@ -1263,6 +1265,7 @@ class DetectionSerializer(DefaultSerializer):
         queryset=Algorithm.objects.all(), source="detection_algorithm", write_only=True
     )
     classifications = ClassificationNestedSerializer(many=True, read_only=True)
+    job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this detection.")
 
     class Meta:
         model = Detection
@@ -1271,6 +1274,7 @@ class DetectionSerializer(DefaultSerializer):
             "detection_algorithm",
             "detection_algorithm_id",
             "classifications",
+            "job",
         ]
 
 
