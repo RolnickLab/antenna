@@ -5,6 +5,7 @@ was sent with, never as a classification; that its project is copied from the de
 capture; that writes are insert-mostly; and that readers return one (algorithm, key) at a time.
 """
 
+import contextlib
 import datetime
 
 import numpy as np
@@ -15,7 +16,13 @@ from django.test.utils import CaptureQueriesContext
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Deployment, Detection, SourceImage
-from ami.ml.embeddings.reader import vectors_for_detections
+from ami.ml.embeddings.reader import (
+    algorithm_with_most_vectors,
+    detections_missing_vectors,
+    project_vectors,
+    vector_counts_by_algorithm,
+    vectors_for_detections,
+)
 from ami.ml.embeddings.writer import EmbeddingDimensionMismatch, create_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
@@ -354,6 +361,163 @@ class TestEmbeddingReaders(TestCase):
 
         self.assertEqual(list(vectors_for_detections(ids, self.other.pk)), ids[:1])
         self.assertEqual(list(vectors_for_detections(ids, self.backbone.pk, key="projection")), ids[2:])
+
+
+@contextlib.contextmanager
+def cache_off():
+    """Run a block with cachalot off, restoring it even when the block raises, so query counts are real."""
+    from cachalot.api import cachalot_disabled
+
+    disabled = cachalot_disabled()
+    disabled.__enter__()
+    try:
+        yield
+    finally:
+        disabled.__exit__(None, None, None)
+
+
+class TestQueryHelpers(TestCase):
+    """The functions in ``ami.ml.embeddings.reader``: each reads one (algorithm, key) in a fixed number of queries.
+
+    The fixture mixes two models of different lengths and a second key of one model with a third
+    length, so a helper that merged pairs would return the wrong lengths or counts.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.image = SourceImage.objects.create(path="helpers.jpg", deployment=self.deployment, project=self.project)
+        self.eight = Algorithm.objects.create(name="Eight", key="eight", task_type="embedding")
+        self.four = Algorithm.objects.create(name="Four", key="four", task_type="embedding")
+        self.detections: list[Detection] = []
+
+    def _detections(self, count: int) -> list[Detection]:
+        made = [
+            Detection.objects.create(
+                source_image=self.image, bbox=[float(len(self.detections) + i), 0.0, 500.0 + i, 10.0]
+            )
+            for i in range(count)
+        ]
+        self.detections += made
+        return made
+
+    def _store(self, detections, algorithm, length, key="embedding"):
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(detection=d, algorithm=algorithm, key=key, vector=[float(i % 7) / 4] * length)
+                for i, d in enumerate(detections)
+            ]
+        )
+
+    def _fill(self, count: int):
+        """``count`` detections with an 8-d vector from one model and a 4-d one from another, the
+        first of them also with a 2-d vector under a second key of the first model."""
+        detections = self._detections(count)
+        self._store(detections, self.eight, 8)
+        self._store(detections[::2], self.four, 4)
+        self._store(detections[:1], self.eight, 2, key="projection")
+        return detections
+
+    def test_an_algorithm_may_hold_a_different_length_under_each_key(self):
+        detections = self._fill(3)
+        ids = [d.pk for d in detections]
+        self.assertEqual({v.shape for v in vectors_for_detections(ids, self.eight.pk).values()}, {(8,)})
+        projection = vectors_for_detections(ids, self.eight.pk, key="projection")
+        self.assertEqual({k: v.shape for k, v in projection.items()}, {ids[0]: (2,)})
+
+    def test_vectors_for_detections_takes_one_query_at_any_size(self):
+        counts = []
+        for size in (3, 12):
+            ids = [d.pk for d in self._fill(size)]
+            with cache_off(), CaptureQueriesContext(connection) as queries:
+                vectors = vectors_for_detections(ids, self.eight.pk)
+            self.assertEqual(len(vectors), size)
+            counts.append(len(queries))
+        self.assertEqual(counts, [1, 1])
+
+    def test_project_vectors_yields_every_row_once_in_id_order_in_bounded_chunks(self):
+        detections = self._fill(7)
+        chunks = list(project_vectors(self.project.pk, self.eight.pk, chunk_size=3))
+        self.assertEqual([len(ids) for ids, _ in chunks], [3, 3, 1])
+        all_ids = [i for ids, _ in chunks for i in ids]
+        self.assertEqual(all_ids, sorted(d.pk for d in detections))
+        for ids, array in chunks:
+            self.assertEqual(array.shape, (len(ids), 8))
+            self.assertEqual(array.dtype, np.dtype(np.float32))
+        # A chunk size that divides the rows exactly ends without an empty chunk.
+        self.assertEqual([len(i) for i, _ in project_vectors(self.project.pk, self.eight.pk, chunk_size=7)], [7])
+        self.assertEqual(list(project_vectors(self.project.pk, self.eight.pk, key="missing")), [])
+
+    def test_project_vectors_keeps_models_apart_and_honours_the_id_scope(self):
+        detections = self._fill(6)
+        ((ids, array),) = project_vectors(self.project.pk, self.four.pk)
+        self.assertEqual(ids, [d.pk for d in detections[::2]])
+        self.assertEqual(array.shape, (3, 4))
+        wanted = [detections[0].pk, detections[1].pk, detections[2].pk]
+        ((ids, _),) = project_vectors(self.project.pk, self.four.pk, detection_ids=wanted)
+        self.assertEqual(ids, [detections[0].pk, detections[2].pk])
+
+    def test_project_vectors_takes_one_query_per_chunk_plus_the_empty_end(self):
+        counts = []
+        for size in (6, 12):
+            self._fill(size)
+            with cache_off(), CaptureQueriesContext(connection) as queries:
+                chunks = list(project_vectors(self.project.pk, self.four.pk, chunk_size=1000))
+            self.assertEqual(len(chunks), 1)
+            counts.append(len(queries))
+        # One chunk, so a read for it and one that finds nothing after it; the size does not matter.
+        self.assertEqual(counts, [2, 2])
+
+    def test_counts_are_per_algorithm_and_key(self):
+        self._fill(5)
+        pk = self.project.pk
+        self.assertEqual(
+            vector_counts_by_algorithm(pk),
+            {(self.eight.pk, "embedding"): 5, (self.four.pk, "embedding"): 3, (self.eight.pk, "projection"): 1},
+        )
+        self.assertEqual(
+            vector_counts_by_algorithm(pk, key="embedding"),
+            {(self.eight.pk, "embedding"): 5, (self.four.pk, "embedding"): 3},
+        )
+        self.assertEqual(vector_counts_by_algorithm(pk, key="nothing"), {})
+        self.assertEqual(algorithm_with_most_vectors(self.project), self.eight.pk)
+
+    def test_the_default_algorithm_breaks_ties_by_lowest_id(self):
+        detections = self._detections(2)
+        self._store(detections, self.four, 4)
+        self._store(detections, self.eight, 8)
+        self.assertEqual(algorithm_with_most_vectors(self.project), min(self.four.pk, self.eight.pk))
+
+    def test_counts_take_one_query_at_any_size(self):
+        counts = []
+        for size in (3, 12):
+            self._fill(size)
+            with cache_off(), CaptureQueriesContext(connection) as queries:
+                vector_counts_by_algorithm(self.project.pk)
+                algorithm_with_most_vectors(self.project)
+            counts.append(len(queries))
+        self.assertEqual(counts, [2, 2])
+
+    def test_detections_missing_vectors_keeps_the_callers_scope(self):
+        detections = self._fill(4)
+        scope = Detection.objects.filter(source_image=self.image)
+        missing = detections_missing_vectors(scope, self.four.pk)
+        self.assertEqual({d.pk for d in missing}, {detections[1].pk, detections[3].pk})
+        self.assertEqual(list(detections_missing_vectors(scope, self.eight.pk)), [])
+        self.assertEqual(
+            {d.pk for d in detections_missing_vectors(scope.filter(pk__lte=detections[1].pk), self.four.pk)},
+            {detections[1].pk},
+        )
+        self.assertEqual(detections_missing_vectors(scope, self.eight.pk, key="projection").count(), 3)
+
+    def test_detections_missing_vectors_is_one_query_at_any_size(self):
+        counts = []
+        for size in (3, 12):
+            self._fill(size)
+            scope = Detection.objects.filter(source_image=self.image)
+            with cache_off(), CaptureQueriesContext(connection) as queries:
+                list(detections_missing_vectors(scope, self.four.pk))
+            counts.append(len(queries))
+        self.assertEqual(counts, [1, 1])
 
 
 class TestPgvectorGuard(SimpleTestCase):
