@@ -125,6 +125,18 @@ class AlgorithmResultTestCase(TestCase):
         current = {pk for pk, r in results.items() if r.is_current}
         self.assertEqual(current, {kept_current.pk, latest.pk})
 
+    def test_moving_results_locks_the_occurrences_before_reading_their_results(self):
+        """Without the lock, a run recording a result on the kept occurrence mid-merge makes two current rows."""
+        absorbed = Occurrence.objects.create(project=self.project, deployment=self.deployment)
+        self._size_filter({"relative_size": 0.02}, occurrence=absorbed).save()
+        with CaptureQueriesContext(connection) as queries:
+            AlgorithmResult.objects.move_to_occurrence(self.occurrence, [absorbed.pk])
+        sql = [q["sql"] for q in queries.captured_queries]
+        lock = next((i for i, q in enumerate(sql) if "FOR UPDATE" in q and "main_occurrence" in q), None)
+        self.assertIsNotNone(lock, "the occurrences are not locked")
+        first_read = next(i for i, q in enumerate(sql) if "ml_algorithmresult" in q)
+        self.assertLess(lock, first_read)
+
     def test_the_database_holds_one_current_result_per_occurrence_algorithm_and_kind(self):
         self._size_filter({"relative_size": 0.01}).save()
         with transaction.atomic(), self.assertRaises(IntegrityError):
