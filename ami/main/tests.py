@@ -8548,15 +8548,16 @@ class TestRegroupSplitsOccurrences(TestCase):
     leaves behind when a later regroup draws a boundary through it.
     """
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        create_taxa(project=self.project)
-        self.taxon, self.other_taxon = list(Taxon.objects.filter(projects=self.project).order_by("pk")[:2])
-        self.user = User.objects.create_user(email="regroup-identifier@insectai.org")  # type: ignore[attr-defined]
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        create_taxa(project=cls.project)
+        cls.taxon, cls.other_taxon = list(Taxon.objects.filter(projects=cls.project).order_by("pk")[:2])
+        cls.user = User.objects.create_user(email="regroup-identifier@insectai.org")  # type: ignore[attr-defined]
         start = datetime.datetime(2024, 6, 1, 22, 0)
-        self.captures = [
+        cls.captures = [
             SourceImage.objects.create(
-                deployment=self.deployment,
+                deployment=cls.deployment,
                 timestamp=start + datetime.timedelta(minutes=minutes),
                 path=f"test/regroup-split-{i}.jpg",
                 width=640,

@@ -32,10 +32,11 @@ BOX = [100, 100, 200, 200]
 
 
 class _TrackingCase(TestCase):
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        create_taxa(self.project)
-        self.taxa = list(Taxon.objects.filter(projects=self.project, rank="SPECIES").order_by("name"))
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        create_taxa(cls.project)
+        cls.taxa = list(Taxon.objects.filter(projects=cls.project, rank="SPECIES").order_by("name"))
 
     def run_task(self, event: Event, job: Job | None = None, **config) -> TrackingTask:
         task = TrackingTask(job=job, logger=logger, event_ids=[event.pk], **config)
