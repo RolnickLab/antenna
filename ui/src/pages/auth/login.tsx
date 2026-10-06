@@ -42,6 +42,7 @@ export const Login = () => {
     control,
     handleSubmit,
     setError: setFieldError,
+    watch,
   } = useForm<LoginFormValues>({
     defaultValues: { email: state?.email ?? '', password: '' },
   })
@@ -98,8 +99,9 @@ export const Login = () => {
         </a>
       </div>
       <p className={styles.text}>
-        {translate(STRING.FORGOT_PASSWORD)} Please reach out and we will help
-        you.
+        <Link to={APP_ROUTES.RESET_PASSWORD} state={{ email: watch('email') }}>
+          {translate(STRING.FORGOT_PASSWORD)}
+        </Link>
       </p>
     </>
   )

@@ -47,6 +47,16 @@ Every PR body opens with:
 1. **`## Summary`** — a short, plain-language paragraph stating the purpose of the change and its effect for the user, operator, or system. Written so the whole team can read it; implementation detail belongs in `## Detailed Description` below.
 2. **`### List of Changes`** — a numbered list or a table. Each change has, at minimum, a plain user-effect description. Optionally add a column for the technical/implementation detail, plus any other helpful columns (affected area, risk, migration). Lead with the user-effect; do not reduce it to a bare list of class or method names.
 
+### Screenshots: attach them with `gh --attach`
+
+UI changes get screenshots in the PR body. GitHub CLI 2.99 and later uploads them directly, so there is no need to host images on a branch, a fork, or a bucket:
+
+1. Write the body with a relative reference where each image belongs: `![The job filter, open](./03-job-filter.png)`.
+2. From the directory holding the screenshots, run `gh pr edit <N> --body-file body.md --attach './03-job-filter.png'`, repeating `--attach` for each file. Each referenced file is uploaded and its reference is rewritten in place to a `github.com/user-attachments/assets/...` URL; files the body does not reference are appended at the end. The same flag works on `gh pr create`, `gh pr comment`, and the `gh issue` commands.
+3. Check the result: no `](./` references should remain in the body, and each asset URL should load.
+
+This repository is public. Before attaching, look at each screenshot for real project, station, or job names from production data, and prefer a test project; an uploaded asset stays reachable by its URL even after the reference is removed.
+
 ### Examples
 
 Real titles from this repository, drafted mechanism-first and then rewritten to lead with the effect:
@@ -182,27 +192,27 @@ Two routes — bind-mount worktree subdirs into the main stack (code-only change
 
 Run tests:
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 Run specific test pattern:
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 Run tests with debugger on failure:
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 Speed up test development (reuse database):
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 Run pytest (alternative test runner):
 ```bash
-docker compose run --rm django pytest --ds=config.settings.test --reuse-db
+docker compose -f docker-compose.ci.yml run --rm django pytest --ds=config.settings.test --reuse-db
 ```
 
 Django shell:
@@ -422,6 +432,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 - [ ] No PII in serializers: nested user serializers expose name/image only — never `email`.
 - [ ] Every query param parsed via `SingleParamSerializer` (`ami/base/serializers.py`) or `url_boolean_param` (`ami/utils/fields.py`) so invalid input returns 400, not 500. Test the `?param=abc` case.
 - [ ] Aggregation happens in SQL. Add an `assertNumQueries` test with a **multi-row** fixture — single-row fixtures cannot catch N+1 (example: `ami/ml/tests.py:1006`). Use strict `==` counts in assertions.
+- [ ] Per-row permissions: `DefaultSerializer` resolves the user's object permissions for **every row** it serializes (a project lookup, Guardian `get_perms`, and custom job permissions), so a new list, nested, or dropdown serializer silently costs several queries per row. A serializer that does not need permissions overrides `get_permissions` to return an empty list (`ClassificationNestedSerializer`); one that does caches them once per request (`TaxaListSerializer.get_permissions`). Cachalot hides the repeats in manual testing, so pin it with a test, with cachalot disabled, that the query count is the same at two list sizes (example: `test_query_count_does_not_grow_with_the_number_of_jobs` in `ami/jobs/tests/test_jobs.py`, added in #1471).
 - [ ] Reuse existing patterns before writing new ones — see `docs/claude/reference/canonical-patterns.md`.
 
 ### Any model change
@@ -468,7 +479,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 
 Run an end-to-end ML job test:
 ```bash
-docker compose run --rm django python manage.py test_ml_job_e2e \
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test_ml_job_e2e \
   --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
 ```
 
@@ -482,13 +493,13 @@ Unit tests for the async result handler do not exercise `autoretry_for`, real Ce
 
 ```bash
 # Run specific test class
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
 
 # Run specific test method
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
 
 # Run with pattern matching
-docker compose run --rm django python manage.py test -k test_detection
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k test_detection
 ```
 
 ### Pre-commit Hooks

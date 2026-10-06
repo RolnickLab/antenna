@@ -5,7 +5,7 @@ Reference for monitoring and debugging async_api jobs that use NATS JetStream fo
 ## Starting a Test Job
 
 ```bash
-docker compose run --rm django python manage.py test_ml_job_e2e \
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test_ml_job_e2e \
   --project 18 \
   --dispatch-mode async_api \
   --collection 142 \

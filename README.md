@@ -146,25 +146,25 @@ docker compose run --rm django python manage.py create_demo_project
 ##### Run tests
 
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 ##### Run tests with a specific pattern in the test name
 
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 ##### Run tests and drop into interactive shell on failure
 
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 ##### Speed up development of tests by reusing the db between test runs
 
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 ##### Run management scripts
@@ -243,6 +243,8 @@ Bucket: ami
 ## Email
 
 The local environment uses the `console` email backend. To view emails sent by the platform, check the console output (run the `docker compose logs -f django celeryworker` command).
+
+Links and the site name in account emails, such as password resets, come from the Site record. In the Django admin (Sites), set the Domain name to your web app's hostname and the Display name to the name users should see, then restart the web container.
 
 ## Database
 

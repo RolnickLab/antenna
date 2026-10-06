@@ -4,6 +4,7 @@ export interface FetchParams {
   sort?: { field: string; order: 'asc' | 'desc' }
   filters?: { field: string; value?: string; error?: string }[]
   withCounts?: boolean
+  withExampleOccurrences?: boolean
 }
 
 export interface APIValidationError {

@@ -9,6 +9,7 @@ from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
 from ami.jobs.models import (
+    DataExportJob,
     DataStorageSyncJob,
     Job,
     JobDispatchMode,
@@ -16,6 +17,7 @@ from ami.jobs.models import (
     JobProgress,
     JobState,
     MLJob,
+    PostProcessingJob,
     RegroupEventsJob,
     SourceImageCollectionPopulateJob,
 )
@@ -1661,3 +1663,174 @@ class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 job.run()
+
+
+class TestJobSourceImageSingleFilter(APITestCase):
+    """Pin the ``?source_image_single=<id>`` query-parameter contract.
+
+    ``JobFilterSet`` declares it as a ``RelatedIdFilter`` (see ``ami/base/filters.py``),
+    and it must keep filtering jobs by the exact source image id. One deliberate
+    difference from the auto-generated ``ModelChoiceFilter``: an id with no matching row
+    returns an empty page instead of a validation error. Non-integer values are still
+    rejected.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Job Filter Test Project")
+        self.image_a = SourceImage.objects.create(path="a.jpg", project=self.project)
+        self.image_b = SourceImage.objects.create(path="b.jpg", project=self.project)
+        self.job_a = Job.objects.create(project=self.project, name="Job A", source_image_single=self.image_a)
+        self.job_b = Job.objects.create(project=self.project, name="Job B", source_image_single=self.image_b)
+        self.user = User.objects.create_user(  # type: ignore
+            email="jobfilters@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_filters_jobs_by_source_image_id(self):
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": self.image_a.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual([row["id"] for row in data["results"]], [self.job_a.pk])
+
+    def test_unknown_id_returns_empty_page(self):
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": 99999999},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_non_numeric_id_is_rejected(self):
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "abc"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fractional_id_is_rejected(self):
+        """``1.5`` must 400 rather than be truncated to id 1 and match the wrong image."""
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "1.5"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_out_of_range_id_returns_empty_page(self):
+        """An id wider than a bigint is an unknown id, not a server error: Postgres compares
+        it as numeric and matches nothing."""
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "9" * 20},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_browsable_page_renders_number_input(self):
+        """The HTML filter form must not enumerate the source image table."""
+        url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        # An unauthenticated read gets the page without create forms, so the
+        # only form fields on the page belong to the filter form.
+        self.client.force_authenticate(user=None)
+        response = self.client.get(url, headers={"accept": "text/html"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        html = response.content.decode()
+        self.assertNotIn('<select name="source_image_single"', html)
+        self.assertIn('<input type="number" name="source_image_single"', html)
+
+
+class TestJobChoices(APITestCase):
+    """Choices endpoint for the occurrence job filter.
+
+    Pins what the dropdown relies on: only jobs that can write detections or
+    classifications, most recently created first, one capped response, and failed
+    jobs included because they may have written results before failing.
+    """
+
+    def setUp(self) -> None:
+        import datetime
+
+        from django.utils import timezone
+
+        self.user = User.objects.create_user(email="job-picker@insectai.org", is_staff=False)
+        self.project = Project.objects.create(name="Job picker project", owner=self.user)
+        other_project = Project.objects.create(name="Other job picker project", owner=self.user)
+        self.oldest = Job.objects.create(project=self.project, name="Oldest", job_type_key=MLJob.key)
+        self.failed = Job.objects.create(
+            project=self.project, name="Failed", job_type_key=PostProcessingJob.key, status=JobState.FAILURE
+        )
+        self.newest = Job.objects.create(project=self.project, name="Newest", job_type_key=MLJob.key)
+        for days_ago, job in enumerate([self.newest, self.failed, self.oldest]):
+            Job.objects.filter(pk=job.pk).update(created_at=timezone.now() - datetime.timedelta(days=days_ago * 10))
+        Job.objects.create(project=self.project, name="Export", job_type_key=DataExportJob.key)
+        Job.objects.create(project=other_project, name="Elsewhere", job_type_key=MLJob.key)
+        self.url = f"/api/v2/jobs/choices/?project_id={self.project.pk}"
+
+    def test_result_writing_jobs_most_recent_first(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.json()["results"]], ["Newest", "Failed", "Oldest"])
+
+    def test_a_project_is_required(self):
+        response = self.client.get("/api/v2/jobs/choices/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_jobs_in_a_draft_project_are_listed_for_members_only(self):
+        draft_project = Project.objects.create(name="Draft job picker project", owner=self.user, draft=True)
+        Job.objects.create(project=draft_project, name="Secret", job_type_key=MLJob.key)
+        url = f"/api/v2/jobs/choices/?project_id={draft_project.pk}"
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_404_NOT_FOUND)
+
+        self.client.force_authenticate(self.user)  # The owner is a member of their project.
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.json()["results"]], ["Secret"])
+
+    def test_query_count_does_not_grow_with_the_number_of_jobs(self):
+        """No per-job work: listing eight jobs runs the same queries as listing three, for a member
+        whose permissions would otherwise be resolved on every row. Cachalot is off so every query
+        counts."""
+        from cachalot.api import cachalot_disabled
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.client.force_authenticate(self.user)  # The owner is a member of their project.
+
+        def list_choices() -> tuple[int, int]:
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(self.url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            return len(response.json()["results"]), len(queries.captured_queries)
+
+        disabled = cachalot_disabled()
+        disabled.__enter__()
+        try:
+            three_rows, three_rows_queries = list_choices()
+            Job.objects.bulk_create(
+                Job(project=self.project, name=f"More {index}", job_type_key=MLJob.key) for index in range(5)
+            )
+            eight_rows, eight_rows_queries = list_choices()
+        finally:
+            # cachalot_disabled() does not restore itself when the block raises.
+            disabled.__exit__(None, None, None)
+        self.assertEqual((three_rows, eight_rows), (3, 8))
+        self.assertEqual(eight_rows_queries, three_rows_queries)
+
+    def test_a_dropdown_gets_one_capped_response_instead_of_pages(self):
+        Job.objects.bulk_create(
+            Job(project=self.project, name=f"Bulk {index}", job_type_key=MLJob.key) for index in range(120)
+        )
+        for query in ("", "&limit=500"):
+            with self.subTest(query=query):
+                body = self.client.get(f"{self.url}{query}").json()
+                self.assertEqual(len(body["results"]), 100)
+                self.assertEqual(body["count"], 123)
