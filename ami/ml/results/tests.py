@@ -13,6 +13,13 @@ class ResultKindRegistryTest(SimpleTestCase):
                 self.assertEqual(schema["type"], "object")
                 self.assertFalse(schema.get("additionalProperties", True))
                 self.assertIn("extra", schema["properties"])
+                # A nested model would emit #/definitions refs, which do not resolve inside OpenAPI.
+                self.assertNotIn("definitions", schema)
+
+    def test_each_kind_is_registered_under_its_models_kind(self):
+        for kind, model in schemas.ALGORITHM_RESULT_DATA_SCHEMAS.items():
+            with self.subTest(kind):
+                self.assertEqual(model.kind, kind)
 
     def test_reference_fields_come_from_field_metadata(self):
         class Probe(schemas.AlgorithmResultData):

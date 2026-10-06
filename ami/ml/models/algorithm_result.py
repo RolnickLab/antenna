@@ -142,10 +142,6 @@ class AlgorithmResult(BaseModel):
     rank roll-ups are the next kinds expected. See #1431.
     """
 
-    class Kind(models.TextChoices):
-        CLASS_MASKING = "class_masking"
-        SIZE_FILTER = "size_filter"
-
     # Copied from the occurrence when the result is written, so per-project
     # queries and permission checks need no join.
     project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="algorithm_results")

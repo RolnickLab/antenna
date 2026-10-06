@@ -1,7 +1,8 @@
 """Ids the occurrence history shows, resolved to ``{type, id, name}`` so the UI can link them with one table.
 
 ``name`` is None when the row no longer exists; the UI then shows the id as text. Resolution reads names
-only, one query per type, and is used for ids stored on the occurrence's own results and jobs.
+only, one query per type, and is used for ids stored on the occurrence's own results and jobs. Result data
+models and task config schemas declare which fields hold an id with ``ami.ml.results.schemas.reference``.
 """
 
 import collections
@@ -28,24 +29,24 @@ REFERENCE_TYPES: dict[str, tuple[str, str | None]] = {
     "taxon": ("main.Taxon", "name"),
 }
 
-# Job settings (post-processing configs) that hold another record's id.
-JOB_SETTING_REFERENCES: dict[str, str] = {
-    "source_image_collection_id": "capture_set",
-    "taxa_list_id": "taxa_list",
-    "algorithm_id": "algorithm",
-    "occurrence_id": "occurrence",
-}
+
+def is_record_id(value: typing.Any) -> bool:
+    """Whether a stored value can be a primary key: an int that is not a bool."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
-def job_setting_references(config: typing.Any) -> list[tuple[str, str, int]]:
-    """``(setting key, reference type, id)`` for each job setting that names another record."""
-    if not isinstance(config, dict):
-        return []
-    return [
-        (key, ref_type, config[key])
-        for key, ref_type in JOB_SETTING_REFERENCES.items()
-        if isinstance(config.get(key), int) and not isinstance(config.get(key), bool)
-    ]
+def unmapped_reference_types(models: typing.Iterable[type] | None = None) -> set[str]:
+    """Reference types that result data models or task config schemas declare but this module does not map.
+
+    Defaults to every registered result kind and post-processing task; a test keeps the answer empty.
+    """
+    from ami.ml.results.schemas import ALGORITHM_RESULT_DATA_MODELS, field_references
+
+    if models is None:
+        from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
+
+        models = [*ALGORITHM_RESULT_DATA_MODELS, *(task.config_schema for task in POSTPROCESSING_TASKS.values())]
+    return {ref_type for model in models for ref_type in field_references(model).values()} - set(REFERENCE_TYPES)
 
 
 def resolve_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[str, int], Ref]:

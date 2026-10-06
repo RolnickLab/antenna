@@ -13,13 +13,16 @@ import datetime
 import typing
 
 from ami.main.models import Classification, Identification, Occurrence, Taxon, User
-from ami.main.models_future.references import Ref, job_setting_references, resolve_references
+from ami.main.models_future.references import Ref, is_record_id, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.post_processing.registry import config_setting_labels
-from ami.ml.results.schemas import reference_fields, result_kinds
+from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.ml.results.schemas import field_references, field_titles, reference_fields, result_kinds
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+
+# A job's progress and logs can be large JSON documents, and the history shows neither.
+JOB_FIELDS_NOT_SHOWN = ("job__progress", "job__logs")
 
 
 @dataclasses.dataclass
@@ -81,6 +84,7 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
     results = list(
         AlgorithmResult.objects.filter(occurrence=occurrence)
         .select_related("algorithm", "job")
+        .defer(*JOB_FIELDS_NOT_SHOWN)
         .order_by("-timestamp", "-pk")
     )
     taxa = _by_id(
@@ -174,36 +178,54 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
 
 def _fill_job_settings_and_references(entries: list[OccurrenceTimelineEntry]) -> None:
     """Fill each entry's job settings and data references, resolving every id the entries name at once."""
-    configs = {id(entry): _job_settings(entry.job) for entry in entries if entry.job is not None}
-    job_refs = {key: job_setting_references(config) for key, config in configs.items()}
+    settings = {id(entry): _job_settings(entry.job) for entry in entries if entry.job is not None}
     # A stored kind may no longer be registered (renamed, or written by another branch); it names no references.
     kinds = set(result_kinds())
     data_refs = {
         id(entry): [
             (field, ref_type, entry.data[field])
             for field, ref_type in (reference_fields(entry.kind) if entry.kind in kinds else {}).items()
-            if isinstance(entry.data.get(field), int)
+            if is_record_id(entry.data.get(field))
         ]
         for entry in entries
         if entry.type == "algorithm_result"
     }
-    wanted = [(ref_type, ref_id) for refs in (*job_refs.values(), *data_refs.values()) for _, ref_type, ref_id in refs]
+    wanted = [(ref_type, value) for specs in settings.values() for _, _, value, ref_type in specs if ref_type]
+    wanted += [(ref_type, ref_id) for refs in data_refs.values() for _, ref_type, ref_id in refs]
     resolved = resolve_references(wanted) if wanted else {}
     for entry in entries:
         if entry.job is not None:
-            labels = config_setting_labels((entry.job.params or {}).get("task"))
-            refs = {key: resolved[(t, i)] for key, t, i in job_refs[id(entry)]}
             entry.job_settings = [
-                JobSetting(key, labels.get(key, key), value, refs.get(key))
-                for key, value in configs[id(entry)].items()
+                JobSetting(key, label, value, resolved[(ref_type, value)] if ref_type else None)
+                for key, label, value, ref_type in settings[id(entry)]
             ]
         entry.data_references = {field: resolved[(t, i)] for field, t, i in data_refs.get(id(entry), [])}
 
 
-def _job_settings(job: Job | None) -> dict:
-    """The settings a post-processing job ran with, or an empty dict for any other job."""
-    config = (job.params or {}).get("config") if job is not None else None
-    return config if isinstance(config, dict) else {}
+def job_config(job: Job | None) -> dict | None:
+    """The settings a post-processing job ran with, or None for any other job or malformed params."""
+    params = job.params if job is not None else None
+    config = params.get("config") if isinstance(params, dict) else None
+    return config if isinstance(config, dict) else None
+
+
+def _job_settings(job: Job) -> list[tuple[str, str, typing.Any, str | None]]:
+    """``(key, label, value, reference type)`` per setting, labelled, typed and ordered by the task's config schema.
+
+    The stored config's key order is not kept (Postgres orders a JSON object's keys), so settings follow the
+    schema and any key it does not declare comes after. A job whose task is not registered shows its
+    settings by key, naming no records.
+    """
+    config = job_config(job) or {}
+    task_key = job.params.get("task") if config else None
+    task = get_postprocessing_task(task_key) if isinstance(task_key, str) else None
+    titles = field_titles(task.config_schema) if task else {}
+    references = field_references(task.config_schema) if task else {}
+    keys = [key for key in titles if key in config] + [key for key in config if key not in titles]
+    return [
+        (key, titles.get(key) or key, config[key], references.get(key) if is_record_id(config[key]) else None)
+        for key in keys
+    ]
 
 
 def _by_id(model, ids: set) -> dict:
@@ -263,7 +285,7 @@ def _one_prediction_per_algorithm(occurrence: Occurrence) -> list[Classification
         return (score, prediction.terminal, prediction.created_at, prediction.pk)
 
     best: dict[int | None, Classification] = {}
-    for prediction in occurrence.predictions().select_related("job").defer("scores", "logits"):
+    for prediction in occurrence.predictions().select_related("job").defer("scores", "logits", *JOB_FIELDS_NOT_SHOWN):
         current = best.get(prediction.algorithm_id)
         if current is None or rank(prediction) > rank(current):
             best[prediction.algorithm_id] = prediction

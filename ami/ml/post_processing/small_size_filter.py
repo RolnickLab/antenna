@@ -4,8 +4,8 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
-from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.results.schemas import SizeFilterResultData, reference
 from ami.ml.results.writer import AlgorithmResultWriter
 from ami.ml.schemas import BoundingBox
 
@@ -15,8 +15,8 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
     # set is the bulk path; a single occurrence is the spot/dev path (fast feedback
     # while tuning a filter). This discriminated-scope shape is the pattern other
     # post-processing tasks copy when they gain per-occurrence / per-event triggers.
-    source_image_collection_id: int | None = pydantic.Field(None, title="Capture set")
-    occurrence_id: int | None = pydantic.Field(None, title="Occurrence")
+    source_image_collection_id: int | None = reference("capture_set", None, title="Capture set")
+    occurrence_id: int | None = reference("occurrence", None, title="Occurrence")
     size_threshold: float = pydantic.Field(0.0008, title="Size threshold")
 
     @pydantic.validator("size_threshold")
@@ -95,7 +95,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         checked = 0
         # One algorithm result per flagged occurrence, written with the batch that flags it.
         results = AlgorithmResultWriter(
-            kind=AlgorithmResult.Kind.SIZE_FILTER,
+            kind=SizeFilterResultData.kind,
             algorithm=self.algorithm,
             job=self.job,
             value_field="relative_size",

@@ -2120,8 +2120,9 @@ class HistoryJobSerializer(serializers.Serializer):
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_config(self, job) -> dict | None:
-        config = (job.params or {}).get("config")
-        return config if isinstance(config, dict) else None
+        from ami.main.models_future.history import job_config
+
+        return job_config(job)
 
 
 class ReplacedClassificationSerializer(serializers.Serializer):
