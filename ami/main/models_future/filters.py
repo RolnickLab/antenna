@@ -156,6 +156,7 @@ def build_occurrence_default_filters_q(
 
     Examples:
         Direct Occurrence filtering:
+            filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
             occurrences = Occurrence.objects.filter(filter_q)
 
         Event with occurrence counts:
