@@ -1,18 +1,29 @@
-# Adding an algorithm result kind
+# Algorithm results
 
-An algorithm result (`ami/ml/models/algorithm_result.py`) records what a run decided about one
-occurrence: the figures only that run knew, and the occurrence's determination before and after. It
-is a record, never an input: the determination still comes only from identifications and
-classifications. Each kind of result (`class_masking`, `size_filter`, and next `tracking` and
-`rank_rollup`) has its own data model. This guide walks through adding one, using rank roll-up
-(draft #1361) as the example.
+An algorithm result (`ami/ml/models/algorithm_result.py`) is the standard record of what an
+algorithm decided about one occurrence: the figures only that run knew, its headline `value`, and the
+occurrence's determination before and after, with the algorithm and job that produced it. Any
+algorithm can write one, whether a post-processing method or a pipeline step. It is a record, never an
+input: the determination still comes only from identifications and classifications.
 
-Adding a kind needs no migration, no serializer change and no OpenAPI change. It touches the data
-model, the task that writes it, and the UI card.
+Each kind of result (`class_masking`, `size_filter`, and next `tracking` and `rank_rollup`) has its
+own data model in `schemas.py` in this package. The occurrence history
+(`ami/main/models_future/history.py`, `GET /occurrences/{id}/history/`) shows each result next to the
+occurrence's identifications and predictions, and the API publishes each kind's data as a typed
+OpenAPI component.
 
-## 1. Describe the result's data
+Outputs that belong to a single detection keep their own tables: classifications, and feature vectors
+(`DetectionEmbedding`). They carry the same provenance (algorithm and job) but are not results.
 
-Add a pydantic model in `ami/ml/results/schemas.py` and list it in `ALGORITHM_RESULT_DATA_MODELS`.
+This guide covers adding a result kind, using rank roll-up (draft #1361) as the example, and then
+adding another kind of history entry. Adding a kind needs no migration, no serializer change and no
+OpenAPI change: it touches the data model, the task that writes it, and the UI card.
+
+## Adding a result kind
+
+### 1. Describe the result's data
+
+Add a pydantic model in `schemas.py` and list it in `ALGORITHM_RESULT_DATA_MODELS`.
 
 ```python
 class RankRollupResultData(DeterminationSnapshot):
@@ -59,7 +70,7 @@ Rules for the model:
 The kind's OpenAPI component (`RankRollupResultEntry`) and its enum name come from the registry
 automatically.
 
-## 2. Describe the task's settings
+### 2. Describe the task's settings
 
 The task's config schema (the pydantic model `config_schema` on the task) is where the history gets
 each setting's label, order and referenced record. Give every field a `title`, and declare ids with
@@ -80,7 +91,7 @@ A field without a `title` shows its key on the result card. Register the task in
 `ami/ml/post_processing/registry.py`; the history finds the schema through the job's
 `params["task"]`.
 
-## 3. Write results from the task
+### 3. Write results from the task
 
 Use `AlgorithmResultWriter` (`ami/ml/results/writer.py`), the same way the size filter and class
 masking do. The writer creates one result per occurrence per run, in the same transaction as the
@@ -142,7 +153,7 @@ Rules for the writer:
   classifier, say), give each source its own `Algorithm`, as class masking does.
 - **Occurrences without a project** get no result and a warning; the run carries on (#1188).
 
-## 4. Show it in the UI
+### 4. Show it in the UI
 
 - `ui/src/data-services/models/occurrence-history.ts`: add the data interface (mirroring the pydantic
   model), the entry type (`ServerResultEntry<'rank_rollup', RankRollupResultData>`) to the
@@ -154,7 +165,7 @@ Rules for the writer:
   changed, the settings and the job row are shared by every kind.
 - `ui/src/utils/language.ts`: add the strings the card uses.
 
-## 5. Test it
+### 5. Test it
 
 - The run writes one result per touched occurrence, with the expected `data` and `value`.
 - Each created classification has `algorithm_result` and `job` set, and `applied_to` where it
@@ -167,10 +178,40 @@ Rules for the writer:
 - `python manage.py test ami.ml.results ami.main.test_occurrence_history` covers the registry guards
   and the history contract.
 
-## What you do not need to touch
+### What you do not need to touch
 
 - **Migrations:** `kind` is a plain `CharField` without `choices`; every write path validates `data`
   against the registry instead.
 - **Serializers and OpenAPI:** the history serializer and the `oneOf` union are generated from the
   registry, including `SPECTACULAR_SETTINGS["ENUM_NAME_OVERRIDES"]`.
 - **The determination:** it never reads results.
+
+## Adding another kind of history entry
+
+The history merges entries from several tables: algorithm results, identifications and predictions.
+Another source, such as the feature vectors a pipeline added to an occurrence's detections, becomes a
+new entry type rather than a result kind when it records an output and not a decision. Add it in five
+places:
+
+1. **`ami/main/models_future/history.py`:** a section of fields on `OccurrenceTimelineEntry` (if the
+   shared fields are not enough), and a loader in `occurrence_timeline` that adds the entries with a
+   fixed number of queries, whatever the occurrence's size. Entries with a `job` get its settings
+   automatically. For vectors, group by job and algorithm, and never select the vector column:
+   ```python
+   DetectionEmbedding.objects.filter(detection__occurrence=occurrence)
+       .values("algorithm", "job", "key")
+       .annotate(detections=Count("detection", distinct=True), timestamp=Max("timestamp"))
+   ```
+2. **`ami/main/api/serializers.py`:** an `<Name>EntrySerializer(HistoryEntryBaseSerializer)` with
+   `type = serializers.ChoiceField(choices=["<type>"])` and its own fields. Add it to the serializers
+   of `OCCURRENCE_HISTORY_ENTRY_SCHEMA` and to `HISTORY_ENTRY_SERIALIZERS`.
+3. **`config/settings/base.py`:** a `"<Name>EntryTypeEnum": ["<type>"]` entry in
+   `SPECTACULAR_SETTINGS["ENUM_NAME_OVERRIDES"]`, so the literal `type` gets a readable enum name.
+4. **The UI:** the entry interface in `ui/src/data-services/models/occurrence-history.ts`, added to
+   `ServerOccurrenceHistoryEntry` and to `TimelineItem`, with a `case` in `getTimelineItems`; a card
+   component in `ui/src/pages/occurrence-details/identification-card/`, rendered in
+   `occurrence-timeline.tsx`. `getTimelineItems` skips entry types it does not know, so the server
+   side can ship first.
+5. **Tests in `ami/main/test_occurrence_history.py`:** the new entries in the endpoint response, the
+   strict `HISTORY_QUERIES` count raised by the loader's queries (and still the same at two history
+   sizes), and the new component in the OpenAPI union.
