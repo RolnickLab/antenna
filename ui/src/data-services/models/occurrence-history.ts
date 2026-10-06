@@ -27,13 +27,21 @@ export interface ServerHistoryAlgorithm {
   name: string
 }
 
+/** One setting a job ran with. `label` is the title the task's config schema gives it, else the key. */
+export interface ServerHistoryJobSetting {
+  key: string
+  label: string
+  /** The record the setting names, when it names one. */
+  ref: Ref | null
+  value: unknown
+}
+
 export interface ServerHistoryJob {
   /** The settings a post-processing job ran with; null for other jobs. */
   config: Record<string, unknown> | null
   id: number
   name: string
-  /** Settings that name another record, by setting key. */
-  references: Record<string, Ref>
+  settings: ServerHistoryJobSetting[]
 }
 
 /** The classification a run's classification replaced, when there was one and it still exists. */
@@ -93,7 +101,7 @@ interface ServerHistoryEntryBase {
   algorithm: ServerHistoryAlgorithm | null
   id: number
   job: ServerHistoryJob | null
-  /** A prediction's score, or a result's headline value. */
+  /** A prediction's score; null for other entries. */
   score: number | null
   /** The identified or predicted taxon; null for a result. */
   taxon: ServerHistoryTaxon | null
@@ -114,6 +122,8 @@ interface ServerResultEntry<Kind extends string, Data>
   is_current: boolean
   kind: Kind
   type: 'algorithm_result'
+  /** The kind's headline figure, for sorting and filtering; not a confidence. */
+  value: number | null
 }
 
 export type ClassMaskingResultEntry = ServerResultEntry<
@@ -396,23 +406,16 @@ export const getResultPrediction = (
   }
 }
 
-export interface JobSetting {
-  key: string
-  value: unknown
-  /** The record the setting names, when it names one. */
-  ref?: Ref
-}
-
 /** Settings the result card already shows in a row of their own. */
 const SETTINGS_SHOWN_ELSEWHERE = ['size_threshold']
 
-/** A job's settings with the records they name, leaving out unset ones and those shown elsewhere. */
-export const getJobSettings = (job: ServerHistoryJob | null): JobSetting[] =>
-  Object.entries(job?.config ?? {})
-    .filter(
-      ([key, value]) =>
-        value !== null &&
-        value !== undefined &&
-        !SETTINGS_SHOWN_ELSEWHERE.includes(key)
-    )
-    .map(([key, value]) => ({ key, value, ref: job?.references[key] }))
+/** A job's settings to show as rows, leaving out unset ones and those shown elsewhere. */
+export const getJobSettings = (
+  job: ServerHistoryJob | null
+): ServerHistoryJobSetting[] =>
+  (job?.settings ?? []).filter(
+    ({ key, value }) =>
+      value !== null &&
+      value !== undefined &&
+      !SETTINGS_SHOWN_ELSEWHERE.includes(key)
+  )

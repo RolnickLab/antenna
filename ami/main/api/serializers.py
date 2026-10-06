@@ -2130,8 +2130,17 @@ class RefSerializer(serializers.Serializer):
     name = serializers.CharField(allow_null=True)
 
 
+class HistoryJobSettingSerializer(serializers.Serializer):
+    """One setting a job ran with. ``label`` is the title the task's config schema gives it, else the key."""
+
+    key = serializers.CharField()
+    label = serializers.CharField()
+    value = serializers.JSONField(allow_null=True)
+    ref = RefSerializer(allow_null=True, help_text="The record the setting names, when it names one.")
+
+
 class HistoryJobSerializer(serializers.Serializer):
-    """A job in the history. ``references`` is filled per entry by ``HistoryEntryBaseSerializer``."""
+    """A job in the history. ``settings`` is filled per entry by ``HistoryEntryBaseSerializer``."""
 
     id = serializers.IntegerField()
     name = serializers.CharField()
@@ -2141,9 +2150,7 @@ class HistoryJobSerializer(serializers.Serializer):
             "Null for other jobs, and for a post-processing job whose stored config is not an object."
         )
     )
-    references = serializers.DictField(
-        child=RefSerializer(), read_only=True, help_text="Settings that name another record, by setting key."
-    )
+    settings = HistoryJobSettingSerializer(many=True, read_only=True, help_text="The settings, in the job's order.")
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_config(self, job) -> dict | None:
@@ -2177,9 +2184,7 @@ class HistoryEntryBaseSerializer(serializers.Serializer):
     algorithm = HistoryAlgorithmSerializer(allow_null=True)
     job = serializers.SerializerMethodField()
     taxon = HistoryTaxonSerializer(allow_null=True, help_text="The identified or predicted taxon.")
-    score = serializers.FloatField(
-        allow_null=True, help_text="A prediction's score, or a result's headline value (see its kind)."
-    )
+    score = serializers.FloatField(allow_null=True, help_text="A prediction's score; null for other entries.")
 
     @extend_schema_field(HistoryJobSerializer(allow_null=True))
     def get_job(self, entry) -> dict | None:
@@ -2187,7 +2192,7 @@ class HistoryEntryBaseSerializer(serializers.Serializer):
             return None
         return {
             **HistoryJobSerializer(entry.job).data,
-            "references": {key: RefSerializer(ref).data for key, ref in entry.job_references.items()},
+            "settings": HistoryJobSettingSerializer(entry.job_settings, many=True).data,
         }
 
 
@@ -2224,6 +2229,9 @@ class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
 
     type = serializers.ChoiceField(choices=["algorithm_result"])
     kind = serializers.CharField()
+    value = serializers.FloatField(
+        allow_null=True, help_text="The kind's headline figure, for sorting and filtering; not a confidence."
+    )
     data = serializers.JSONField(help_text="The kind's figures, validated against its data model.")
     data_references = serializers.DictField(
         child=RefSerializer(), help_text="Data fields that name another record, by field."

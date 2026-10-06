@@ -28,7 +28,14 @@ const JOB = {
   config: { taxa_list_id: 2 },
   id: 30,
   name: 'Masking run',
-  references: { taxa_list_id: { type: 'taxa_list', id: 2, name: 'Kept' } },
+  settings: [
+    {
+      key: 'taxa_list_id',
+      label: 'Species list',
+      value: 2,
+      ref: { type: 'taxa_list', id: 2, name: 'Kept' },
+    },
+  ],
 }
 
 const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
@@ -101,8 +108,9 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   is_current: true,
   job: JOB,
   kind: 'class_masking',
-  score: 0.38,
+  score: null,
   type: 'algorithm_result',
+  value: 0.38,
 }
 
 const ownIdentification: HumanIdentification = {
@@ -330,39 +338,50 @@ describe('getOccurrenceHistoryQueryKey', () => {
 })
 
 describe('getJobSettings', () => {
-  test('lists the settings a job ran with and the records they name, leaving out unset ones', () => {
-    const deletedList = { type: 'taxa_list', id: 2, name: null }
+  test('lists the settings a job ran with, with their labels and records, leaving out unset ones', () => {
+    const deletedList: { type: string; id: number; name: string | null } = {
+      type: 'taxa_list',
+      id: 2,
+      name: null,
+    }
+    const setting = (
+      key: string,
+      value: unknown,
+      ref: typeof deletedList | null = null
+    ) => ({
+      key,
+      label: `Label of ${key}`,
+      value,
+      ref,
+    })
     expect(
       getJobSettings({
-        config: {
-          occurrence_id: 4,
-          reweight: true,
-          size_threshold: 0.01,
-          source_image_collection_id: null,
-          taxa_list_id: 2,
-        },
+        config: null,
         id: 1,
         name: 'Size filter',
-        references: {
-          occurrence_id: { type: 'occurrence', id: 4, name: '#4' },
-          taxa_list_id: deletedList,
-        },
+        settings: [
+          setting('occurrence_id', 4, {
+            type: 'occurrence',
+            id: 4,
+            name: '#4',
+          }),
+          setting('reweight', true),
+          setting('size_threshold', 0.01),
+          setting('source_image_collection_id', null),
+          // A deleted list keeps its reference with no name, so the card shows its id as text.
+          setting('taxa_list_id', 2, deletedList),
+        ],
       })
     ).toEqual([
-      {
-        key: 'occurrence_id',
-        value: 4,
-        ref: { type: 'occurrence', id: 4, name: '#4' },
-      },
-      { key: 'reweight', value: true, ref: undefined },
-      // A deleted list keeps its reference with no name, so the card shows its id as text.
-      { key: 'taxa_list_id', value: 2, ref: deletedList },
+      setting('occurrence_id', 4, { type: 'occurrence', id: 4, name: '#4' }),
+      setting('reweight', true),
+      setting('taxa_list_id', 2, deletedList),
     ])
   })
 
   test('is empty for a job without settings', () => {
     expect(
-      getJobSettings({ config: null, id: 1, name: 'Pipeline', references: {} })
+      getJobSettings({ config: null, id: 1, name: 'Pipeline', settings: [] })
     ).toEqual([])
     expect(getJobSettings(null)).toEqual([])
   })

@@ -15,9 +15,9 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
     # set is the bulk path; a single occurrence is the spot/dev path (fast feedback
     # while tuning a filter). This discriminated-scope shape is the pattern other
     # post-processing tasks copy when they gain per-occurrence / per-event triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
-    size_threshold: float = 0.0008
+    source_image_collection_id: int | None = pydantic.Field(None, title="Capture set")
+    occurrence_id: int | None = pydantic.Field(None, title="Occurrence")
+    size_threshold: float = pydantic.Field(0.0008, title="Size threshold")
 
     @pydantic.validator("size_threshold")
     def _threshold_in_unit_interval(cls, v: float) -> float:
