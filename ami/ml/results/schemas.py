@@ -74,14 +74,19 @@ class TrackingResultData(DeterminationSnapshot):
     kind: ClassVar[str] = "tracking"
 
     detection_count: int
-    # Path length between consecutive detection centres, as a fraction of the image diagonal; 0 for a still insect.
+    # Mean distance per step between consecutive detection centres, as a fraction of the image diagonal;
+    # 0 for one detection.
     motion: float
-    # The largest box area over the smallest, with areas floored at 1; 1 when the box never changed size.
-    size_ratio: float
-    # Distinct taxa among the terminal classifications of the occurrence's detections, from every algorithm.
+    # The same distances added up over the whole path, as a fraction of the image diagonal.
+    path_length: float
+    # The largest box area over the smallest (at least 1), with areas floored at 1; 1 when the box never changed size.
+    size_change: float
+    # Distinct taxa among the machine classifications of the occurrence's detections, leaving out post-processing ones.
     distinct_taxa: int
     # The share of those classifications naming the determination after the run; None when there are none.
-    id_agreement: float | None = None
+    label_agreement: float | None = None
+    # The matching cost of each link this run made in the chain, rounded to 4 places, in chain order.
+    link_costs: list[float] = []
     # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.
     merged_occurrence_ids: list[int] = []
 

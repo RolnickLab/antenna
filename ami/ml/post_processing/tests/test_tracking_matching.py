@@ -98,9 +98,9 @@ class TestPairCost(SimpleTestCase):
         self.assertEqual([(a, b) for a, b, _ in links], [(2, 3), (1, 4)])
         self.assertLessEqual(links[0][2], links[1][2])
 
-    def test_a_detection_is_linked_at_most_once(self):
+        # Two detections competing for one target: only one links, and a tie goes to the lower id.
         links = select_links([(1, BOX), (2, BOX)], [(3, BOX)], DIAG, _config())
-        self.assertEqual([(a, b) for a, b, _ in links], [(1, 3)], "Ties break on the lower ids")
+        self.assertEqual([(a, b) for a, b, _ in links], [(1, 3)])
 
 
 class TestIntervalLimit(SimpleTestCase):

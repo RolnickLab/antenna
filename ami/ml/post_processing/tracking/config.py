@@ -25,7 +25,15 @@ class TrackingConfig(pydantic.BaseModel):
     shown on the admin form.
     """
 
-    source_image_collection_id: int | None = None
+    source_image_collection_id: int | None = pydantic.Field(
+        None,
+        title="Capture set",
+        description=(
+            "Track the sessions that contain captures from this set. Every processed capture of those "
+            "sessions is tracked, not only the captures in the set, because a chain needs the captures "
+            "between its detections."
+        ),
+    )
     event_ids: list[int] = []
 
     cost_threshold: float = pydantic.Field(
