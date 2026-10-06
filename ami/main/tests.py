@@ -18,6 +18,7 @@ from rest_framework import status
 from rest_framework.test import APIClient, APIRequestFactory, APITestCase
 from rich import print
 
+from ami.base.permissions import add_m2m_object_permissions
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
@@ -4418,6 +4419,65 @@ class TestTaxonListQueryCount(APITestCase):
             self.assertNotIn("main_identification", sql.lower(), "example subqueries leaked into the COUNT")
 
 
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxaListListQueryCount(APITestCase):
+    """Guard against N+1 regressions in TaxaListViewSet.list.
+
+    TaxaListSerializer resolved the active project and the requesting member's
+    project permissions once per row instead of once per request
+    (get_projects, get_permissions -> add_m2m_object_permissions). Query count
+    must stay flat as the number of taxa lists returned grows. Uses a project
+    member (not a superuser) because the superuser branch of
+    add_m2m_object_permissions skips the guardian lookup entirely.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="taxalist-qcount-owner@insectai.org")
+        self.member = User.objects.create_user(email="taxalist-qcount-member@insectai.org")
+        self.taxon = Taxon.objects.create(name="Query Count Taxon", rank=TaxonRank.SPECIES.name)
+        self.client.force_authenticate(self.member)
+
+    def _make_project_with_lists(self, name: str, count: int) -> Project:
+        project = Project.objects.create(name=name, owner=self.owner)
+        project.members.add(self.member)
+        for i in range(count):
+            taxa_list = TaxaList.objects.create(name=f"{name} List {i}")
+            taxa_list.projects.add(project)
+            taxa_list.taxa.add(self.taxon)
+        return project
+
+    def _list_query_count(self, project: Project, expected_rows: int) -> int:
+        from django.core.cache import caches
+
+        url = f"/api/v2/taxa/lists/?project_id={project.pk}&limit=25"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data["results"]), expected_rows)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_row_count(self):
+        # Each measurement targets its own project, so cachalot's per-query
+        # cache (keyed on SQL text + params, not row counts) can't serve one
+        # measurement's result to the other and mask a real regression: every
+        # project_id is queried exactly once across the whole test.
+        small_project = self._make_project_with_lists("Small", 3)
+        large_project = self._make_project_with_lists("Large", 10)
+
+        # Warm up process-global caches (ContentType, guardian's content-type
+        # lookups) on a throwaway project first, so neither measurement below
+        # pays a one-time setup cost that the other doesn't.
+        warmup_project = self._make_project_with_lists("Warmup", 1)
+        self._list_query_count(warmup_project, expected_rows=1)
+
+        small = self._list_query_count(small_project, expected_rows=3)
+        large = self._list_query_count(large_project, expected_rows=10)
+
+        print(f"\n[AUDIT] TaxaList list: 3 rows -> {small}q, 10 rows -> {large}q")
+        self.assertEqual(small, large, f"Query count scaled with row count: {small} -> {large} (N+1 regression)")
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).
@@ -5229,6 +5289,75 @@ class TaxaListViewSetPermissionTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class TaxaListPermissionScopingTestCase(TestCase):
+    """Guard the membership check in add_m2m_object_permissions against the
+    prefetch-based fast path added to fix per-row queries (see #1120).
+
+    The member holds the ProjectManager role, the only role granting
+    update_taxalist/delete_taxalist (ami/users/roles.py) — a plain BasicMember
+    never has those permissions on any project, so the negative-only guards
+    below would pass even if the scoping check were removed entirely.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="scoping-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="scoping-member@example.com", password="testpass")
+        self.project = Project.objects.create(name="Scoping Project", owner=self.owner)
+        self.project.members.add(self.member)
+        ProjectManager.assign_user(self.member, self.project)
+        self.client = APIClient()
+
+    def test_prefetched_non_member_list_gets_no_write_permissions(self):
+        """A taxa list outside the active project must still report no update/delete
+        permissions when `instance.projects` was prefetched by the caller, not queried,
+        even though the member holds update/delete_taxalist on the active project."""
+        other_project = Project.objects.create(name="Other Project", owner=self.owner)
+        outside_list = TaxaList.objects.create(name="Outside List")
+        outside_list.projects.add(other_project)
+
+        instance = TaxaList.objects.filter(pk=outside_list.pk).prefetch_related("projects").get()
+        self.assertIn("projects", instance._prefetched_objects_cache)
+
+        data = add_m2m_object_permissions(self.member, instance, self.project, {})
+        self.assertNotIn("update", data["user_permissions"])
+        self.assertNotIn("delete", data["user_permissions"])
+
+    def test_prefetched_member_list_gets_write_permissions(self):
+        """Positive counterpart to the guard above: a list that does belong to
+        the active project reports update/delete for a ProjectManager member,
+        so the negative case isn't just a permission set that's always empty."""
+        member_list = TaxaList.objects.create(name="Member List")
+        member_list.projects.add(self.project)
+
+        instance = TaxaList.objects.filter(pk=member_list.pk).prefetch_related("projects").get()
+        data = add_m2m_object_permissions(self.member, instance, self.project, {})
+        self.assertIn("update", data["user_permissions"])
+        self.assertIn("delete", data["user_permissions"])
+
+    def test_permissions_scoped_to_requested_project_not_other_memberships(self):
+        """A member with write permissions on project A must not see those
+        permissions on a taxa list shared with project B when the request is
+        scoped to project B, where they hold no role, even though the same
+        list belongs to both."""
+        project_b = Project.objects.create(name="Project B", owner=self.owner)
+        shared_list = TaxaList.objects.create(name="Shared List")
+        shared_list.projects.add(self.project, project_b)
+
+        self.client.force_authenticate(self.member)
+
+        response_a = self.client.get(f"/api/v2/taxa/lists/?project_id={self.project.pk}")
+        self.assertEqual(response_a.status_code, status.HTTP_200_OK)
+        row_a = next(r for r in response_a.data["results"] if r["id"] == shared_list.pk)
+        self.assertIn("update", row_a["user_permissions"])
+        self.assertIn("delete", row_a["user_permissions"])
+
+        response_b = self.client.get(f"/api/v2/taxa/lists/?project_id={project_b.pk}")
+        self.assertEqual(response_b.status_code, status.HTTP_200_OK)
+        row_b = next(r for r in response_b.data["results"] if r["id"] == shared_list.pk)
+        self.assertNotIn("update", row_b["user_permissions"])
+        self.assertNotIn("delete", row_b["user_permissions"])
+
+
 class TaxaListTaxonAPITestCase(TestCase):
     """Test TaxaList taxa management operations via API."""
 
@@ -5508,7 +5637,7 @@ class TaxaListIsPublicBackfillTestCase(TestCase):
 
         from django.apps import apps as real_apps
 
-        mod = import_module("ami.main.migrations.0096_taxalist_is_public")
+        mod = import_module("ami.main.migrations.0098_taxalist_is_public")
         mod.backfill_is_public(real_apps, None)
 
     def test_zero_project_list_becomes_public(self):
@@ -7633,6 +7762,117 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         excluded = self._pks(base.not_processed_by_algorithm(ids))
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
+
+
+class TestOccurrenceJobFilter(APITestCase):
+    """
+    Covers the ``?job=`` occurrence filter: occurrences with a detection or a
+    classification written by the given job. Each occurrence must appear once, however
+    many of its rows the job wrote, and a malformed id must be a 400, not a 500.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Job Filter Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occ-job-filter.jpg",
+        )
+        self.taxon = Taxon.objects.create(name="Occurrence Job Filter Taxon")
+        self.algorithm = Algorithm.objects.create(name="Job Filter Algorithm", version=1, task_type="classification")
+        self.job = Job.objects.create(project=self.project, name="Job under test")
+        self.other_job = Job.objects.create(project=self.project, name="Other job")
+
+        # The job wrote the detection only.
+        self.occ_detected = self._make_occurrence([(self.job, [None])])
+        # The job wrote a classification on another job's detection.
+        self.occ_classified = self._make_occurrence([(self.other_job, [self.job])])
+        # The job wrote three detections and their classifications: the duplicate-row trap.
+        self.occ_multi = self._make_occurrence([(self.job, [self.job, self.job])] * 3)
+        # Only the other job, and no job at all, must not match.
+        self.occ_other = self._make_occurrence([(self.other_job, [self.other_job])])
+        self.occ_none = self._make_occurrence([(None, [None])])
+
+    def _make_occurrence(self, detections) -> Occurrence:
+        """``detections`` is a list of (detection job, [classification jobs])."""
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+            determination_score=0.9,
+        )
+        for detection_job, classification_jobs in detections:
+            detection = Detection.objects.create(
+                source_image=self.source_image,
+                bbox=[0.0, 0.0, 1.0, 1.0],
+                occurrence=occ,
+                job=detection_job,
+            )
+            for classification_job in classification_jobs:
+                detection.classifications.create(
+                    taxon=self.taxon,
+                    algorithm=self.algorithm,
+                    score=0.9,
+                    timestamp=datetime.datetime.now(),
+                    job=classification_job,
+                )
+        return occ
+
+    def _list(self, job_param):
+        return self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&job={job_param}&limit=50")
+
+    def test_returns_each_occurrence_the_job_wrote_once(self):
+        response = self._list(self.job.pk)
+        self.assertEqual(response.status_code, 200)
+        ids = [row["id"] for row in response.json()["results"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
+        self.assertEqual(response.json()["count"], 3)
+
+    def test_other_job_matches_only_its_own_occurrences(self):
+        response = self._list(self.other_job.pk)
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(ids, {self.occ_classified.pk, self.occ_other.pk})
+
+    def test_non_integer_job_is_a_bad_request(self):
+        response = self._list("abc")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("job", response.json())
+
+    def test_filter_stays_inside_the_occurrence_query(self):
+        """The filter adds no queries of its own: one statement for the rows and one for the count,
+        with no ids read into Python first and no query per occurrence. Cachalot is off so every
+        query counts."""
+        from cachalot.api import cachalot_disabled
+
+        def filtered():
+            return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
+
+        disabled = cachalot_disabled()
+        disabled.__enter__()
+        try:
+            with self.assertNumQueries(1):
+                ids = {occurrence.pk for occurrence in filtered()}
+            with self.assertNumQueries(1):
+                count = filtered().count()
+        finally:
+            # cachalot_disabled() does not restore itself when the block raises.
+            disabled.__exit__(None, None, None)
+        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
+        self.assertEqual(count, 3)
 
 
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):

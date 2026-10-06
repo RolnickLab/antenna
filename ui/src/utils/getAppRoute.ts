@@ -9,6 +9,7 @@ type FilterType =
   | 'detections__source_image'
   | 'event'
   | 'include_unobserved'
+  | 'job'
   | 'occurrence'
   | 'source_image_collection'
   | 'source_image_single'
