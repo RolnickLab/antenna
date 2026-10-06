@@ -96,7 +96,9 @@ def detections_missing_vectors(
     own scope (project, capture set, station) and the filter adds no query of its own.
     """
     has_vector = DetectionEmbedding.objects.for_algorithm(algorithm_id, key).filter(detection_id=OuterRef("pk"))
-    return detections.filter(~Exists(has_vector))
+    # exclude(), not filter(~Exists(...)): django-cachalot 2.6 does not see the tables inside a
+    # negated Exists, so writes to the vector table would not invalidate a cached result.
+    return detections.exclude(Exists(has_vector))
 
 
 def representative_embeddings(occurrence_id, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
