@@ -116,6 +116,7 @@ class SizeFilterResultsTestCase(SizeFilterTestCase):
         detection_ids = sorted(occurrence.detections.values_list("pk", flat=True))
         self.assertEqual((result.occurrence_id, result.project_id), (occurrence.pk, self.project.pk))
         self.assertEqual(result.algorithm.key, "small_size_filter")
+        self.assertIn(result.kind, {model.kind for model in SmallSizeFilterTask.result_models})
         # The smallest flagged detection, 10 by 10 pixels on a 1000 by 1000 image, represents the occurrence.
         self.assertAlmostEqual(result.value, 0.0001)
         self.assertAlmostEqual(result.data.pop("relative_size"), 0.0001)
