@@ -143,6 +143,29 @@ class TestGuards(_TrackingCase):
         self.run_task(event, require_fresh_event=False)
         self.assertEqual(self.occurrence_sizes(event), [3])
 
+    def test_an_occurrence_that_keeps_detections_outside_the_chain_is_not_deleted(self):
+        """Re-tracking must never leave a detection without an occurrence.
+
+        An earlier grouping put the first and last detections in one occurrence. The new run links the
+        first detection to a neighbour and the last to another, so that occurrence is split across two
+        chains; it keeps the first chain and must not be deleted by the second.
+        """
+        far = [600, 500, 650, 550]
+        captures = create_session(self.deployment, [[BOX], [BOX, far], [far]], self.taxa[0])
+        event = captures[0].event
+        first = captures[0].detections.get()
+        last = captures[2].detections.get()
+        emptied = last.occurrence
+        last.occurrence = first.occurrence
+        last.save(update_fields=["occurrence"])
+        emptied.delete()
+
+        self.run_task(event, require_fresh_event=False)
+
+        detections = Detection.objects.filter(source_image__event=event)
+        self.assertFalse(detections.filter(occurrence__isnull=True).exists())
+        self.assertEqual(self.occurrence_sizes(event), [2, 2])
+
     def test_human_identifications_skip_the_session_unless_the_guard_is_off(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
         event = captures[0].event

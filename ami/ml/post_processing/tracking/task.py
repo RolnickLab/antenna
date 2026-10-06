@@ -201,7 +201,13 @@ def assign_occurrences_from_detection_chains(
             for d in moving:
                 d.occurrence = keeper
 
-        doomed = old_occ_ids - {keeper.pk}
+        # Only occurrences the chain emptied are merged away. One that still holds detections outside the
+        # chain (an earlier run's link this run did not repeat, or another session) keeps them and its records.
+        doomed = set(
+            Occurrence.objects.filter(pk__in=old_occ_ids - {keeper.pk})
+            .exclude(Exists(Detection.objects.filter(occurrence_id=OuterRef("pk"))))
+            .values_list("pk", flat=True)
+        )
         if doomed:
             identifications_moved += Identification.objects.filter(occurrence_id__in=doomed).update(occurrence=keeper)
             # Deleting an occurrence deletes its results, so they move onto the keeper first.
