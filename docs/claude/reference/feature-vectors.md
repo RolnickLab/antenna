@@ -19,8 +19,9 @@ and `ami/ml/embeddings/reader.py` (query functions). Introduced in #1462.
 | `project` | Copied from the detection's capture (or its station), so project-scoped queries need no join. |
 | `job` | The job whose results stored the vector; set to null if the job is deleted. |
 
-Indexes: the unique constraint on (detection, algorithm, key), and an index on
-(project, algorithm, key, detection).
+Indexes: the unique constraint on (detection, algorithm, key), an index on
+(project, algorithm, key, detection), and an index on (algorithm, key, detection) that serves the writer's
+length lookup (the first row of a pair, ordered by detection).
 
 Because the column has no declared length, models of different lengths share the table (for example
 a 2048-dimension classifier backbone and a 1024-dimension image-text model). Each (algorithm, key)
@@ -62,9 +63,9 @@ filtering the queryset given to `detections_missing_vectors`.
   and is very slow; the unique constraint already prevents duplicates.
 - **Omitting the project filter** on project-scoped reads. The index leads with `project`, and the
   filter also enforces visibility.
-- **Reading a pair's rows by (algorithm, key) alone** at scale. Neither index leads with those
-  columns; the writer's length lookup does so for one row only, and finds it quickly once the pair
-  has data.
+- **Reading a pair's rows by (algorithm, key) alone** at scale. Only the (algorithm, key, detection)
+  index leads with those columns; it is meant for the writer's one-row length lookup, and a scan of
+  all of a pair's rows still reads the table.
 
 ## Logits are not vectors to search
 

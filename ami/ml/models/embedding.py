@@ -66,11 +66,13 @@ class DetectionEmbeddingQuerySet(BaseQuerySet):
     def stored_length(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY) -> int | None:
         """The length of the vectors already stored for one (algorithm, key), or None when there are none.
 
-        Reads one row of the pair, so a writer can hold each pair to one length without a stored field.
+        Reads the first row of the pair (an indexed lookup on (algorithm, key, detection) whether or not
+        the pair has rows), so a writer can hold each pair to one length without a stored field. The
+        ``order_by`` is what lets the planner walk that index instead of scanning the table until a row matches.
         """
         rows = (
             self.for_algorithm(algorithm_id, key)
-            .order_by()
+            .order_by("detection_id")
             .annotate(dims=VectorDims("vector"))
             .values_list("dims", flat=True)[:1]
         )
@@ -144,6 +146,8 @@ class DetectionEmbedding(BaseModel):
         indexes = [
             # Project-scoped reads of one model: a project's vectors in detection order, and counts per model.
             models.Index(fields=["project", "algorithm", "key", "detection"], name="ml_detemb_proj_algo_key_det"),
+            # The writer's per-model length lookup: the first row of a pair, by detection, with or without rows.
+            models.Index(fields=["algorithm", "key", "detection"], name="ml_detemb_algo_key"),
         ]
         constraints = [
             models.CheckConstraint(check=~models.Q(key=""), name="%(app_label)s_%(class)s_key_not_empty"),
