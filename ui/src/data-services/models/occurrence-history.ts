@@ -82,17 +82,21 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
 }
 
 export interface TrackingResultData extends ServerDeterminationSnapshot {
-  /** The share of those classifications naming the determination after the run; null when there are none. */
-  id_agreement: number | null
   detection_count: number
-  /** Distinct taxa among the terminal classifications of the occurrence's detections. */
+  /** Distinct taxa among the machine classifications of the occurrence's detections. */
   distinct_taxa: number
+  /** The share of those classifications naming the determination after the run; null when there are none. */
+  label_agreement: number | null
+  /** The matching cost of each link the run made, in chain order. */
+  link_costs: number[]
   /** Occurrences the run folded into this one; they no longer exist. */
   merged_occurrence_ids: number[]
-  /** The path length between detection centres as a fraction of the image diagonal. */
+  /** The mean distance per step between detection centres as a fraction of the image diagonal. */
   motion: number
+  /** The total distance between detection centres as a fraction of the image diagonal. */
+  path_length: number
   /** The largest box area over the smallest. */
-  size_ratio: number
+  size_change: number
 }
 
 export interface ServerIdentificationDetails {

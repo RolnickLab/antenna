@@ -168,9 +168,15 @@ export const AlgorithmResult = ({
           }),
         },
         {
+          label: translate(STRING.HISTORY_TRACKING_PATH_LENGTH),
+          value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
+            distance: formatPercent(data.path_length),
+          }),
+        },
+        {
           label: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE),
           value: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE_VALUE, {
-            ratio: `${Math.round(data.size_ratio * 100) / 100}`,
+            ratio: `${Math.round(data.size_change * 100) / 100}`,
           }),
         },
         {
@@ -178,10 +184,10 @@ export const AlgorithmResult = ({
           value: data.distinct_taxa,
         },
         {
-          label: translate(STRING.HISTORY_TRACKING_AGREEMENT),
+          label: translate(STRING.HISTORY_TRACKING_LABEL_AGREEMENT),
           value:
-            data.id_agreement !== null
-              ? formatPercent(data.id_agreement)
+            data.label_agreement !== null
+              ? formatPercent(data.label_agreement)
               : translate(STRING.VALUE_NOT_AVAILABLE),
         },
         {
