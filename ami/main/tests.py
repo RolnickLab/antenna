@@ -8680,5 +8680,5 @@ class TestRegroupSplitsOccurrences(TestCase):
 
         piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
         result.refresh_from_db()
-        self.assertEqual((result.occurrence_id, result.is_current), (occurrence.pk, True))
+        self.assertEqual(result.occurrence_id, occurrence.pk)
         self.assertFalse(AlgorithmResult.objects.filter(occurrence=piece).exists())

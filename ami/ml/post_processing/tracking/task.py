@@ -396,6 +396,7 @@ class TrackingTask(BasePostProcessingTask):
     key = "tracking"
     name = "Occurrence tracking"
     config_schema = TrackingConfig
+    result_models = (TrackingResultData,)
 
     config: TrackingConfig
 

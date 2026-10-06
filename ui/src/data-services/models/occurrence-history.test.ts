@@ -132,7 +132,6 @@ const tracking: ServerOccurrenceHistoryEntry = {
   determination_after: NOCTUA,
   determination_before: NOCTUA,
   id: 6,
-  is_current: true,
   kind: 'tracking',
   score: null,
   type: 'algorithm_result',

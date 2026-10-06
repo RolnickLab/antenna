@@ -263,9 +263,7 @@ class TestTrackingResults(_TrackingCase):
         self.assertEqual(moving_result.value, 0.0071)
         self.assertEqual(moving_result.data["path_length"], 0.0141)
         for result in by_motion:
-            self.assertEqual(
-                (result.job_id, result.algorithm_id, result.is_current), (job.pk, task.algorithm.pk, True)
-            )
+            self.assertEqual((result.job_id, result.algorithm_id), (job.pk, task.algorithm.pk))
             self.assertEqual(result.project_id, self.project.pk)
             self.assertEqual(result.data["detection_count"], 3)
             self.assertEqual(result.data["size_change"], 1.0)
@@ -353,7 +351,7 @@ class TestTrackingResults(_TrackingCase):
         self.run_task(captures[0].event)
 
         earlier.refresh_from_db()
-        self.assertEqual((earlier.occurrence_id, earlier.is_current), (first.pk, True))
+        self.assertEqual(earlier.occurrence_id, first.pk)
         self.assertFalse(Occurrence.objects.filter(pk=second.pk).exists())
         tracking = AlgorithmResult.objects.get(kind="tracking")
         self.assertEqual(tracking.occurrence_id, first.pk)
