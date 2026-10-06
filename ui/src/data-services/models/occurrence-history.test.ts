@@ -134,8 +134,9 @@ const tracking: ServerOccurrenceHistoryEntry = {
   id: 6,
   is_current: true,
   kind: 'tracking',
-  score: 0.0141,
+  score: null,
   type: 'algorithm_result',
+  value: 0.0071,
 }
 
 const ownIdentification: HumanIdentification = {
