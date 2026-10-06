@@ -28,7 +28,7 @@ from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map, save_results
 from ami.ml.schemas import DetectionResponse, PipelineResultsResponse
-from ami.tests.fixtures.main import setup_test_project
+from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 
 DETECTOR = ALGORITHM_CHOICES["random-detector"]
@@ -75,14 +75,16 @@ class ClassifierPipelineMixin:
     LOW = [0.25] * LENGTH
     HIGH = [0.75] * LENGTH
 
-    def _set_up_pipeline(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.pipeline = Pipeline.objects.create(name="Embedding test pipeline")
-        self.pipeline.algorithms.set(
+    @classmethod
+    def _set_up_pipeline(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        cls.pipeline = Pipeline.objects.create(name="Embedding test pipeline")
+        cls.pipeline.algorithms.set(
             [get_or_create_algorithm_and_category_map(algorithm) for algorithm in (DETECTOR, BINARY, SPECIES)]
         )
-        self.species = Algorithm.objects.get(key=SPECIES.key)
-        self.images = 0
+        cls.species = Algorithm.objects.get(key=SPECIES.key)
+        cls.images = 0
 
     def _image(self) -> SourceImage:
         self.images += 1
@@ -152,8 +154,9 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
     storing it never adds a classification or moves a determination.
     """
 
-    def setUp(self) -> None:
-        self._set_up_pipeline()
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls._set_up_pipeline()
 
     def test_every_detection_stores_one_vector_per_algorithm(self):
         """Including the rejected crop, which has no species classification that could carry one."""
@@ -294,13 +297,13 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
 class TestEmbeddingProject(TestCase):
     """An embedding's project is its capture's, falling back to the capture's station's."""
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.image = SourceImage.objects.create(
-            path="project-fill.jpg", deployment=self.deployment, project=self.project
-        )
-        self.detection = Detection.objects.create(source_image=self.image, bbox=[0.0, 0.0, 10.0, 10.0])
-        self.algorithm = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
+    @classmethod
+    def setUpTestData(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        cls.image = SourceImage.objects.create(path="project-fill.jpg", deployment=cls.deployment, project=cls.project)
+        cls.detection = Detection.objects.create(source_image=cls.image, bbox=[0.0, 0.0, 10.0, 10.0])
+        cls.algorithm = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
 
     def _embedding(self, **fields) -> DetectionEmbedding:
         return DetectionEmbedding(detection=self.detection, algorithm=self.algorithm, vector=[0.5] * 4, **fields)
@@ -331,21 +334,23 @@ class TestEmbeddingProject(TestCase):
 class TestEmbeddingReaders(TestCase):
     """Readers return vectors of one (algorithm, key) at a time, as float32 arrays."""
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        image = SourceImage.objects.create(path="readers.jpg", deployment=self.deployment, project=self.project)
-        self.detections = [
+    @classmethod
+    def setUpTestData(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        image = SourceImage.objects.create(path="readers.jpg", deployment=cls.deployment, project=cls.project)
+        cls.detections = [
             Detection.objects.create(source_image=image, bbox=[float(i), 0.0, float(i) + 10.0, 10.0]) for i in range(3)
         ]
-        self.backbone = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
-        self.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
+        cls.backbone = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
+        cls.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
         DetectionEmbedding.objects.store(
             [
-                DetectionEmbedding(detection=self.detections[0], algorithm=self.backbone, vector=[0.25] * 4),
-                DetectionEmbedding(detection=self.detections[1], algorithm=self.backbone, vector=[0.5] * 4),
-                DetectionEmbedding(detection=self.detections[0], algorithm=self.other, vector=[0.75] * 8),
+                DetectionEmbedding(detection=cls.detections[0], algorithm=cls.backbone, vector=[0.25] * 4),
+                DetectionEmbedding(detection=cls.detections[1], algorithm=cls.backbone, vector=[0.5] * 4),
+                DetectionEmbedding(detection=cls.detections[0], algorithm=cls.other, vector=[0.75] * 8),
                 DetectionEmbedding(
-                    detection=self.detections[2], algorithm=self.backbone, key="projection", vector=[1.0] * 2
+                    detection=cls.detections[2], algorithm=cls.backbone, key="projection", vector=[1.0] * 2
                 ),
             ]
         )
@@ -383,12 +388,14 @@ class TestQueryHelpers(TestCase):
     length, so a helper that merged pairs would return the wrong lengths or counts.
     """
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.image = SourceImage.objects.create(path="helpers.jpg", deployment=self.deployment, project=self.project)
-        self.eight = Algorithm.objects.create(name="Eight", key="eight", task_type="embedding")
-        self.four = Algorithm.objects.create(name="Four", key="four", task_type="embedding")
-        self.detections: list[Detection] = []
+    @classmethod
+    def setUpTestData(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        cls.image = SourceImage.objects.create(path="helpers.jpg", deployment=cls.deployment, project=cls.project)
+        cls.eight = Algorithm.objects.create(name="Eight", key="eight", task_type="embedding")
+        cls.four = Algorithm.objects.create(name="Four", key="four", task_type="embedding")
+        cls.detections: list[Detection] = []
 
     def _detections(self, count: int) -> list[Detection]:
         made = [

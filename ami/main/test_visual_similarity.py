@@ -14,7 +14,13 @@ from rest_framework.test import APITestCase
 
 from ami.main.models import Occurrence, Project
 from ami.ml.models import Algorithm, DetectionEmbedding
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_occurrences,
+    create_taxa,
+    no_processing_service_http,
+    setup_test_project,
+)
 from ami.users.models import User
 
 SEED = [1.0, 0.0, 0.0, 0.0]
@@ -26,28 +32,30 @@ class VisualSimilarityFixture(APITestCase):
     """Five occurrences: a seed, a near and a far vector from the backbone, one with a vector
     from another algorithm only, and one with no vector at all."""
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.project.default_filters_score_threshold = 0.0
-        self.project.save()
-        create_taxa(project=self.project)
-        create_captures(deployment=self.deployment, num_nights=1, images_per_night=5)
-        create_occurrences(deployment=self.deployment, num=5, determination_score=0.9)
-        self.seed, self.near, self.far, self.other_only, self.no_vector = list(
-            Occurrence.objects.filter(project=self.project).order_by("pk")
+    @classmethod
+    def setUpTestData(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        cls.project.default_filters_score_threshold = 0.0
+        cls.project.save()
+        create_taxa(project=cls.project)
+        create_captures(deployment=cls.deployment, num_nights=1, images_per_night=5)
+        create_occurrences(deployment=cls.deployment, num=5, determination_score=0.9)
+        cls.seed, cls.near, cls.far, cls.other_only, cls.no_vector = list(
+            Occurrence.objects.filter(project=cls.project).order_by("pk")
         )
-        self.backbone = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
-        self.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
+        cls.backbone = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
+        cls.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
         DetectionEmbedding.objects.store(
             [
-                self._embedding(self.seed, self.backbone, SEED),
-                self._embedding(self.near, self.backbone, NEAR),
-                self._embedding(self.far, self.backbone, FAR),
-                self._embedding(self.other_only, self.other, FAR),
-                self._embedding(self.seed, self.other, SEED),
+                cls._embedding(cls.seed, cls.backbone, SEED),
+                cls._embedding(cls.near, cls.backbone, NEAR),
+                cls._embedding(cls.far, cls.backbone, FAR),
+                cls._embedding(cls.other_only, cls.other, FAR),
+                cls._embedding(cls.seed, cls.other, SEED),
             ]
         )
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
+        cls.url = f"/api/v2/occurrences/?project_id={cls.project.pk}"
 
     @staticmethod
     def _embedding(occurrence: Occurrence, algorithm: Algorithm, vector: list[float]) -> DetectionEmbedding:
@@ -147,12 +155,13 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
 class TestVisualSimilarityPermissions(VisualSimilarityFixture):
     """The sort shows exactly what the plain list shows for each kind of user."""
 
-    def setUp(self) -> None:
-        super().setUp()
-        self.member = User.objects.create_user(email="similar-member@insectai.org")
-        self.project.members.add(self.member)
-        self.non_member = User.objects.create_user(email="similar-outsider@insectai.org")
-        self.superuser = User.objects.create_superuser(email="similar-admin@insectai.org", password="x")
+    @classmethod
+    def setUpTestData(cls) -> None:
+        super().setUpTestData()
+        cls.member = User.objects.create_user(email="similar-member@insectai.org")
+        cls.project.members.add(cls.member)
+        cls.non_member = User.objects.create_user(email="similar-outsider@insectai.org")
+        cls.superuser = User.objects.create_superuser(email="similar-admin@insectai.org", password="x")
 
     def _list(self, query: str) -> tuple[int, int]:
         response = self.client.get(f"{self.url}&{query}")
