@@ -6037,10 +6037,9 @@ class TaxaListTaxonDraftProjectVisibilityTestCase(TestCase):
 @override_settings(CACHALOT_ENABLED=False)
 class TaxaListQueryCountTestCase(APITestCase):
     """
-    Pins the current query count for TaxaListViewSet.list on a mixed public/scoped,
-    multi-row fixture, so a regression that adds queries is noticed. This does not
-    certify the absence of per-row queries — see the N+1 sources documented in the
-    handoff notes; it only catches a further increase from where things stand today.
+    Pins the query count for TaxaListViewSet.list on a mixed public/scoped fixture,
+    and checks that doubling the rows adds no queries, so a per-row lookup on either
+    kind of list is caught.
     """
 
     def setUp(self):
@@ -6054,18 +6053,28 @@ class TaxaListQueryCountTestCase(APITestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
-    def test_list_query_count(self):
+    def _count_list_queries(self, expected_rows: int) -> int:
         from cachalot.api import cachalot_disabled
 
         url = f"/api/v2/taxa/lists/?project_id={self.project.pk}"
         with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
             response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.json()["results"]), 5)
-        # 34 (previous baseline) + 1: get_projects() now resolves Project.objects
-        # .visible_for_user(request.user) once per request (cached on the
-        # serializer instance) to filter draft-project ids out of the response.
-        self.assertEqual(len(ctx.captured_queries), 35)
+        self.assertEqual(len(response.json()["results"]), expected_rows)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count(self):
+        # Warm process-wide caches (content types, permissions) so the pinned
+        # count does not depend on which tests ran earlier in the suite.
+        self._count_list_queries(expected_rows=5)
+        five_rows = self._count_list_queries(expected_rows=5)
+        for i in range(3, 6):
+            TaxaList.objects.create(name=f"Scoped {i}").projects.add(self.project)
+        for i in range(2, 4):
+            TaxaList.objects.create(name=f"Public {i}", is_public=True)
+        ten_rows = self._count_list_queries(expected_rows=10)
+
+        self.assertEqual((five_rows, ten_rows), (13, 13))
 
 
 class TaxaListDedupeMigrationTestCase(TestCase):
