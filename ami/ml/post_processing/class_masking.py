@@ -273,6 +273,7 @@ class ClassMaskingTask(BasePostProcessingTask):
     key = "class_masking"
     name = "Class masking"
     config_schema = ClassMaskingConfig
+    result_models = (ClassMaskingResultData,)
 
     def _get_or_create_masking_algorithm(
         self, source_algorithm: Algorithm, taxa_list: TaxaList, *, reweight: bool

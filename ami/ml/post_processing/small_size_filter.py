@@ -40,6 +40,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
     key = "small_size_filter"
     name = "Small size filter"
     config_schema = SmallSizeFilterConfig
+    result_models = (SizeFilterResultData,)
 
     def _scoped_detections(self, config: SmallSizeFilterConfig) -> tuple[QuerySet[Detection], str]:
         """Resolve the detections to examine from whichever scope the config carries.

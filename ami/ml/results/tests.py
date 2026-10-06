@@ -1,5 +1,6 @@
 from django.test import SimpleTestCase
 
+from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
 from ami.ml.results import schemas
 
 
@@ -15,6 +16,12 @@ class ResultKindRegistryTest(SimpleTestCase):
                 self.assertIn("extra", schema["properties"])
                 # A nested model would emit #/definitions refs, which do not resolve inside OpenAPI.
                 self.assertNotIn("definitions", schema)
+
+    def test_every_result_model_a_task_declares_is_a_registered_kind(self):
+        for key, task in POSTPROCESSING_TASKS.items():
+            for model in task.result_models:
+                with self.subTest(task=key, model=model.__name__):
+                    self.assertIs(schemas.ALGORITHM_RESULT_DATA_SCHEMAS.get(model.kind), model)
 
     def test_each_kind_is_registered_under_its_models_kind(self):
         for kind, model in schemas.ALGORITHM_RESULT_DATA_SCHEMAS.items():
