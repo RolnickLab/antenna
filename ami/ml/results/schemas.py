@@ -4,7 +4,7 @@ A kind's model holds only what its run alone knows; settings live on the job, an
 the classifications the run created. ``extra`` takes whatever else a method returns and is never read
 for logic. This is the only module that calls pydantic's API for results, and it imports nothing from
 Django, so models, writers, serializers and settings can all import it. Adding a kind = a model with its
-``kind`` + an entry in ``ALGORITHM_RESULT_DATA_MODELS``; see docs/claude/reference/adding-a-result-kind.md.
+``kind`` + an entry in ``ALGORITHM_RESULT_DATA_MODELS``; see README.md in this package.
 The field helpers below also read post-processing task config schemas, which declare setting titles and
 references the same way.
 """
