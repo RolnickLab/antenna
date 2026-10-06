@@ -34,9 +34,9 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.main.models_future.embeddings import algorithm_with_most_vectors, representative_embeddings
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.ml.embeddings.reader import algorithm_with_most_vectors, representative_embeddings
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
