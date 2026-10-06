@@ -397,16 +397,16 @@ class TestTrackingFailures(_TrackingCase):
         failing, working = first[0].event, second[0].event
         self.assertNotEqual(failing.pk, working.pk)
         job = self.make_job()
-        real = task_module.assign_occurrences_by_tracking_images
+        real = task_module.write_session_plan
 
-        def fail_for_the_first_session(event, *args, **kwargs):
-            if event.pk == failing.pk:
+        def fail_for_the_first_session(plan, *args, **kwargs):
+            if plan.source_images[0].event_id == failing.pk:
                 # Written before the failure, so the rollback of this session is visible.
-                Occurrence.objects.filter(event=event).update(determination_score=0.123)
+                Occurrence.objects.filter(event=failing).update(determination_score=0.123)
                 raise ValueError("boom")
-            return real(event, *args, **kwargs)
+            return real(plan, *args, **kwargs)
 
-        with mock.patch.object(task_module, "assign_occurrences_by_tracking_images", fail_for_the_first_session):
+        with mock.patch.object(task_module, "write_session_plan", fail_for_the_first_session):
             with self.assertRaisesMessage(RuntimeError, "Tracking failed for 1 of 2 session(s)"):
                 TrackingTask(job=job, logger=logger, event_ids=[failing.pk, working.pk]).run()
 
@@ -436,6 +436,53 @@ class TestTrackingFailures(_TrackingCase):
             task.run()
 
         self.assertEqual(depths, [(0.5, baseline), (1.0, baseline), (1.0, baseline)])
+
+
+class TestTrackingProgressDuringMatching(_TrackingCase):
+    def make_job(self) -> Job:
+        job = Job.objects.create(name="t", project=self.project, job_type_key="post_processing")
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        return job
+
+    def test_progress_is_saved_between_transitions_of_one_session_outside_any_transaction(self):
+        """The stale-job reaper watches ``updated_at``, so a long session must keep saving the job while it matches."""
+        captures = create_session(self.deployment, [[BOX]] * 7, self.taxa[0])
+        task = TrackingTask(job=self.make_job(), logger=logger, event_ids=[captures[0].event_id])
+        baseline = len(connection.savepoint_ids)
+        seen = []
+
+        def record(progress: float) -> None:
+            seen.append((round(progress, 2), len(connection.savepoint_ids)))
+
+        with mock.patch.object(task_module, "PROGRESS_EVERY_TRANSITIONS", 2), mock.patch.object(
+            task, "update_progress", record
+        ):
+            task.run()
+
+        # Six transitions, saved after the 2nd, 4th and 6th, then once per session and once at the end.
+        self.assertEqual([p for p, _ in seen], [0.33, 0.67, 1.0, 1.0, 1.0])
+        self.assertEqual({depth for _, depth in seen}, {baseline})
+
+    def test_a_session_that_changes_while_it_is_matched_is_skipped_not_written(self):
+        captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
+        event = captures[0].event
+        job = self.make_job()
+        real = task_module.plan_session_links
+
+        def plan_then_change(*args, **kwargs):
+            plan = real(*args, **kwargs)
+            add_detection(captures[1], [500, 500, 560, 560], self.taxa[0])
+            return plan
+
+        with mock.patch.object(task_module, "plan_session_links", plan_then_change):
+            self.run_task(event, job=job)
+
+        self.assertEqual(self.occurrence_sizes(event), [1, 1, 1])
+        self.assertFalse(Detection.objects.filter(source_image__event=event, next_detection__isnull=False).exists())
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertIn("it changed while it was being tracked", params["Result"])
 
 
 class TestTrackingQueries(_TrackingCase):

@@ -7,6 +7,7 @@ this module reads and writes the database around them.
 import collections
 import dataclasses
 import logging
+import time
 import typing
 from collections.abc import Iterable, Iterator, Sequence
 
@@ -35,6 +36,11 @@ from .stats import occurrence_figures
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+
+
+# Progress is saved after this many matched transitions, or after this many seconds, whichever comes first.
+PROGRESS_EVERY_TRANSITIONS = 25
+PROGRESS_EVERY_SECONDS = 5.0
 
 
 @dataclasses.dataclass
@@ -245,16 +251,32 @@ def save_links(links: Iterable[tuple[Detection, Detection, float]], logger: logg
     Detection.objects.bulk_update([det for det, _, _ in links], ["next_detection"])
 
 
+@dataclasses.dataclass
+class SessionPlan:
+    """The links proposed for one session, computed without writing anything.
+
+    ``snapshot`` records each detection's ``next_detection`` and occurrence as they were read, so the
+    write phase can tell whether the session changed while the links were being matched.
+    """
+
+    source_images: list[SourceImage]
+    snapshot: dict[int, tuple[int | None, int | None]]
+    proposals: list[list[tuple[Detection, Detection, float]] | None]
+    transitions_too_far_apart: int
+
+
 def iter_transition_links(
-    source_images: Sequence[SourceImage], config: TrackingConfig, logger: logging.Logger
+    source_images: Sequence[SourceImage],
+    detections_by_capture: dict[int, dict[int, Detection]],
+    config: TrackingConfig,
+    logger: logging.Logger,
 ) -> Iterator[list[tuple[Detection, Detection, float]] | None]:
     """Yield the proposed links for each pair of consecutive captures, in order, saving nothing.
 
     Yields None for a transition that is not compared (the earlier capture has no dimensions) and an
     empty list for one over the interval limit.
     """
-    transitions = len(source_images) - 1
-    for i in range(transitions):
+    for i in range(len(source_images) - 1):
         cur, nxt = source_images[i], source_images[i + 1]
         if captures_too_far_apart(cur.timestamp, nxt.timestamp, config):
             yield []
@@ -263,8 +285,8 @@ def iter_transition_links(
             logger.warning(f"Capture {cur.pk} has no dimensions; not comparing it with the next capture.")
             yield None
             continue
-        current = {det.pk: det for det in cur.detections.valid()}
-        following = {det.pk: det for det in nxt.detections.valid()}
+        current = detections_by_capture.get(cur.pk, {})
+        following = detections_by_capture.get(nxt.pk, {})
         links = select_links(
             [(pk, det.bbox) for pk, det in current.items()],
             [(pk, det.bbox) for pk, det in following.items()],
@@ -274,44 +296,78 @@ def iter_transition_links(
         yield [(current[from_id], following[to_id], cost) for from_id, to_id, cost in links]
 
 
-def assign_occurrences_by_tracking_images(
+def plan_session_links(
     event: Event,
     logger: logging.Logger,
     config: TrackingConfig,
-    record_as: Algorithm | None = None,
-    job: "Job | None" = None,
-) -> dict[str, int]:
-    """Link the detections of one session's processed captures and fold the chains into occurrences.
+    progress_cb: typing.Callable[[float], None] | None = None,
+) -> SessionPlan | None:
+    """Match the detections of one session's processed captures, writing nothing and holding no lock.
 
-    Runs in one transaction, so a failure leaves the session as it was. The caller reports progress
-    after it returns, since saving the job inside the transaction would keep its row locked.
+    Returns None when the session has fewer than two processed captures. ``progress_cb`` receives the
+    share of transitions matched after each one.
     """
     source_images = processed_captures(event)
     if len(source_images) < 2:
         logger.warning(f"Session {event.pk}: fewer than two processed captures ({len(source_images)}).")
-        return {}
+        return None
+    detections_by_capture: dict[int, dict[int, Detection]] = collections.defaultdict(dict)
+    for det in Detection.objects.valid().filter(source_image_id__in=[image.pk for image in source_images]):
+        detections_by_capture[det.source_image_id][det.pk] = det
+    snapshot = {
+        det.pk: (det.next_detection_id, det.occurrence_id)
+        for detections in detections_by_capture.values()
+        for det in detections.values()
+    }
+    transitions = len(source_images) - 1
+    proposals = []
+    for i, proposed in enumerate(iter_transition_links(source_images, detections_by_capture, config, logger)):
+        proposals.append(proposed)
+        if progress_cb:
+            progress_cb((i + 1) / transitions)
+    too_far = sum(
+        captures_too_far_apart(source_images[i].timestamp, source_images[i + 1].timestamp, config)
+        for i in range(transitions)
+    )
+    return SessionPlan(source_images, snapshot, proposals, too_far)
 
+
+def plan_is_current(plan: SessionPlan) -> bool:
+    """Whether the session's detections still have the links and occurrences the plan was matched against."""
+    current = {
+        pk: (next_id, occurrence_id)
+        for pk, next_id, occurrence_id in Detection.objects.valid()
+        .filter(source_image_id__in=[image.pk for image in plan.source_images])
+        .values_list("pk", "next_detection_id", "occurrence_id")
+    }
+    return current == plan.snapshot
+
+
+def write_session_plan(
+    plan: SessionPlan,
+    logger: logging.Logger,
+    record_as: Algorithm | None = None,
+    job: "Job | None" = None,
+) -> dict[str, int]:
+    """Save a plan's links and fold the chains into occurrences.
+
+    Call inside the session's transaction, after checking ``plan_is_current``. It does no progress
+    writes, since saving the job inside the transaction would keep its row locked.
+    """
     links = skipped_for_dimensions = 0
     costs: dict[int, float] = {}
-    skipped_for_interval = sum(
-        captures_too_far_apart(source_images[i].timestamp, source_images[i + 1].timestamp, config)
-        for i in range(len(source_images) - 1)
+    for proposed in plan.proposals:
+        if proposed is None:
+            skipped_for_dimensions += 1
+            continue
+        save_links(proposed, logger)
+        links += len(proposed)
+        costs.update({det.pk: cost for det, _, cost in proposed})
+    counters = assign_occurrences_from_detection_chains(
+        plan.source_images, logger, record_as=record_as, job=job, link_costs=costs
     )
-    # Per-session atomic boundary: a crash mid-session rolls back this session only.
-    with transaction.atomic():
-        for proposed in iter_transition_links(source_images, config, logger):
-            if proposed is None:
-                skipped_for_dimensions += 1
-            else:
-                save_links(proposed, logger)
-                links += len(proposed)
-                costs.update({det.pk: cost for det, _, cost in proposed})
-        counters = assign_occurrences_from_detection_chains(
-            source_images, logger, record_as=record_as, job=job, link_costs=costs
-        )
-
     counters["links_created"] = links
-    counters["transitions_too_far_apart"] = skipped_for_interval
+    counters["transitions_too_far_apart"] = plan.transitions_too_far_apart
     counters["transitions_without_dimensions"] = skipped_for_dimensions
     return counters
 
@@ -383,27 +439,50 @@ class TrackingTask(BasePostProcessingTask):
             return "it has human identifications"
         return None
 
-    def _track_session(self, event: Event) -> tuple[dict[str, int] | None, str | None]:
-        """Track one session in its own transaction, returning ``(counters, None)`` or ``(None, skip reason)``.
+    def _track_session(self, event: Event, progress_cb: typing.Callable[[float], None] | None = None):
+        """Track one session in two phases, returning ``(counters, None)`` or ``(None, skip reason)``.
 
-        The checks and the writes share one lock on the session, so an edit made since the job
-        started is seen and an edit made during the run waits. Nothing here saves the job, so its row
-        is not locked while the session is processed.
+        Matching reads only and runs outside any transaction, so the job can keep saving progress
+        while it works. Writing is one short transaction that locks the session, repeats the guards,
+        and refuses to write when the session changed since it was matched.
         """
+        if self._skip_reason(event) is not None:
+            plan = None  # the locked check below reports the reason
+        else:
+            plan = plan_session_links(event, self.logger, self.config, progress_cb)
         with transaction.atomic():
             lock_sessions([event.pk])
             reason = self._skip_reason(event)
             if reason is not None:
                 return None, reason
-            counters = assign_occurrences_by_tracking_images(
-                event=event, logger=self.logger, config=self.config, record_as=self.algorithm, job=self.job
-            )
-        if not counters:
-            return None, "it has fewer than two processed captures"
+            if plan is None:
+                return None, "it has fewer than two processed captures"
+            if not plan_is_current(plan):
+                self.logger.warning(f"Skipping session {event.pk}: it changed while its links were being matched.")
+                return None, "it changed while it was being tracked"
+            counters = write_session_plan(plan, self.logger, record_as=self.algorithm, job=self.job)
         return counters, None
 
+    def _throttled_progress(self, index: int, total: int) -> typing.Callable[[float], None]:
+        """A callback that saves progress for session ``index`` of ``total`` every few transitions or seconds."""
+        last_saved = time.monotonic()
+        matched = 0
+
+        def report(share: float) -> None:
+            nonlocal last_saved, matched
+            matched += 1
+            if matched % PROGRESS_EVERY_TRANSITIONS == 0 or time.monotonic() - last_saved >= PROGRESS_EVERY_SECONDS:
+                self.update_progress(((index - 1) + share) / total)
+                last_saved = time.monotonic()
+
+        return report
+
     def run(self) -> None:
-        """Track every session in scope, one transaction per session.
+        """Track every session in scope, matching outside a transaction and writing in one short one per session.
+
+        Matching saves job progress as it goes, because the stale-job reaper revokes a job whose
+        ``updated_at`` stops moving and a busy session can take minutes. Saving inside the write
+        transaction would not help: it stays invisible until commit and locks the job row.
 
         A capture-set scope tracks every processed capture of the sessions the set touches, not only the
         captures in the set, because a chain needs the captures between its detections. A session that
@@ -426,7 +505,7 @@ class TrackingTask(BasePostProcessingTask):
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking session {idx}/{total} (id={event.pk})")
             try:
-                counters, reason = self._track_session(event)
+                counters, reason = self._track_session(event, self._throttled_progress(idx, total))
             except Exception:
                 self.logger.exception(f"Tracking failed for session {event.pk}; its changes were rolled back.")
                 failed_event_ids.append(event.pk)
