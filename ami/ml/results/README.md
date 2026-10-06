@@ -2,9 +2,9 @@
 
 An algorithm result (`ami/ml/models/algorithm_result.py`) is the standard record of what an
 algorithm decided about one occurrence: the figures only that run knew, its headline `value`, and the
-occurrence's determination before and after, with the algorithm and job that produced it. Any
-algorithm can write one, whether a post-processing method or a pipeline step. It is a record, never an
-input: the determination still comes only from identifications and classifications.
+occurrence's determination before and after, with the algorithm and job that produced it. Results are
+written by methods that run inside Antenna once the occurrence exists, which today means post-processing
+tasks. The determination never reads them: it still comes only from identifications and classifications.
 
 Each kind of result (`class_masking`, `size_filter`, and next `tracking` and `rank_rollup`) has its
 own data model in `schemas.py` in this package. The occurrence history
@@ -39,15 +39,28 @@ Algorithm results are its output side.
   linked from the same `config_schema`. One schema therefore describes a task's settings for
   validation, the admin form, the stored job and the result card.
 
-Results are not tied to the framework. A pipeline step that decides something per occurrence can write
-them the same way, with `AlgorithmResult.objects.record_many`.
+Processing services cannot write results: their contract (`ami/ml/schemas.py`) has no place for them
+and must not name occurrences, which Antenna creates. A stage that runs inside Antenna after occurrences
+exist can, through `AlgorithmResultWriter` or `AlgorithmResult.objects.record_many`.
 
-A kind is not tied to a task either; today's two happen to be one each. A task can write several kinds
-(one `AlgorithmResultWriter` per kind), and several tasks or pipeline steps can write the same kind and
-share its data model and card. Each method keeps its own current result, because "current" is per
-occurrence, algorithm and kind. The history labels settings from the job's task, not from the kind.
+A task declares the kinds it writes in `result_models`, next to `config_schema` for its settings. A kind
+is not tied to one task: a task can write several kinds (one `AlgorithmResultWriter` per kind), and
+several tasks can write the same kind and share its data model and card. The history labels settings
+from the job's task, not from the kind.
 One rule when a run writes several kinds: pass the classifications it creates to only one writer's
 `start_batch`, because `start_batch` points each of them at that writer's result for its occurrence.
+
+### Which algorithm a run records under
+
+A run gets its own `Algorithm` only when it changes what can be output. Class masking makes one per
+source classifier and species list, because the list changes which species the masked classifier can
+name (its category map). Every other setting stays on the job: the size filter uses one algorithm
+whatever its threshold.
+
+Results are only ever added. Running a method twice, for example the size filter with two thresholds,
+leaves two results on the occurrence, one per job, and the history shows both; compare runs by their
+jobs. A retried job reuses the results it already wrote. A list that needs each algorithm's latest value
+on an occurrence takes the latest by timestamp when it reads.
 
 ## Adding a result kind
 
@@ -117,7 +130,8 @@ class RankRollupConfig(pydantic.BaseModel):
     rollup_order: list[str] = pydantic.Field(DEFAULT_ORDER, title="Ranks to try, in order")
 ```
 
-A field without a `title` shows its key on the result card. Register the task in
+A field without a `title` shows its key on the result card. Declare the kinds the task writes with
+`result_models = (RankRollupResultData,)`, and register the task in
 `ami/ml/post_processing/registry.py`; the history finds the schema through the job's
 `params["task"]`.
 
@@ -178,9 +192,8 @@ Rules for the writer:
 - **Set `job=self.job`** on every row the run creates.
 - **Do not call `.distinct()`** on a classification queryset that includes the `scores` or `logits`
   arrays; de-duplicating sorts the arrays (see #1376).
-- **One current result per occurrence, algorithm and kind.** A re-run replaces the current result and
-  keeps the old one as history. When results from different sources should coexist (masking a second
-  classifier, say), give each source its own `Algorithm`, as class masking does.
+- **One result per occurrence per run.** The writer creates it with the first batch that touches the
+  occurrence and updates it after later batches; a retried job reuses it, and another run adds its own.
 - **Occurrences without a project** get no result and a warning; the run carries on (#1188).
 
 ### 4. Show it in the UI
@@ -202,7 +215,7 @@ Rules for the writer:
   replaced one.
 - The history shows the result with its classifications, the replaced prediction as superseded, and
   `replaced` filled.
-- A second run makes the first result history (`is_current` false).
+- A second run adds a second result, and a retried job does not.
 - An occurrence with several affected detections gets one result, with the figures of the
   highest-ranked detection.
 - `python manage.py test ami.ml.results ami.main.test_occurrence_history` covers the registry guards
