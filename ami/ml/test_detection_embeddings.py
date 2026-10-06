@@ -519,6 +519,18 @@ class TestQueryHelpers(TestCase):
             counts.append(len(queries))
         self.assertEqual(counts, [1, 1])
 
+    def test_detections_missing_vectors_is_invalidated_by_new_vectors(self):
+        """The query cache must know the filter reads the vector table.
+
+        django-cachalot does not see tables inside a negated ``Exists`` in ``filter()``; if the
+        filter is written that way, a stored vector leaves the cached "missing" result unchanged
+        and the next feature-vector run sends the same detections again.
+        """
+        from cachalot.utils import _get_tables
+
+        query = detections_missing_vectors(Detection.objects.all(), self.four.pk).query
+        self.assertIn(DetectionEmbedding._meta.db_table, _get_tables(connection.alias, query))
+
 
 class TestPgvectorGuard(SimpleTestCase):
     """The extension migration stops with one clear message unless the server offers pgvector 0.8+."""
