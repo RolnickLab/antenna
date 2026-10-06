@@ -79,6 +79,21 @@ class TestJobTypesEndpoint(JobTypesTestBase):
         self.assertEqual(properties["source_image_collection_id"]["ami_entity"], "captures/collections")
         self.assertEqual(properties["occurrence_id"]["ami_widget"], "hidden")
 
+    def test_choices_are_named_as_actions_under_picker_headings(self):
+        """Each choice carries a user-facing label and a heading; only headings in use are listed."""
+        enable(self.project, "class_masking")
+        self.client.force_authenticate(user=self.ml_manager)
+        data = self.client.get(types_url(self.project.pk)).json()
+        self.assertEqual([g["key"] for g in data["groups"]], ["process_images", "refine_results", "organize_captures"])
+        types = {t["key"]: t for t in data["results"]}
+        self.assertEqual((types["ml"]["name"], types["ml"]["group"]), ("Process captures", "process_images"))
+        # A type with variants is listed through them, each under its own heading.
+        self.assertIsNone(types["post_processing"]["group"])
+        masking = types["post_processing"]["variants"][0]
+        self.assertEqual(
+            (masking["name"], masking["group"]), ("Limit predictions to a species list", "refine_results")
+        )
+
     def test_query_count_does_not_grow_with_job_types(self):
         enable(self.project, "class_masking", "small_size_filter")
         self.client.force_authenticate(user=self.ml_manager)
@@ -182,6 +197,14 @@ class TestCreateJobWithParams(JobTypesTestBase):
         job = Job.objects.get(pk=response.json()["id"])
         self.assertEqual(job.params, {"config": {"source_image_collection_id": self.collection.pk}})
         self.assertEqual(job.source_image_collection_id, self.collection.pk)
+
+    def test_jobs_list_names_a_post_processing_job_by_its_method(self):
+        response = self.post_masking(self.ml_manager)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.json())
+        job_type = self.client.get(reverse_with_params("api:job-detail", args=[response.json()["id"]])).json()[
+            "job_type"
+        ]
+        self.assertEqual(job_type, {"key": "post_processing", "name": "Limit predictions to a species list"})
 
     def test_an_ml_job_needs_a_pipeline(self):
         response = self.post_job(self.superuser, job_type_key="ml", params={"config": {}})

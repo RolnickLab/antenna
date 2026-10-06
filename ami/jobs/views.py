@@ -40,7 +40,7 @@ from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobDispatchMode, JobState, describe_job_types
+from .models import Job, JobDispatchMode, JobState, describe_job_groups, describe_job_types
 from .serializers import JobListSerializer, JobSerializer, JobTypesResponseSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
@@ -261,8 +261,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=False, methods=["get"], name="types")
     def types(self, request):
         """
-        List the job types the Create Job dialog can offer for a project, with what each one
-        runs on (``scope``) and a JSON Schema of its settings (``config_schema``).
+        List the job types the Create Job dialog can offer for a project, each with a JSON Schema
+        of its settings (``config_schema``), and the picker headings (``groups``) they are listed under.
 
         Only members of the project may read it. See docs/claude/reference/jobs-panel.md.
         """
@@ -277,7 +277,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         user = request.user
         if not (user.is_superuser or project.owner_id == user.pk or project.members.filter(pk=user.pk).exists()):
             raise PermissionDenied("Only members of this project can list its job types.")
-        return Response({"results": [job_type.dict() for job_type in describe_job_types(project, user)]})
+        job_types = describe_job_types(project, user)
+        return Response(
+            {
+                "groups": [group.dict() for group in describe_job_groups(job_types)],
+                "results": [job_type.dict() for job_type in job_types],
+            }
+        )
 
     @action(detail=True, methods=["post"], name="run")
     def run(self, request, pk=None):

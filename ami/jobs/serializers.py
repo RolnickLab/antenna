@@ -23,7 +23,7 @@ from .models import (
     get_job_type_by_key,
     serialize_job_logs,
 )
-from .schemas import JobTypeDescription, QueuedTaskAcknowledgment
+from .schemas import JobGroupDescription, JobTypeDescription, QueuedTaskAcknowledgment
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -45,8 +45,14 @@ class DataExportNestedSerializer(serializers.ModelSerializer):
 
 
 class JobTypeSerializer(serializers.Serializer):
-    name = serializers.CharField(read_only=True)
+    """A job's type, named as users see it. A post-processing job is named by its method."""
+
     key = serializers.SlugField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+    def to_representation(self, job) -> dict:
+        job_type = job.job_type()
+        return {"key": job_type.key, "name": job_type.label_for(job.params)}
 
 
 class JobListSerializer(DefaultSerializer):
@@ -59,7 +65,7 @@ class JobListSerializer(DefaultSerializer):
     data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
     logs = serializers.SerializerMethodField()
-    job_type = JobTypeSerializer(read_only=True)
+    job_type = JobTypeSerializer(source="*", read_only=True)
     job_type_key = serializers.SlugField(write_only=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
@@ -211,6 +217,7 @@ class MinimalJobSerializer(DefaultSerializer):
 class JobTypesResponseSerializer(serializers.Serializer):
     """GET /jobs/types/ — the job types the Create Job dialog may offer for a project."""
 
+    groups = SchemaField(schema=list[JobGroupDescription])
     results = SchemaField(schema=list[JobTypeDescription])
 
 

@@ -20,7 +20,10 @@ from rest_framework import serializers
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.schemas import (
+    JOB_GROUP_LABELS,
     CaptureSetJobConfig,
+    JobGroup,
+    JobGroupDescription,
     JobTypeDescription,
     JobTypeVariantDescription,
     MLJobConfig,
@@ -533,8 +536,15 @@ class JobType:
     Job types must be defined as classes because they define code, not just configuration.
     """
 
+    # A fixed internal name, used in logs and stage names. Users see ``label``.
     name: str
     key: str
+    # What users see for this job type in the Create Job picker and the jobs list, as an action
+    # ("Process captures"). Wrap it in gettext_lazy to translate it; left empty, ``name`` is used.
+    label: str = ""
+    # The Create Job picker heading this type is listed under. A type with variants leaves it
+    # empty and each variant declares its own.
+    group: JobGroup | None = None
     # Help text under the job type select. Wrap it in gettext_lazy to translate it; left empty,
     # the first paragraph of the class docstring is used.
     description: str = ""
@@ -559,6 +569,11 @@ class JobType:
         return (inspect.getdoc(cls) or "").split("\n\n")[0].replace("\n", " ").strip()
 
     @classmethod
+    def label_for(cls, params: dict | None) -> str:
+        """The label users see for one job of this type."""
+        return str(cls.label or cls.name)
+
+    @classmethod
     def variants(cls, project: Project) -> list[JobTypeVariantDescription]:
         return []
 
@@ -570,8 +585,9 @@ class JobType:
             return None  # e.g. post-processing with no method turned on for this project
         return JobTypeDescription(
             key=cls.key,
-            name=cls.name,
+            name=str(cls.label or cls.name),
             description=cls.help_text(),
+            group=cls.group,
             allowed=allowed,
             config_schema=cls.config_schema.schema() if cls.config_schema else None,
             variant_key=cls.variant_key,
@@ -614,7 +630,9 @@ class JobType:
 class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
-    description = _("Run a processing pipeline over a capture set: detect, classify and create occurrences.")
+    label = _("Process captures")
+    group = JobGroup.PROCESS_IMAGES
+    description = _("Detects insects and predicts their species with a pipeline.")
     user_creatable = True
     config_schema = MLJobConfig
 
@@ -867,6 +885,8 @@ class DataStorageSyncJob(JobType):
 
     name = "Data storage sync"
     key = "data_storage_sync"
+    label = _("Sync captures from storage")
+    group = JobGroup.ORGANIZE_CAPTURES
     description = _("Add new captures from a station's data storage, then regroup them into sessions.")
     user_creatable = True
     config_schema = StationJobConfig
@@ -964,6 +984,8 @@ class DataStorageSyncJob(JobType):
 class SourceImageCollectionPopulateJob(JobType):
     name = "Populate capture set"
     key = "populate_captures_collection"
+    label = _("Fill a capture set")
+    group = JobGroup.ORGANIZE_CAPTURES
     description = _("Fill a capture set with the captures its sampling method selects.")
     user_creatable = True
     config_schema = CaptureSetJobConfig
@@ -1068,12 +1090,20 @@ class PostProcessingJob(JobType):
         return {key: task for key, task in POSTPROCESSING_TASKS.items() if flags and getattr(flags, task.feature_flag)}
 
     @classmethod
+    def label_for(cls, params: dict | None) -> str:
+        """A post-processing job is named by its method, e.g. "Mark detections too small to identify"."""
+        task_key = (params or {}).get("task")
+        task_cls = get_postprocessing_task(task_key) if isinstance(task_key, str) else None
+        return str(task_cls.label) if task_cls else super().label_for(params)
+
+    @classmethod
     def variants(cls, project: Project) -> list[JobTypeVariantDescription]:
         return [
             JobTypeVariantDescription(
                 key=key,
-                name=task_cls.name,
+                name=str(task_cls.label),
                 description=str(task_cls.description),
+                group=task_cls.group,
                 config_schema=task_cls.config_schema.schema(),
             )
             for key, task_cls in cls.enabled_tasks(project).items()
@@ -1150,6 +1180,8 @@ class RegroupEventsJob(JobType):
 
     name = "Regroup sessions"
     key = "regroup_events"
+    label = _("Regroup captures into sessions")
+    group = JobGroup.ORGANIZE_CAPTURES
     description = _("Regroup a station's captures into sessions using the project's session time gap.")
     user_creatable = True
     config_schema = StationJobConfig
@@ -1199,6 +1231,12 @@ VALID_JOB_TYPES = [
     DataExportJob,
     PostProcessingJob,
 ]
+
+
+def describe_job_groups(job_types: list[JobTypeDescription]) -> list[JobGroupDescription]:
+    """The picker headings ``job_types`` use, in ``JobGroup`` order."""
+    used = {jt.group for jt in job_types} | {v.group for jt in job_types for v in jt.variants}
+    return [JobGroupDescription(key=group, label=str(JOB_GROUP_LABELS[group])) for group in JobGroup if group in used]
 
 
 def describe_job_types(project: Project, user) -> list[JobTypeDescription]:

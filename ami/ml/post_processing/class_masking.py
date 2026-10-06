@@ -8,6 +8,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from ami.jobs.schemas import JobGroup
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
@@ -259,6 +260,8 @@ def make_classifications_filtered_by_taxa_list(
 class ClassMaskingTask(BasePostProcessingTask):
     key = "class_masking"
     name = "Class masking"
+    label = _("Limit predictions to a species list")
+    group = JobGroup.REFINE_RESULTS
     feature_flag = "class_masking"
     description = _(
         "Masks out classes whose taxon is not on the chosen list and renormalises each prediction over "

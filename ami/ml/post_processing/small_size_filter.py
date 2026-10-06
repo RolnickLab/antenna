@@ -3,6 +3,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from ami.jobs.schemas import JobGroup
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.schemas import BoundingBox
@@ -49,6 +50,8 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
 class SmallSizeFilterTask(BasePostProcessingTask):
     key = "small_size_filter"
     name = "Small size filter"
+    label = _("Mark detections too small to identify")
+    group = JobGroup.REFINE_RESULTS
     feature_flag = "small_size_filter"
     description = _("Marks detections that are too small to identify, so they stop counting towards species totals.")
     config_schema = SmallSizeFilterConfig

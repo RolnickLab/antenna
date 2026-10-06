@@ -9,7 +9,9 @@ No frontend change is needed. Design history: branch `feat/jobs-panel-design`,
 
 Each job type has one pydantic model describing everything a new job of that type takes
 (`JobType.config_schema`; post-processing has one per task). `GET /jobs/types/` serves each model's
-JSON Schema unchanged, wrapped in `JobTypeDescription` (`ami/jobs/schemas.py`). The dialog renders
+JSON Schema unchanged, wrapped in `JobTypeDescription` (`ami/jobs/schemas.py`), plus the picker
+headings in use (`groups`, `JobGroup` order). The dialog shows one grouped picker: a type without
+variants is one entry, a type with variants (post-processing) contributes one entry per variant. The dialog renders
 the schema as its form and posts `{"name", "delay", "project_id", "job_type_key", "params": {"config":
 {...}}}` (plus `"task"` for post-processing). `JobSerializer.validate` hands `params` to
 `JobType.validate_params`, which parses it with the model and checks every id against the project;
@@ -30,14 +32,18 @@ the Job's columns so the jobs list can filter on them.
 
 ## Making a job type creatable
 
-On the `JobType` subclass: `user_creatable = True`, a `description` (in `gettext_lazy`), and a
-`config_schema` model in `ami/jobs/schemas.py`. Required inputs are pydantic-required fields; Job
+On the `JobType` subclass: `user_creatable = True`, a `label` and `description` (in `gettext_lazy`),
+a `group` (`JobGroup`, the picker heading), and a `config_schema` model in `ami/jobs/schemas.py`.
+`label` is what users see in the picker, the jobs list and job details ("Process captures"); `name`
+stays the fixed internal name used in logs and stage names. Required inputs are pydantic-required fields; Job
 columns are fields named as in `JOB_COLUMNS`.
 
 ## Making a post-processing task appear
 
 Register it in `POSTPROCESSING_TASKS`, give it `feature_flag` (a `ProjectFeatureFlags` field you
-add, default off) and a `description`. When a project turns the flag on, ML data managers and
+add, default off), a `label`, a `group` and a `description`. Never rename a task's `name`: it is the
+lookup key for the task's Algorithm row (`BasePostProcessingTask.__init__`), so a rename starts a new
+algorithm. The jobs list names a post-processing job by its task's `label` (`PostProcessingJob.label_for`). When a project turns the flag on, ML data managers and
 project managers can run the task with any settings; while it is off the task is hidden, refused on
 create through the API, and its jobs cannot be re-run except by a superuser. The Django admin action
 still lets superusers start it, so staff can try a method on a project before turning it on.

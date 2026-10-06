@@ -1,3 +1,5 @@
+import enum
+
 import pydantic
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter
@@ -73,12 +75,41 @@ class StationJobConfig(pydantic.BaseModel):
         extra = "forbid"
 
 
+class JobGroup(str, enum.Enum):
+    """Where a job is listed in the Create Job picker, by what the user wants to do.
+
+    Declared by each job type and post-processing task as ``group``; the picker shows the groups in
+    this order.
+    """
+
+    PROCESS_IMAGES = "process_images"  # sends images to a processing service
+    REFINE_RESULTS = "refine_results"  # works on results already in Antenna
+    ORGANIZE_CAPTURES = "organize_captures"
+    MODELS = "models"
+
+
+JOB_GROUP_LABELS = {
+    JobGroup.PROCESS_IMAGES: _("Process images"),
+    JobGroup.REFINE_RESULTS: _("Refine results"),
+    JobGroup.ORGANIZE_CAPTURES: _("Organize captures"),
+    JobGroup.MODELS: _("Models"),
+}
+
+
+class JobGroupDescription(pydantic.BaseModel):
+    """A heading in the Create Job picker."""
+
+    key: JobGroup
+    label: str
+
+
 class JobTypeVariantDescription(pydantic.BaseModel):
     """One method a job type can run, such as a post-processing task."""
 
     key: str
     name: str
     description: str
+    group: JobGroup
     config_schema: dict
 
 
@@ -88,6 +119,7 @@ class JobTypeDescription(pydantic.BaseModel):
     key: str
     name: str
     description: str
+    group: JobGroup | None  # None when each variant is listed under its own group instead
     allowed: bool  # whether the requesting user may run it in this project
     config_schema: dict | None
     variant_key: str | None  # the params key holding the chosen variant, e.g. "task"
