@@ -34,15 +34,6 @@ const KINDS = {
   size_filter: { icon: RulerIcon, label: STRING.HISTORY_SIZE_FILTER },
 }
 
-/** Labels for the job settings shown as rows; a setting not listed here shows its raw key. */
-const SETTING_LABELS: Partial<Record<string, STRING>> = {
-  algorithm_id: STRING.HISTORY_SETTING_CLASSIFIER,
-  occurrence_id: STRING.HISTORY_SETTING_OCCURRENCE,
-  reweight: STRING.HISTORY_SETTING_REWEIGHT,
-  source_image_collection_id: STRING.HISTORY_SETTING_CAPTURE_SET,
-  taxa_list_id: STRING.HISTORY_SPECIES_LIST,
-}
-
 /** What to call a result's kind, e.g. "Class masking", for the card and for predictions it superseded. */
 export const getResultKindLabel = (entry: AlgorithmResultEntry) =>
   translate(KINDS[entry.kind].label)
@@ -50,6 +41,9 @@ export const getResultKindLabel = (entry: AlgorithmResultEntry) =>
 const formatSettingValue = (value: unknown) => {
   if (typeof value === 'boolean') {
     return translate(value ? STRING.YES : STRING.NO)
+  }
+  if (Array.isArray(value)) {
+    return value.join(', ')
   }
 
   return typeof value === 'object' ? JSON.stringify(value) : `${value}`
@@ -70,13 +64,16 @@ const getRefLabel = (reference?: Ref) => {
 /** The card's subtitle: for class masking the classifier and species list, otherwise the algorithm's name. */
 const getSubTitle = (entry: AlgorithmResultEntry) => {
   if (entry.kind === 'class_masking') {
-    const references = entry.job?.references ?? {}
+    const refFor = (key: string) =>
+      entry.job?.settings.find((setting) => setting.key === key)?.ref ??
+      undefined
+    const classifier = refFor('algorithm_id')
 
     return translate(STRING.HISTORY_MASKING_SUBTITLE, {
-      algorithm: references.algorithm_id
-        ? getRefLabel(references.algorithm_id)
+      algorithm: classifier
+        ? getRefLabel(classifier)
         : entry.algorithm?.name ?? translate(STRING.VALUE_NOT_AVAILABLE),
-      list: getRefLabel(references.taxa_list_id),
+      list: getRefLabel(refFor('taxa_list_id')),
     })
   }
 
@@ -173,10 +170,9 @@ export const AlgorithmResult = ({
     label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
     value: new Set(entry.classifications.map((c) => c.detection_id)).size,
   })
-  getJobSettings(entry.job).forEach(({ key, value, ref }) => {
-    const label = SETTING_LABELS[key]
+  getJobSettings(entry.job).forEach(({ label, value, ref }) => {
     stats.push({
-      label: label !== undefined ? translate(label) : key,
+      label,
       value: ref ? (
         <RefValue projectId={projectId as string} reference={ref} />
       ) : (

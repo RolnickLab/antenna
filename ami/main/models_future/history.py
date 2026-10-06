@@ -15,10 +15,21 @@ import typing
 from ami.main.models import Classification, Identification, Occurrence, Taxon, User
 from ami.main.models_future.references import Ref, job_setting_references, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
+from ami.ml.post_processing.registry import config_setting_labels
 from ami.ml.results.schemas import reference_fields, result_kinds
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
+
+
+@dataclasses.dataclass
+class JobSetting:
+    """One setting a job ran with: its label from the task's config schema, and the record it names, if any."""
+
+    key: str
+    label: str
+    value: typing.Any
+    ref: Ref | None = None
 
 
 @dataclasses.dataclass
@@ -40,11 +51,12 @@ class OccurrenceTimelineEntry:
     user: User | None = None  # identification
     algorithm: Algorithm | None = None  # result, prediction
     job: Job | None = None  # result, prediction
-    job_references: dict[str, Ref] = dataclasses.field(default_factory=dict)  # setting key -> Ref
+    job_settings: list[JobSetting] = dataclasses.field(default_factory=list)  # empty without a job
     taxon: Taxon | None = None  # identification, prediction
-    score: float | None = None  # prediction's score; result's value
+    score: float | None = None  # prediction
     # --- Algorithm result
     kind: str | None = None
+    value: float | None = None  # the kind's headline figure, not a confidence
     data: dict = dataclasses.field(default_factory=dict)  # validated per kind
     data_references: dict[str, Ref] = dataclasses.field(default_factory=dict)  # data field -> Ref
     determination_before: Taxon | None = None
@@ -106,7 +118,7 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
             timestamp=result.timestamp,
             algorithm=result.algorithm,
             job=result.job,
-            score=result.value,
+            value=result.value,
             kind=result.kind,
             data=result.data,
             determination_before=taxa.get(result.data.get("determination_before_id")),
@@ -155,16 +167,15 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
         if prediction.pk not in created_ids
     )
 
-    _resolve_entry_references(entries)
+    _fill_job_settings_and_references(entries)
     entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
     return entries
 
 
-def _resolve_entry_references(entries: list[OccurrenceTimelineEntry]) -> None:
-    """Fill each entry's job and data references, resolving every id the entries name at once."""
-    job_refs = {
-        id(entry): job_setting_references(_job_settings(entry.job)) for entry in entries if entry.job is not None
-    }
+def _fill_job_settings_and_references(entries: list[OccurrenceTimelineEntry]) -> None:
+    """Fill each entry's job settings and data references, resolving every id the entries name at once."""
+    configs = {id(entry): _job_settings(entry.job) for entry in entries if entry.job is not None}
+    job_refs = {key: job_setting_references(config) for key, config in configs.items()}
     # A stored kind may no longer be registered (renamed, or written by another branch); it names no references.
     kinds = set(result_kinds())
     data_refs = {
@@ -177,11 +188,15 @@ def _resolve_entry_references(entries: list[OccurrenceTimelineEntry]) -> None:
         if entry.type == "algorithm_result"
     }
     wanted = [(ref_type, ref_id) for refs in (*job_refs.values(), *data_refs.values()) for _, ref_type, ref_id in refs]
-    if not wanted:
-        return
-    resolved = resolve_references(wanted)
+    resolved = resolve_references(wanted) if wanted else {}
     for entry in entries:
-        entry.job_references = {key: resolved[(t, i)] for key, t, i in job_refs.get(id(entry), [])}
+        if entry.job is not None:
+            labels = config_setting_labels((entry.job.params or {}).get("task"))
+            refs = {key: resolved[(t, i)] for key, t, i in job_refs[id(entry)]}
+            entry.job_settings = [
+                JobSetting(key, labels.get(key, key), value, refs.get(key))
+                for key, value in configs[id(entry)].items()
+            ]
         entry.data_references = {field: resolved[(t, i)] for field, t, i in data_refs.get(id(entry), [])}
 
 

@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Identification, Occurrence, SourceImage, TaxaList, Taxon
-from ami.main.models_future.history import occurrence_timeline
+from ami.main.models_future.history import JobSetting, occurrence_timeline
 from ami.main.models_future.references import Ref, job_setting_references, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
@@ -329,12 +329,19 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(result["algorithm"]["key"], self.size_filter.key)
         self.assertEqual(
             result["job"],
-            {"id": self.job.pk, "name": self.job.name, "config": {"size_threshold": 0.01}, "references": {}},
+            {
+                "id": self.job.pk,
+                "name": self.job.name,
+                "config": {"size_threshold": 0.01},
+                # The label is the title the size filter's config schema gives the setting.
+                "settings": [{"key": "size_threshold", "label": "Size threshold", "value": 0.01, "ref": None}],
+            },
         )
         self.assertIsNone(result["taxon"])
         self.assertEqual(result["determination_after"]["id"], self.taxon.pk)
         self.assertEqual(result["determination_before"]["id"], self.other_taxon.pk)
-        self.assertEqual(result["score"], 0.001)
+        self.assertIsNone(result["score"])
+        self.assertEqual(result["value"], 0.001)
         self.assertEqual(result["data"]["relative_size"], 0.001)
         self.assertEqual(result["data_references"], {})
         created = Classification.objects.get(algorithm=self.size_filter)
@@ -418,17 +425,24 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(demoted["details"]["superseded_by_result_id"], result.pk)
         self.assertFalse(demoted["details"]["terminal"])
         self.assertIsNone(predictions[None]["details"]["superseded_by_result_id"])
+        settings = {setting["key"]: setting for setting in result_entry["job"]["settings"]}
         self.assertEqual(
-            result_entry["job"]["references"],
+            settings["taxa_list_id"],
             {
-                "taxa_list_id": {"type": "taxa_list", "id": taxa_list.pk, "name": "Kept species"},
-                "algorithm_id": {"type": "algorithm", "id": classifier.pk, "name": classifier.name},
+                "key": "taxa_list_id",
+                "label": "Species list",
+                "value": taxa_list.pk,
+                "ref": {"type": "taxa_list", "id": taxa_list.pk, "name": "Kept species"},
             },
+        )
+        self.assertEqual(settings["algorithm_id"]["label"], "Classifier")
+        self.assertEqual(
+            settings["algorithm_id"]["ref"], {"type": "algorithm", "id": classifier.pk, "name": classifier.name}
         )
         # The top prediction before masking is the classification the masked one replaced.
         self.assertEqual(result_entry["classifications"][0]["replaced"]["id"], original.pk)
         self.assertEqual(result_entry["classifications"][0]["replaced"]["taxon"]["id"], self.taxon.pk)
-        self.assertEqual(result_entry["score"], 0.4)
+        self.assertEqual(result_entry["value"], 0.4)
 
     def test_a_terminal_prediction_outranked_on_its_detection_is_superseded(self):
         """The size filter does not demote the prediction it outranks, so the link is the shared detection."""
@@ -606,7 +620,16 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             data={"relative_size": 0.001},
         )
         entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
-        self.assertEqual(entry.job_references, {"taxa_list_id": Ref("taxa_list", taxa_list.pk, "Kept species")})
+        # The job names no task, so there is no config schema to take labels from: they fall back to the keys.
+        self.assertEqual(
+            entry.job_settings,
+            [
+                JobSetting(
+                    "taxa_list_id", "taxa_list_id", taxa_list.pk, Ref("taxa_list", taxa_list.pk, "Kept species")
+                ),
+                JobSetting("size_threshold", "size_threshold", 0.01, None),
+            ],
+        )
 
     def test_a_result_without_a_job_has_no_settings_or_references(self):
         AlgorithmResult.objects.record(
@@ -618,7 +641,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         )
         entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
         self.assertIsNone(entry.job)
-        self.assertEqual(entry.job_references, {})
+        self.assertEqual(entry.job_settings, [])
 
     def test_a_result_of_a_kind_no_longer_registered_still_shows_in_the_history(self):
         """A row written by a branch with an extra kind, or before a kind was renamed, must not break the history."""

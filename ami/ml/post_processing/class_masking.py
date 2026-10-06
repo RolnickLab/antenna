@@ -25,16 +25,16 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
+    source_image_collection_id: int | None = pydantic.Field(None, title="Capture set")
+    occurrence_id: int | None = pydantic.Field(None, title="Occurrence")
     # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int
+    taxa_list_id: int = pydantic.Field(..., title="Species list")
     # The source classifier whose terminal classifications are re-scored.
-    algorithm_id: int
+    algorithm_id: int = pydantic.Field(..., title="Classifier")
     # When True (default), renormalise the kept classes' scores to sum to 1 after
     # masking. When False, the kept classes retain their original absolute scores and
     # the excluded classes are zeroed; the chosen species is identical either way.
-    reweight: bool = True
+    reweight: bool = pydantic.Field(True, title="Re-weighted scores")
 
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
