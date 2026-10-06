@@ -46,7 +46,6 @@ services:
 
   redis:
     image: redis:6
-    container_name: ami_ci_redis
 
   nats:
     image: nats:2.10-alpine
