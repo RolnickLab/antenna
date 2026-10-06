@@ -16,14 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class SizeFilterTestCase(TestCase):
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        create_taxa(project=self.project)
-        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
-        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
-        SourceImage.objects.filter(pk__in=[c.pk for c in self.captures]).update(width=1000, height=1000)
-        self.event = self.captures[0].event
-        self.taxon = Taxon.objects.filter(projects=self.project).order_by("pk").first()
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        create_taxa(project=cls.project)
+        create_captures(deployment=cls.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
+        cls.captures = list(SourceImage.objects.filter(deployment=cls.deployment).order_by("timestamp"))
+        SourceImage.objects.filter(pk__in=[c.pk for c in cls.captures]).update(width=1000, height=1000)
+        cls.event = cls.captures[0].event
+        cls.taxon = Taxon.objects.filter(projects=cls.project).order_by("pk").first()
 
     def _singleton(self, capture: SourceImage, bbox: list[int]) -> Occurrence:
         """One detection in an occurrence of its own, classified as the fixture taxon."""

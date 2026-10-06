@@ -52,10 +52,11 @@ def no_query_cache():
 class AlgorithmResultTestCase(TestCase):
     """A result's data fits its kind, its project is its occurrence's, and a new result replaces the current one."""
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
-        self.algorithm = Algorithm.objects.create(name="Size filter", key="size-filter-result-test")
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        cls.occurrence = Occurrence.objects.create(project=cls.project, deployment=cls.deployment)
+        cls.algorithm = Algorithm.objects.create(name="Size filter", key="size-filter-result-test")
 
     def _size_filter(self, data: dict | None, **fields) -> AlgorithmResult:
         fields.setdefault("occurrence", self.occurrence)
@@ -159,8 +160,9 @@ class AlgorithmResultTestCase(TestCase):
 class ReferenceTestCase(TestCase):
     """Ids shown in the history become {type, id, name}; a deleted row keeps its id with no name."""
 
-    def setUp(self):
-        self.project, self.deployment = setup_test_project(reuse=False)
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
 
     def test_resolves_each_type_in_one_query_and_marks_missing_rows(self):
         taxa_list = TaxaList.objects.create(name="Kept species")
@@ -215,47 +217,48 @@ class OccurrenceHistorySchemaTestCase(TestCase):
 class OccurrenceFixtureTestCase(APITestCase):
     """One occurrence of four classified detections, with a project manager and a basic member."""
 
-    def setUp(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        create_taxa(project=self.project)
-        create_captures(deployment=self.deployment, num_nights=1, images_per_night=4, interval_minutes=1)
-        captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
-        self.taxon = Taxon.objects.filter(projects=self.project).order_by("pk").first()
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        create_taxa(project=cls.project)
+        create_captures(deployment=cls.deployment, num_nights=1, images_per_night=4, interval_minutes=1)
+        captures = list(SourceImage.objects.filter(deployment=cls.deployment).order_by("timestamp"))
+        cls.taxon = Taxon.objects.filter(projects=cls.project).order_by("pk").first()
 
-        self.manager = User.objects.create_user(email="history-manager@insectai.org")  # type: ignore
-        self.reader = User.objects.create_user(email="history-reader@insectai.org")  # type: ignore
-        ProjectManager.assign_user(self.manager, self.project)
-        BasicMember.assign_user(self.reader, self.project)
+        cls.manager = User.objects.create_user(email="history-manager@insectai.org")  # type: ignore
+        cls.reader = User.objects.create_user(email="history-reader@insectai.org")  # type: ignore
+        ProjectManager.assign_user(cls.manager, cls.project)
+        BasicMember.assign_user(cls.reader, cls.project)
 
-        self.occurrence = Occurrence.objects.create(
-            event=captures[0].event, deployment=self.deployment, project=self.project
+        cls.occurrence = Occurrence.objects.create(
+            event=captures[0].event, deployment=cls.deployment, project=cls.project
         )
-        self.detections = []
+        cls.detections = []
         for capture in captures[:4]:
             detection = Detection.objects.create(
-                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=self.occurrence
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=cls.occurrence
             )
-            detection.classifications.create(taxon=self.taxon, score=0.9, timestamp=capture.timestamp)
-            self.detections.append(detection)
-        self.occurrence.save()
-        return super().setUp()
+            detection.classifications.create(taxon=cls.taxon, score=0.9, timestamp=capture.timestamp)
+            cls.detections.append(detection)
+        cls.occurrence.save()
 
 
 class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
     """GET /occurrences/{id}/history/ merges results, reviews, identifications and predictions, newest first."""
 
-    def setUp(self) -> None:
-        super().setUp()
-        self.size_filter = Algorithm.objects.create(name="Small size filter", key="size-filter-history-test")
-        self.job = Job.objects.create(
-            project=self.project,
+    @classmethod
+    def setUpTestData(cls) -> None:
+        super().setUpTestData()
+        cls.size_filter = Algorithm.objects.create(name="Small size filter", key="size-filter-history-test")
+        cls.job = Job.objects.create(
+            project=cls.project,
             name="Size filter run",
             job_type_key="post_processing",
             params={"task": "small_size_filter", "config": {"size_threshold": 0.01}},
         )
-        self.other_taxon = Taxon.objects.filter(projects=self.project).exclude(pk=self.taxon.pk).first()
-        self.superuser = User.objects.create_superuser(email="history-super@insectai.org")  # type: ignore
-        self.outsider = User.objects.create_user(email="history-outsider@insectai.org")  # type: ignore
+        cls.other_taxon = Taxon.objects.filter(projects=cls.project).exclude(pk=cls.taxon.pk).first()
+        cls.superuser = User.objects.create_superuser(email="history-super@insectai.org")  # type: ignore
+        cls.outsider = User.objects.create_user(email="history-outsider@insectai.org")  # type: ignore
 
     def url(self, occurrence: Occurrence | None = None) -> str:
         return f"/api/v2/occurrences/{(occurrence or self.occurrence).pk}/history/?project_id={self.project.pk}"
