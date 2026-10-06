@@ -5,7 +5,7 @@ import datetime
 import re
 
 from cachalot.api import cachalot_disabled
-from django.db import IntegrityError, connection, transaction
+from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
@@ -92,7 +92,7 @@ class AlgorithmResultTestCase(TestCase):
         with self.assertRaises(ValueError):
             AlgorithmResult.objects.bulk_update([result], ["data"])
 
-    def test_a_new_result_becomes_current_and_the_earlier_one_stays_as_history(self):
+    def test_each_run_adds_a_result_beside_the_earlier_ones(self):
         first = AlgorithmResult.objects.record(
             occurrence=self.occurrence,
             algorithm=self.algorithm,
@@ -106,14 +106,10 @@ class AlgorithmResultTestCase(TestCase):
                 self._size_filter({"relative_size": 0.02}, occurrence=other_occurrence),
             ]
         )
-        first.refresh_from_db()
-        self.assertFalse(first.is_current)
-        self.assertTrue(second.is_current and untouched.is_current)
-        self.assertEqual(self.occurrence.algorithm_results.count(), 2)
-        self.assertEqual(self.occurrence.algorithm_results.current().get().pk, second.pk)
+        self.assertEqual(set(self.occurrence.algorithm_results.values_list("pk", flat=True)), {first.pk, second.pk})
+        self.assertEqual(list(other_occurrence.algorithm_results.values_list("pk", flat=True)), [untouched.pk])
 
-    def test_merging_moves_results_and_keeps_one_current_per_algorithm_and_kind(self):
-        """The kept occurrence's current result wins a collision; otherwise the latest moved one stays current."""
+    def test_merging_moves_every_result_to_the_kept_occurrence(self):
         other_algorithm = Algorithm.objects.create(name="Second size filter", key="size-filter-merge-test")
         absorbed = [Occurrence.objects.create(project=self.project, deployment=self.deployment) for _ in range(3)]
 
@@ -122,36 +118,21 @@ class AlgorithmResultTestCase(TestCase):
                 occurrence=occurrence, algorithm=algorithm, kind=SIZE_FILTER, data={"relative_size": size}
             )
 
-        kept_current = record(self.occurrence, self.algorithm, 0.01)
-        history = record(absorbed[0], self.algorithm, 0.02)
-        colliding = record(absorbed[0], self.algorithm, 0.03)
-        older = record(absorbed[1], other_algorithm, 0.04)
-        latest = record(absorbed[2], other_algorithm, 0.05)
+        kept_own = record(self.occurrence, self.algorithm, 0.01)
+        moved_results = [
+            record(absorbed[0], self.algorithm, 0.02),
+            record(absorbed[0], self.algorithm, 0.03),
+            record(absorbed[1], other_algorithm, 0.04),
+            record(absorbed[2], other_algorithm, 0.05),
+        ]
 
         moved = AlgorithmResult.objects.move_to_occurrence(self.occurrence, [o.pk for o in absorbed])
 
         self.assertEqual(moved, 4)
-        results = {r.pk: r for r in AlgorithmResult.objects.filter(occurrence=self.occurrence)}
-        self.assertEqual(set(results), {kept_current.pk, history.pk, colliding.pk, older.pk, latest.pk})
-        current = {pk for pk, r in results.items() if r.is_current}
-        self.assertEqual(current, {kept_current.pk, latest.pk})
-
-    def test_moving_results_locks_the_occurrences_before_reading_their_results(self):
-        """Without the lock, a run recording a result on the kept occurrence mid-merge makes two current rows."""
-        absorbed = Occurrence.objects.create(project=self.project, deployment=self.deployment)
-        self._size_filter({"relative_size": 0.02}, occurrence=absorbed).save()
-        with CaptureQueriesContext(connection) as queries:
-            AlgorithmResult.objects.move_to_occurrence(self.occurrence, [absorbed.pk])
-        sql = [q["sql"] for q in queries.captured_queries]
-        lock = next((i for i, q in enumerate(sql) if "FOR UPDATE" in q and "main_occurrence" in q), None)
-        self.assertIsNotNone(lock, "the occurrences are not locked")
-        first_read = next(i for i, q in enumerate(sql) if "ml_algorithmresult" in q)
-        self.assertLess(lock, first_read)
-
-    def test_the_database_holds_one_current_result_per_occurrence_algorithm_and_kind(self):
-        self._size_filter({"relative_size": 0.01}).save()
-        with transaction.atomic(), self.assertRaises(IntegrityError):
-            self._size_filter({"relative_size": 0.02}).save()
+        self.assertEqual(
+            set(AlgorithmResult.objects.filter(occurrence=self.occurrence).values_list("pk", flat=True)),
+            {kept_own.pk, *(r.pk for r in moved_results)},
+        )
 
     def test_project_comes_from_the_occurrence_and_a_result_without_one_is_skipped(self):
         result = self._size_filter({"relative_size": 0.01})
@@ -336,7 +317,6 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(identification["taxon"]["id"], self.other_taxon.pk)
         self.assertEqual(identification["details"]["comment"], "round 0")
         self.assertEqual(result["kind"], "size_filter")
-        self.assertTrue(result["is_current"])
         self.assertEqual(result["algorithm"]["key"], self.size_filter.key)
         self.assertEqual(
             result["job"],

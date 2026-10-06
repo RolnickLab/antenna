@@ -105,7 +105,6 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   determination_after: NOCTUA,
   determination_before: XESTIA,
   id: 5,
-  is_current: true,
   job: JOB,
   kind: 'class_masking',
   score: null,

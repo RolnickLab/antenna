@@ -3,10 +3,10 @@
 A run that re-scores or flags detections changes classifications and determinations in batches,
 each in its own transaction. ``AlgorithmResultWriter`` writes the result rows in those same transactions,
 so a batch either lands with its results or not at all. Every occurrence the run touches gets
-exactly one current result: it is created by the first batch that touches the occurrence, before
-the classifications that batch inserts so they can point at it, and later batches update it with
-the figures of the detection that represents the occurrence and the determination after their
-saves.
+exactly one result from the run: it is created by the first batch that touches the occurrence,
+before the classifications that batch inserts so they can point at it, and later batches update it
+with the figures of the detection that represents the occurrence and the determination after their
+saves. A retried job reuses the results it already wrote rather than adding a second one each.
 """
 
 from __future__ import annotations
@@ -57,6 +57,9 @@ class AlgorithmResultWriter:
         occurrences are saved, so a result's ``determination_before_id`` is what the run found.
         """
         new = [o for o in occurrences if o.pk not in self.results and o.pk not in self.skipped]
+        for result in self._written_by_this_job(new):
+            self.results[result.occurrence_id] = result
+        new = [o for o in new if o.pk not in self.results]
         written = AlgorithmResult.objects.record_many(
             AlgorithmResult(
                 occurrence=occurrence,
@@ -74,6 +77,16 @@ class AlgorithmResultWriter:
         self.skipped.update(o.pk for o in new if o.pk not in self.results)
         for classification in classifications:
             classification.algorithm_result = self.results.get(classification.detection.occurrence_id)
+
+    def _written_by_this_job(self, occurrences: list[Occurrence]) -> list[AlgorithmResult]:
+        """Results an earlier attempt of the same job wrote for these occurrences, latest last."""
+        if self.job is None or not occurrences:
+            return []
+        return list(
+            AlgorithmResult.objects.filter(
+                job=self.job, algorithm=self.algorithm, kind=self.kind, occurrence__in=[o.pk for o in occurrences]
+            ).order_by("timestamp", "pk")
+        )
 
     def finish_batch(self, occurrences: typing.Iterable[Occurrence]) -> None:
         """Record each occurrence's determination after the batch's saves and its best figures so far."""

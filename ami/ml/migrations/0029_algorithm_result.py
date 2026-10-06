@@ -22,7 +22,6 @@ class Migration(migrations.Migration):
                 ("kind", models.CharField(max_length=32)),
                 ("value", models.FloatField(blank=True, null=True)),
                 ("data", models.JSONField(blank=True, default=dict)),
-                ("is_current", models.BooleanField(default=True)),
                 ("timestamp", models.DateTimeField(default=django.utils.timezone.now)),
                 (
                     "algorithm",
@@ -65,20 +64,12 @@ class Migration(migrations.Migration):
                 "indexes": [
                     models.Index(fields=["occurrence", "-timestamp"], name="algorithm_result_occ_time"),
                     models.Index(
-                        condition=models.Q(("is_current", True), ("value__isnull", False)),
+                        condition=models.Q(("value__isnull", False)),
                         fields=["project", "kind", "value"],
-                        name="algorithm_result_current_value",
+                        name="algorithm_result_value",
                     ),
                     models.Index(fields=["job", "occurrence"], name="algorithm_result_job_occ"),
                 ],
             },
-        ),
-        migrations.AddConstraint(
-            model_name="algorithmresult",
-            constraint=models.UniqueConstraint(
-                condition=models.Q(("is_current", True)),
-                fields=("occurrence", "algorithm", "kind"),
-                name="algorithm_result_current_occurrence",
-            ),
         ),
     ]

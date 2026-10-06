@@ -94,6 +94,17 @@ class SizeFilterJobTestCase(SizeFilterTestCase):
         self.assertEqual(job.classifications.get().pk, classification.pk)
         self.assertEqual(job.algorithm_results.get().pk, classification.algorithm_result_id)
 
+    def test_a_retried_job_reuses_its_own_result_instead_of_adding_another(self):
+        occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
+        job = self._job(occurrence, size_threshold=0.01)
+
+        PostProcessingJob.run(job)
+        first = job.algorithm_results.get()
+        PostProcessingJob.run(job)
+
+        self.assertEqual(list(job.algorithm_results.values_list("pk", flat=True)), [first.pk])
+        self.assertEqual(occurrence.algorithm_results.count(), 1)
+
 
 class SizeFilterResultsTestCase(SizeFilterTestCase):
     """The size filter leaves one algorithm result per occurrence it flags, written with the batch that flags it."""
@@ -130,12 +141,12 @@ class SizeFilterResultsTestCase(SizeFilterTestCase):
         )
         self.assertEqual(sorted(result.classifications.values_list("detection_id", flat=True)), detection_ids)
 
-    def test_a_second_run_replaces_the_current_result_and_keeps_the_first(self):
+    def test_each_run_adds_its_own_result(self):
+        """Running the filter again, say with another threshold, shows up as a second result in the history."""
         occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
         for _ in range(2):
             self.run_filter(occurrence)
-        first, second = self.records()
-        self.assertEqual((first.is_current, second.is_current), (False, True))
+        self.assertEqual(self.records().filter(occurrence=occurrence).count(), 2)
 
     def test_an_occurrence_with_nothing_flagged_gets_no_result(self):
         occurrence = self._singleton(self.captures[0], [0, 0, 500, 500])
