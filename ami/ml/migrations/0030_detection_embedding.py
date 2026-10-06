@@ -30,6 +30,7 @@ class Migration(migrations.Migration):
                 (
                     "algorithm",
                     models.ForeignKey(
+                        db_index=False,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="detection_embeddings",
                         to="ml.algorithm",
@@ -57,6 +58,7 @@ class Migration(migrations.Migration):
                 (
                     "project",
                     models.ForeignKey(
+                        db_index=False,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="detection_embeddings",
                         to="main.project",

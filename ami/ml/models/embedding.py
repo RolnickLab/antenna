@@ -127,15 +127,21 @@ class DetectionEmbedding(BaseModel):
     the writer against an existing row. See #1462.
     """
 
-    # No separate index: the unique constraint's index leads with detection_id.
+    # The three foreign keys below have no single-column index of their own: the unique constraint
+    # leads with detection, and the Meta indexes lead with algorithm and with project. Extra
+    # single-column indexes would only cost writes and mislead the planner.
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
-    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings")
+    algorithm = models.ForeignKey(
+        "ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
+    )
     # The job whose results stored the vector. Deleting the job keeps the vector.
     job = models.ForeignKey(
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="detection_embeddings"
     )
     # Copied from the detection's capture (see fill_embedding_project_ids) so project queries need no join.
-    project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="detection_embeddings")
+    project = models.ForeignKey(
+        "main.Project", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
+    )
     key = models.CharField(max_length=255, default=DEFAULT_EMBEDDING_KEY)
     vector = pgvector.django.HalfVectorField(help_text="The feature vector, in half precision.")
     timestamp = models.DateTimeField(default=timezone.now)
