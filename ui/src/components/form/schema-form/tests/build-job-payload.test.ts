@@ -3,7 +3,8 @@ import { buildJobPayload } from '../build-job-payload'
 
 const mlType: ServerJobType = {
   key: 'ml',
-  name: 'ML pipeline',
+  name: 'Process captures',
+  group: 'process_images',
   allowed: true,
   config_schema: {
     required: ['pipeline_id'],
@@ -28,12 +29,14 @@ const postProcessing: ServerJobType = {
   ...mlType,
   key: 'post_processing',
   name: 'Post Processing',
+  group: null,
   config_schema: null,
   variant_key: 'task',
   variants: [
     {
       key: 'class_masking',
-      name: 'Class masking',
+      name: 'Limit predictions to a species list',
+      group: 'refine_results',
       config_schema: {
         required: ['taxa_list_id'],
         properties: {
@@ -109,7 +112,7 @@ describe('buildJobPayload', () => {
       pickedLabels: { source_image_collection_id: 'Night 1' },
       configValues: {},
     })
-    expect(body.name).toBe('Class masking – Night 1')
+    expect(body.name).toBe('Limit predictions to a species list – Night 1')
     expect(body.delay).toBe(0)
     expect(startNow).toBe(false)
   })
@@ -124,7 +127,7 @@ describe('buildJobPayload', () => {
       },
       configValues: {},
     })
-    expect(body.name).toBe('ML pipeline – Night 1')
+    expect(body.name).toBe('Process captures – Night 1')
   })
 
   test('name falls back to the date without a picked label', () => {
@@ -135,7 +138,7 @@ describe('buildJobPayload', () => {
       name: '  ',
       today: '2026-09-30',
     })
-    expect(body.name).toBe('ML pipeline – 2026-09-30')
+    expect(body.name).toBe('Process captures – 2026-09-30')
   })
 
   test('own config schema wraps config; empty optional values are omitted', () => {

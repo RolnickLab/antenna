@@ -29,10 +29,17 @@ export interface ServerConfigSchema {
   properties?: { [name: string]: ServerConfigSchemaProperty }
 }
 
+// A heading in the Create Job picker, grouping choices by what the user wants to do.
+export interface ServerJobGroup {
+  key: string
+  label: string
+}
+
 export interface ServerJobTypeVariant {
   key: string
   name: string
   description?: string
+  group: string
   config_schema: ServerConfigSchema | null
 }
 
@@ -40,6 +47,8 @@ export interface ServerJobType {
   key: string
   name: string
   description?: string
+  // Empty when each variant is listed under its own group instead.
+  group: string | null
   allowed: boolean
   config_schema: ServerConfigSchema | null
   variant_key: string | null

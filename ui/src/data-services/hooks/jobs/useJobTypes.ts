@@ -1,15 +1,17 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
-import { ServerJobType } from 'data-services/models/job-type'
+import { ServerJobGroup, ServerJobType } from 'data-services/models/job-type'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 export const useJobTypes = (
   projectId?: string
 ): {
   jobTypes?: ServerJobType[]
+  groups?: ServerJobGroup[]
   isLoading: boolean
   error?: unknown
 } => {
   const { data, isLoading, error } = useAuthorizedQuery<{
+    groups: ServerJobGroup[]
     results: ServerJobType[]
   }>({
     enabled: !!projectId,
@@ -17,5 +19,5 @@ export const useJobTypes = (
     url: `${API_URL}/${API_ROUTES.JOB_TYPES}/?project_id=${projectId}`,
   })
 
-  return { jobTypes: data?.results, isLoading, error }
+  return { jobTypes: data?.results, groups: data?.groups, isLoading, error }
 }

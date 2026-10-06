@@ -20,6 +20,8 @@ export const SERVER_JOB_TYPES = [
   'ml',
   'data_storage_sync',
   'populate_captures_collection',
+  'regroup_events',
+  'post_processing',
   'data_export',
   'unknown',
 ] as const
@@ -116,7 +118,13 @@ export class Job extends Entity {
     key: ServerJobType
     label: string
   } {
-    return Job.getJobTypeInfo(this._job.job_type.key)
+    // The server names each job as users see it, a post-processing job by its method.
+    return {
+      key: this._job.job_type.key,
+      label:
+        this._job.job_type.name ??
+        Job.getJobTypeInfo(this._job.job_type.key).label,
+    }
   }
 
   get deployment(): { id: string; name: string } | undefined {
@@ -160,9 +168,11 @@ export class Job extends Entity {
 
   static getJobTypeInfo(key: ServerJobType) {
     const label = {
-      ml: 'ML pipeline',
-      data_storage_sync: 'Data storage sync',
-      populate_captures_collection: 'Populate captures collection',
+      ml: 'Process captures',
+      data_storage_sync: 'Sync captures from storage',
+      populate_captures_collection: 'Fill a capture set',
+      regroup_events: 'Regroup captures into sessions',
+      post_processing: 'Refine results',
       data_export: 'Data export',
       unknown: 'Unknown',
     }[key]

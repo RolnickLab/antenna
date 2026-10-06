@@ -1,8 +1,6 @@
 export enum STRING {
   JOB_CREATE,
   JOB_FIELD_TYPE,
-  JOB_FIELD_METHOD,
-  JOB_SETTINGS_DIVIDER,
   JOB_ADVANCED,
   JOB_START_IMMEDIATELY,
   JOB_NOT_PERMITTED,
@@ -400,9 +398,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.JOB_CREATE]: 'Create job',
-  [STRING.JOB_FIELD_TYPE]: 'Job type',
-  [STRING.JOB_FIELD_METHOD]: 'Method',
-  [STRING.JOB_SETTINGS_DIVIDER]: '{{method}} settings',
+  [STRING.JOB_FIELD_TYPE]: 'What do you want to do?',
   [STRING.JOB_ADVANCED]: 'Advanced',
   [STRING.JOB_START_IMMEDIATELY]: 'Start immediately',
   [STRING.JOB_NOT_PERMITTED]: 'Not permitted for your role',

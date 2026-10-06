@@ -9,7 +9,7 @@ import {
 } from 'components/form/schema-form/schema-to-fields'
 import { useCreateTypedJob } from 'data-services/hooks/jobs/useCreateTypedJob'
 import { useJobTypes } from 'data-services/hooks/jobs/useJobTypes'
-import { ServerJobType } from 'data-services/models/job-type'
+import { ServerJobGroup, ServerJobType } from 'data-services/models/job-type'
 import { PlusIcon } from 'lucide-react'
 import {
   Button,
@@ -44,22 +44,59 @@ const getDefaultTypeKey = (jobTypes: ServerJobType[]) =>
     jobTypes.find((t) => t.allowed)
   )?.key ?? ''
 
-const Divider = ({ label }: { label: string }) => (
-  <div className="flex items-center gap-4">
-    <span className="pt-0.5 body-small font-semibold text-muted-foreground uppercase">
-      {label}
-    </span>
-    <hr className="flex-1 border-border" />
-  </div>
+// One entry in the picker: a job type, or one variant (post-processing method) of it.
+interface JobChoice {
+  value: string
+  typeKey: string
+  variantKey: string
+  name: string
+  description?: string
+  group: string | null
+  allowed: boolean
+}
+
+const toChoices = (jobTypes: ServerJobType[]): JobChoice[] =>
+  jobTypes.flatMap((t) =>
+    t.variant_key
+      ? t.variants.map((v) => ({
+          value: `${t.key}:${v.key}`,
+          typeKey: t.key,
+          variantKey: v.key,
+          name: v.name,
+          description: v.description,
+          group: v.group,
+          allowed: t.allowed,
+        }))
+      : [
+          {
+            value: t.key,
+            typeKey: t.key,
+            variantKey: '',
+            name: t.name,
+            description: t.description,
+            group: t.group,
+            allowed: t.allowed,
+          },
+        ]
+  )
+
+const ChoiceItem = ({ choice }: { choice: JobChoice }) => (
+  <Select.Item value={choice.value} disabled={!choice.allowed}>
+    {choice.allowed
+      ? choice.name
+      : `${choice.name} (${translate(STRING.JOB_NOT_PERMITTED)})`}
+  </Select.Item>
 )
 
 const CreateJobForm = ({
   jobTypes,
+  groups,
   projectId,
   onCancel,
   onCreated,
 }: {
   jobTypes: ServerJobType[]
+  groups: ServerJobGroup[]
   projectId: string
   onCancel: () => void
   onCreated: () => void
@@ -97,6 +134,13 @@ const CreateJobForm = ({
   const variantKey = watch('variantKey')
   const jobType = jobTypes.find((t) => t.key === typeKey)
   const variant = jobType?.variants.find((v) => v.key === variantKey)
+  const choices = useMemo(() => toChoices(jobTypes), [jobTypes])
+  const choice = choices.find(
+    (c) => c.typeKey === typeKey && c.variantKey === variantKey
+  )
+  const ungrouped = choices.filter(
+    (c) => !groups.some((g) => g.key === c.group)
+  )
 
   const configFields = useMemo(
     () => schemaToFields(variant?.config_schema ?? jobType?.config_schema),
@@ -186,64 +230,41 @@ const CreateJobForm = ({
       ) : null}
       <InputContent
         label={translate(STRING.JOB_FIELD_TYPE)}
-        description={jobType?.description}
+        description={choice?.description}
       >
         <Select.Root
-          value={typeKey}
+          value={choice?.value ?? ''}
           onValueChange={(value) => {
-            setValue('typeKey', value)
-            setValue('variantKey', '')
+            const picked = choices.find((c) => c.value === value)
+            setValue('typeKey', picked?.typeKey ?? '')
+            setValue('variantKey', picked?.variantKey ?? '')
           }}
         >
           <Select.Trigger aria-label={translate(STRING.JOB_FIELD_TYPE)}>
-            <Select.Value />
+            <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
           </Select.Trigger>
           <Select.Content>
-            {jobTypes.map((t) => (
-              <Select.Item key={t.key} value={t.key} disabled={!t.allowed}>
-                {t.allowed
-                  ? t.name
-                  : `${t.name} (${translate(STRING.JOB_NOT_PERMITTED)})`}
-              </Select.Item>
+            {groups.map((group) => {
+              const inGroup = choices.filter((c) => c.group === group.key)
+              return inGroup.length ? (
+                <Select.Group key={group.key}>
+                  <Select.Label>{group.label}</Select.Label>
+                  {inGroup.map((c) => (
+                    <ChoiceItem key={c.value} choice={c} />
+                  ))}
+                </Select.Group>
+              ) : null
+            })}
+            {ungrouped.map((c) => (
+              <ChoiceItem key={c.value} choice={c} />
             ))}
           </Select.Content>
         </Select.Root>
       </InputContent>
-      {jobType?.variant_key ? (
-        <InputContent
-          label={translate(STRING.JOB_FIELD_METHOD)}
-          description={variant?.description}
-        >
-          <Select.Root
-            value={variantKey}
-            onValueChange={(value) => setValue('variantKey', value)}
-          >
-            <Select.Trigger aria-label={translate(STRING.JOB_FIELD_METHOD)}>
-              <Select.Value
-                placeholder={translate(STRING.SELECT_PLACEHOLDER)}
-              />
-            </Select.Trigger>
-            <Select.Content>
-              {jobType.variants.map((v) => (
-                <Select.Item key={v.key} value={v.key}>
-                  {v.name}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
-        </InputContent>
-      ) : null}
       {variantReady ? (
         <>
           {configFields.length ? (
             <>
-              {variant ? (
-                <Divider
-                  label={translate(STRING.JOB_SETTINGS_DIVIDER, {
-                    method: variant.name,
-                  })}
-                />
-              ) : null}
               {mainFields.map((field) => renderField(field))}
               {moreFields.length ? (
                 <div className="flex flex-col gap-6">
@@ -319,7 +340,7 @@ const CreateJobForm = ({
 export const CreateJobDialog = () => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
-  const { jobTypes, isLoading, error } = useJobTypes(projectId)
+  const { jobTypes, groups, isLoading, error } = useJobTypes(projectId)
 
   // The previous dialog stays reachable if the job types request fails.
   if (error) {
@@ -342,6 +363,7 @@ export const CreateJobDialog = () => {
           ) : (
             <CreateJobForm
               jobTypes={jobTypes}
+              groups={groups ?? []}
               projectId={projectId as string}
               onCancel={() => setIsOpen(false)}
               onCreated={() =>
