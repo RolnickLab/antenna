@@ -5,7 +5,7 @@ import logging
 
 import numpy as np
 
-from ami.main.models import Detection
+from ami.main.models import DEFAULT_EMBEDDING_KEY, Detection
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
@@ -26,28 +26,26 @@ class EmbeddingDimensionMismatch(PipelineNotConfigured):
     """A vector's length differs from the length its algorithm has produced before."""
 
 
-def _check_embedding_dimensions(algorithm: Algorithm, lengths: set[int]) -> None:
-    """Refuse vectors whose length differs from the algorithm's, recording it on first sight.
+def _check_embedding_dimensions(lengths_by_pair: dict[tuple[Algorithm, str], set[int]]) -> None:
+    """Refuse vectors whose length differs from the one already stored for their (algorithm, key).
 
-    Vectors of different lengths can never be compared, so each algorithm keeps one length.
+    Vectors of different lengths can never be compared, so each (algorithm, key) keeps one length,
+    read from one existing row (an indexed lookup per pair). With no row yet, the batch must agree.
     """
-    if algorithm.embedding_dimensions is None:
-        if len(lengths) > 1:
+    for (algorithm, key), lengths in lengths_by_pair.items():
+        stored = DetectionEmbedding.objects.stored_length(algorithm.pk, key)
+        if stored is None and len(lengths) > 1:
             raise EmbeddingDimensionMismatch(
-                f"Algorithm {algorithm.key} sent vectors of several lengths in one batch: {sorted(lengths)}"
+                f"Algorithm {algorithm.key} sent vectors of several lengths under key '{key}' in one batch: "
+                f"{sorted(lengths)}"
             )
-        (length,) = lengths
-        # Conditional update: the first batch to record a length wins over a concurrent one.
-        Algorithm.objects.filter(pk=algorithm.pk, embedding_dimensions__isnull=True).update(
-            embedding_dimensions=length
-        )
-        algorithm.refresh_from_db(fields=["embedding_dimensions"])
-    wrong = lengths - {algorithm.embedding_dimensions}
-    if wrong:
-        raise EmbeddingDimensionMismatch(
-            f"Algorithm {algorithm.key} produces {algorithm.embedding_dimensions}-dimension vectors; "
-            f"refusing vectors of length {sorted(wrong)}."
-        )
+        expected = stored if stored is not None else next(iter(lengths))
+        wrong = lengths - {expected}
+        if wrong:
+            raise EmbeddingDimensionMismatch(
+                f"Algorithm {algorithm.key} produces {expected}-dimension vectors under key '{key}'; "
+                f"refusing vectors of length {sorted(wrong)}."
+            )
 
 
 def create_detection_embeddings(
@@ -80,7 +78,7 @@ def create_detection_embeddings(
         if detection.bbox is not None
     }
     embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
-    lengths_by_algorithm: dict[str, set[int]] = collections.defaultdict(set)
+    lengths_by_pair: dict[tuple[Algorithm, str], set[int]] = collections.defaultdict(set)
     unmatched = not_finite = 0
     for detection_resp in detection_responses:
         if detection_resp.bbox is None or not detection_resp.embeddings:
@@ -101,13 +99,16 @@ def create_detection_embeddings(
             if not np.isfinite(as_half_precision(embedding_resp.features)).all():
                 not_finite += 1
                 continue
-            lengths_by_algorithm[algorithm.key].add(len(embedding_resp.features))
+            lengths_by_pair[(algorithm, DEFAULT_EMBEDDING_KEY)].add(len(embedding_resp.features))
             embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
-                detection=detection, algorithm=algorithm, vector=embedding_resp.features, job_id=job_id
+                detection=detection,
+                algorithm=algorithm,
+                key=DEFAULT_EMBEDDING_KEY,
+                vector=embedding_resp.features,
+                job_id=job_id,
             )
 
-    for key, lengths in lengths_by_algorithm.items():
-        _check_embedding_dimensions(algorithms_known[key], lengths)
+    _check_embedding_dimensions(lengths_by_pair)
 
     if unmatched:
         logger.warning(f"Skipped the vectors of {unmatched} returned boxes that match no stored detection.")

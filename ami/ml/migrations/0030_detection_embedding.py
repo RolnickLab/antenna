@@ -1,5 +1,5 @@
-# Additive: an empty table and a nullable column. The vector column is stored uncompressed out of
-# line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1453.
+# Additive: an empty table. The vector column is stored uncompressed out of
+# line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1462.
 
 import django.db.models.deletion
 import django.utils.timezone
@@ -15,15 +15,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="algorithm",
-            name="embedding_dimensions",
-            field=models.PositiveIntegerField(
-                blank=True,
-                help_text="The length of the feature vectors this algorithm has stored. Set from the first vector stored; vectors of any other length are refused, because they could not be compared.",
-                null=True,
-            ),
-        ),
         migrations.CreateModel(
             name="DetectionEmbedding",
             fields=[

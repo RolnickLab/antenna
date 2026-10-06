@@ -2,7 +2,7 @@
 
 Vectors from different algorithms, or under different keys of one algorithm, are not
 comparable, so every reader here is keyed by algorithm and key. ``DetectionEmbedding`` holds
-one row per (detection, algorithm, key). See #1453.
+one row per (detection, algorithm, key). See #1462.
 """
 
 from __future__ import annotations
