@@ -101,6 +101,15 @@ class AlgorithmResultQuerySet(BaseQuerySet):
         if not absorbed_ids:
             return 0
         with transaction.atomic():
+            # Lock in primary-key order, as record_many does, so a run recording a result on these
+            # occurrences waits for the merge instead of adding a second current result.
+            list(
+                apps.get_model("main", "Occurrence")
+                .objects.select_for_update()
+                .filter(pk__in={kept.pk, *absorbed_ids})
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
             current_keys = set(self.filter(occurrence=kept, is_current=True).values_list("algorithm_id", "kind"))
             demote: list[int] = []
             for pk, algorithm_id, kind in (
