@@ -231,9 +231,6 @@ export const Species = () => {
               isLoading={!id && !verifyOccurrenceId && isLoading}
               items={species}
               onSortSettingsChange={setSort}
-              rowClassName={(item) =>
-                item.numVerified > 0 ? 'opacity-50' : undefined
-              }
               sortable
               sortSettings={sort}
             />
