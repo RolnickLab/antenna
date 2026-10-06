@@ -43,11 +43,11 @@ claiming a query is cheap.
 
 | # | Need | Function | SQL shape | Index |
 |---|---|---|---|---|
-| Q1 | Vectors of one model for some detections (tracking over adjacent captures, retraining on verified detections) | `vectors_for_detections(ids, algorithm_id, key)` | `detection_id = ANY(..) AND algorithm_id = A AND key = K` | unique (detection, algorithm, key); `detection_id` leads |
-| Q2 | Occurrences sorted by similarity to one occurrence | `OccurrenceQuerySet.with_visual_similarity()` using `representative_embeddings()` | per occurrence, the representative detection's vector, then cosine distance | Q1's index per occurrence; an exact scan |
+| Q1 | Vectors of one model for some detections (tracking over adjacent captures, retraining on verified detections) | `vectors_for_detections(ids, algorithm_id, key)` | `detection_id = ANY(..) AND algorithm_id = A AND key = K` | unique (detection, algorithm, key) for a few captures' worth; for thousands of ids the planner may prefer (algorithm, key, detection) or a sequential scan, measured at 12-26 ms for 5,000 ids on a 450k-row table |
+| Q2 | Occurrences sorted by similarity to one occurrence | `OccurrenceQuerySet.with_visual_similarity()` using `representative_embeddings()` | per occurrence, the representative detection's vector, then cosine distance | (algorithm, key, detection), probed once per occurrence; an exact scan |
 | Q3 | All of one model's vectors in a project (exports, clustering) | `project_vectors(project_id, algorithm_id, key, detection_ids=None, chunk_size=2000)` | `project_id = P AND algorithm_id = A AND key = K AND detection_id > last ORDER BY detection_id LIMIT n` | (project, algorithm, key, detection): rows come out in order, so no sort |
-| Q4 | Which models have vectors in a project, and how many | `vector_counts_by_algorithm(project_id, key=None)`, `algorithm_with_most_vectors(project)` | `GROUP BY algorithm_id, key` within a project | the same index |
-| Q5 | Detections that still lack a vector from a model | `detections_missing_vectors(detections, algorithm_id, key)` | `NOT EXISTS` on (detection, algorithm, key) added to the caller's queryset | unique index |
+| Q4 | Which models have vectors in a project, and how many | `vector_counts_by_algorithm(project_id, key=None)`, `algorithm_with_most_vectors(project)` | `GROUP BY algorithm_id, key` within a project | the same index (index-only); when one project holds most of the table the planner may scan the table instead, measured at 36 ms for 359k rows |
+| Q5 | Detections that still lack a vector from a model | `detections_missing_vectors(detections, algorithm_id, key)` | `NOT EXISTS` on (detection, algorithm, key) added to the caller's queryset | (algorithm, key, detection), index-only |
 | Q6 | Nearest neighbours of one vector, when exact scans are too slow | not shipped | `ORDER BY vector::halfvec(D) <=> seed` within one (algorithm, key) | a partial HNSW index per (algorithm, key), see below |
 
 `project_vectors` pages with `detection_id > last` rather than `OFFSET`, so every page costs the
