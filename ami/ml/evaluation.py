@@ -15,9 +15,9 @@ import collections
 import logging
 import typing
 
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 
-from ami.main.models import Classification, Occurrence, OccurrenceSet
+from ami.main.models import Classification, Identification, Occurrence, OccurrenceSet, Taxon
 from ami.ml.models.algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
@@ -27,17 +27,51 @@ class NothingToScore(Exception):
     """The set holds no occurrence this algorithm was asked about."""
 
 
-def predictable_taxa(algorithm: Algorithm) -> set[str]:
-    """The species names this algorithm can answer with."""
+def predictable_taxon_ids(algorithm: Algorithm) -> set[int]:
+    """
+    The taxa this algorithm can answer with, as ids.
+
+    Resolved to taxa rather than compared as strings. A category map label is the name the
+    model was trained under, which is not always the name the taxon is stored under here,
+    so comparing the two as text silently drops every species whose spelling or authorship
+    differs and makes the model look like it was never asked about them.
+
+    The lookup matches AlgorithmCategoryMap.with_taxa so the two cannot disagree about
+    which label means which taxon: by name, or by any name the taxon is also known as.
+    """
     if not algorithm.category_map:
         return set()
-    return {str(label) for label in (algorithm.category_map.labels or [])}
+    labels = [str(label) for label in (algorithm.category_map.labels or [])]
+    if not labels:
+        return set()
+    return set(
+        Taxon.objects.filter(
+            Q(name__in=labels) | Q(search_names__overlap=labels),
+            active=True,
+        ).values_list("pk", flat=True)
+    )
 
 
 def occurrences_to_score(occurrence_set: OccurrenceSet, algorithm: Algorithm) -> QuerySet[Occurrence]:
-    """Occurrences in the set that carry a human determination."""
+    """
+    Occurrences in the set that a person has identified.
+
+    The filter is on the identification rather than on determination being set, because
+    update_occurrence_determination falls back to the top prediction when nobody has
+    identified an occurrence. Filtering on determination alone therefore scores an
+    algorithm against its own guess, which reads as perfect accuracy.
+
+    Truth is still read off determination: for an identified occurrence that is the
+    identification's taxon, and it is how the rest of the platform counts a verification
+    (see verified_taxon_counts).
+    """
     return (
-        occurrence_set.occurrences.filter(determination__isnull=False).select_related("determination").order_by("pk")
+        occurrence_set.occurrences.filter(
+            Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)),
+            determination__isnull=False,
+        )
+        .select_related("determination")
+        .order_by("pk")
     )
 
 
@@ -71,11 +105,11 @@ def score(occurrence_set: OccurrenceSet, algorithm: Algorithm) -> dict[str, typi
     out. Raises NothingToScore when the algorithm has never run on the set, so that reads
     as a missing step rather than an accuracy of zero.
     """
-    answerable = predictable_taxa(algorithm)
+    answerable = predictable_taxon_ids(algorithm)
     if not answerable:
         raise NothingToScore(
-            f"Algorithm '{algorithm.key}' has no category map, so there is no way to know "
-            "which species it was asked about."
+            f"Algorithm '{algorithm.key}' has no category map whose labels match a taxon here, "
+            "so there is no way to know which species it was asked about."
         )
 
     occurrences = list(occurrences_to_score(occurrence_set, algorithm))
@@ -98,7 +132,7 @@ def score(occurrence_set: OccurrenceSet, algorithm: Algorithm) -> dict[str, typi
 
     for occurrence in occurrences:
         truth = occurrence.determination
-        if truth.name not in answerable:
+        if truth.pk not in answerable:
             skipped += 1
             continue
         predicted = predictions.get(occurrence.pk)
@@ -118,12 +152,18 @@ def score(occurrence_set: OccurrenceSet, algorithm: Algorithm) -> dict[str, typi
         raise NothingToScore(f"None of the species in '{occurrence_set.name}' are ones '{algorithm.key}' can predict.")
 
     accuracies = [b["correct"] / b["scored"] for b in per_taxon.values() if b["scored"]]
+    # The denominators an accuracy has to be read against. A head that answers for 749
+    # species can score 1.00 on the six of them this set happens to contain, and without
+    # these two numbers nothing on the page says so.
+    species_in_set = len({occurrence.determination_id for occurrence in occurrences})
     return {
         "micro_accuracy": correct / scored,
         "macro_accuracy": sum(accuracies) / len(accuracies),
         "occurrences_scored": scored,
         "occurrences_skipped": skipped,
         "species_scored": len(per_taxon),
+        "species_in_set": species_in_set,
+        "species_predictable": len(answerable),
         "per_taxon": [
             {
                 "taxon": bucket["taxon"],

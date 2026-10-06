@@ -1122,6 +1122,12 @@ class EvaluateAlgorithmJob(JobType):
             f"{result['micro_accuracy']:.3f} overall, {result['macro_accuracy']:.3f} averaged over "
             f"{result['species_scored']} species"
         )
+        # Said out loud because an accuracy over a handful of species reads the same as one
+        # over all of them. A score on 6 of 749 is a fact about this set, not about the model.
+        job.logger.info(
+            f"Scored {result['species_scored']} of the {result['species_in_set']} species in the set; "
+            f"{algorithm.key} can answer for {result['species_predictable']}."
+        )
         if result["occurrences_skipped"]:
             job.logger.info(
                 f"{result['occurrences_skipped']} occurrence(s) were left out: their species is not one "
@@ -1130,7 +1136,10 @@ class EvaluateAlgorithmJob(JobType):
         job.progress.add_stage_param(cls.STAGE_SCORE, "Accuracy", round(result["micro_accuracy"], 3))
         job.progress.add_stage_param(cls.STAGE_SCORE, "Averaged over species", round(result["macro_accuracy"], 3))
         job.progress.add_stage_param(cls.STAGE_SCORE, "Occurrences scored", result["occurrences_scored"])
-        job.progress.add_stage_param(cls.STAGE_SCORE, "Species", result["species_scored"])
+        job.progress.add_stage_param(
+            cls.STAGE_SCORE, "Species", f"{result['species_scored']} of {result['species_in_set']} in set"
+        )
+        job.progress.add_stage_param(cls.STAGE_SCORE, "Species the model knows", result["species_predictable"])
         job.progress.update_stage(cls.STAGE_SCORE, status=JobState.SUCCESS, progress=1)
         job.result = {"evaluation_id": stored.pk, "micro_accuracy": result["micro_accuracy"]}
         job.finished_at = datetime.datetime.now()

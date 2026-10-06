@@ -29,6 +29,7 @@ from ami.main.models import (
     Taxon,
     TaxonRank,
     group_images_into_events,
+    update_occurrence_determination,
 )
 from ami.ml import reporting, training_data
 from ami.ml.models import (
@@ -4023,6 +4024,91 @@ class TestAlgorithmEvaluation(TestCase):
 
         result = evaluation.score(self.occurrence_set, self.algorithm)
         self.assertEqual(result["micro_accuracy"], 0.5)
+
+    def _unverified_occurrence(self, predicted, index=0):
+        """One occurrence nobody has identified, carrying only this algorithm's prediction."""
+        image = SourceImage.objects.create(
+            path=f"un{index}-{predicted.pk}-2024010200{index:02d}00.jpg", project=self.project
+        )
+        detection = Detection.objects.create(source_image=image, bbox=[0, 0, 10, 10])
+        occurrence = detection.associate_new_occurrence()
+        Classification.objects.create(
+            detection=detection,
+            taxon=predicted,
+            algorithm=self.algorithm,
+            score=0.9,
+            timestamp=datetime.datetime.now(),
+            category_map=self.category_map,
+        )
+        # What Pipeline.save_results does for every detection it classifies
+        # (ami/ml/models/pipeline.py). Without it the fallback never runs and the
+        # occurrence would be skipped for having no determination at all.
+        update_occurrence_determination(occurrence)
+        self.occurrence_set.occurrences.add(occurrence)
+        return occurrence
+
+    def test_an_occurrence_nobody_identified_is_not_scored(self):
+        """
+        Without an identification the determination is the algorithm's own prediction, so
+        scoring it would compare the algorithm against itself and always agree.
+        """
+        from ami.ml import evaluation
+
+        unverified = self._unverified_occurrence(predicted=self.taxa[0], index=0)
+        self._occurrence(truth=self.taxa[1], predicted=self.taxa[0], index=1)
+
+        unverified.refresh_from_db()
+        self.assertEqual(unverified.determination, self.taxa[0], "determination should fall back to the prediction")
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["occurrences_scored"], 1, "only the identified occurrence counts")
+        self.assertEqual(result["micro_accuracy"], 0.0, "the one real comparison is wrong")
+
+    def test_a_withdrawn_identification_does_not_count_as_verification(self):
+        """Withdrawing an identification takes the occurrence back out of the scored set."""
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=0)
+        withdrawn = self._occurrence(truth=self.taxa[1], predicted=self.taxa[1], index=1)
+        withdrawn.identifications.update(withdrawn=True)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["occurrences_scored"], 1)
+
+    def test_a_label_matching_an_alternate_name_is_still_scored(self):
+        """
+        A category map label is the name the model was trained under. Matching it as text
+        against the stored name drops the species; matching by taxon does not.
+        """
+        from ami.ml import evaluation
+
+        renamed = Taxon.objects.create(
+            name="Evaluus gamma",
+            rank=TaxonRank.SPECIES.name,
+            search_names=["Evaluus gamma", "Evaluus gamma Smith, 1899"],
+        )
+        self.category_map.labels = [*self.category_map.labels, "Evaluus gamma Smith, 1899"]
+        self.category_map.data = [{"index": i, "label": label} for i, label in enumerate(self.category_map.labels)]
+        self.category_map.save()
+
+        self.assertIn(renamed.pk, evaluation.predictable_taxon_ids(self.algorithm))
+
+        self._occurrence(truth=renamed, predicted=renamed, index=5)
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["occurrences_scored"], 1, "the renamed species is answerable, not skipped")
+        self.assertEqual(result["occurrences_skipped"], 0)
+
+    def test_the_score_reports_what_it_was_measured_over(self):
+        """An accuracy over a few species reads the same as one over all of them."""
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=0)
+        self._occurrence(truth=self.outsider_taxon, predicted=self.taxa[0], index=1)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["species_scored"], 1)
+        self.assertEqual(result["species_in_set"], 2, "both identified species count toward the set")
+        self.assertEqual(result["species_predictable"], 2, "the two taxa in the category map")
 
     def test_species_the_algorithm_cannot_predict_are_left_out(self):
         """Counting those wrong would punish a regional head for a question nobody asked it."""
