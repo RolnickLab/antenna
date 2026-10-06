@@ -55,7 +55,10 @@ export const Species = () => {
     'created-at': false,
     'updated-at': false,
   })
-  const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
+  const { sort, setSort } = useSort({
+    field: 'occurrences_count',
+    order: 'desc',
+  })
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
