@@ -18,13 +18,13 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { Ref } from 'utils/references'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 import {
   HistoryStat,
   HistoryStats,
   HistoryTime,
+  getRefLabel,
   HistoryTypeBadge,
   RefValue,
 } from './history-stats'
@@ -47,18 +47,6 @@ const formatSettingValue = (value: unknown) => {
   }
 
   return typeof value === 'object' ? JSON.stringify(value) : `${value}`
-}
-
-/** A reference's name, or its id when the record was deleted. */
-const getRefLabel = (reference?: Ref) => {
-  if (!reference) {
-    return translate(STRING.VALUE_NOT_AVAILABLE)
-  }
-
-  return (
-    reference.name ??
-    translate(STRING.HISTORY_RECORD_ID, { id: `${reference.id}` })
-  )
 }
 
 /** The card's subtitle: for class masking the classifier and species list, otherwise the algorithm's name. */
