@@ -950,8 +950,8 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         return response
 
 
-class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
-    """Sends a whole project's capture set choices in one response.
+class ChoicesPagination(LimitOffsetPaginationWithPermissions):
+    """Sends a dropdown's choices in one response. Used by the capture set and job choices.
 
     Dropdowns cannot page, so the limit is set here rather than by each caller. It is
     capped as well as defaulted, so no caller can ask for a larger one.
@@ -1039,11 +1039,12 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         Returns only what those consumers need to name a capture set, most recently
         updated first, and enough of them that a dropdown never has to page. A project
         with more capture sets than the cap needs the search field in #1380.
+        ``JobViewSet.choices`` (ami/jobs/views.py) follows the same pattern.
         """
         # Sorting by a count would fail here, since the counts are never annotated.
         self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]
         queryset = self.filter_queryset(self.get_queryset())
-        paginator = CaptureSetChoicesPagination()
+        paginator = ChoicesPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = SourceImageCollectionNestedSerializer(page, many=True, context=self.get_serializer_context())
         return paginator.get_paginated_response(serializer.data)
@@ -1456,10 +1457,29 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceJobFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences created or updated by a job.
+    """
+
+    query_param = "job"
+
+    def filter_queryset(self, request, queryset, view):
+        job_id = SingleParamSerializer[int].clean(
+            param_name=self.query_param,
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=request.query_params,
+        )
+        if job_id is None:
+            return queryset
+        return queryset.created_or_updated_by_job(job_id)
+
+
 OCCURRENCE_FILTER_BACKENDS = (
     CustomOccurrenceDeterminationFilter,
     OccurrenceCollectionFilter,
     OccurrenceAlgorithmFilter,
+    OccurrenceJobFilter,
     OccurrenceDateFilter,
     OccurrenceVerified,
     OccurrenceVerifiedByMeFilter,
@@ -1563,6 +1583,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="collection_id",
                 description="Filter occurrences by the capture set their detections' captures belong to.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="job",
+                description="Filter occurrences created or updated by a job.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),
@@ -2224,8 +2250,9 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset()
         # Annotate with taxa count for better performance
         qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
-        # is_managed, the nested algorithms list and copied_from must not cost a query per row.
-        qs = qs.with_is_managed().prefetch_related("algorithms").select_related("copied_from")
+        # is_managed, the nested algorithms list, copied_from, get_projects() and the
+        # membership check in add_m2m_object_permissions() must not cost a query per row.
+        qs = qs.with_is_managed().prefetch_related("algorithms", "projects").select_related("copied_from")
         project = self.get_active_project()
         if not project:
             return qs
