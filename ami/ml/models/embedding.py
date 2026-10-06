@@ -127,16 +127,22 @@ class DetectionEmbedding(BaseModel):
     the writer against an existing row. See #1462.
     """
 
-    # The three foreign keys below have no single-column index of their own: the unique constraint
-    # leads with detection, and the Meta indexes lead with algorithm and with project. Extra
-    # single-column indexes would only cost writes and mislead the planner.
+    # None of the four foreign keys has a single-column index of its own: the unique constraint
+    # leads with detection, and the Meta indexes lead with algorithm, with project and with job
+    # (partial: a vector whose job was deleted has no job left to look up). Extra single-column
+    # indexes would only cost writes and mislead the planner.
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
     algorithm = models.ForeignKey(
         "ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
     )
     # The job whose results stored the vector. Deleting the job keeps the vector.
     job = models.ForeignKey(
-        "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="detection_embeddings"
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="detection_embeddings",
+        db_index=False,
     )
     # Copied from the detection's capture (see fill_embedding_project_ids) so project queries need no join.
     project = models.ForeignKey(
@@ -154,6 +160,8 @@ class DetectionEmbedding(BaseModel):
             models.Index(fields=["project", "algorithm", "key", "detection"], name="ml_detemb_proj_algo_key_det"),
             # The writer's per-model length lookup: the first row of a pair, by detection, with or without rows.
             models.Index(fields=["algorithm", "key", "detection"], name="ml_detemb_algo_key"),
+            # "Occurrences this job touched" looks up a job's vectors by job, then detection.
+            models.Index(fields=["job", "detection"], name="ml_detemb_job_det", condition=models.Q(job__isnull=False)),
         ]
         constraints = [
             models.CheckConstraint(check=~models.Q(key=""), name="%(app_label)s_%(class)s_key_not_empty"),
