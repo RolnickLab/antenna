@@ -24,15 +24,16 @@ def enable(project: Project, *flags: str) -> None:
 
 
 class JobTypesTestBase(APITestCase):
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
         owner = User.objects.create_user(email="owner@insectai.org")
-        self.project = Project.objects.create(name="Job types project", owner=owner)
-        self.other_project = Project.objects.create(name="Other project", owner=owner)
-        self.basic = User.objects.create_user(email="basic@insectai.org")
-        BasicMember.assign_user(self.basic, self.project)
-        self.ml_manager = User.objects.create_user(email="ml@insectai.org")
-        MLDataManager.assign_user(self.ml_manager, self.project)
-        self.superuser = User.objects.create_user(email="super@insectai.org", is_staff=True, is_superuser=True)
+        cls.project = Project.objects.create(name="Job types project", owner=owner)
+        cls.other_project = Project.objects.create(name="Other project", owner=owner)
+        cls.basic = User.objects.create_user(email="basic@insectai.org")
+        BasicMember.assign_user(cls.basic, cls.project)
+        cls.ml_manager = User.objects.create_user(email="ml@insectai.org")
+        MLDataManager.assign_user(cls.ml_manager, cls.project)
+        cls.superuser = User.objects.create_user(email="super@insectai.org", is_staff=True, is_superuser=True)
 
     def get_types(self, user, project_id=None) -> dict:
         self.client.force_authenticate(user=user)
@@ -111,14 +112,15 @@ class TestJobTypesEndpoint(JobTypesTestBase):
 class TestCreateJobWithParams(JobTypesTestBase):
     """POST /jobs/ checks a job's settings against its job type before the job is stored."""
 
-    def setUp(self):
-        super().setUp()
-        self.collection = SourceImageCollection.objects.create(name="Mine", project=self.project)
-        self.other_collection = SourceImageCollection.objects.create(name="Theirs", project=self.other_project)
-        self.taxa_list = TaxaList.objects.create(name="Keep")
-        self.taxa_list.projects.add(self.project)
-        self.algorithm = Algorithm.objects.create(name="Classifier", key="classifier")
-        enable(self.project, "class_masking")
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.collection = SourceImageCollection.objects.create(name="Mine", project=cls.project)
+        cls.other_collection = SourceImageCollection.objects.create(name="Theirs", project=cls.other_project)
+        cls.taxa_list = TaxaList.objects.create(name="Keep")
+        cls.taxa_list.projects.add(cls.project)
+        cls.algorithm = Algorithm.objects.create(name="Classifier", key="classifier")
+        enable(cls.project, "class_masking")
 
     def post_job(self, user, **body):
         self.client.force_authenticate(user=user)
