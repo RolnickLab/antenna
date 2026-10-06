@@ -86,7 +86,8 @@ def make_classifications_filtered_by_taxa_list(
     Every occurrence with a re-scored classification gets one algorithm result, written in
     the same transaction as the batch that changes it, and its new classifications point at
     that result (see ``AlgorithmResultWriter``). The result records the probability the list excluded
-    and the source's original top prediction for the occurrence's winning detection.
+    for the occurrence's winning detection; the original top prediction is the classification
+    the winning one replaced (``applied_to``).
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
