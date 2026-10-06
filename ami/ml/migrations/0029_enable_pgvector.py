@@ -40,7 +40,7 @@ def check_pgvector_is_installed(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0095_grant_sync_deployment_to_mldatamanager"),
+        ("ml", "0028_normalize_empty_endpoint_url_to_null"),
     ]
 
     operations = [

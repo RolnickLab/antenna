@@ -12,7 +12,8 @@ from collections.abc import Iterable
 import numpy as np
 from django.db.models import Count
 
-from ami.main.models import DEFAULT_EMBEDDING_KEY, DetectionEmbedding, Project, as_half_precision
+from ami.main.models import DEFAULT_EMBEDDING_KEY, Project
+from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
 
 
 def vectors_for_detections(

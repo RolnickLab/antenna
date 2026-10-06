@@ -12,8 +12,8 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from ami.main.models import DetectionEmbedding, Occurrence, Project
-from ami.ml.models import Algorithm
+from ami.main.models import Occurrence, Project
+from ami.ml.models import Algorithm, DetectionEmbedding
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
 
