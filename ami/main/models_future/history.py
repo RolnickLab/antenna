@@ -15,7 +15,7 @@ import typing
 from ami.main.models import Classification, Identification, Occurrence, Taxon, User
 from ami.main.models_future.references import Ref, job_setting_references, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.results.schemas import reference_fields
+from ami.ml.results.schemas import reference_fields, result_kinds
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -165,10 +165,12 @@ def _resolve_entry_references(entries: list[OccurrenceTimelineEntry]) -> None:
     job_refs = {
         id(entry): job_setting_references(_job_settings(entry.job)) for entry in entries if entry.job is not None
     }
+    # A stored kind may no longer be registered (renamed, or written by another branch); it names no references.
+    kinds = set(result_kinds())
     data_refs = {
         id(entry): [
             (field, ref_type, entry.data[field])
-            for field, ref_type in reference_fields(entry.kind).items()
+            for field, ref_type in (reference_fields(entry.kind) if entry.kind in kinds else {}).items()
             if isinstance(entry.data.get(field), int)
         ]
         for entry in entries

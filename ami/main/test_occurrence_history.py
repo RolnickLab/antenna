@@ -607,3 +607,31 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
         self.assertIsNone(entry.job)
         self.assertEqual(entry.job_references, {})
+
+    def test_a_result_of_a_kind_no_longer_registered_still_shows_in_the_history(self):
+        """A row written by a branch with an extra kind, or before a kind was renamed, must not break the history."""
+        result = AlgorithmResult.objects.record(
+            occurrence=self.occurrence, algorithm=self.size_filter, kind=SIZE_FILTER, data={"relative_size": 0.001}
+        )
+        AlgorithmResult.objects.filter(pk=result.pk).update(kind="tracking")
+        entry = next(e for e in self.get() if e["type"] == "algorithm_result")
+        self.assertEqual(entry["kind"], "tracking")
+        self.assertEqual(entry["data_references"], {})
+
+
+class ClassificationAdminTestCase(OccurrenceFixtureTestCase):
+    """The classification change page must not preload every algorithm result into a select."""
+
+    def test_the_algorithm_result_field_is_a_raw_id_input(self):
+        superuser = User.objects.create_superuser(email="admin-history@insectai.org")  # type: ignore
+        algorithm = Algorithm.objects.create(name="Size filter", key="size-filter-admin-test")
+        result = AlgorithmResult.objects.record(
+            occurrence=self.occurrence, algorithm=algorithm, kind=SIZE_FILTER, data={"relative_size": 0.001}
+        )
+        classification = Classification.objects.get(detection=self.detections[0])
+        Classification.objects.filter(pk=classification.pk).update(algorithm_result=result)
+        self.client.force_login(superuser)
+        response = self.client.get(f"/admin/main/classification/{classification.pk}/change/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, '<select name="algorithm_result"')
+        self.assertContains(response, 'name="algorithm_result"')
