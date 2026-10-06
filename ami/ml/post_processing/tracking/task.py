@@ -5,6 +5,7 @@ this module reads and writes the database around them.
 """
 
 import collections
+import dataclasses
 import logging
 import typing
 from collections.abc import Iterable, Iterator, Sequence
@@ -24,12 +25,26 @@ from ami.main.models import (
     update_calculated_fields_for_sessions_and_stations,
     update_occurrence_determination,
 )
-from ami.ml.models import Algorithm
+from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.base import BasePostProcessingTask
 
 from .config import TrackingConfig
 from .matching import captures_too_far_apart, image_diagonal, select_links
 from .sessions import lock_sessions
+from .stats import occurrence_figures
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
+
+
+@dataclasses.dataclass
+class LinkedOccurrence:
+    """An occurrence the run built from a chain of two or more detections, or by merging occurrences."""
+
+    keeper: Occurrence
+    detections: list[Detection]
+    determination_before_id: int | None
+    merged_ids: list[int]
 
 
 def event_is_fresh(event: Event) -> tuple[bool, str]:
@@ -68,12 +83,18 @@ def processed_captures(event: Event) -> list[SourceImage]:
     )
 
 
-def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) -> Classification | None:
+def record_tracking_determination(
+    occurrence: Occurrence,
+    algorithm: Algorithm,
+    job: "Job | None" = None,
+    result: AlgorithmResult | None = None,
+) -> Classification | None:
     """Leave a terminal classification by the tracking algorithm after a merge changed the determination.
 
     The row carries the winning prediction and points back at it through ``applied_to``, the way
     class masking does, so the history shows what tracking decided. Nothing is written when the
-    winner already came from the tracking algorithm.
+    winner already came from the tracking algorithm. The row points at the run's ``job`` and at the
+    occurrence's tracking ``result`` so the history shows it under that result.
     """
     winner = occurrence.best_prediction
     if winner is None or winner.detection_id is None or winner.taxon_id is None:
@@ -88,19 +109,71 @@ def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) 
         algorithm=algorithm,
         timestamp=timezone.now(),
         applied_to=winner,
+        job=job,
+        algorithm_result=result,
     )
 
 
+def record_tracking_results(
+    linked: Sequence[LinkedOccurrence], algorithm: Algorithm, job: "Job | None"
+) -> dict[int, AlgorithmResult]:
+    """Write one tracking result per linked occurrence, keyed by occurrence id.
+
+    The figures are computed in memory from the chains' detections plus one query for their terminal
+    classifications. Classifications by the tracking algorithm itself are left out, since they repeat
+    the winner and would count as an extra vote. Call after the determinations have settled.
+    """
+    if not linked:
+        return {}
+    detection_ids = [d.pk for item in linked for d in item.detections]
+    labels: dict[int, list[int | None]] = collections.defaultdict(list)
+    for detection_id, taxon_id in (
+        Classification.objects.filter(detection_id__in=detection_ids, terminal=True)
+        .exclude(algorithm=algorithm)
+        .values_list("detection_id", "taxon_id")
+    ):
+        labels[detection_id].append(taxon_id)
+
+    results = []
+    for item in linked:
+        figures = occurrence_figures(
+            boxes=[d.bbox for d in item.detections],
+            sizes=[(d.source_image.width, d.source_image.height) for d in item.detections],
+            labels=[label for d in item.detections for label in labels.get(d.pk, [])],
+            determination_id=item.keeper.determination_id,
+        )
+        results.append(
+            AlgorithmResult(
+                occurrence=item.keeper,
+                algorithm=algorithm,
+                job=job,
+                kind=AlgorithmResult.Kind.TRACKING,
+                value=figures.motion,
+                data={
+                    **dataclasses.asdict(figures),
+                    "determination_before_id": item.determination_before_id,
+                    "determination_after_id": item.keeper.determination_id,
+                    "merged_occurrence_ids": item.merged_ids,
+                },
+            )
+        )
+    return {result.occurrence_id: result for result in AlgorithmResult.objects.record_many(results)}
+
+
 def assign_occurrences_from_detection_chains(
-    source_images: Sequence[SourceImage], logger: logging.Logger, record_as: Algorithm | None = None
+    source_images: Sequence[SourceImage],
+    logger: logging.Logger,
+    record_as: Algorithm | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Fold each chain of linked detections into one occurrence, keeping the first existing one.
 
     A chain never leaves the given captures, which belong to one session, so a link that crosses a
     session boundary starts a new chain on each side. Identifications move onto the keeper before the
     occurrences that held them are deleted, because deleting an occurrence deletes its identifications.
-    With ``record_as`` set, a merge that changes the keeper's determination leaves a classification by
-    that algorithm.
+    Results of the absorbed occurrences move onto the keeper first. With ``record_as`` set, every keeper
+    built from two or more detections or from a merge gets a tracking result, and a merge that changes
+    its determination leaves a classification by that algorithm, both attributed to ``job``.
     """
     image_ids = [image.pk for image in source_images]
     detections = list(
@@ -114,6 +187,8 @@ def assign_occurrences_from_detection_chains(
 
     visited: set[int] = set()
     created = merged = identifications_moved = determinations_recorded = 0
+    linked: dict[int, LinkedOccurrence] = {}
+    deleted: set[int] = set()
     existing = Occurrence.objects.filter(detections__source_image_id__in=image_ids).distinct().count()
 
     for det in detections:
@@ -148,21 +223,33 @@ def assign_occurrences_from_detection_chains(
         doomed = old_occ_ids - {keeper.pk}
         if doomed:
             identifications_moved += Identification.objects.filter(occurrence_id__in=doomed).update(occurrence=keeper)
+            # Deleting an occurrence deletes its results, so they move onto the keeper first.
+            AlgorithmResult.objects.move_to_occurrence(keeper, doomed)
             Occurrence.objects.filter(pk__in=doomed).delete()
+            deleted |= doomed
             merged += len(doomed)
 
         # Only the determination is written, so a column this run did not change keeps its stored value.
         if update_occurrence_determination(keeper, save=False):
             keeper.save(update_determination=False, update_fields=["determination", "determination_score"])
-        if record_as is not None and keeper.determination_id != previous_determination_id:
-            if record_tracking_determination(keeper, record_as) is not None:
-                determinations_recorded += 1
+        if record_as is not None and (len(chain) > 1 or doomed):
+            linked[keeper.pk] = LinkedOccurrence(keeper, chain, previous_determination_id, sorted(doomed))
+
+    results: dict[int, AlgorithmResult] = {}
+    if record_as is not None:
+        # A keeper that a later chain absorbed no longer exists.
+        final = [item for pk, item in linked.items() if pk not in deleted]
+        results = record_tracking_results(final, record_as, job)
+        for item in final:
+            if item.keeper.determination_id != item.determination_before_id:
+                if record_tracking_determination(item.keeper, record_as, job, results.get(item.keeper.pk)) is not None:
+                    determinations_recorded += 1
 
     new_count = Occurrence.objects.filter(detections__source_image_id__in=image_ids).distinct().count()
     logger.info(
         f"Created {created} occurrences and merged {merged} across {len(image_ids)} captures "
         f"(occurrences before: {existing}, after: {new_count}). Moved {identifications_moved} identification(s), "
-        f"recorded {determinations_recorded} determination change(s)."
+        f"recorded {len(results)} result(s) and {determinations_recorded} determination change(s)."
     )
     return {
         "occurrences_before": existing,
@@ -171,6 +258,7 @@ def assign_occurrences_from_detection_chains(
         "occurrences_merged": merged,
         "identifications_moved": identifications_moved,
         "determinations_recorded": determinations_recorded,
+        "results_recorded": len(results),
     }
 
 
@@ -221,6 +309,7 @@ def assign_occurrences_by_tracking_images(
     config: TrackingConfig,
     progress_cb: typing.Callable[[float], None] | None = None,
     record_as: Algorithm | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Link the detections of one session's processed captures and fold the chains into occurrences."""
     source_images = processed_captures(event)
@@ -244,7 +333,7 @@ def assign_occurrences_by_tracking_images(
                 links += len(proposed)
             if progress_cb:
                 progress_cb((i + 1) / transitions)
-        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as)
+        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as, job=job)
 
     counters["links_created"] = links
     counters["transitions_too_far_apart"] = skipped_for_interval
@@ -351,6 +440,7 @@ class TrackingTask(BasePostProcessingTask):
                     logger=self.logger,
                     config=self.config,
                     record_as=self.algorithm,
+                    job=self.job,
                     progress_cb=_stage_progress,
                 )
                 if not counters:
@@ -359,7 +449,7 @@ class TrackingTask(BasePostProcessingTask):
                     continue
                 totals["tracked"] += 1
                 tracked_event_ids.append(event.pk)
-                for key in ("links_created", "occurrences_merged", "transitions_too_far_apart"):
+                for key in ("links_created", "occurrences_merged", "results_recorded", "transitions_too_far_apart"):
                     totals[key] += counters.get(key, 0)
 
         # Merging occurrences changes the session and station counts, which no save refreshes.
@@ -371,6 +461,7 @@ class TrackingTask(BasePostProcessingTask):
             "Sessions skipped": totals["skipped"],
             "Detection links created": totals["links_created"],
             "Occurrences merged": totals["occurrences_merged"],
+            "Occurrences recorded": totals["results_recorded"],
         }
         if self.config.max_capture_interval_seconds is not None:
             metrics["Capture pairs too far apart to compare"] = totals["transitions_too_far_apart"]

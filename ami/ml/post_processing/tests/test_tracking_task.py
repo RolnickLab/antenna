@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Event, Identification, Occurrence, Taxon
-from ami.ml.models import Algorithm
+from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.ml.post_processing.tracking import TrackingTask
 from ami.ml.post_processing.tracking.task import assign_occurrences_from_detection_chains
@@ -211,6 +211,103 @@ class TestMerging(_TrackingCase):
         task = self.run_task(captures[0].event)
 
         self.assertEqual(Classification.objects.filter(algorithm=task.algorithm).count(), 1)
+
+
+class TestTrackingResults(_TrackingCase):
+    def make_job(self) -> Job:
+        job = Job.objects.create(name="t", project=self.project, job_type_key="post_processing")
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        return job
+
+    def test_each_linked_occurrence_gets_a_result_with_its_figures(self):
+        moving, still, lone = [100, 100, 200, 200], [700, 700, 800, 800], [400, 800, 420, 820]
+        captures = create_session(
+            self.deployment,
+            [[moving, still], [[110, 100, 210, 200], still], [[120, 100, 220, 200], still, lone]],
+            self.taxa[0],
+        )
+        event = captures[0].event
+        job = self.make_job()
+
+        task = self.run_task(event, job=job)
+
+        results = {r.occurrence_id: r for r in AlgorithmResult.objects.filter(kind="tracking")}
+        self.assertEqual(len(results), 2)
+        self.assertNotIn(captures[2].detections.get(bbox=lone).occurrence_id, results)
+        by_motion = sorted(results.values(), key=lambda r: r.value)
+        still_result, moving_result = by_motion
+        self.assertEqual(still_result.value, 0.0)
+        self.assertEqual(moving_result.value, 0.0141)
+        for result in by_motion:
+            self.assertEqual(
+                (result.job_id, result.algorithm_id, result.is_current), (job.pk, task.algorithm.pk, True)
+            )
+            self.assertEqual(result.project_id, self.project.pk)
+            self.assertEqual(result.data["detection_count"], 3)
+            self.assertEqual(result.data["size_ratio"], 1.0)
+            self.assertEqual(result.data["distinct_taxa"], 1)
+            self.assertEqual(result.data["id_agreement"], 1.0)
+            self.assertEqual(result.data["determination_after_id"], self.taxa[0].pk)
+            self.assertEqual(len(result.data["merged_occurrence_ids"]), 2)
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertEqual(params["Occurrences recorded"], 2)
+
+    def test_figures_follow_the_labels_and_boxes_of_the_merged_detections(self):
+        captures = create_session(self.deployment, [[[100, 100, 400, 400]], [[100, 100, 390, 400]]], self.taxa[0])
+        second = captures[1].detections.get()
+        Classification.objects.filter(detection=second).update(taxon=self.taxa[1], score=0.6)
+        second.occurrence.save()
+
+        self.run_task(captures[0].event)
+
+        result = AlgorithmResult.objects.get(kind="tracking")
+        self.assertEqual(result.data["distinct_taxa"], 2)
+        self.assertEqual(result.data["size_ratio"], round(300 * 300 / (290 * 300), 4))
+        self.assertEqual(result.data["id_agreement"], 0.5)
+        self.assertEqual(result.data["determination_before_id"], self.taxa[0].pk)
+
+    def test_the_determination_classification_points_at_the_job_and_the_result(self):
+        captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
+        for capture, taxon, score in zip(captures, self.taxa, (0.3, 0.9)):
+            Classification.objects.filter(detection__source_image=capture).update(taxon=taxon, score=score)
+            capture.detections.get().occurrence.save()
+        job = self.make_job()
+
+        task = self.run_task(captures[0].event, job=job)
+
+        record = Classification.objects.get(algorithm=task.algorithm)
+        result = AlgorithmResult.objects.get(kind="tracking")
+        self.assertEqual((record.job_id, record.algorithm_result_id), (job.pk, result.pk))
+        self.assertEqual(result.data["determination_after_id"], self.taxa[1].pk)
+        self.assertNotEqual(result.data["determination_before_id"], result.data["determination_after_id"])
+        # The tracking classification repeats the winner, so it is not counted as a label.
+        self.assertEqual(result.data["id_agreement"], 0.5)
+
+    def test_results_of_merged_occurrences_move_onto_the_keeper(self):
+        captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
+        first, second = (c.detections.get().occurrence for c in captures)
+        filter_algorithm = Algorithm.objects.create(name="Test filter", key="test-filter")
+        earlier = AlgorithmResult.objects.record(
+            occurrence=second, algorithm=filter_algorithm, kind="size_filter", data={"relative_size": 0.01}
+        )
+
+        self.run_task(captures[0].event)
+
+        earlier.refresh_from_db()
+        self.assertEqual((earlier.occurrence_id, earlier.is_current), (first.pk, True))
+        self.assertFalse(Occurrence.objects.filter(pk=second.pk).exists())
+        tracking = AlgorithmResult.objects.get(kind="tracking")
+        self.assertEqual(tracking.occurrence_id, first.pk)
+        self.assertEqual(tracking.data["merged_occurrence_ids"], [second.pk])
+
+    def test_a_session_without_links_records_no_results(self):
+        captures = create_session(self.deployment, [[[0, 0, 50, 50]], [[900, 900, 950, 950]]], self.taxa[0])
+
+        self.run_task(captures[0].event)
+
+        self.assertFalse(AlgorithmResult.objects.exists())
 
 
 class TestTrackingJobMetrics(_TrackingCase):

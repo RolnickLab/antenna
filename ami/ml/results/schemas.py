@@ -68,7 +68,29 @@ class SizeFilterResultData(DeterminationSnapshot):
     relative_size: float
 
 
-ALGORITHM_RESULT_DATA_MODELS: tuple[type[AlgorithmResultData], ...] = (ClassMaskingResultData, SizeFilterResultData)
+class TrackingResultData(DeterminationSnapshot):
+    """Figures from the detections the run linked into the occurrence, in capture order."""
+
+    kind: ClassVar[str] = "tracking"
+
+    detection_count: int
+    # Path length between consecutive detection centres, as a fraction of the image diagonal; 0 for a still insect.
+    motion: float
+    # The largest box area over the smallest, with areas floored at 1; 1 when the box never changed size.
+    size_ratio: float
+    # Distinct taxa among the terminal classifications of the occurrence's detections, from every algorithm.
+    distinct_taxa: int
+    # The share of those classifications naming the determination after the run; None when there are none.
+    id_agreement: float | None = None
+    # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.
+    merged_occurrence_ids: list[int] = []
+
+
+ALGORITHM_RESULT_DATA_MODELS: tuple[type[AlgorithmResultData], ...] = (
+    ClassMaskingResultData,
+    SizeFilterResultData,
+    TrackingResultData,
+)
 
 ALGORITHM_RESULT_DATA_SCHEMAS: dict[str, type[AlgorithmResultData]] = {
     model.kind: model for model in ALGORITHM_RESULT_DATA_MODELS
