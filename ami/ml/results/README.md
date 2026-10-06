@@ -19,6 +19,29 @@ This guide covers adding a result kind, using rank roll-up (draft #1361) as the 
 adding another kind of history entry. Adding a kind needs no migration, no serializer change and no
 OpenAPI change: it touches the data model, the task that writes it, and the UI card.
 
+## How results fit the post-processing framework
+
+The post-processing framework (`ami/ml/post_processing/`) runs a method over data Antenna already has.
+Algorithm results are its output side.
+
+- **Input:** a task subclasses `BasePostProcessingTask` (`base.py`) with a `key`, a `name` and a
+  pydantic `config_schema`, and is registered in `registry.py`. An admin action
+  (`admin/actions.py`, `make_post_processing_action`) creates a `post_processing` job whose params are
+  `{"task": <key>, "config": {...}}`. `PostProcessingJob.run` validates the config against the schema,
+  stores the validated config (defaults included) back on the job, and runs the task with
+  `self.job` and `self.algorithm` (one `Algorithm` row per method; class masking makes one per source
+  classifier and species list).
+- **Output:** what the task changes goes through the classifications it creates, each carrying its
+  `job`, its `algorithm_result` and, when it replaces one, `applied_to`. What it decided about each
+  occurrence goes into one algorithm result of the task's kind, written by `AlgorithmResultWriter` in
+  the same transaction as each batch.
+- **Shown together:** the history shows each result with the job's settings, labelled, ordered and
+  linked from the same `config_schema`. One schema therefore describes a task's settings for
+  validation, the admin form, the stored job and the result card.
+
+Results are not tied to the framework. A pipeline step that decides something per occurrence can write
+them the same way, with `AlgorithmResult.objects.record_many`.
+
 ## Adding a result kind
 
 ### 1. Describe the result's data
