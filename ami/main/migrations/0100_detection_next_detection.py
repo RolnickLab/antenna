@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0095_grant_sync_deployment_to_mldatamanager"),
+        ("main", "0099_classification_algorithm_result_index"),
     ]
 
     operations = [
