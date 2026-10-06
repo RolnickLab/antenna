@@ -49,6 +49,7 @@ class Migration(migrations.Migration):
                     "job",
                     models.ForeignKey(
                         blank=True,
+                        db_index=False,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="detection_embeddings",
@@ -87,6 +88,12 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="detectionembedding",
             index=models.Index(fields=["algorithm", "key", "detection"], name="ml_detemb_algo_key"),
+        ),
+        migrations.AddIndex(
+            model_name="detectionembedding",
+            index=models.Index(
+                condition=models.Q(("job__isnull", False)), fields=["job", "detection"], name="ml_detemb_job_det"
+            ),
         ),
         migrations.RunSQL(
             sql="ALTER TABLE ml_detectionembedding ALTER COLUMN vector SET STORAGE EXTERNAL",
