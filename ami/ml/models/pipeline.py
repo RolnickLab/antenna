@@ -40,7 +40,7 @@ from ami.main.models import (
 )
 from ami.ml.embeddings.writer import create_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -411,6 +411,22 @@ def process_images(
     return results
 
 
+def detection_request(detection: Detection, source_image_request: SourceImageRequest) -> DetectionRequest | None:
+    """The request form of a stored detection, or None when it has no box or no detector to name."""
+    bbox = detection.get_bbox()
+    if not bbox or not detection.detection_algorithm:
+        return None
+    return DetectionRequest(
+        source_image=source_image_request,
+        bbox=bbox,
+        crop_image_url=detection.url(),
+        algorithm=AlgorithmReference(
+            name=detection.detection_algorithm.name,
+            key=detection.detection_algorithm.key,
+        ),
+    )
+
+
 def collect_detections(
     source_image: SourceImage,
     source_image_request: SourceImageRequest,
@@ -418,24 +434,50 @@ def collect_detections(
     """
     Collect existing detections for a source image and send them with pipeline request.
     """
-    detection_requests: list[DetectionRequest] = []
     # Re-process all existing detections if they exist
-    for detection in source_image.detections.all():
-        bbox = detection.get_bbox()
-        if bbox and detection.detection_algorithm:
-            detection_requests.append(
-                DetectionRequest(
-                    source_image=source_image_request,
-                    bbox=bbox,
-                    crop_image_url=detection.url(),
-                    algorithm=AlgorithmReference(
-                        name=detection.detection_algorithm.name,
-                        key=detection.detection_algorithm.key,
-                    ),
-                )
-            )
+    built = (detection_request(detection, source_image_request) for detection in source_image.detections.all())
+    return [request for request in built if request is not None]
 
-    return detection_requests
+
+def process_detections(
+    pipeline: Pipeline,
+    endpoint_url: str,
+    detections: typing.Iterable[Detection],
+    project_id: int,
+) -> PipelineResultsResponse:
+    """Send stored detections, and only those, to a processing service in one synchronous request.
+
+    Serves feature-only pipelines, which embed the detections they are sent instead of detecting.
+    The detections' captures (``source_image`` with its deployment and data source) and detector
+    (``detection_algorithm``) should be loaded with the queryset, because each is read per detection.
+    A failed request raises ``requests.HTTPError`` rather than returning an empty response.
+    """
+    source_image_requests: dict[int, SourceImageRequest] = {}
+    detection_requests: list[DetectionRequest] = []
+    for detection in detections:
+        source_image = detection.source_image
+        url = source_image.public_url()
+        if not url:
+            continue
+        source_image_request = source_image_requests.setdefault(
+            source_image.pk, SourceImageRequest(id=str(source_image.pk), url=url)
+        )
+        request = detection_request(detection, source_image_request)
+        if request is not None:
+            detection_requests.append(request)
+
+    request_data = PipelineRequest(
+        pipeline=pipeline.slug,
+        source_images=list(source_image_requests.values()),
+        config=pipeline.get_config(project_id=project_id),
+        detections=detection_requests,
+    )
+    resp = create_session().post(endpoint_url, json=request_data.dict())
+    if not resp.ok:
+        raise requests.HTTPError(
+            f"Failed to process {request_data.summary()}: {extract_error_message_from_response(resp)}"
+        )
+    return PipelineResultsResponse(**resp.json())
 
 
 def get_or_create_algorithm_and_category_map(
@@ -1293,6 +1335,26 @@ class Pipeline(BaseModel):
             reprocess_all_images=reprocess_all_images,
         )
 
+    def embedding_algorithms(self) -> models.QuerySet[Algorithm]:
+        """The algorithms of this pipeline that produce feature vectors."""
+        return self.algorithms.filter(task_type=AlgorithmTaskType.EMBEDDING.value)
+
+    def is_embedding_only(self) -> bool:
+        """True when every algorithm of the pipeline produces feature vectors, and there is at least one.
+
+        Such a pipeline detects and classifies nothing, so it can only be run through the
+        "Add feature vectors" task, which stores vectors on detections that already exist.
+        """
+        algorithms = self.algorithms.all()
+        return bool(algorithms) and all(a.task_type == AlgorithmTaskType.EMBEDDING.value for a in algorithms)
+
+    def raise_if_embedding_only(self) -> None:
+        if self.is_embedding_only():
+            raise PipelineNotConfigured(
+                f'Pipeline "{self.name}" only produces feature vectors, so it cannot run as an ML job. '
+                'Use the "Add feature vectors" action on a capture set in the admin instead.'
+            )
+
     def choose_processing_service_for_pipeline(
         self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
@@ -1348,6 +1410,7 @@ class Pipeline(BaseModel):
         job_id: int | None = None,
         reprocess_all_images: bool = False,
     ) -> PipelineResultsResponse:
+        self.raise_if_embedding_only()
         processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
 
         if not processing_service.endpoint_url:
