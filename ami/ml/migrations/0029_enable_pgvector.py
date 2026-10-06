@@ -3,7 +3,7 @@
 # The extension package must already be installed on the PostgreSQL server (for example
 # the postgresql-16-pgvector package); CREATE EXTENSION only registers it in this database.
 # The check below runs before any SQL so a missing or outdated package stops the deploy
-# with one clear message instead of a Postgres error about a control file. See #1453.
+# with one clear message instead of a Postgres error about a control file. See #1462.
 
 from django.db import migrations
 

@@ -224,18 +224,26 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         self.assertEqual(list(replaced.vector), self.HIGH)
         self.assertGreater(replaced.updated_at, first.updated_at)
 
-    def test_an_algorithm_keeps_the_length_of_its_first_vector(self):
+    def test_an_algorithm_and_key_keep_the_length_of_their_first_vector(self):
         """Vectors of another length are refused, because they could never be compared."""
         image, other = self._image(), self._image()
         self._save(self._moth(image, _embedding_payload([0.5] * 512)))
-        self.species.refresh_from_db()
-        self.assertEqual(self.species.embedding_dimensions, 512)
 
-        with self.assertRaises(EmbeddingDimensionMismatch):
+        with self.assertRaises(EmbeddingDimensionMismatch) as raised:
             self._save(self._moth(other, _embedding_payload(self.LOW)))
+        self.assertIn(self.species.key, str(raised.exception))
+        self.assertIn("512", str(raised.exception))
+        self.assertIn(str(LENGTH), str(raised.exception))
         self.assertFalse(DetectionEmbedding.objects.filter(detection__source_image=other).exists())
-        self.species.refresh_from_db()
-        self.assertEqual(self.species.embedding_dimensions, 512)
+
+    def test_a_batch_with_no_stored_vector_must_agree_on_one_length(self):
+        image = self._image()
+        with self.assertRaises(EmbeddingDimensionMismatch):
+            self._save(
+                self._rejected(image, _embedding_payload([0.5] * 8), box=0.0),
+                self._rejected(image, _embedding_payload([0.5] * 4), box=100.0),
+            )
+        self.assertFalse(DetectionEmbedding.objects.exists())
 
     def test_a_vector_half_precision_cannot_hold_is_skipped_with_a_warning(self):
         image = self._image()
@@ -260,8 +268,7 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         ]
         algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
 
-        # The first vector records the algorithm's length; measure after that, on other
-        # detections so no read is served from the query cache.
+        # Measure after a first write, on other detections so no read is served from the query cache.
         create_detection_embeddings(detections[:1], parsed[:1], algorithms_known)
         DetectionEmbedding.objects.all().delete()
         with CaptureQueriesContext(connection) as one:
@@ -272,8 +279,8 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         self.assertEqual(len(five), len(one))
         self.assertEqual(len(stored), 5)
 
-        # A rerun with identical vectors reads the stored rows and writes nothing.
-        with self.assertNumQueries(1):
+        # A rerun with identical vectors reads the length and the stored rows and writes nothing.
+        with self.assertNumQueries(2):
             create_detection_embeddings(detections, parsed, algorithms_known)
 
 

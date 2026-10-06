@@ -3,7 +3,7 @@
 These pin the contract of the sort: the seed comes first and the nearest vectors next,
 occurrences without a vector come last in either direction, one algorithm's vectors are
 compared at a time, bad parameters are refused with 400, and the sort adds a fixed number
-of queries however many rows a page has. See #1453.
+of queries however many rows a page has. See #1462.
 """
 
 from cachalot.api import cachalot_disabled

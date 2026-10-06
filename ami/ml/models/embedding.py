@@ -15,6 +15,13 @@ from ami.main.models import DEFAULT_EMBEDDING_KEY, Detection
 EMBEDDING_BATCH_SIZE = 200
 
 
+class VectorDims(models.Func):
+    """pgvector's ``vector_dims()``: the length of a vector or halfvec value."""
+
+    function = "vector_dims"
+    output_field = models.IntegerField()
+
+
 def as_half_precision(vector) -> np.ndarray:
     """A vector as the half-precision array the ``halfvec`` column stores."""
     if isinstance(vector, pgvector.HalfVector):
@@ -55,6 +62,19 @@ class DetectionEmbeddingQuerySet(BaseQuerySet):
     def for_algorithm(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
         """Vectors of one kind from one algorithm: the only set whose vectors may be compared."""
         return self.filter(algorithm_id=algorithm_id, key=key)
+
+    def stored_length(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY) -> int | None:
+        """The length of the vectors already stored for one (algorithm, key), or None when there are none.
+
+        Reads one row of the pair, so a writer can hold each pair to one length without a stored field.
+        """
+        rows = (
+            self.for_algorithm(algorithm_id, key)
+            .order_by()
+            .annotate(dims=VectorDims("vector"))
+            .values_list("dims", flat=True)[:1]
+        )
+        return next(iter(rows), None)
 
     def store(self, embeddings) -> tuple[int, int]:
         """Write vectors insert-mostly; returns (written, unchanged).
@@ -101,8 +121,8 @@ class DetectionEmbedding(BaseModel):
     moth/non-moth filter rejected, without adding a prediction that could change a
     determination. Vectors are comparable only within one (algorithm, key): ``key`` names
     the output when one model yields several, and the column is an unsized ``halfvec``
-    because extractors differ in length (each algorithm keeps one, see
-    ``Algorithm.embedding_dimensions``). See #1453.
+    because extractors differ in length: each (algorithm, key) keeps one length, enforced by
+    the writer against an existing row. See #1462.
     """
 
     # No separate index: the unique constraint's index leads with detection_id.
