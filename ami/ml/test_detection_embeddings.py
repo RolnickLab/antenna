@@ -15,15 +15,11 @@ from django.test.utils import CaptureQueriesContext
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Deployment, Detection, SourceImage
-from ami.main.models_future.embeddings import vectors_for_detections
+from ami.ml.embeddings.reader import vectors_for_detections
+from ami.ml.embeddings.writer import EmbeddingDimensionMismatch, create_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
-from ami.ml.models.pipeline import (
-    EmbeddingDimensionMismatch,
-    create_detection_embeddings,
-    get_or_create_algorithm_and_category_map,
-    save_results,
-)
+from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map, save_results
 from ami.ml.schemas import DetectionResponse, PipelineResultsResponse
 from ami.tests.fixtures.main import setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES

@@ -3384,7 +3384,7 @@ class OccurrenceQuerySet(BaseQuerySet):
 
     def with_vectors(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
         """Occurrences with at least one detection that has a feature vector from the algorithm."""
-        from ami.main.models_future.embeddings import representative_embeddings
+        from ami.ml.embeddings.reader import representative_embeddings
 
         return self.filter(Exists(representative_embeddings(OuterRef("pk"), algorithm_id, key).order_by()))
 
@@ -3398,7 +3398,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         The distance is computed inside the subquery, so the aggregate annotations' GROUP BY
         evaluates it once per occurrence rather than once per joined detection.
         """
-        from ami.main.models_future.embeddings import representative_embeddings
+        from ami.ml.embeddings.reader import representative_embeddings
 
         nearest = (
             representative_embeddings(OuterRef("pk"), algorithm_id, key)
