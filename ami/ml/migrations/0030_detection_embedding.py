@@ -76,6 +76,12 @@ class Migration(migrations.Migration):
                 fields=("detection", "algorithm", "key"), name="ml_detectionembedding_unique_detection_algorithm_key"
             ),
         ),
+        migrations.AddIndex(
+            model_name="detectionembedding",
+            index=models.Index(
+                fields=["project", "algorithm", "key", "detection"], name="ml_detemb_proj_algo_key_det"
+            ),
+        ),
         migrations.RunSQL(
             sql="ALTER TABLE ml_detectionembedding ALTER COLUMN vector SET STORAGE EXTERNAL",
             reverse_sql=migrations.RunSQL.noop,

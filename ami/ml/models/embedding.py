@@ -141,6 +141,10 @@ class DetectionEmbedding(BaseModel):
     objects = DetectionEmbeddingQuerySet.as_manager()
 
     class Meta:
+        indexes = [
+            # Project-scoped reads of one model: a project's vectors in detection order, and counts per model.
+            models.Index(fields=["project", "algorithm", "key", "detection"], name="ml_detemb_proj_algo_key_det"),
+        ]
         constraints = [
             models.CheckConstraint(check=~models.Q(key=""), name="%(app_label)s_%(class)s_key_not_empty"),
             models.UniqueConstraint(
