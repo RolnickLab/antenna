@@ -18,11 +18,11 @@ from django.urls import reverse
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Occurrence, SourceImage, SourceImageCollection
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService
+from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService, ProjectPipelineConfig
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map
 from ami.ml.post_processing.feature_vectors import AddFeatureVectorsTask
-from ami.tests.fixtures.main import setup_test_project
+from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
 
@@ -76,29 +76,34 @@ class FakeFeaturePipelineService:
 class FeatureVectorsFixture:
     """A project with a feature-only pipeline, its processing service stubbed, and captures with detections."""
 
-    def _set_up(self) -> None:
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.detector = get_or_create_algorithm_and_category_map(DETECTOR)
-        self.extractor = Algorithm.objects.create(
-            name="Extractor", key="extractor", task_type=AlgorithmTaskType.EMBEDDING.value
-        )
-        self.pipeline = Pipeline.objects.create(name="Feature pipeline")
-        self.pipeline.algorithms.set([self.extractor])
+    @classmethod
+    def _set_up_data(cls) -> None:
         # Creating a service checks its status over the network right away; there is no network here.
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+            cls.detector = get_or_create_algorithm_and_category_map(DETECTOR)
+            cls.extractor = Algorithm.objects.create(
+                name="Extractor", key="extractor", task_type=AlgorithmTaskType.EMBEDDING.value
+            )
+            cls.pipeline = Pipeline.objects.create(name="Feature pipeline")
+            cls.pipeline.algorithms.set([cls.extractor])
+            cls.service = ProcessingService.objects.create(
+                name="Feature service", endpoint_url="http://features.test:2000", last_seen_live=True
+            )
+            ProcessingService.objects.filter(pk=cls.service.pk).update(last_seen_live=True)
+            cls.service.projects.add(cls.project)
+            cls.service.pipelines.add(cls.pipeline)
+        cls.captures = 0
+
+    def _set_up_stubs(self) -> None:
+        """Per-test stand-ins for the processing service: a fake session and no status checks."""
         status_patcher = mock.patch.object(ProcessingService, "get_status")
         status_patcher.start()
         self.addCleanup(status_patcher.stop)  # type: ignore[attr-defined]
-        self.service = ProcessingService.objects.create(
-            name="Feature service", endpoint_url="http://features.test:2000", last_seen_live=True
-        )
-        ProcessingService.objects.filter(pk=self.service.pk).update(last_seen_live=True)
-        self.service.projects.add(self.project)
-        self.service.pipelines.add(self.pipeline)
         self.fake = FakeFeaturePipelineService(self.extractor.key)
         patcher = mock.patch("ami.ml.models.pipeline.create_session", return_value=self.fake)
         patcher.start()
         self.addCleanup(patcher.stop)  # type: ignore[attr-defined]
-        self.captures = 0
 
     def _collection(self, captures: int, detections_per_capture: int = 2) -> SourceImageCollection:
         images = []
@@ -145,8 +150,12 @@ class FeatureVectorsFixture:
 
 
 class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls._set_up_data()
+
     def setUp(self) -> None:
-        self._set_up()
+        self._set_up_stubs()
 
     def test_only_detections_missing_a_vector_are_sent(self):
         collection = self._collection(captures=1, detections_per_capture=3)
@@ -280,8 +289,12 @@ class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
 
 
 class TestEmbeddingOnlyPipelineGuard(FeatureVectorsFixture, TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls._set_up_data()
+
     def setUp(self) -> None:
-        self._set_up()
+        self._set_up_stubs()
 
     def test_pipeline_knows_when_it_only_produces_vectors(self):
         self.assertTrue(self.pipeline.is_embedding_only())
@@ -304,16 +317,18 @@ class TestEmbeddingOnlyPipelineGuard(FeatureVectorsFixture, TestCase):
 
 
 class TestAddFeatureVectorsAdmin(FeatureVectorsFixture, TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls._set_up_data()
+        cls.superuser = User.objects.create_superuser(email="afv-admin@example.com", password="x")
+        ProjectPipelineConfig.objects.create(project=cls.project, pipeline=cls.pipeline, enabled=True)
+        cls.other_pipeline = Pipeline.objects.create(name="Classifier only pipeline")
+        cls.other_pipeline.algorithms.set([cls.detector])
+
     def setUp(self) -> None:
-        self._set_up()
-        self.superuser = User.objects.create_superuser(email="afv-admin@example.com", password="x")
+        self._set_up_stubs()
         self.client = Client()
         self.client.force_login(self.superuser)
-        from ami.ml.models import ProjectPipelineConfig
-
-        ProjectPipelineConfig.objects.create(project=self.project, pipeline=self.pipeline, enabled=True)
-        self.other_pipeline = Pipeline.objects.create(name="Classifier only pipeline")
-        self.other_pipeline.algorithms.set([self.detector])
 
     def _post(self, collections: list[SourceImageCollection], data: dict):
         return self.client.post(
