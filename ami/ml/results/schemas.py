@@ -3,21 +3,30 @@
 A kind's model holds only what its run alone knows; settings live on the job, and the new taxon on
 the classifications the run created. ``extra`` takes whatever else a method returns and is never read
 for logic. This is the only module that calls pydantic's API for results, and it imports nothing from
-Django, so models, writers and serializers can all import it. Adding a kind = a model + a registry entry.
+Django, so models, writers, serializers and settings can all import it. Adding a kind = a model with its
+``kind`` + an entry in ``ALGORITHM_RESULT_DATA_MODELS``; see docs/claude/reference/adding-a-result-kind.md.
+The field helpers below also read post-processing task config schemas, which declare setting titles and
+references the same way.
 """
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 import pydantic
 
 
-def reference(ref_type: str, default: Any = None) -> Any:
-    """Declare a data field that holds another record's id; the history resolves it to ``{type, id, name}``."""
-    return pydantic.Field(default, reference=ref_type)
+def reference(ref_type: str, default: Any = None, **field_options: Any) -> Any:
+    """Declare a field that holds another record's id; the history resolves it to ``{type, id, name}``.
+
+    Used by result data models and by task config schemas; ``field_options`` go to ``pydantic.Field``.
+    """
+    return pydantic.Field(default, reference=ref_type, **field_options)
 
 
 class AlgorithmResultData(pydantic.BaseModel):
+    # The kind this model validates; each concrete model sets it, and the registry is keyed by it.
+    kind: ClassVar[str]
+
     # Stored, shown and exported only, never read for logic; a value a feature needs becomes a typed field.
     extra: dict[str, Any] = {}
 
@@ -38,6 +47,8 @@ class DeterminationSnapshot(AlgorithmResultData):
 class ClassMaskingResultData(DeterminationSnapshot):
     """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
 
+    kind: ClassVar[str] = "class_masking"
+
     # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
     excluded_probability: float
     # Where the class that wins after masking ranked before it; 1 means it was already the top.
@@ -47,13 +58,16 @@ class ClassMaskingResultData(DeterminationSnapshot):
 class SizeFilterResultData(DeterminationSnapshot):
     """Figures from the occurrence's smallest filtered detection."""
 
+    kind: ClassVar[str] = "size_filter"
+
     # The detection's box area as a fraction of its image.
     relative_size: float
 
 
+ALGORITHM_RESULT_DATA_MODELS: tuple[type[AlgorithmResultData], ...] = (ClassMaskingResultData, SizeFilterResultData)
+
 ALGORITHM_RESULT_DATA_SCHEMAS: dict[str, type[AlgorithmResultData]] = {
-    "class_masking": ClassMaskingResultData,
-    "size_filter": SizeFilterResultData,
+    model.kind: model for model in ALGORITHM_RESULT_DATA_MODELS
 }
 
 
@@ -83,14 +97,23 @@ def validate_result_data(kind: str, data: dict | AlgorithmResultData | None) -> 
     return json.loads(schema.parse_obj(values).json())
 
 
-def reference_fields(kind: str) -> dict[str, str]:
-    """The kind's data fields that hold another record's id, mapped to the reference type."""
-    schema = _schema_for(kind)
+def field_references(model: type[pydantic.BaseModel]) -> dict[str, str]:
+    """The model's fields declared with ``reference()``, mapped to the reference type."""
     return {
         name: field.field_info.extra["reference"]
-        for name, field in schema.__fields__.items()
+        for name, field in model.__fields__.items()
         if "reference" in field.field_info.extra
     }
+
+
+def field_titles(model: type[pydantic.BaseModel]) -> dict[str, str | None]:
+    """Every field of the model, in declaration order, mapped to its ``title`` or None."""
+    return {name: field.field_info.title for name, field in model.__fields__.items()}
+
+
+def reference_fields(kind: str) -> dict[str, str]:
+    """The kind's data fields that hold another record's id, mapped to the reference type."""
+    return field_references(_schema_for(kind))
 
 
 def data_json_schema(kind: str) -> dict:

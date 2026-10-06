@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime
+import re
 
 from cachalot.api import cachalot_disabled
 from django.db import IntegrityError, connection, transaction
@@ -10,21 +11,31 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, Identification, Occurrence, SourceImage, TaxaList, Taxon
-from ami.main.models_future.history import JobSetting, occurrence_timeline
-from ami.main.models_future.references import Ref, job_setting_references, resolve_references
+from ami.main.models import (
+    Classification,
+    Detection,
+    Identification,
+    Occurrence,
+    SourceImage,
+    SourceImageCollection,
+    TaxaList,
+    Taxon,
+)
+from ami.main.models_future.history import JobSetting, OccurrenceTimelineEntry, occurrence_timeline
+from ami.main.models_future.references import Ref, resolve_references, unmapped_reference_types
 from ami.ml.models import Algorithm, AlgorithmResult
+from ami.ml.results.schemas import AlgorithmResultData, ClassMaskingResultData, SizeFilterResultData, reference
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 from ami.users.models import User
 from ami.users.roles import BasicMember, ProjectManager
 
 # Measured: two savepoints, the project, the occurrence, the results with their algorithm and job,
 # their taxa, the classifications they created, the classifications those replaced, identifications,
-# predictions with their jobs, and one query per type of record the entries name (here species lists).
+# predictions with their jobs, and one query per type of record the entries name (here capture sets).
 HISTORY_QUERIES = 11
 
-SIZE_FILTER = AlgorithmResult.Kind.SIZE_FILTER
-CLASS_MASKING = AlgorithmResult.Kind.CLASS_MASKING
+SIZE_FILTER = SizeFilterResultData.kind
+CLASS_MASKING = ClassMaskingResultData.kind
 
 
 @contextlib.contextmanager
@@ -180,14 +191,14 @@ class ReferenceTestCase(TestCase):
         self.assertEqual(refs[("algorithm", algorithm.pk)].name, "Classifier")
         self.assertEqual(refs[("taxa_list", 999999)], Ref("taxa_list", 999999, None))
 
-    def test_job_settings_yield_only_known_integer_references(self):
-        config = {"taxa_list_id": 3, "source_image_collection_id": 5, "size_threshold": 0.01, "algorithm_id": "x"}
-        self.assertEqual(
-            sorted(job_setting_references(config)),
-            [("source_image_collection_id", "capture_set", 5), ("taxa_list_id", "taxa_list", 3)],
-        )
-        self.assertEqual(job_setting_references(None), [])
-        self.assertEqual(job_setting_references(["not", "a", "dict"]), [])  # type: ignore[arg-type]
+    def test_every_declared_reference_type_is_mapped(self):
+        """A kind or task declaring a reference type with no mapping would fail the history at request time."""
+
+        class Probe(AlgorithmResultData):
+            merged_into_id: int | None = reference("not_a_type")
+
+        self.assertEqual(unmapped_reference_types([Probe]), {"not_a_type"})
+        self.assertEqual(unmapped_reference_types(), set())
 
 
 class OccurrenceHistorySchemaTestCase(TestCase):
@@ -500,7 +511,11 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.client.force_authenticate(user=self.reader)
         # A setting that names a record, and created classifications that replaced one, so the
         # reference and replaced-classification queries are counted too.
-        self.job.params = {"config": {"size_threshold": 0.01, "taxa_list_id": TaxaList.objects.create(name="L").pk}}
+        scope = SourceImageCollection.objects.create(project=self.project, name="Scope")
+        self.job.params = {
+            "task": "small_size_filter",
+            "config": {"size_threshold": 0.01, "source_image_collection_id": scope.pk},
+        }
         self.job.save()
         original = Classification.objects.get(detection=self.detections[0])
         now = datetime.datetime.now()
@@ -514,6 +529,14 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 self.assertEqual(len(response.data), 2 * total + 1)
                 self.assertFalse(
                     [q["sql"] for q in queries.captured_queries if '"main_classification"."scores"' in q["sql"]]
+                )
+                # A job's progress and logs can be large JSON documents; the history shows neither.
+                self.assertFalse(
+                    [
+                        q["sql"]
+                        for q in queries.captured_queries
+                        if re.search(r'"jobs_job"\."(progress|logs)"', q["sql"])
+                    ]
                 )
 
     def test_visible_to_whoever_can_open_the_occurrence(self):
@@ -608,28 +631,61 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertTrue(predictions)
         self.assertTrue(all(e.job == self.job for e in predictions))
 
-    def test_job_settings_are_resolved_to_references(self):
-        taxa_list = TaxaList.objects.create(name="Kept species")
-        self.job.params = {"config": {"taxa_list_id": taxa_list.pk, "size_threshold": 0.01}}
-        self.job.save()
+    def _size_filter_result(self, job: Job | None) -> OccurrenceTimelineEntry:
         AlgorithmResult.objects.record(
             occurrence=self.occurrence,
             algorithm=self.size_filter,
-            job=self.job,
+            job=job,
             kind=SIZE_FILTER,
             data={"relative_size": 0.001},
         )
-        entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
-        # The job names no task, so there is no config schema to take labels from: they fall back to the keys.
+        return next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
+
+    def test_job_settings_take_labels_and_references_from_the_task_config_schema(self):
+        taxa_list = TaxaList.objects.create(name="Kept species")
+        classifier = Algorithm.objects.create(name="Classifier", key="settings-test-classifier")
+        self.job.params = {
+            "task": "class_masking",
+            "config": {
+                "source_image_collection_id": None,
+                "occurrence_id": True,
+                "taxa_list_id": taxa_list.pk,
+                "algorithm_id": classifier.pk,
+                "reweight": True,
+            },
+        }
+        self.job.save()
         self.assertEqual(
-            entry.job_settings,
+            self._size_filter_result(self.job).job_settings,
             [
+                JobSetting("source_image_collection_id", "Capture set", None, None),
+                # A value that is not an id names no record, whatever the schema declares.
+                JobSetting("occurrence_id", "Occurrence", True, None),
                 JobSetting(
-                    "taxa_list_id", "taxa_list_id", taxa_list.pk, Ref("taxa_list", taxa_list.pk, "Kept species")
+                    "taxa_list_id", "Species list", taxa_list.pk, Ref("taxa_list", taxa_list.pk, "Kept species")
                 ),
-                JobSetting("size_threshold", "size_threshold", 0.01, None),
+                JobSetting("algorithm_id", "Classifier", classifier.pk, Ref("algorithm", classifier.pk, "Classifier")),
+                JobSetting("reweight", "Re-weighted scores", True, None),
             ],
         )
+
+    def test_a_job_without_a_registered_task_shows_its_settings_by_key_with_no_references(self):
+        self.job.params = {"config": {"taxa_list_id": 3, "size_threshold": 0.01}}
+        self.job.save()
+        self.assertEqual(
+            self._size_filter_result(self.job).job_settings,
+            [
+                JobSetting("taxa_list_id", "taxa_list_id", 3, None),
+                JobSetting("size_threshold", "size_threshold", 0.01),
+            ],
+        )
+
+    def test_a_job_whose_params_are_not_an_object_has_no_settings(self):
+        Job.objects.filter(pk=self.job.pk).update(params=["not", "an", "object"])
+        self.job.refresh_from_db()
+        self.assertEqual(self._size_filter_result(self.job).job_settings, [])
+        result = next(e for e in self.get() if e["type"] == "algorithm_result")
+        self.assertIsNone(result["job"]["config"])
 
     def test_a_result_without_a_job_has_no_settings_or_references(self):
         AlgorithmResult.objects.record(

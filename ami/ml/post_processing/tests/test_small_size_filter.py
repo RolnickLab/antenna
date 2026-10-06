@@ -9,6 +9,7 @@ from ami.jobs.models import Job, PostProcessingJob
 from ami.main.models import Detection, Occurrence, SourceImage, Taxon
 from ami.ml.models import AlgorithmResult
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
+from ami.ml.results.schemas import SizeFilterResultData
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ class SizeFilterResultsTestCase(SizeFilterTestCase):
     """The size filter leaves one algorithm result per occurrence it flags, written with the batch that flags it."""
 
     def records(self):
-        return AlgorithmResult.objects.filter(kind=AlgorithmResult.Kind.SIZE_FILTER).order_by("pk")
+        return AlgorithmResult.objects.filter(kind=SizeFilterResultData.kind).order_by("pk")
 
     def test_a_flagged_occurrence_gets_one_result_linked_to_the_classifications_it_created(self):
         occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
