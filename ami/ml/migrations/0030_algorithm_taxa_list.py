@@ -9,7 +9,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0096_taxalist_is_public"),
+        ("main", "0098_taxalist_is_public"),
         ("ml", "0029_processingservice_is_public"),
     ]
 
