@@ -28,6 +28,7 @@ from ami.main.models import (
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.results.schemas import TrackingResultData
 
 from .config import TrackingConfig
 from .matching import captures_too_far_apart, image_diagonal, select_links
@@ -124,7 +125,7 @@ def record_tracking_results(
                 occurrence=item.keeper,
                 algorithm=algorithm,
                 job=job,
-                kind=AlgorithmResult.Kind.TRACKING,
+                kind=TrackingResultData.kind,
                 value=figures.motion,
                 data={
                     **dataclasses.asdict(figures),

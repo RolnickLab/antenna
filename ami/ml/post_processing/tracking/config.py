@@ -5,6 +5,8 @@ This module uses pydantic only and has no Django imports, so it can be used and 
 
 import pydantic
 
+from ami.ml.results.schemas import reference
+
 COST_NOTE = (
     "The default is a starting point that is still being tuned by experiment. "
     "It suits captures taken about 20 seconds apart."
@@ -25,7 +27,8 @@ class TrackingConfig(pydantic.BaseModel):
     shown on the admin form.
     """
 
-    source_image_collection_id: int | None = pydantic.Field(
+    source_image_collection_id: int | None = reference(
+        "capture_set",
         None,
         title="Capture set",
         description=(
