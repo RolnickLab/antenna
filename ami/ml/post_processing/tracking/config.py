@@ -34,7 +34,7 @@ class TrackingConfig(pydantic.BaseModel):
             "between its detections."
         ),
     )
-    event_ids: list[int] = []
+    event_ids: list[int] = pydantic.Field([], title="Sessions")
 
     cost_threshold: float = pydantic.Field(
         1.0,
