@@ -1670,7 +1670,7 @@ def _group_images_into_events_locked(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
-    occurrences_split_count = _split_occurrences_at_session_boundaries(deployment, job)
+    occurrences_split_count = _split_occurrences_at_session_boundaries(job, touched_event_pks)
 
     # Realign Occurrence.event_id with each occurrence's detections' current
     # source_image.event_id. Occurrences are bound to an event once at creation
@@ -1765,32 +1765,56 @@ def _group_images_into_events_locked(
     return events
 
 
-def _split_occurrences_at_session_boundaries(deployment: Deployment, job: "Job | None") -> int:
-    """Split every occurrence in the deployment whose detections now span several sessions.
+def _split_occurrences_at_session_boundaries(job: "Job | None", event_pks: set[int]) -> int:
+    """Split every occurrence whose detections now span several sessions, among the sessions a regroup touched.
 
     An occurrence is expected to belong to one session, so a regroup that draws a session
-    boundary through it leaves one piece per session. Returns how many occurrences were split.
+    boundary through it leaves one piece per session. Only an occurrence with a detection on a capture of
+    ``event_pks`` can have been cut, so the search starts from those captures. The ids are looked up
+    in steps with literal id lists: left as a subquery, Postgres scans the whole detection table
+    (measured on a copy of production data). Returns how many occurrences were split.
     """
-    from ami.ml.post_processing.tracking.sessions import split_at_session_boundaries
+    from ami.ml.post_processing.tracking.sessions import lock_sessions, split_at_session_boundaries
 
-    spanning_ids = list(
-        Detection.objects.valid()
-        .filter(occurrence__deployment=deployment)
-        .values("occurrence_id")
-        .annotate(sessions=models.Count("source_image__event", distinct=True))
-        .filter(sessions__gt=1)
-        .values_list("occurrence_id", flat=True)
-    )
-    split_count = 0
-    for occurrence in Occurrence.objects.filter(pk__in=spanning_ids).order_by("pk"):
-        pieces = split_at_session_boundaries(occurrence)
-        if not pieces:
-            continue
-        split_count += 1
-        (job.logger if job else logger).info(
-            f"Split occurrence {occurrence.pk} at a session boundary; "
-            f"new occurrence(s) {[piece.pk for piece in pieces]} hold the later sessions."
+    def find_spanning_ids() -> list[int]:
+        capture_ids = list(SourceImage.objects.filter(event_id__in=event_pks).values_list("pk", flat=True))
+        touched_occurrence_ids = list(
+            Detection.objects.filter(source_image_id__in=capture_ids, occurrence__isnull=False)
+            .values_list("occurrence_id", flat=True)
+            .distinct()
         )
+        return list(
+            Detection.objects.valid()
+            .filter(occurrence_id__in=touched_occurrence_ids)
+            .values("occurrence_id")
+            .annotate(sessions=models.Count("source_image__event", distinct=True))
+            .filter(sessions__gt=1)
+            .values_list("occurrence_id", flat=True)
+        )
+
+    candidate_ids = find_spanning_ids()
+    if not candidate_ids:
+        return 0
+    split_count = 0
+    # Holding the sessions' locks while the occurrences are found and split makes a tracking run
+    # on one of these sessions finish first, or wait for the split.
+    with transaction.atomic():
+        lock_sessions(
+            list(
+                SourceImage.objects.filter(detections__occurrence_id__in=candidate_ids)
+                .values_list("event_id", flat=True)
+                .distinct()
+            )
+        )
+        for occurrence in Occurrence.objects.filter(pk__in=find_spanning_ids()).order_by("pk"):
+            pieces = split_at_session_boundaries(occurrence)
+            if not pieces:
+                continue
+            split_count += 1
+            (job.logger if job else logger).info(
+                f"Split occurrence {occurrence.pk} at a session boundary; "
+                f"new occurrence(s) {[piece.pk for piece in pieces]} hold the later sessions."
+            )
     return split_count
 
 

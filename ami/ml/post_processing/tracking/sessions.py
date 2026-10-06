@@ -53,8 +53,8 @@ def split_at_session_boundaries(occurrence: Occurrence) -> list[Occurrence]:
     The piece in the earliest session keeps this occurrence and its identifications; each
     later piece is a new occurrence holding copies of them. The link between the last
     detection of one piece and the first of the next is kept, since tracking stops at session
-    boundaries and so never walks across it. Returns the new occurrences in time order, or an
-    empty list when nothing was split.
+    boundaries and so never walks across it. A tracking result stays on the earliest piece.
+    Returns the new occurrences in time order, or an empty list when nothing was split.
     """
     sessions = SourceImage.objects.filter(detections__occurrence=occurrence).values_list("event_id", flat=True)
     lock_sessions([occurrence.event_id, *sessions])

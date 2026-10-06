@@ -8662,3 +8662,23 @@ class TestRegroupSplitsOccurrences(TestCase):
         )
         self.assertEqual(occurrence.determination_id, self.other_taxon.pk)
         self.assertEqual(piece.determination_id, self.other_taxon.pk)
+
+    def test_a_tracking_result_stays_on_the_earliest_piece(self):
+        from ami.ml.models.algorithm import Algorithm
+
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_occurrence(self.captures)
+        algorithm = Algorithm.objects.create(name="Test tracking", key="test-tracking")
+        result = AlgorithmResult.objects.record(
+            occurrence=occurrence,
+            algorithm=algorithm,
+            kind="tracking",
+            data={"detection_count": 6, "motion": 0.0, "path_length": 0.0, "size_change": 1.0, "distinct_taxa": 1},
+        )
+
+        self._group(gap_hours=2)
+
+        piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
+        result.refresh_from_db()
+        self.assertEqual((result.occurrence_id, result.is_current), (occurrence.pk, True))
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=piece).exists())
