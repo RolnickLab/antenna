@@ -6186,9 +6186,9 @@ class TaxaListTaxonDraftProjectVisibilityTestCase(TestCase):
 @override_settings(CACHALOT_ENABLED=False)
 class TaxaListQueryCountTestCase(APITestCase):
     """
-    Pins the current query count for TaxaListViewSet.list on a mixed public/scoped/managed,
-    multi-row fixture, so a regression that adds queries is noticed. This does not certify
-    the absence of per-row queries (see #1428); it only catches a further increase.
+    Pins the query count for TaxaListViewSet.list on a mixed public/scoped/managed
+    fixture, and checks that adding rows adds no queries, so a per-row lookup on
+    any kind of list is caught.
     """
 
     def setUp(self):
@@ -6232,17 +6232,28 @@ class TaxaListQueryCountTestCase(APITestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
-    def test_list_query_count(self):
+    def _count_list_queries(self, expected_rows: int) -> int:
         from cachalot.api import cachalot_disabled
 
         url = f"/api/v2/taxa/lists/?project_id={self.project.pk}"
         with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
             response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.json()["results"]), 7)
-        # Measured on this branch; one of these is the once-per-request visible-projects
-        # lookup that filters draft ids out of get_projects().
-        self.assertEqual(len(ctx.captured_queries), 45)
+        self.assertEqual(len(response.json()["results"]), expected_rows)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count(self):
+        # Warm process-wide caches (content types, permissions) so the pinned
+        # count does not depend on which tests ran earlier in the suite.
+        self._count_list_queries(expected_rows=7)
+        seven_rows = self._count_list_queries(expected_rows=7)
+        for i in range(3, 6):
+            TaxaList.objects.create(name=f"Scoped {i}").projects.add(self.project)
+        for i in range(2, 4):
+            TaxaList.objects.create(name=f"Public {i}", is_public=True)
+        twelve_rows = self._count_list_queries(expected_rows=12)
+
+        self.assertEqual((seven_rows, twelve_rows), (14, 14))
 
 
 class TaxaListCopyPermissionTestCase(TestCase):
