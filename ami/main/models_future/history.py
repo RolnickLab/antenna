@@ -65,7 +65,6 @@ class OccurrenceTimelineEntry:
     determination_before: Taxon | None = None
     determination_after: Taxon | None = None
     classifications: list[CreatedClassification] = dataclasses.field(default_factory=list)
-    is_current: bool | None = None
     # --- Identification and prediction
     details: dict = dataclasses.field(default_factory=dict)
 
@@ -128,7 +127,6 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
             determination_before=taxa.get(result.data.get("determination_before_id")),
             determination_after=taxa.get(result.data.get("determination_after_id")),
             classifications=created_by_result.get(result.pk, []),
-            is_current=result.is_current,
         )
         for result in results
     ]

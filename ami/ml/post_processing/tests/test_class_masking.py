@@ -403,7 +403,7 @@ class TestPostProcessingClassMasking(TestCase):
             ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
 
         result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
-        self.assertTrue(result.is_current)
+        self.assertIn(result.kind, {model.kind for model in ClassMaskingTask.result_models})
         self.assertEqual(result.project_id, self.project.pk)
         self.assertTrue(result.algorithm.key.startswith(f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"))
         # Index 2 held e^5 / (e^2 + e^1 + e^5) of the probability and was excluded; index 0 was second.

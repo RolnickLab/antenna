@@ -2208,9 +2208,6 @@ class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
     classifications = CreatedClassificationSerializer(
         many=True, help_text="The classifications the run created, best score first."
     )
-    is_current = serializers.BooleanField(
-        help_text="Whether it is the latest of its kind, not replaced by a later run."
-    )
 
 
 def _result_entry_component(kind: str) -> type[serializers.Serializer]:
