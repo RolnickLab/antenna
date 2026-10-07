@@ -17,6 +17,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Adding the column takes a brief exclusive lock. Give up rather than queue behind a long query on
+        # the table, which would block every other query until it ends; rerun the migration if it gives up.
+        migrations.RunSQL(sql="SET LOCAL lock_timeout = '10s';", reverse_sql=migrations.RunSQL.noop),
         migrations.SeparateDatabaseAndState(
             state_operations=[
                 migrations.AddField(

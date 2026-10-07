@@ -11,7 +11,8 @@ class Migration(migrations.Migration):
     light lock. See 0093 for why the statement timeout is cleared and restored around the build.
 
     The constraint names match the ones Django generates, so later AlterField migrations find them.
-    If the index build is interrupted it leaves an invalid index of the same name; drop it before retrying.
+    If the index build is interrupted it leaves an invalid index of the same name, and if a lock times out the
+    index already exists; drop it before retrying.
     """
 
     atomic = False
@@ -32,6 +33,9 @@ class Migration(migrations.Migration):
             ),
             reverse_sql=migrations.RunSQL.noop,
         ),
+        # The two ALTER TABLE statements below take brief strong locks. Give up rather than queue behind a long
+        # query on the table, which would block every other query until it ends.
+        migrations.RunSQL(sql="SET lock_timeout = '10s';", reverse_sql=migrations.RunSQL.noop),
         migrations.RunSQL(
             sql=(
                 'ALTER TABLE "main_detection" ADD CONSTRAINT "main_detection_next_detection_id_key" '
@@ -55,6 +59,10 @@ class Migration(migrations.Migration):
                 'ALTER TABLE "main_detection" VALIDATE CONSTRAINT '
                 '"main_detection_next_detection_id_f0201e13_fk_main_detection_id";'
             ),
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+        migrations.RunSQL(
+            sql="RESET lock_timeout;",
             reverse_sql=migrations.RunSQL.noop,
         ),
         migrations.RunSQL(
