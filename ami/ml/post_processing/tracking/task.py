@@ -126,7 +126,6 @@ def record_tracking_results(
                 algorithm=algorithm,
                 job=job,
                 kind=TrackingResultData.kind,
-                value=figures.motion,
                 data={
                     **dataclasses.asdict(figures),
                     "link_costs": item.link_costs,

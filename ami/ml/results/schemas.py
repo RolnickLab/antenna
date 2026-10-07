@@ -72,6 +72,7 @@ class TrackingResultData(DeterminationSnapshot):
     """Figures from the detections the run linked into the occurrence, in capture order."""
 
     kind: ClassVar[str] = "tracking"
+    value_field: ClassVar[str | None] = "motion"
 
     detection_count: int
     # Mean distance per step between consecutive detection centres, as a fraction of the image diagonal;

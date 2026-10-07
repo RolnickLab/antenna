@@ -85,8 +85,8 @@ class AlgorithmResult(BaseModel):
     ``extra`` object inside ``data`` is stored, shown and exported only; nothing reads it for
     logic, and a value a feature needs becomes a typed field. Every run adds its own result,
     so running a method twice leaves two results on the occurrence, one per job. Write through
-    ``AlgorithmResult.objects.record`` or ``record_many``. Tracking and rank roll-ups are the
-    next kinds expected. See #1431.
+    ``AlgorithmResult.objects.record`` or ``record_many``. Rank roll-ups are the next kind
+    expected. See #1431.
     """
 
     # Copied from the occurrence when the result is written, so per-project

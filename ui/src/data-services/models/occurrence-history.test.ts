@@ -128,7 +128,6 @@ const tracking: ServerOccurrenceHistoryEntry = {
     path_length: 0.0141,
     size_change: 1.15,
   },
-  data_references: {},
   determination_after: NOCTUA,
   determination_before: NOCTUA,
   id: 6,
