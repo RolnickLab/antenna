@@ -3,7 +3,7 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { Algorithm } from './algorithm'
 import { Occurrence, ServerOccurrence } from './occurrence'
-import { Taxon } from './taxa'
+import { ServerTaxon, Taxon } from './taxa'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
 
@@ -35,21 +35,142 @@ export interface MachinePrediction extends Identification {
   terminal: boolean
 }
 
+export interface ServerDetectionClassification {
+  created_at?: string
+  score?: number | null
+  taxon?: ServerTaxon | null
+  terminal?: boolean | null
+}
+
+/** A detection as the occurrence detail sends it inline. */
+export interface ServerOccurrenceDetection {
+  bbox: number[] | null
+  capture: { id: number; url?: string | null } | null
+  classifications: ServerDetectionClassification[] | null
+  height: number | null
+  id: number
+  timestamp: string | null
+  url: string | null
+  width: number | null
+}
+
+/** The machine's own label for one detection. */
+export interface DetectionLabel {
+  score?: number
+  taxon?: Taxon
+}
+
+/** One detection of an occurrence, as a row on the occurrence page. */
+export interface OccurrenceDetection {
+  captureId?: string
+  /** The full capture the crop was cut from, when its image is stored. */
+  captureUrl?: string
+  detectionLabel: DetectionLabel
+  id: string
+  image: { src: string; width: number; height: number }
+  label: string
+  timestamp?: Date
+  timeLabel: string
+}
+
+const createdAtTime = (classification: ServerDetectionClassification) =>
+  classification.created_at ? new Date(classification.created_at).getTime() : 0
+
+/** Terminal classifications outrank intermediate ones such as a moth filter; then score, then recency. */
+export const getDetectionClassification = <
+  T extends ServerDetectionClassification
+>(
+  classifications: T[] | null | undefined
+): T | undefined => {
+  const named = (classifications ?? []).filter((c) => !!c.taxon)
+  const terminal = named.filter((c) => c.terminal === true)
+
+  return (terminal.length ? terminal : named).reduce<T | undefined>(
+    (best, c) => {
+      if (!best) {
+        return c
+      }
+      const score = c.score ?? -1
+      const bestScore = best.score ?? -1
+      if (score !== bestScore) {
+        return score > bestScore ? c : best
+      }
+      return createdAtTime(c) > createdAtTime(best) ? c : best
+    },
+    undefined
+  )
+}
+
 /** Width and height of a `[x1, y1, x2, y2]` box, 0 when the box is malformed. */
-const bboxSize = (bbox?: number[]): [number, number] =>
+const bboxSize = (bbox?: number[] | null): [number, number] =>
   bbox?.length === 4
     ? [Math.max(bbox[2] - bbox[0], 0), Math.max(bbox[3] - bbox[1], 0)]
     : [0, 0]
 
+export const convertOccurrenceDetection = (
+  detection: ServerOccurrenceDetection
+): OccurrenceDetection => {
+  const classification = getDetectionClassification(detection.classifications)
+  const detectionLabel: DetectionLabel = classification?.taxon
+    ? {
+        score: classification.score ?? undefined,
+        taxon: new Taxon(classification.taxon),
+      }
+    : {}
+  const timestamp = detection.timestamp
+    ? new Date(detection.timestamp)
+    : undefined
+
+  return {
+    captureId: detection.capture ? `${detection.capture.id}` : undefined,
+    captureUrl: detection.capture?.url || undefined,
+    detectionLabel,
+    id: `${detection.id}`,
+    // The bounding box gives the crop's proportions when the crop itself is missing.
+    image: {
+      src: detection.url ?? '',
+      width: detection.width ?? bboxSize(detection.bbox)[0],
+      height: detection.height ?? bboxSize(detection.bbox)[1],
+    },
+    label: detectionLabel.taxon
+      ? `${detectionLabel.taxon.name} (${
+          detectionLabel.score?.toFixed(2) ??
+          translate(STRING.VALUE_NOT_AVAILABLE)
+        })`
+      : translate(STRING.DETECTION_NO_CLASSIFICATION),
+    timestamp,
+    timeLabel: timestamp
+      ? getFormatedTimeString({ date: timestamp, options: { second: true } })
+      : '',
+  }
+}
+
+/** Earliest capture first; detections without a time go last, and ids break ties. */
+export const sortDetectionsByTime = (
+  detections: OccurrenceDetection[]
+): OccurrenceDetection[] =>
+  [...detections].sort((a, b) => {
+    const aTime = a.timestamp?.getTime() ?? Infinity
+    const bTime = b.timestamp?.getTime() ?? Infinity
+    if (aTime !== bTime) {
+      return aTime - bTime
+    }
+
+    return Number(a.id) - Number(b.id)
+  })
+
 export class OccurrenceDetails extends Occurrence {
-  private readonly _detections: string[] = []
+  private readonly _detections: OccurrenceDetection[]
   private readonly _humanIdentifications: HumanIdentification[]
   private readonly _machinePredictions: MachinePrediction[]
 
   public constructor(occurrence: ServerOccurrenceDetails) {
     super(occurrence)
 
-    this._detections = this._occurrence.detections.map((d: any) => `${d.id}`)
+    // The server sends every detection, latest first; the page lists them in capture order.
+    this._detections = sortDetectionsByTime(
+      (this._occurrence.detections ?? []).map(convertOccurrenceDetection)
+    )
 
     const sortByDate = (i1: any, i2: any) => {
       const date1 = new Date(i1.created_at)
@@ -114,7 +235,8 @@ export class OccurrenceDetails extends Occurrence {
     return this._occurrence.details
   }
 
-  get detections(): string[] {
+  /** Every detection of the occurrence, earliest capture first. */
+  get detections(): OccurrenceDetection[] {
     return this._detections
   }
 
@@ -128,39 +250,5 @@ export class OccurrenceDetails extends Occurrence {
 
   get rawData(): string {
     return JSON.stringify(this._occurrence, null, 4)
-  }
-
-  getDetectionInfo(id: string) {
-    const detection = this._occurrence.detections.find(
-      (d: any) => `${d.id}` === id
-    )
-
-    const classification = detection?.classifications?.[0]
-    let label = 'No classification'
-
-    if (classification) {
-      label = `${classification.taxon.name} (${classification.score.toFixed(
-        2
-      )})`
-    }
-
-    return {
-      id,
-      captureId:
-        detection.capture?.id !== undefined
-          ? `${detection.capture.id}`
-          : undefined,
-      // The bounding box gives the crop's proportions when the crop itself is missing.
-      image: {
-        src: detection.url,
-        width: detection.width ?? bboxSize(detection.bbox)[0],
-        height: detection.height ?? bboxSize(detection.bbox)[1],
-      },
-      label: label,
-      timeLabel: getFormatedTimeString({
-        date: new Date(detection.timestamp),
-        options: { second: true },
-      }),
-    }
   }
 }
