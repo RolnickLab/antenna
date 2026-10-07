@@ -1441,26 +1441,18 @@ def update_calculated_fields_for_events(
     return to_update
 
 
-def update_calculated_fields_for_sessions_and_stations(
-    event_ids: typing.Iterable[int | None], stations_async: bool = True
-) -> None:
+def update_calculated_fields_for_sessions_and_stations(event_ids: typing.Iterable[int | None]) -> None:
     """Refresh the cached counts of these sessions and of the stations they belong to.
 
-    Call once after occurrences are created, merged or split, which neither the
-    occurrence nor the detection saves do. The station refresh scans the whole station, so by
-    default it runs in a background task after the transaction commits.
+    Call once after occurrences are created, merged or split, which neither the occurrence nor the
+    detection saves do. The station refresh scans each whole station, so call it from a background job.
     """
-    from ami.main.tasks import refresh_deployment_cached_counts
-
     pks = sorted({pk for pk in event_ids if pk is not None})
     if not pks:
         return
     update_calculated_fields_for_events(pks=pks)
-    deployment_ids = list(Deployment.objects.filter(events__pk__in=pks).values_list("pk", flat=True).distinct())
-    if stations_async:
-        transaction.on_commit(lambda: refresh_deployment_cached_counts.delay(deployment_ids))
-    else:
-        refresh_deployment_cached_counts(deployment_ids)
+    for deployment in Deployment.objects.filter(events__pk__in=pks).distinct():
+        deployment.update_calculated_fields(save=True)
 
 
 def audit_event_lengths(deployment: Deployment):
@@ -1769,12 +1761,15 @@ def _split_occurrences_at_session_boundaries(job: "Job | None", event_pks: set[i
     """Split every occurrence whose detections now span several sessions, among the sessions a regroup touched.
 
     An occurrence is expected to belong to one session, so a regroup that draws a session
-    boundary through it leaves one piece per session. Only an occurrence with a detection on a capture of
-    ``event_pks`` can have been cut, so the search starts from those captures. The ids are looked up
-    in steps with literal id lists: left as a subquery, Postgres scans the whole detection table
-    (measured on a copy of production data). Returns how many occurrences were split.
+    boundary through it leaves one piece per session. Tracking is what merges detections of several
+    captures into one occurrence, so when no detection of these sessions has a tracking link the search is
+    skipped after one indexed query; an occurrence grouped some other way, with no links, is then not split.
+    The search itself reads every occurrence of the touched sessions. Returns how many occurrences were split.
     """
     from ami.ml.post_processing.tracking.sessions import lock_sessions, split_at_session_boundaries
+
+    if not Detection.objects.filter(source_image__event_id__in=event_pks, next_detection__isnull=False).exists():
+        return 0
 
     def find_spanning_ids() -> list[int]:
         capture_ids = list(SourceImage.objects.filter(event_id__in=event_pks).values_list("pk", flat=True))

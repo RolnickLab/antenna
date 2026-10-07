@@ -8572,7 +8572,7 @@ class TestRegroupSplitsOccurrences(TestCase):
             capture.refresh_from_db()
         return list(Event.objects.filter(deployment=self.deployment).order_by("start"))
 
-    def _make_occurrence(self, captures: list[SourceImage]) -> tuple[Occurrence, list[Detection]]:
+    def _make_occurrence(self, captures: list[SourceImage], linked: bool = True) -> tuple[Occurrence, list[Detection]]:
         occurrence = Occurrence.objects.create(
             event=captures[0].event, deployment=self.deployment, project=self.project
         )
@@ -8583,11 +8583,20 @@ class TestRegroupSplitsOccurrences(TestCase):
             )
             detection.classifications.create(taxon=self.taxon, score=0.9, timestamp=capture.timestamp)
             detections.append(detection)
-        for earlier, later in zip(detections, detections[1:]):
+        for earlier, later in zip(detections, detections[1:] if linked else []):
             earlier.next_detection = later
             earlier.save(update_fields=["next_detection"])
         occurrence.save()
         return occurrence, detections
+
+    def test_sessions_without_tracking_links_are_not_searched(self):
+        """Only tracking merges detections across captures, so a regroup with no links skips the search."""
+        self._group(gap_hours=6)
+        occurrence, detections = self._make_occurrence(self.captures, linked=False)
+
+        self._group(gap_hours=2)
+
+        self.assertEqual(self._detection_ids(occurrence), [d.pk for d in detections])
 
     def _split_one_occurrence(self) -> tuple[Occurrence, Occurrence, list[Detection], list[Event]]:
         self._group(gap_hours=6)
