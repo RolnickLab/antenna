@@ -1,6 +1,6 @@
 import pydantic
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
@@ -82,6 +82,11 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         self.logger.info(f"=== Starting {self.name} ===")
 
         detections, scope_desc = self._scoped_detections(config)
+        # A detection this filter already flagged keeps its flag. Flagging it again would only add an
+        # identical classification, and a retried job would repeat its own work.
+        detections = detections.exclude(
+            Exists(Classification.objects.filter(detection=OuterRef("pk"), algorithm=self.algorithm))
+        )
         total = detections.count()
         self.logger.info(f"Found {total} detections in {scope_desc}")
 
