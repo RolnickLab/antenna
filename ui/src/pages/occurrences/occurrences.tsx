@@ -109,6 +109,8 @@ export const Occurrences = () => {
             title={translate(STRING.MORE_FILTERS)}
             defaultOpen={someActive(
               [
+                'date_start',
+                'date_end',
                 'collection',
                 'deployment',
                 'deployment__device',
