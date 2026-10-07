@@ -1,23 +1,29 @@
 import { SearchInput } from 'components/search-input/search-input'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
+import { Grid2X2Icon, TableIcon } from 'lucide-react'
 import {
   Button,
+  ColumnSettings,
   PageFooter,
   PageHeader,
   PaginationBar,
   SortControl,
+  Table,
   Tabs,
+  ToggleGroup,
 } from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { useSearch } from 'utils/useSearch'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
+import { columns } from './project-columns'
 import { ProjectGallery } from './project-gallery'
 
 export const TABS = {
@@ -44,6 +50,26 @@ const SORT_FIELDS = [
     name: translate(STRING.SORT_JOBS_ACTIVITY),
     defaultSortOrder: 'desc' as const,
   },
+  {
+    id: 'deployments_count',
+    name: translate(STRING.NAV_ITEM_DEPLOYMENTS),
+    defaultSortOrder: 'desc' as const,
+  },
+  {
+    id: 'captures_count',
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
+    defaultSortOrder: 'desc' as const,
+  },
+  {
+    id: 'occurrences_count',
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    defaultSortOrder: 'desc' as const,
+  },
+  {
+    id: 'members_count',
+    name: translate(STRING.FIELD_LABEL_MEMBERS),
+    defaultSortOrder: 'desc' as const,
+  },
 ]
 
 export const Projects = () => {
@@ -51,6 +77,19 @@ export const Projects = () => {
   const { userInfo } = useUserInfo()
   const { selectedView: selectedTab, setSelectedView: setSelectedTab } =
     useSelectedView(user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS)
+  const { selectedView: layout, setSelectedView: setLayout } = useSelectedView(
+    'gallery',
+    'layout'
+  )
+  const { columnSettings, setColumnSettings } = useColumnSettings('projects', {
+    name: true,
+    deployments: true,
+    captures: true,
+    occurrences: true,
+    members: true,
+    'last-capture': true,
+    'created-at': false,
+  })
   const { sort, setSort } = useSort()
   const { pagination, setPage } = usePagination({ perPage: 40 })
   const { search, setSearch } = useSearch()
@@ -98,6 +137,22 @@ export const Projects = () => {
           value={search}
           onChange={setSearch}
         />
+        <ToggleGroup
+          items={[
+            {
+              value: 'table',
+              label: translate(STRING.TAB_ITEM_TABLE),
+              Icon: TableIcon,
+            },
+            {
+              value: 'gallery',
+              label: translate(STRING.TAB_ITEM_GALLERY),
+              Icon: Grid2X2Icon,
+            },
+          ]}
+          value={layout}
+          onValueChange={setLayout}
+        />
         {canCreate ? <NewProjectDialog /> : null}
         <SortControl
           columns={SORT_FIELDS.map((field) => ({
@@ -107,6 +162,13 @@ export const Projects = () => {
           setSort={setSort}
           sort={sort}
         />
+        {layout === 'table' ? (
+          <ColumnSettings
+            columns={columns}
+            columnSettings={columnSettings}
+            onColumnSettingsChange={setColumnSettings}
+          />
+        ) : null}
       </PageHeader>
       {projects && projects.length === 0 && canCreate && !search ? (
         <div className="flex flex-col items-center pt-32">
@@ -126,6 +188,16 @@ export const Projects = () => {
             </Button>
           </div>
         </div>
+      ) : layout === 'table' ? (
+        <Table
+          columns={columns.filter((column) => !!columnSettings[column.id])}
+          error={error}
+          isLoading={isLoading}
+          items={projects}
+          onSortSettingsChange={setSort}
+          sortable
+          sortSettings={sort}
+        />
       ) : (
         <ProjectGallery
           error={error}

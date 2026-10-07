@@ -18,6 +18,12 @@ export class Project {
     return this._project.user_permissions.includes(UserPermission.Delete)
   }
 
+  get createdAt(): Date | undefined {
+    return this._project.created_at
+      ? new Date(this._project.created_at)
+      : undefined
+  }
+
   get canUpdate(): boolean {
     return this._project.user_permissions.includes(UserPermission.Update)
   }
@@ -46,7 +52,29 @@ export class Project {
     return this._project.draft
   }
 
+  get lastCaptureDate(): Date | undefined {
+    return this._project.last_capture_timestamp
+      ? new Date(this._project.last_capture_timestamp)
+      : undefined
+  }
+
   get name(): string {
     return this._project.name
+  }
+
+  get numCaptures(): number | undefined {
+    return this._project.captures_count
+  }
+
+  get numDeployments(): number | undefined {
+    return this._project.deployments_count
+  }
+
+  get numMembers(): number | undefined {
+    return this._project.members_count
+  }
+
+  get numOccurrences(): number | undefined {
+    return this._project.occurrences_count
   }
 }
