@@ -1604,7 +1604,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         """Everything that happened to this occurrence, newest first.
 
         Merges post-processing results with the classifications they created, identifications
-        and predictions into one list. Visible to whoever can open the occurrence itself.
+        and predictions into one list. Available to members of the occurrence's project, including
+        for an occurrence that the project's default filters hide from lists and the detail view.
         """
         occurrence = self.get_object()
         entries = occurrence_timeline(occurrence)

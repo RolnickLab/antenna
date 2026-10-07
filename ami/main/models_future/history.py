@@ -16,7 +16,7 @@ from ami.main.models import Classification, Identification, Occurrence, Taxon, U
 from ami.main.models_future.references import Ref, is_record_id, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.registry import get_postprocessing_task
-from ami.ml.results.schemas import field_references, field_titles, reference_fields, result_kinds
+from ami.ml.results.schemas import field_references, field_titles
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -61,7 +61,6 @@ class OccurrenceTimelineEntry:
     kind: str | None = None
     value: float | None = None  # the kind's headline figure, not a confidence
     data: dict = dataclasses.field(default_factory=dict)  # validated per kind
-    data_references: dict[str, Ref] = dataclasses.field(default_factory=dict)  # data field -> Ref
     determination_before: Taxon | None = None
     determination_after: Taxon | None = None
     classifications: list[CreatedClassification] = dataclasses.field(default_factory=list)
@@ -175,21 +174,9 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
 
 
 def _fill_job_settings_and_references(entries: list[OccurrenceTimelineEntry]) -> None:
-    """Fill each entry's job settings and data references, resolving every id the entries name at once."""
+    """Fill each entry's job settings, resolving every record id the settings name at once."""
     settings = {id(entry): _job_settings(entry.job) for entry in entries if entry.job is not None}
-    # A stored kind may no longer be registered (renamed, or written by another branch); it names no references.
-    kinds = set(result_kinds())
-    data_refs = {
-        id(entry): [
-            (field, ref_type, entry.data[field])
-            for field, ref_type in (reference_fields(entry.kind) if entry.kind in kinds else {}).items()
-            if is_record_id(entry.data.get(field))
-        ]
-        for entry in entries
-        if entry.type == "algorithm_result"
-    }
     wanted = [(ref_type, value) for specs in settings.values() for _, _, value, ref_type in specs if ref_type]
-    wanted += [(ref_type, ref_id) for refs in data_refs.values() for _, ref_type, ref_id in refs]
     resolved = resolve_references(wanted) if wanted else {}
     for entry in entries:
         if entry.job is not None:
@@ -197,7 +184,6 @@ def _fill_job_settings_and_references(entries: list[OccurrenceTimelineEntry]) ->
                 JobSetting(key, label, value, resolved[(ref_type, value)] if ref_type else None)
                 for key, label, value, ref_type in settings[id(entry)]
             ]
-        entry.data_references = {field: resolved[(t, i)] for field, t, i in data_refs.get(id(entry), [])}
 
 
 def job_config(job: Job | None) -> dict | None:

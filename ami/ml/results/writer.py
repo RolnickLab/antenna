@@ -29,14 +29,11 @@ class AlgorithmResultWriter:
         kind: str,
         algorithm: Algorithm,
         job: Job | None,
-        value_field: str,
         timestamp: datetime.datetime | None = None,
     ):
-        """``value_field`` names the figure in the result's data that is also stored in ``value``."""
         self.kind = kind
         self.algorithm = algorithm
         self.job = job
-        self.value_field = value_field
         self.timestamp = timestamp
         self.results: dict[int, AlgorithmResult] = {}
         # Occurrences with no project; tried once, then left alone.
@@ -66,7 +63,6 @@ class AlgorithmResultWriter:
                 algorithm=self.algorithm,
                 job=self.job,
                 kind=self.kind,
-                value=self.figures[occurrence.pk][1][self.value_field],
                 data={**self.figures[occurrence.pk][1], "determination_before_id": occurrence.determination_id},
                 **({"timestamp": self.timestamp} if self.timestamp else {}),
             )
@@ -97,7 +93,6 @@ class AlgorithmResultWriter:
                 continue
             figures = self.figures[occurrence.pk][1]
             result.data = {**result.data, **figures, "determination_after_id": occurrence.determination_id}
-            result.value = figures[self.value_field]
             touched.append(result)
         if touched:
             AlgorithmResult.objects.bulk_update(touched, ["data", "value"])

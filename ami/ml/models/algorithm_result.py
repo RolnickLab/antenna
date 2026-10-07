@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from ami.base.models import BaseModel, BaseQuerySet
-from ami.ml.results.schemas import validate_result_data
+from ami.ml.results.schemas import result_value, validate_result_data
 
 if typing.TYPE_CHECKING:
     from ami.main.models import Occurrence
@@ -18,14 +18,15 @@ class AlgorithmResultQuerySet(BaseQuerySet):
     def bulk_create(self, objs, *args, **kwargs):
         objs = list(objs)
         for obj in objs:
-            obj.data = validate_result_data(obj.kind, obj.data)
+            obj.fill_from_data()
         return super().bulk_create(objs, *args, **kwargs)
 
     def bulk_update(self, objs, fields, *args, **kwargs):
         objs = list(objs)
         if "data" in fields:
             for obj in objs:
-                obj.data = validate_result_data(obj.kind, obj.data)
+                obj.fill_from_data()
+            fields = [*fields, "value"] if "value" not in fields else fields
         return super().bulk_update(objs, fields, *args, **kwargs)
 
     def record(self, **fields) -> "AlgorithmResult":
@@ -60,11 +61,15 @@ class AlgorithmResultQuerySet(BaseQuerySet):
         """Move the results of occurrences merged into ``kept``, so their history follows the merge.
 
         Call it before deleting the absorbed occurrences, whose results would otherwise be deleted
-        with them. Returns the number of results moved.
+        with them. Occurrences of another project are refused, so a result never ends up filed under
+        a project other than its occurrence's. Returns the number of results moved.
         """
         absorbed_ids = set(absorbed_ids) - {kept.pk}
         if not absorbed_ids:
             return 0
+        occurrences = self.model._meta.get_field("occurrence").related_model.objects
+        if occurrences.filter(pk__in=absorbed_ids).exclude(project_id=kept.project_id).exists():
+            raise ValueError(f"Cannot move results into Occurrence #{kept.pk} from occurrences of another project.")
         return self.filter(occurrence_id__in=absorbed_ids).update(occurrence=kept)
 
 
@@ -100,8 +105,8 @@ class AlgorithmResult(BaseModel):
     # No ``choices``: the registry of data models in ami/ml/results/schemas.py is the list of kinds,
     # and every write path rejects a kind without one, so a new kind needs no migration.
     kind = models.CharField(max_length=32)
-    # The kind's headline figure, for filtering and sorting: the share of probability outside
-    # the list for class masking, the relative size for the size filter.
+    # The kind's headline figure, for filtering and sorting, copied from the data field its model
+    # names in ``value_field`` on every write.
     value = models.FloatField(null=True, blank=True)
     data = models.JSONField(default=dict, blank=True)
     timestamp = models.DateTimeField(default=timezone.now)
@@ -123,8 +128,13 @@ class AlgorithmResult(BaseModel):
     def __str__(self) -> str:
         return f"#{self.pk} {self.kind} for Occurrence #{self.occurrence_id} from Algorithm #{self.algorithm_id}"
 
-    def save(self, *args, **kwargs):
+    def fill_from_data(self) -> None:
+        """Validate ``data`` against the kind's model and set ``value`` to the figure the kind names."""
         self.data = validate_result_data(self.kind, self.data)
+        self.value = result_value(self.kind, self.data)
+
+    def save(self, *args, **kwargs):
+        self.fill_from_data()
         if self.project_id is None:
             self.project_id = self.occurrence.project_id
         if self.project_id is None:

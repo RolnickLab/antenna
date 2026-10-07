@@ -10,7 +10,6 @@ import django_stubs_ext
 import environ
 
 # A leaf module (pydantic only, no Django imports), so settings can read the result kinds.
-from ami.ml.results.schemas import result_kind_title, result_kinds
 
 # Monkeypatching Django, so stubs will work for all generics,
 # see: https://github.com/typeddjango/django-stubs
@@ -563,7 +562,6 @@ SPECTACULAR_SETTINGS = {
         "AlgorithmResultEntryTypeEnum": ["algorithm_result"],
         "IdentificationEntryTypeEnum": ["identification"],
         "PredictionEntryTypeEnum": ["prediction"],
-        **{f"{result_kind_title(kind)}ResultKindEnum": [kind] for kind in result_kinds()},
     },
 }
 # Your stuff...

@@ -101,7 +101,6 @@ const classMasking: ServerOccurrenceHistoryEntry = {
     extra: {},
     new_winner_original_rank: 2,
   },
-  data_references: {},
   determination_after: NOCTUA,
   determination_before: XESTIA,
   id: 5,
