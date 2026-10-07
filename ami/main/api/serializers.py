@@ -309,7 +309,9 @@ class ProjectListSerializer(DefaultSerializer):
     captures_count = serializers.IntegerField(read_only=True)
     occurrences_count = serializers.IntegerField(read_only=True)
     members_count = serializers.IntegerField(read_only=True)
-    last_capture_timestamp = serializers.DateTimeField(read_only=True, allow_null=True)
+    last_capture_timestamp = serializers.DateTimeField(read_only=True)
+    last_occurrence_updated_at = serializers.DateTimeField(read_only=True)
+    last_job_updated_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Project
@@ -324,8 +326,16 @@ class ProjectListSerializer(DefaultSerializer):
             "image",
             "draft",
         ]
-        # Annotated by ProjectQuerySet.with_overview_counts() on the list action only.
-        fields = base_fields + ["captures_count", "occurrences_count", "members_count", "last_capture_timestamp"]
+        # Annotated by ProjectQuerySet.with_overview_counts() and with_recent_activity() when the
+        # list asks for them, and left out of the response otherwise.
+        fields = base_fields + [
+            "captures_count",
+            "occurrences_count",
+            "members_count",
+            "last_capture_timestamp",
+            "last_occurrence_updated_at",
+            "last_job_updated_at",
+        ]
 
 
 class ProjectSettingsSerializer(DefaultSerializer):

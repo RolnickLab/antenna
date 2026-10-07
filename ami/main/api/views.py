@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models import OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -38,6 +38,7 @@ from ami.main.models_future.identifications import create_identifications_batch,
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
+from ami.utils.fields import url_boolean_param
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -185,22 +186,18 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
     search_fields = ["name", "description"]
-    ordering_fields = [
-        "name",
-        "created_at",
-        "updated_at",
-        # The three below are not Project fields; get_queryset annotates them on
-        # demand (see below). last_capture_timestamp mirrors the DeploymentViewSet
-        # ordering of the same name, but is a per-project rollup of capture times.
-        "last_capture_timestamp",
-        "last_occurrence_updated_at",
-        "last_job_updated_at",
-        # Annotated on the list action by ProjectQuerySet.with_overview_counts().
+    # Not Project fields: annotated on the list action by ProjectQuerySet.with_overview_counts()
+    # and with_recent_activity(), which run only when asked for (see get_queryset).
+    overview_fields = [
         "deployments_count",
         "captures_count",
         "occurrences_count",
         "members_count",
+        "last_capture_timestamp",
+        "last_occurrence_updated_at",
+        "last_job_updated_at",
     ]
+    ordering_fields = ["name", "created_at", "updated_at", *overview_fields]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -213,41 +210,14 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             if user:
                 qs = qs.filter_by_user(user)
 
-        # Annotate "recent activity" fields only when sorting by them, so the
-        # default list stays cheap. Each is a correlated subquery returning one
-        # row via a covering index, and only one is ever added per request.
+        # The totals and activity dates feed the projects table, so they are added only when
+        # the table asks for them with ?with_counts, or when the list is sorted by one of them.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
-        if self.action == "list":
-            # The list shows rolled-up counts instead of nested deployments, so skip
-            # prefetching every deployment of every project on the page.
-            qs = qs.prefetch_related(None).with_overview_counts(last_capture="last_capture_timestamp" not in ordering)
-        if "last_capture_timestamp" in ordering:
-            # Live max capture time per project (Index Only Scan on
-            # main_source_proj_ts_desc_idx); kept live rather than reading the
-            # denormalized Deployment field so the sort never lags ingestion.
-            # timestamp is nullable, and DESC sorts NULLs first, so exclude them
-            # explicitly — otherwise a single undated capture masks the real max.
-            qs = qs.annotate(
-                last_capture_timestamp=Subquery(
-                    SourceImage.objects.filter(project=OuterRef("pk"), timestamp__isnull=False)
-                    .order_by("-timestamp")
-                    .values("timestamp")[:1]
-                )
-            )
-        if "last_occurrence_updated_at" in ordering:
-            qs = qs.annotate(
-                last_occurrence_updated_at=Subquery(
-                    Occurrence.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
-                )
-            )
-        if "last_job_updated_at" in ordering:
-            from ami.jobs.models import Job
-
-            qs = qs.annotate(
-                last_job_updated_at=Subquery(
-                    Job.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
-                )
-            )
+        if self.action == "list" and (
+            url_boolean_param(self.request, "with_counts") or ordering & set(self.overview_fields)
+        ):
+            # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
+            qs = qs.prefetch_related(None).with_overview_counts().with_recent_activity()
         return qs
 
     def get_serializer_class(self):

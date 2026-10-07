@@ -2362,7 +2362,7 @@ class TestProjectListSearch(APITestCase):
 
 
 class TestProjectListOverviewCounts(APITestCase):
-    """The project list rolls up deployment cached counts per project, sortable, at a fixed query cost."""
+    """The projects table gets per-project totals and activity dates, sortable, at a fixed query cost."""
 
     endpoint = "/api/v2/projects/"
 
@@ -2378,15 +2378,14 @@ class TestProjectListOverviewCounts(APITestCase):
             ("Station B", 50, 5, last_capture - datetime.timedelta(days=3)),
         ]:
             deployment = Deployment.objects.create(name=name, project=self.busy)
+            SourceImage.objects.create(deployment=deployment, project=self.busy, timestamp=timestamp, path=name)
             # Set after create, which recalculates the cached counts from (no) captures.
-            Deployment.objects.filter(pk=deployment.pk).update(
-                captures_count=captures, occurrences_count=occurrences, last_capture_timestamp=timestamp
-            )
+            Deployment.objects.filter(pk=deployment.pk).update(captures_count=captures, occurrences_count=occurrences)
         self.last_capture = last_capture
         return super().setUp()
 
     def _rows(self, **params) -> list[dict]:
-        response = self.client.get(self.endpoint, params)
+        response = self.client.get(self.endpoint, {"with_counts": "true", **params})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         return response.json()["results"]
 
@@ -2403,6 +2402,16 @@ class TestProjectListOverviewCounts(APITestCase):
             (0, 0, 0, 1),
         )
         self.assertIsNone(empty["last_capture_timestamp"])
+        self.assertIsNone(empty["last_occurrence_updated_at"])
+        self.assertIsNone(empty["last_job_updated_at"])
+
+    def test_totals_are_left_out_unless_asked_for(self):
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(row for row in response.json()["results"] if row["id"] == self.busy.pk)
+        self.assertEqual(row["deployments_count"], 2)
+        for field in ["captures_count", "members_count", "last_capture_timestamp", "last_job_updated_at"]:
+            self.assertNotIn(field, row)
 
     def test_sort_by_rolled_up_count(self):
         ids = [row["id"] for row in self._rows(ordering="-captures_count")]
@@ -2411,7 +2420,7 @@ class TestProjectListOverviewCounts(APITestCase):
         self.assertEqual(ids[-1], self.busy.pk)
 
     def test_counts_are_read_inside_the_list_query(self):
-        """Deployments and memberships are only read by the one list query, never once per project.
+        """The tables behind the totals and dates are only read by the one list query, never once per project.
 
         The per-row permission lookups the list serializer already makes are outside this check.
         Cachalot is off so every query is seen.
@@ -2430,9 +2439,8 @@ class TestProjectListOverviewCounts(APITestCase):
             # cachalot_disabled() does not restore itself when the block raises.
             disabled.__exit__(None, None, None)
         self.assertGreaterEqual(len(rows), 7)
-        rollup_queries = [
-            q["sql"] for q in queries if '"main_deployment"' in q["sql"] or '"main_userprojectmembership"' in q["sql"]
-        ]
+        tables = ['"main_deployment"', '"main_userprojectmembership"', '"main_sourceimage"', '"jobs_job"']
+        rollup_queries = [q["sql"] for q in queries if any(table in q["sql"] for table in tables)]
         self.assertEqual(len(rollup_queries), 1, rollup_queries)
 
 

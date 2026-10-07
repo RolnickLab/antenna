@@ -230,14 +230,13 @@ class ProjectQuerySet(BaseQuerySet):
         """
         return self.filter(members=user)
 
-    def with_overview_counts(self, last_capture: bool = True) -> "ProjectQuerySet":
+    def with_overview_counts(self) -> "ProjectQuerySet":
         """
         Annotate the per-project totals shown in the projects table.
 
         Totals are summed from the cached counts on each deployment, so they are only as
         fresh as `Deployment.update_calculated_fields()`. Each is one correlated subquery
-        over the deployments or memberships of a single project. Pass `last_capture=False`
-        when the caller annotates its own `last_capture_timestamp`.
+        over the deployments or memberships of a single project.
         """
 
         def deployment_rollup(aggregate):
@@ -249,7 +248,7 @@ class ProjectQuerySet(BaseQuerySet):
                 .values("value")[:1]
             )
 
-        qs = self.annotate(
+        return self.annotate(
             deployments_count=Coalesce(deployment_rollup(models.Count("pk")), 0),
             captures_count=Coalesce(deployment_rollup(models.Sum("captures_count")), 0),
             occurrences_count=Coalesce(deployment_rollup(models.Sum("occurrences_count")), 0),
@@ -264,9 +263,25 @@ class ProjectQuerySet(BaseQuerySet):
                 0,
             ),
         )
-        if last_capture:
-            qs = qs.annotate(last_capture_timestamp=deployment_rollup(models.Max("last_capture_timestamp")))
-        return qs
+
+    def with_recent_activity(self) -> "ProjectQuerySet":
+        """
+        Annotate when each project last received a capture, an occurrence update and a job update.
+
+        Read live rather than from cached fields so the projects table never lags ingestion.
+        Each is a correlated subquery answered by an index-only scan on a (project, time) index.
+        """
+        from ami.jobs.models import Job
+
+        def latest(queryset: models.QuerySet, field: str) -> Subquery:
+            return Subquery(queryset.filter(project=OuterRef("pk")).order_by(f"-{field}").values(field)[:1])
+
+        return self.annotate(
+            # timestamp is nullable and DESC sorts NULLs first, so undated captures are excluded.
+            last_capture_timestamp=latest(SourceImage.objects.filter(timestamp__isnull=False), "timestamp"),
+            last_occurrence_updated_at=latest(Occurrence.objects.all(), "updated_at"),
+            last_job_updated_at=latest(Job.objects.all(), "updated_at"),
+        )
 
 
 class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
