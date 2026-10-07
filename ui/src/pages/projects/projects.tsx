@@ -62,6 +62,7 @@ export const Projects = () => {
       ? [{ field: 'user_id', value: userInfo?.id }]
       : []),
     ...(search ? [{ field: 'search', value: search }] : []),
+    ...(layout === 'map' ? [{ field: 'with_center', value: 'true' }] : []),
   ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({
