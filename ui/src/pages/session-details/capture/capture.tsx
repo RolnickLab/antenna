@@ -2,6 +2,7 @@ import classNames from 'classnames'
 import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { CaptureDetection } from 'data-services/models/capture'
+import _ from 'lodash'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -392,6 +393,9 @@ const OccurrenceDetailsDialog = ({
     TABS.FIELDS
   )
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const detailsLabel = translate(STRING.ENTITY_DETAILS, {
+    type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
+  })
 
   return (
     <Dialog.Root
@@ -407,6 +411,11 @@ const OccurrenceDetailsDialog = ({
         isLoading={isLoading}
         error={error}
       >
+        <div className="sr-only">
+          <Dialog.Header title={occurrence?.displayName ?? detailsLabel}>
+            <Dialog.Description>{detailsLabel}</Dialog.Description>
+          </Dialog.Header>
+        </div>
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
