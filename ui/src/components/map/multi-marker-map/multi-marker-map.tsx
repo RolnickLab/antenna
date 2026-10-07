@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import {
   ATTRIBUTION,
+  DEFAULT_ZOOM,
   MAX_BOUNDS,
   MIN_ZOOM,
   TILE_LAYER_URL,
@@ -40,7 +41,7 @@ export const MultiMarkerMap = ({
 
   useEffect(() => {
     requestAnimationFrame(() => {
-      mapRef.current?.fitBounds(bounds)
+      mapRef.current?.fitBounds(bounds, { maxZoom: DEFAULT_ZOOM })
     })
   }, [mapRef, bounds])
 
@@ -55,8 +56,10 @@ export const MultiMarkerMap = ({
   return (
     <MapContainer
       // Fitting the bounds on creation gives the map a view before the minimap
-      // reads it, also when there are no markers.
+      // reads it, also when there are no markers. The zoom cap keeps a single
+      // marker from zooming in all the way, or to an infinite zoom on creation.
       bounds={bounds}
+      boundsOptions={{ maxZoom: DEFAULT_ZOOM }}
       className={classNames(styles.mapContainer, className)}
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
