@@ -84,7 +84,7 @@ def create_detection_embeddings(
     for detection in detections:
         if detection.bbox is not None:
             by_box[_box_key(detection.source_image_id, detection.bbox)].append(detection)
-    embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
+    embeddings: dict[tuple[int, int, str], DetectionEmbedding] = {}
     lengths_by_pair: dict[tuple[Algorithm, str], set[int]] = collections.defaultdict(set)
     unmatched = not_finite = 0
     for detection_resp in detection_responses:
@@ -114,7 +114,7 @@ def create_detection_embeddings(
                 not_finite += 1
                 continue
             lengths_by_pair[(algorithm, DEFAULT_EMBEDDING_KEY)].add(len(embedding_resp.features))
-            embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
+            embeddings[(detection.pk, algorithm.pk, DEFAULT_EMBEDDING_KEY)] = DetectionEmbedding(
                 detection=detection,
                 algorithm=algorithm,
                 key=DEFAULT_EMBEDDING_KEY,
