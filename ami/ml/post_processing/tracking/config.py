@@ -38,6 +38,16 @@ class TrackingConfig(pydantic.BaseModel):
         ),
     )
     event_ids: list[int] = pydantic.Field([], title="Sessions")
+    detection_algorithm_id: int | None = reference(
+        "algorithm",
+        None,
+        title="Detector",
+        description=(
+            "Compare only the detections from this detection algorithm (its id). Leave blank to use the only detector "
+            "in each session; a session with detections from more than one detector is then skipped, because "
+            "two detectors find the same insect twice."
+        ),
+    )
 
     cost_threshold: float = pydantic.Field(
         1.0,
@@ -119,8 +129,18 @@ class TrackingConfig(pydantic.BaseModel):
         True,
         title="Only track sessions that have not been tracked",
         description=(
-            "Skip a session when any of its occurrences already holds more than one detection. Turned off, a "
-            "run can add links and merges to such a session, but it never undoes earlier ones."
+            "Skip a session when any of its detections is already linked to a next one. Turned off, a run "
+            "adds links between detections that have none and merges the occurrences they join; it never "
+            "removes or replaces a link, and never takes a detection out of its occurrence."
+        ),
+    )
+
+    preview_only: bool = pydantic.Field(
+        False,
+        title="Preview only",
+        description=(
+            "Work out the links and merges and report how many there would be on the job, without changing "
+            "anything."
         ),
     )
 

@@ -107,8 +107,9 @@ class TestTrackingRun(_TrackingCase):
         last_of_first.next_detection = first_of_second
         last_of_first.save(update_fields=["next_detection"])
 
+        # The stored link marks both sessions as tracked, so the guard is turned off.
         for event in (first[0].event, second[0].event):
-            self.run_task(event)
+            self.run_task(event, require_fresh_event=False)
 
         self.assertEqual(self.occurrence_sizes(first[0].event), [2])
         self.assertEqual(self.occurrence_sizes(second[0].event), [2])
@@ -144,12 +145,11 @@ class TestGuards(_TrackingCase):
         self.run_task(event, require_fresh_event=False)
         self.assertEqual(self.occurrence_sizes(event), [3])
 
-    def test_an_occurrence_that_keeps_detections_outside_the_chain_is_not_deleted(self):
-        """Re-tracking must never leave a detection without an occurrence.
+    def test_a_run_merges_whole_occurrences_and_never_takes_a_detection_out_of_one(self):
+        """A run only adds: chains joined through an earlier grouping end up in one occurrence.
 
-        An earlier grouping put the first and last detections in one occurrence. The new run links the
-        first detection to a neighbour and the last to another, so that occurrence is split across two
-        chains; it keeps the first chain and must not be deleted by the second.
+        An earlier grouping put the first and last detections in one occurrence. The run links the first
+        detection to a neighbour and the last to another, so both chains and that occurrence become one.
         """
         far = [600, 500, 650, 550]
         captures = create_session(self.deployment, [[BOX], [BOX, far], [far]], self.taxa[0])
@@ -165,7 +165,21 @@ class TestGuards(_TrackingCase):
 
         detections = Detection.objects.filter(source_image__event=event)
         self.assertFalse(detections.filter(occurrence__isnull=True).exists())
-        self.assertEqual(self.occurrence_sizes(event), [2, 2])
+        self.assertEqual(self.occurrence_sizes(event), [4])
+
+    def test_a_session_grouped_earlier_without_links_is_tracked(self):
+        """Only a stored link marks a session as tracked; an occurrence of several detections does not."""
+        captures = create_session(self.deployment, [[BOX], [BOX], [BOX]], self.taxa[0])
+        event = captures[0].event
+        first, second = (c.detections.get() for c in captures[:2])
+        emptied = second.occurrence
+        second.occurrence = first.occurrence
+        second.save(update_fields=["occurrence"])
+        emptied.delete()
+
+        self.run_task(event)
+
+        self.assertEqual(self.occurrence_sizes(event), [3])
 
     def test_human_identifications_skip_the_session_unless_the_guard_is_off(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
@@ -194,6 +208,12 @@ class TestMerging(_TrackingCase):
         self.assertEqual(keeper.detections.count(), 3)
         self.assertEqual(Identification.objects.filter(user=user).count(), 3)
         self.assertEqual(set(Identification.objects.values_list("occurrence_id", flat=True)), {keeper.pk})
+        # As when an identification is saved, the user keeps one active identification: the newest.
+        newest = Identification.objects.filter(user=user).order_by("-created_at", "-pk").first()
+        self.assertEqual(list(Identification.objects.filter(user=user, withdrawn=False)), [newest])
+        result = AlgorithmResult.objects.get(kind="tracking")
+        self.assertEqual(len(result.data["moved_identifications"]), 2)
+        self.assertEqual(len(result.data["withdrawn_identification_ids"]), 2)
 
     def _two_detection_chain(self, first_score: float, second_score: float):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
@@ -208,7 +228,7 @@ class TestMerging(_TrackingCase):
     def test_class_masking_after_tracking_still_changes_the_determination(self):
         """A later re-scoring replaces a merged occurrence's determination, because tracking adds no classification."""
         captures, first, second = self._two_detection_chain(first_score=0.3, second_score=0.9)
-        self.run_task(captures[0].event)
+        self.run_task(captures[0].event, require_fresh_event=False)
         occurrence = Occurrence.objects.get(pk=first.occurrence_id)
         self.assertEqual(occurrence.determination, self.taxa[1])
         self.assertFalse(Classification.objects.filter(algorithm__key="tracking").exists())
@@ -508,10 +528,11 @@ class TestTrackingProgressDuringMatching(_TrackingCase):
 
 
 class TestTrackingQueries(_TrackingCase):
-    def count_queries(self, boxes_per_capture: list[list[list[int]] | None], start: datetime.datetime) -> int:
+    def count_queries(self, captures_count: int, insects: int, start: datetime.datetime) -> int:
         from cachalot.api import cachalot_disabled
 
-        captures = create_session(self.deployment, boxes_per_capture, self.taxa[0], start=start)
+        boxes = [[x, 100, x + 100, 200] for x in range(0, 300 * insects, 300)]
+        captures = create_session(self.deployment, [boxes] * captures_count, self.taxa[0], start=start)
         disabled = cachalot_disabled()
         disabled.__enter__()
         try:
@@ -520,15 +541,101 @@ class TestTrackingQueries(_TrackingCase):
         finally:
             # cachalot_disabled() does not restore itself when the block raises.
             disabled.__exit__(None, None, None)
-        self.assertEqual(self.occurrence_sizes(captures[0].event), [len(boxes_per_capture)])
+        self.assertEqual(self.occurrence_sizes(captures[0].event), [captures_count] * insects)
         return len(queries)
 
-    def test_queries_grow_by_a_constant_per_capture_not_per_detection(self):
-        """Each extra capture adds a fixed number of queries; reassigning a chain's detections is one update."""
-        self.count_queries([[BOX]] * 3, datetime.datetime(2026, 6, 30))  # warms per-process caches
-        counts = [
-            self.count_queries([[BOX]] * n, datetime.datetime(2026, 7, day)) for day, n in ((1, 3), (2, 6), (3, 9))
-        ]
-        self.assertEqual(counts[2] - counts[1], counts[1] - counts[0])
-        per_capture = (counts[1] - counts[0]) // 3
-        self.assertLessEqual(per_capture, 4)
+    def test_queries_do_not_grow_with_the_number_of_detections(self):
+        """Links and merges are written in bulk; only the determination recompute costs queries per occurrence.
+
+        Each extra capture adds the same number of queries however many insects it holds, and each extra
+        insect adds a fixed number, however many captures its chain spans.
+        """
+        self.count_queries(3, 1, datetime.datetime(2026, 6, 30))  # warms per-process caches
+        one = [self.count_queries(n, 1, datetime.datetime(2026, 7, day)) for day, n in ((1, 3), (2, 6))]
+        three = [self.count_queries(n, 3, datetime.datetime(2026, 7, day)) for day, n in ((3, 3), (4, 6))]
+        self.assertEqual(one[1] - one[0], three[1] - three[0])
+        self.assertLessEqual((one[1] - one[0]) // 3, 2)
+        self.assertEqual(three[0] - one[0], three[1] - one[1])
+        self.assertLessEqual((three[0] - one[0]) // 2, 3)
+
+
+class TestPreview(_TrackingCase):
+    def test_a_preview_reports_the_counts_and_changes_nothing(self):
+        captures = create_session(self.deployment, [[BOX], [BOX], [BOX]], self.taxa[0])
+        event = captures[0].event
+        job = Job.objects.create(name="t", project=self.project, job_type_key="post_processing")
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+
+        self.run_task(event, job=job, preview_only=True)
+
+        self.assertEqual(self.occurrence_sizes(event), [1, 1, 1])
+        self.assertFalse(Detection.objects.filter(source_image__event=event, next_detection__isnull=False).exists())
+        self.assertFalse(AlgorithmResult.objects.exists())
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertEqual(params["Detection links that would be created"], 2)
+        self.assertEqual(params["Occurrences that would be merged away"], 2)
+        self.assertEqual((params["Occurrences before"], params["Occurrences after the run"]), (3, 1))
+        self.assertTrue(params["Result"].startswith("Preview only, nothing was changed."))
+
+        self.run_task(event, job=job)
+        self.assertEqual(self.occurrence_sizes(event), [3])
+
+
+class TestDetectors(_TrackingCase):
+    def two_detector_session(self) -> tuple[Event, Algorithm, Algorithm]:
+        captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
+        first, second = (Algorithm.objects.create(name=f"Detector {n}", key=f"detector-{n}") for n in (1, 2))
+        Detection.objects.filter(source_image__in=captures).update(detection_algorithm=first)
+        for capture in captures:
+            duplicate = add_detection(capture, [102, 102, 202, 202], self.taxa[0])
+            duplicate.detection_algorithm = second
+            duplicate.save(update_fields=["detection_algorithm"])
+        return captures[0].event, first, second
+
+    def test_a_session_with_two_detectors_is_skipped_with_a_reason(self):
+        event, _, _ = self.two_detector_session()
+        job = Job.objects.create(name="t", project=self.project, job_type_key="post_processing")
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+
+        self.run_task(event, job=job)
+
+        self.assertEqual(self.occurrence_sizes(event), [1, 1, 1, 1])
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertIn("more than one detector", params["Result"])
+
+    def test_a_chosen_detector_links_only_its_own_detections(self):
+        event, first, second = self.two_detector_session()
+
+        self.run_task(event, detection_algorithm_id=second.pk)
+
+        self.assertEqual(self.occurrence_sizes(event), [1, 1, 2])
+        linked = Detection.objects.filter(source_image__event=event, next_detection__isnull=False).get()
+        self.assertEqual(linked.detection_algorithm_id, second.pk)
+
+
+class TestCaptureOrder(_TrackingCase):
+    def test_a_capture_without_a_timestamp_is_left_out(self):
+        captures = create_session(self.deployment, [[BOX], [BOX], [BOX]], self.taxa[0])
+        type(captures[1]).objects.filter(pk=captures[1].pk).update(timestamp=None)
+
+        self.run_task(captures[0].event)
+
+        self.assertEqual(self.occurrence_sizes(captures[0].event), [1, 2])
+        self.assertIsNone(captures[1].detections.get().next_detection_id)
+
+
+class TestUndoRecord(_TrackingCase):
+    def test_the_result_records_the_grouping_before_the_run(self):
+        captures = create_session(self.deployment, [[BOX], [BOX], [BOX]], self.taxa[0])
+        detections = [c.detections.get() for c in captures]
+
+        self.run_task(captures[0].event)
+
+        result = AlgorithmResult.objects.get(kind="tracking")
+        self.assertEqual(result.data["detection_ids"], [d.pk for d in detections])
+        self.assertEqual(result.data["previous_occurrence_ids"], [d.occurrence_id for d in detections])
+        self.assertEqual(result.data["merged_occurrence_ids"], sorted(d.occurrence_id for d in detections[1:]))

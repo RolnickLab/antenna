@@ -97,6 +97,12 @@ export interface TrackingResultData extends ServerDeterminationSnapshot {
   path_length: number
   /** The largest box area over the smallest. */
   size_change: number
+  /** The grouping before the run: the detections in capture order and the occurrence each was in. */
+  detection_ids?: number[]
+  previous_occurrence_ids?: (number | null)[]
+  /** Identifications moved here, as [identification id, earlier occurrence id]. */
+  moved_identifications?: [number, number][]
+  withdrawn_identification_ids?: number[]
 }
 
 export interface ServerIdentificationDetails {

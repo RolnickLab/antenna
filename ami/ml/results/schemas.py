@@ -90,6 +90,13 @@ class TrackingResultData(DeterminationSnapshot):
     link_costs: list[float] = []
     # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.
     merged_occurrence_ids: list[int] = []
+    # The grouping before the run, so a reset can restore it: the occurrence's detections in capture order,
+    # the occurrence each one was in, each identification moved here as (identification, earlier occurrence),
+    # and the identifications withdrawn because their user had another active one on a merged occurrence.
+    detection_ids: list[int] = []
+    previous_occurrence_ids: list[int | None] = []
+    moved_identifications: list[tuple[int, int]] = []
+    withdrawn_identification_ids: list[int] = []
 
 
 ALGORITHM_RESULT_DATA_MODELS: tuple[type[AlgorithmResultData], ...] = (
