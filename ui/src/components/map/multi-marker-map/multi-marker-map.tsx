@@ -54,7 +54,9 @@ export const MultiMarkerMap = ({
 
   return (
     <MapContainer
-      center={bounds.getCenter()}
+      // Fitting the bounds on creation gives the map a view before the minimap
+      // reads it, also when there are no markers.
+      bounds={bounds}
       className={classNames(styles.mapContainer, className)}
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
