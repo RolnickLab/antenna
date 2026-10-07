@@ -3983,13 +3983,9 @@ def update_occurrence_determination(
     """
     needs_update = False
 
-    # Invalidate the cached properties so they will be re-calculated
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
-    if hasattr(occurrence, "best_prediction"):
-        del occurrence.best_prediction
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
+    # Clear the cached properties so they are recalculated. ``hasattr`` would run their queries first.
+    occurrence.__dict__.pop("best_identification", None)
+    occurrence.__dict__.pop("best_prediction", None)
 
     current_determination = (
         current_determination
