@@ -192,3 +192,36 @@ class TestVisualSimilarityPermissions(VisualSimilarityFixture):
         self.client.force_authenticate(user=self.member)
         self.assertEqual(self._list("")[1], 5)
         self._assert_matches_plain_list()
+
+
+class TestOccurrenceDetailEmbeddingAlgorithms(VisualSimilarityFixture):
+    """The detail view lists the algorithms whose vector can seed a similarity sort, so the UI
+    can offer the link only when it would work."""
+
+    def _detail(self, occurrence: Occurrence) -> dict:
+        response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return response.json()
+
+    def test_the_list_is_empty_without_vectors_and_names_each_algorithm_that_has_one(self):
+        self.assertEqual(self._detail(self.no_vector)["embedding_algorithms"], [])
+        self.assertEqual(
+            self._detail(self.seed)["embedding_algorithms"],
+            [{"id": self.backbone.pk, "name": "Backbone"}, {"id": self.other.pk, "name": "Other backbone"}],
+        )
+        self.assertEqual(
+            self._detail(self.other_only)["embedding_algorithms"], [{"id": self.other.pk, "name": "Other backbone"}]
+        )
+
+    def test_the_field_costs_one_query_whatever_the_number_of_algorithms(self):
+        def vector_queries(occurrence: Occurrence) -> int:
+            with cachalot_disabled(), CaptureQueriesContext(connection) as queries:
+                self._detail(occurrence)
+            return sum("ml_detectionembedding" in query["sql"] for query in queries.captured_queries)
+
+        self.assertEqual(vector_queries(self.no_vector), 1)
+        self.assertEqual(vector_queries(self.seed), 1)
+
+    def test_the_list_view_does_not_carry_the_field(self):
+        response = self.client.get(f"{self.url}")
+        self.assertNotIn("embedding_algorithms", response.json()["results"][0])
