@@ -21,10 +21,12 @@ export const MultiMarkerMap = ({
   className,
   markers,
   isLoading,
+  maxZoom,
 }: {
   className?: string
   markers: { position: MarkerPosition; popupContent?: JSX.Element }[]
   isLoading?: boolean
+  maxZoom?: number
 }) => {
   const mapRef = useRef<L.Map>(null)
 
@@ -41,9 +43,9 @@ export const MultiMarkerMap = ({
 
   useEffect(() => {
     requestAnimationFrame(() => {
-      mapRef.current?.fitBounds(bounds, { maxZoom: DEFAULT_ZOOM })
+      mapRef.current?.fitBounds(bounds, { maxZoom })
     })
-  }, [mapRef, bounds])
+  }, [mapRef, bounds, maxZoom])
 
   if (isLoading) {
     return (
@@ -56,8 +58,8 @@ export const MultiMarkerMap = ({
   return (
     <MapContainer
       // Fitting the bounds on creation gives the map a view before the minimap
-      // reads it, also when there are no markers. The zoom cap keeps a single
-      // marker from zooming in all the way, or to an infinite zoom on creation.
+      // reads it, also when there are no markers. The zoom cap stops a single
+      // marker resolving to an infinite zoom before the tile layer sets a maximum.
       bounds={bounds}
       boundsOptions={{ maxZoom: DEFAULT_ZOOM }}
       className={classNames(styles.mapContainer, className)}

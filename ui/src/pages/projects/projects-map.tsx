@@ -1,3 +1,4 @@
+import { DEFAULT_ZOOM } from 'components/map/config'
 import { MultiMarkerMap } from 'components/map/multi-marker-map/multi-marker-map'
 import { Project } from 'data-services/models/project'
 import { InfoBlock } from 'nova-ui-kit'
@@ -32,6 +33,8 @@ export const ProjectsMap = ({
       className="h-[calc(100vh-320px)] min-h-[400px]"
       isLoading={isLoading}
       markers={markers}
+      // A project marker is a mean position, so street level would mislead.
+      maxZoom={DEFAULT_ZOOM}
     />
   )
 }
