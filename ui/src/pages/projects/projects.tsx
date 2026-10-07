@@ -1,6 +1,6 @@
 import { SearchInput } from 'components/search-input/search-input'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
-import { Grid2X2Icon, TableIcon } from 'lucide-react'
+import { Grid2X2Icon, MapIcon, TableIcon } from 'lucide-react'
 import {
   Button,
   ColumnSettings,
@@ -24,6 +24,7 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './project-columns'
 import { ProjectGallery } from './project-gallery'
+import { ProjectsMap } from './projects-map'
 
 export const TABS = {
   MY_PROJECTS: 'my-projects',
@@ -119,6 +120,11 @@ export const Projects = () => {
               label: translate(STRING.TAB_ITEM_GALLERY),
               Icon: Grid2X2Icon,
             },
+            {
+              value: 'map',
+              label: translate(STRING.TAB_ITEM_MAP),
+              Icon: MapIcon,
+            },
           ]}
           value={layout}
           onValueChange={setLayout}
@@ -157,6 +163,8 @@ export const Projects = () => {
           sortable
           sortSettings={sort}
         />
+      ) : layout === 'map' ? (
+        <ProjectsMap isLoading={isLoading} projects={projects} />
       ) : (
         <ProjectGallery
           error={error}

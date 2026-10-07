@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import * as L from 'leaflet'
 import { LoadingSpinner } from 'nova-ui-kit'
 import { useEffect, useMemo, useRef } from 'react'
@@ -16,9 +17,11 @@ import { MarkerPosition } from '../types'
 setup()
 
 export const MultiMarkerMap = ({
+  className,
   markers,
   isLoading,
 }: {
+  className?: string
   markers: { position: MarkerPosition; popupContent?: JSX.Element }[]
   isLoading?: boolean
 }) => {
@@ -43,7 +46,7 @@ export const MultiMarkerMap = ({
 
   if (isLoading) {
     return (
-      <div className={styles.mapContainer}>
+      <div className={classNames(styles.mapContainer, className)}>
         <LoadingSpinner />
       </div>
     )
@@ -52,7 +55,7 @@ export const MultiMarkerMap = ({
   return (
     <MapContainer
       center={bounds.getCenter()}
-      className={styles.mapContainer}
+      className={classNames(styles.mapContainer, className)}
       maxBounds={MAX_BOUNDS}
       minZoom={MIN_ZOOM}
       ref={mapRef}
