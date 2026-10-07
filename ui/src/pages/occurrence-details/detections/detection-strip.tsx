@@ -87,7 +87,6 @@ export const DetectionStrip = ({
     <BlueprintItem
       caption={
         <DetectionCaption
-          captureUrl={detection.captureUrl}
           detectionId={detection.id}
           label={detection.detectionLabel}
           timeLabel={detection.timeLabel}

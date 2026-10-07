@@ -1,18 +1,14 @@
 import { isGenusOrBelow } from 'components/taxon-details/utils'
 import { DetectionLabel } from 'data-services/models/occurrence-details'
-import { ImageIcon } from 'lucide-react'
 import { cn } from 'nova-ui-kit/utils'
 import { STRING, translate } from 'utils/language'
 
 /** Beside a detection's crop: which detection and when, then the classifier's name for it. */
 export const DetectionCaption = ({
-  captureUrl,
   detectionId,
   label,
   timeLabel,
 }: {
-  /** The whole capture this detection was cropped from, opened at full size. */
-  captureUrl?: string
   detectionId: string
   label: DetectionLabel
   timeLabel: string
@@ -26,21 +22,7 @@ export const DetectionCaption = ({
         <span title={translate(STRING.DETECTION_NUMBER, { id: detectionId })}>
           #{detectionId}
         </span>
-        <div className="flex items-center gap-1">
-          <span>{timeLabel}</span>
-          {captureUrl ? (
-            <a
-              aria-label={translate(STRING.OPEN_FULL_CAPTURE)}
-              className="flex items-center hover:text-foreground"
-              href={captureUrl}
-              rel="noreferrer"
-              target="_blank"
-              title={translate(STRING.OPEN_FULL_CAPTURE)}
-            >
-              <ImageIcon aria-hidden className="w-3 h-3" />
-            </a>
-          ) : null}
-        </div>
+        <span>{timeLabel}</span>
       </div>
       <span className="font-medium">
         <span

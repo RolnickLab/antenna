@@ -63,8 +63,6 @@ export interface DetectionLabel {
 /** One detection of an occurrence, as a row on the occurrence page. */
 export interface OccurrenceDetection {
   captureId?: string
-  /** The full capture the crop was cut from, when its image is stored. */
-  captureUrl?: string
   detectionLabel: DetectionLabel
   id: string
   image: { src: string; width: number; height: number }
@@ -123,7 +121,6 @@ export const convertOccurrenceDetection = (
 
   return {
     captureId: detection.capture ? `${detection.capture.id}` : undefined,
-    captureUrl: detection.capture?.url || undefined,
     detectionLabel,
     id: `${detection.id}`,
     // The bounding box gives the crop's proportions when the crop itself is missing.
