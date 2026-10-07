@@ -2446,8 +2446,22 @@ class TestProjectListOverviewCounts(APITestCase):
         row = next(row for row in response.json()["results"] if row["id"] == self.busy.pk)
         self.assertEqual(row["deployments_count"], 2)
         self.assertEqual(row["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
-        for field in ["captures_count", "members_count", "taxa_observed_count"]:
+        for field in ["captures_count", "members_count", "taxa_observed_count", "center_latitude"]:
             self.assertNotIn(field, row)
+
+    def test_center_ignores_stations_without_a_real_location(self):
+        stations = list(Deployment.objects.filter(project=self.busy).order_by("name"))
+        Deployment.objects.filter(pk=stations[0].pk).update(latitude=45.0, longitude=-73.0)
+        Deployment.objects.filter(pk=stations[1].pk).update(latitude=47.0, longitude=-71.0)
+        Deployment.objects.create(name="Placeholder", project=self.busy, latitude=0, longitude=0)
+        Deployment.objects.create(name="Unknown", project=self.busy)
+
+        rows = {row["id"]: row for row in self._rows(with_center="true")}
+        busy, empty = rows[self.busy.pk], rows[self.empty.pk]
+        self.assertAlmostEqual(busy["center_latitude"], 46.0)
+        self.assertAlmostEqual(busy["center_longitude"], -72.0)
+        self.assertIsNone(empty["center_latitude"])
+        self.assertIsNone(empty["center_longitude"])
 
     def test_sorting_by_a_total_works_without_asking_for_totals(self):
         """A sort carried over from the table to the gallery still gets the totals it orders by."""
