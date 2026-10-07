@@ -40,6 +40,7 @@ archived.
 | `planning/celery-queue-split-rollout.md` | Rollout plan for the Celery queue split (`feat/celery-queue-split`) |
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
+| `planning/2026-07-23-mobile-upload-api.md` | Mobile upload API (#1379): presigned PUT `upload-request` endpoint (A1), deployment/project filters (A5), sync-completion docs (A2). Keywords: upload, presigned, S3, deployment, mobile |
 
 ## Archive / session snapshots
 
