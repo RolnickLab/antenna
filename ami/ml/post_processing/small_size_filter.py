@@ -126,6 +126,7 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                         timestamp=timezone.now(),  # How is this different from created_at?
                         algorithm=self.algorithm,
                         applied_to=None,  # Size filter is applied to original detection, not a previous classification
+                        job=self.job,
                     )
                 )
                 detections_to_update.add(det)

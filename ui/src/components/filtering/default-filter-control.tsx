@@ -10,6 +10,7 @@ import {
   Popover,
   Switch,
 } from 'nova-ui-kit'
+import { useId } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -21,6 +22,7 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   const { project } = useProjectDetails(projectId as string, true)
   const { filters, addFilter, clearFilter } = useFilters()
   const filter = filters.find((filter) => filter.field === field)
+  const labelId = useId()
 
   if (!filter) {
     return null
@@ -29,12 +31,16 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   return (
     <div className="flex items-center justify-between pl-2">
       <div className="flex items-center gap-1">
-        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+        <span
+          id={labelId}
+          className="text-muted-foreground body-overline-small font-bold pt-0.5"
+        >
           {filter.label}
         </span>
         {project ? <DefaultFiltersTooltip project={project} /> : null}
       </div>
       <Switch
+        aria-labelledby={labelId}
         checked={stringToBoolean(filter.value) ?? true}
         onCheckedChange={(value) => {
           if (value) {

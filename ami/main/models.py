@@ -2995,7 +2995,16 @@ class Classification(BaseModel):
         null=True,
         related_name="classifications",
     )
-    # job = models.CharField(max_length=255, null=True)
+    # The job that created this row. A later job that returns the same result reuses the row and
+    # does not change it. Indexed by the partial index in Meta, not by the foreign key's own index.
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classifications",
+        db_index=False,
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -3015,6 +3024,13 @@ class Classification(BaseModel):
 
     class Meta:
         ordering = ["-created_at", "-score"]
+        indexes = [
+            # Serves the ?job= occurrence filter with an index-only scan. Partial, because rows
+            # written before jobs were recorded have no job. See #1471 for the measurements.
+            models.Index(
+                fields=["job", "detection"], name="cls_job_detection_idx", condition=models.Q(job__isnull=False)
+            ),
+        ]
 
     def __str__(self) -> str:
         terminal = "Terminal" if self.terminal else "Intermediate"
@@ -3189,11 +3205,16 @@ class Detection(BaseModel):
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
-    # detection_job = models.ForeignKey(
-    #     "Job",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    # )
+    # The job that created this row. A later job that returns the same box reuses the row and
+    # does not change it. Indexed by the partial index in Meta, not by the foreign key's own index.
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="detections",
+        db_index=False,
+    )
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
@@ -3275,6 +3296,11 @@ class Detection(BaseModel):
             # Supports the "last processed" subquery on the captures list: the
             # latest detection created_at per source image (index scan, top 1).
             models.Index(fields=["source_image", "-created_at"], name="det_srcimg_created_idx"),
+            # Serves the ?job= occurrence filter with an index-only scan. Partial, because rows
+            # written before jobs were recorded have no job. See #1471 for the measurements.
+            models.Index(
+                fields=["job", "occurrence"], name="det_job_occurrence_idx", condition=models.Q(job__isnull=False)
+            ),
         ]
 
     def best_classification(self):
@@ -3387,6 +3413,20 @@ class OccurrenceQuerySet(BaseQuerySet):
     def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with no result from any of the given algorithms."""
         return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
+
+    def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
+        """Occurrences created or updated by the given job.
+
+        An occurrence matches when the job created one of its detections, or a classification
+        on one of them, so several jobs can match the same occurrence.
+
+        Identifications are not matched: people make them, not jobs. Two EXISTS subqueries
+        return each occurrence once, where a join would return one row per matching result.
+        """
+        return self.filter(
+            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+        )
 
     def with_timestamps(self):
         """
