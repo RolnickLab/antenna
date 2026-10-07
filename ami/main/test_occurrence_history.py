@@ -561,9 +561,9 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         result = AlgorithmResult.objects.record(
             occurrence=self.occurrence, algorithm=self.size_filter, kind=SIZE_FILTER, data={"relative_size": 0.001}
         )
-        AlgorithmResult.objects.filter(pk=result.pk).update(kind="tracking")
+        AlgorithmResult.objects.filter(pk=result.pk).update(kind="rank_rollup")
         entry = next(e for e in self.get() if e["type"] == "algorithm_result")
-        self.assertEqual(entry["kind"], "tracking")
+        self.assertEqual(entry["kind"], "rank_rollup")
 
 
 class ClassificationAdminTestCase(OccurrenceFixtureTestCase):
