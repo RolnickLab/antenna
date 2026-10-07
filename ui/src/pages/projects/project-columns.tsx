@@ -3,6 +3,8 @@ import {
   BasicTableCell,
   CellTheme,
   DateTableCell,
+  ImageCellTheme,
+  ImageTableCell,
   TableColumn,
   TextAlign,
 } from 'nova-ui-kit'
@@ -29,6 +31,17 @@ const countColumn = ({
 })
 
 export const columns: TableColumn<Project>[] = [
+  {
+    id: 'image',
+    name: translate(STRING.FIELD_LABEL_IMAGE),
+    renderCell: (item: Project) => (
+      <ImageTableCell
+        images={item.image ? [{ src: item.image }] : []}
+        theme={ImageCellTheme.Light}
+        to={APP_ROUTES.PROJECT_DETAILS({ projectId: item.id })}
+      />
+    ),
+  },
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -73,6 +86,22 @@ export const columns: TableColumn<Project>[] = [
     sortField: 'last_capture_timestamp',
     renderCell: (item: Project) => (
       <DateTableCell date={item.lastCaptureDate} />
+    ),
+  },
+  {
+    id: 'last-occurrence-update',
+    name: translate(STRING.FIELD_LABEL_LAST_OCCURRENCE_UPDATE),
+    sortField: 'last_occurrence_updated_at',
+    renderCell: (item: Project) => (
+      <DateTableCell date={item.lastOccurrenceUpdateDate} />
+    ),
+  },
+  {
+    id: 'last-job-update',
+    name: translate(STRING.FIELD_LABEL_LAST_JOB_UPDATE),
+    sortField: 'last_job_updated_at',
+    renderCell: (item: Project) => (
+      <DateTableCell date={item.lastJobUpdateDate} />
     ),
   },
   {

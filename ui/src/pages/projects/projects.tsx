@@ -7,7 +7,6 @@ import {
   PageFooter,
   PageHeader,
   PaginationBar,
-  SortControl,
   Table,
   Tabs,
   ToggleGroup,
@@ -31,47 +30,6 @@ export const TABS = {
   ALL_PROJECTS: 'all-projects',
 }
 
-const SORT_FIELDS = [
-  { id: 'name', name: translate(STRING.FIELD_LABEL_NAME) },
-  { id: 'created_at', name: translate(STRING.FIELD_LABEL_CREATED_AT) },
-  { id: 'updated_at', name: translate(STRING.FIELD_LABEL_UPDATED_AT) },
-  {
-    id: 'last_capture_timestamp',
-    name: translate(STRING.SORT_RECENT_CAPTURES),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'last_occurrence_updated_at',
-    name: translate(STRING.SORT_OCCURRENCE_UPDATES),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'last_job_updated_at',
-    name: translate(STRING.SORT_JOBS_ACTIVITY),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'deployments_count',
-    name: translate(STRING.NAV_ITEM_DEPLOYMENTS),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'captures_count',
-    name: translate(STRING.FIELD_LABEL_CAPTURES),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'occurrences_count',
-    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'members_count',
-    name: translate(STRING.FIELD_LABEL_MEMBERS),
-    defaultSortOrder: 'desc' as const,
-  },
-]
-
 export const Projects = () => {
   const { user } = useUser()
   const { userInfo } = useUserInfo()
@@ -82,12 +40,15 @@ export const Projects = () => {
     'layout'
   )
   const { columnSettings, setColumnSettings } = useColumnSettings('projects', {
+    image: true,
     name: true,
     deployments: true,
     captures: true,
     occurrences: true,
     members: true,
     'last-capture': true,
+    'last-occurrence-update': true,
+    'last-job-update': true,
     'created-at': false,
   })
   const { sort, setSort } = useSort()
@@ -98,6 +59,8 @@ export const Projects = () => {
       ? [{ field: 'user_id', value: userInfo?.id }]
       : []),
     ...(search ? [{ field: 'search', value: search }] : []),
+    // Totals and activity dates are only shown, and only computed, in the table.
+    ...(layout === 'table' ? [{ field: 'with_counts', value: 'true' }] : []),
   ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({ pagination, filters, sort })
@@ -154,14 +117,6 @@ export const Projects = () => {
           onValueChange={setLayout}
         />
         {canCreate ? <NewProjectDialog /> : null}
-        <SortControl
-          columns={SORT_FIELDS.map((field) => ({
-            ...field,
-            sortField: field.id,
-          }))}
-          setSort={setSort}
-          sort={sort}
-        />
         {layout === 'table' ? (
           <ColumnSettings
             columns={columns}

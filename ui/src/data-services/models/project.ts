@@ -58,6 +58,18 @@ export class Project {
       : undefined
   }
 
+  get lastJobUpdateDate(): Date | undefined {
+    return this._project.last_job_updated_at
+      ? new Date(this._project.last_job_updated_at)
+      : undefined
+  }
+
+  get lastOccurrenceUpdateDate(): Date | undefined {
+    return this._project.last_occurrence_updated_at
+      ? new Date(this._project.last_occurrence_updated_at)
+      : undefined
+  }
+
   get name(): string {
     return this._project.name
   }
