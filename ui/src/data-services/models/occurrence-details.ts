@@ -106,6 +106,11 @@ export class OccurrenceDetails extends Occurrence {
     return this._occurrence.details
   }
 
+  // Algorithms with a feature vector on this occurrence; a similarity sort needs one.
+  get embeddingAlgorithms(): { id: number; name: string }[] {
+    return this._occurrence.embedding_algorithms ?? []
+  }
+
   get detections(): string[] {
     return this._detections
   }

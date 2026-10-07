@@ -63,11 +63,13 @@ export const OccurrenceDetails = ({
     projectId,
   })
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
+  const similarityAlgorithm = occurrence.embeddingAlgorithms[0]
   const similarOccurrencesRoute = `${APP_ROUTES.OCCURRENCES({
     projectId: projectId as string,
   })}?${new URLSearchParams({
     ordering: 'visual_similarity',
     similar_to: occurrence.id,
+    similarity_algorithm: `${similarityAlgorithm?.id}`,
   })}`
 
   const blueprintItems = useMemo(
@@ -178,13 +180,15 @@ export const OccurrenceDetails = ({
               />
             </BasicTooltip>
           ) : null}
-          <Link
-            className={buttonVariants({ size: 'small', variant: 'outline' })}
-            to={similarOccurrencesRoute}
-          >
-            <ImagesIcon className="w-4 h-4" />
-            <span>{translate(STRING.SHOW_SIMILAR_OCCURRENCES)}</span>
-          </Link>
+          {similarityAlgorithm ? (
+            <Link
+              className={buttonVariants({ size: 'small', variant: 'outline' })}
+              to={similarOccurrencesRoute}
+            >
+              <ImagesIcon className="w-4 h-4" />
+              <span>{translate(STRING.SHOW_SIMILAR_OCCURRENCES)}</span>
+            </Link>
+          ) : null}
           {canUpdate && (
             <>
               <Agree
