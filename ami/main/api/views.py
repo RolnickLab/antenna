@@ -195,6 +195,11 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         "last_capture_timestamp",
         "last_occurrence_updated_at",
         "last_job_updated_at",
+        # Annotated on the list action by ProjectQuerySet.with_overview_counts().
+        "deployments_count",
+        "captures_count",
+        "occurrences_count",
+        "members_count",
     ]
 
     def get_queryset(self):
@@ -212,6 +217,10 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         # default list stays cheap. Each is a correlated subquery returning one
         # row via a covering index, and only one is ever added per request.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
+        if self.action == "list":
+            # The list shows rolled-up counts instead of nested deployments, so skip
+            # prefetching every deployment of every project on the page.
+            qs = qs.prefetch_related(None).with_overview_counts(last_capture="last_capture_timestamp" not in ordering)
         if "last_capture_timestamp" in ordering:
             # Live max capture time per project (Index Only Scan on
             # main_source_proj_ts_desc_idx); kept live rather than reading the

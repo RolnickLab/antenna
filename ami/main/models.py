@@ -20,7 +20,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.functions import Coalesce
 from django.db.models.signals import pre_delete
@@ -229,6 +229,44 @@ class ProjectQuerySet(BaseQuerySet):
         Filters projects to include only those where the given user is a member.
         """
         return self.filter(members=user)
+
+    def with_overview_counts(self, last_capture: bool = True) -> "ProjectQuerySet":
+        """
+        Annotate the per-project totals shown in the projects table.
+
+        Totals are summed from the cached counts on each deployment, so they are only as
+        fresh as `Deployment.update_calculated_fields()`. Each is one correlated subquery
+        over the deployments or memberships of a single project. Pass `last_capture=False`
+        when the caller annotates its own `last_capture_timestamp`.
+        """
+
+        def deployment_rollup(aggregate):
+            return Subquery(
+                Deployment.objects.filter(project=OuterRef("pk"))
+                .order_by()
+                .values("project")
+                .annotate(value=aggregate)
+                .values("value")[:1]
+            )
+
+        qs = self.annotate(
+            deployments_count=Coalesce(deployment_rollup(models.Count("pk")), 0),
+            captures_count=Coalesce(deployment_rollup(models.Sum("captures_count")), 0),
+            occurrences_count=Coalesce(deployment_rollup(models.Sum("occurrences_count")), 0),
+            members_count=Coalesce(
+                Subquery(
+                    UserProjectMembership.objects.filter(project=OuterRef("pk"))
+                    .order_by()
+                    .values("project")
+                    .annotate(value=models.Count("pk"))
+                    .values("value")[:1]
+                ),
+                0,
+            ),
+        )
+        if last_capture:
+            qs = qs.annotate(last_capture_timestamp=deployment_rollup(models.Max("last_capture_timestamp")))
+        return qs
 
 
 class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):

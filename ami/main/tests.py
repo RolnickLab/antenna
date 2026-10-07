@@ -2361,6 +2361,81 @@ class TestProjectListSearch(APITestCase):
         self.assertEqual(self._search("beetle"), {self.beetle_project.pk})
 
 
+class TestProjectListOverviewCounts(APITestCase):
+    """The project list rolls up deployment cached counts per project, sortable, at a fixed query cost."""
+
+    endpoint = "/api/v2/projects/"
+
+    def setUp(self) -> None:
+        self.owner = User.objects.create_user(email="overview-owner@insectai.org")
+        self.member = User.objects.create_user(email="overview-member@insectai.org")
+        self.busy = Project.objects.create(name="Busy project", owner=self.owner, create_defaults=False)
+        self.busy.members.add(self.member)
+        self.empty = Project.objects.create(name="Empty project", owner=self.owner, create_defaults=False)
+        last_capture = datetime.datetime(2026, 6, 1, 23, 0)
+        for name, captures, occurrences, timestamp in [
+            ("Station A", 100, 10, last_capture),
+            ("Station B", 50, 5, last_capture - datetime.timedelta(days=3)),
+        ]:
+            deployment = Deployment.objects.create(name=name, project=self.busy)
+            # Set after create, which recalculates the cached counts from (no) captures.
+            Deployment.objects.filter(pk=deployment.pk).update(
+                captures_count=captures, occurrences_count=occurrences, last_capture_timestamp=timestamp
+            )
+        self.last_capture = last_capture
+        return super().setUp()
+
+    def _rows(self, **params) -> list[dict]:
+        response = self.client.get(self.endpoint, params)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["results"]
+
+    def test_counts_are_rolled_up_from_deployments(self):
+        rows = {row["id"]: row for row in self._rows()}
+        busy, empty = rows[self.busy.pk], rows[self.empty.pk]
+        self.assertEqual(
+            (busy["deployments_count"], busy["captures_count"], busy["occurrences_count"], busy["members_count"]),
+            (2, 150, 15, 2),
+        )
+        self.assertEqual(busy["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
+        self.assertEqual(
+            (empty["deployments_count"], empty["captures_count"], empty["occurrences_count"], empty["members_count"]),
+            (0, 0, 0, 1),
+        )
+        self.assertIsNone(empty["last_capture_timestamp"])
+
+    def test_sort_by_rolled_up_count(self):
+        ids = [row["id"] for row in self._rows(ordering="-captures_count")]
+        self.assertEqual(ids[0], self.busy.pk)
+        ids = [row["id"] for row in self._rows(ordering="captures_count")]
+        self.assertEqual(ids[-1], self.busy.pk)
+
+    def test_counts_are_read_inside_the_list_query(self):
+        """Deployments and memberships are only read by the one list query, never once per project.
+
+        The per-row permission lookups the list serializer already makes are outside this check.
+        Cachalot is off so every query is seen.
+        """
+        from cachalot.api import cachalot_disabled
+
+        for i in range(5):
+            project = Project.objects.create(name=f"Extra {i}", owner=self.owner, create_defaults=False)
+            Deployment.objects.create(name=f"Extra station {i}", project=project)
+        disabled = cachalot_disabled()
+        disabled.__enter__()
+        try:
+            with CaptureQueriesContext(connection) as queries:
+                rows = self._rows()
+        finally:
+            # cachalot_disabled() does not restore itself when the block raises.
+            disabled.__exit__(None, None, None)
+        self.assertGreaterEqual(len(rows), 7)
+        rollup_queries = [
+            q["sql"] for q in queries if '"main_deployment"' in q["sql"] or '"main_userprojectmembership"' in q["sql"]
+        ]
+        self.assertEqual(len(rollup_queries), 1, rollup_queries)
+
+
 class TestProjectPermissions(APITestCase):
     def _create_project(self, owner, member):
         self.project = Project.objects.create(name="T Project", description="Test Description", owner=owner)

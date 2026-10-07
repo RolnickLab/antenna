@@ -306,10 +306,14 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
 
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
+    captures_count = serializers.IntegerField(read_only=True)
+    occurrences_count = serializers.IntegerField(read_only=True)
+    members_count = serializers.IntegerField(read_only=True)
+    last_capture_timestamp = serializers.DateTimeField(read_only=True, allow_null=True)
 
     class Meta:
         model = Project
-        fields = [
+        base_fields = [
             "id",
             "name",
             "description",
@@ -320,6 +324,8 @@ class ProjectListSerializer(DefaultSerializer):
             "image",
             "draft",
         ]
+        # Annotated by ProjectQuerySet.with_overview_counts() on the list action only.
+        fields = base_fields + ["captures_count", "occurrences_count", "members_count", "last_capture_timestamp"]
 
 
 class ProjectSettingsSerializer(DefaultSerializer):
@@ -394,7 +400,7 @@ class ProjectSerializer(DefaultSerializer):
 
     class Meta:
         model = Project
-        fields = ProjectListSerializer.Meta.fields + [
+        fields = ProjectListSerializer.Meta.base_fields + [
             "deployments",
             "summary_data",  # Conditionally included based on with_charts query param
             "owner",
