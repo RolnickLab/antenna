@@ -25,15 +25,21 @@ export const InfoBlockField = ({
   children,
   className,
   label,
+  labelAddon,
 }: {
-  children: ReactNode
+  children?: ReactNode
   className?: string
   label: string
+  /** A small control kept on the label's line, such as an icon button. */
+  labelAddon?: ReactNode
 }) => (
   <div className={classNames('w-full grid gap-1', className)}>
-    <span className="body-overline font-semibold text-muted-foreground">
-      {label}
-    </span>
+    <div className="flex items-center gap-1">
+      <span className="body-overline font-semibold text-muted-foreground">
+        {label}
+      </span>
+      {labelAddon ? <span className="-my-3">{labelAddon}</span> : null}
+    </div>
     {children}
   </div>
 )

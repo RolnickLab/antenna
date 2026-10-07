@@ -63,9 +63,8 @@ export const SessionInfo = ({ session }: { session: SessionDetails }) => {
         label={translate(STRING.FIELD_LABEL_SESSION_NUMBER, {
           id: session.id,
         })}
-      >
-        <CopyLinkButton value={window.location.href} />
-      </InfoBlockField>
+        labelAddon={<CopyLinkButton value={window.location.href} />}
+      />
       <InfoBlock fields={fields} />
     </div>
   )

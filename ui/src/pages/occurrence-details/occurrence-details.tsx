@@ -214,9 +214,8 @@ export const OccurrenceDetails = ({
                       label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER, {
                         id: occurrence.id,
                       })}
-                    >
-                      <CopyLinkButton value={window.location.href} />
-                    </InfoBlockField>
+                      labelAddon={<CopyLinkButton value={window.location.href} />}
+                    />
                     {fields.map((field, index) => (
                       <InfoBlockField key={index} label={field.label}>
                         <InfoBlockFieldValue
