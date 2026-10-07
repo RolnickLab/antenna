@@ -31,6 +31,7 @@ import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
+import { showSessionTimeline } from './utils'
 import { ViewSettings } from './view-settings'
 import { ZoomSettings } from './zoom-settings'
 
@@ -230,19 +231,21 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </div>
           </div>
         </div>
-        <div className="p-2 bg-background rounded-lg border border-border overflow-hidden xl:col-span-2 md:p-4">
-          <ActivityPlot
-            session={session}
-            setActiveCaptureId={setActiveCaptureId}
-            timeline={timeline}
-          />
-          <TimelineSlider
-            activeCapture={activeCapture}
-            session={session}
-            setActiveCaptureId={setActiveCaptureId}
-            timeline={timeline}
-          />
-        </div>
+        {showSessionTimeline(session) ? (
+          <div className="p-2 bg-background rounded-lg border border-border overflow-hidden xl:col-span-2 md:p-4">
+            <ActivityPlot
+              session={session}
+              setActiveCaptureId={setActiveCaptureId}
+              timeline={timeline}
+            />
+            <TimelineSlider
+              activeCapture={activeCapture}
+              session={session}
+              setActiveCaptureId={setActiveCaptureId}
+              timeline={timeline}
+            />
+          </div>
+        ) : null}
       </div>
     </>
   )
