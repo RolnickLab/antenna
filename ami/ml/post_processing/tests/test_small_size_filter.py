@@ -6,7 +6,7 @@ from unittest import mock
 from django.test import TestCase
 
 from ami.jobs.models import Job, PostProcessingJob
-from ami.main.models import Detection, Occurrence, SourceImage, Taxon
+from ami.main.models import Classification, Detection, Occurrence, SourceImage, Taxon
 from ami.ml.models import AlgorithmResult
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.results.schemas import SizeFilterResultData
@@ -105,6 +105,7 @@ class SizeFilterJobTestCase(SizeFilterTestCase):
 
         self.assertEqual(list(job.algorithm_results.values_list("pk", flat=True)), [first.pk])
         self.assertEqual(occurrence.algorithm_results.count(), 1)
+        self.assertEqual(job.classifications.count(), 1)
 
 
 class SizeFilterResultsTestCase(SizeFilterTestCase):
@@ -142,12 +143,33 @@ class SizeFilterResultsTestCase(SizeFilterTestCase):
         )
         self.assertEqual(sorted(result.classifications.values_list("detection_id", flat=True)), detection_ids)
 
-    def test_each_run_adds_its_own_result(self):
-        """Running the filter again, say with another threshold, shows up as a second result in the history."""
+    def test_a_second_run_with_a_larger_threshold_adds_a_result_for_what_it_newly_flags(self):
+        """Each run that flags something shows up in the history; a detection already flagged is left alone."""
+        occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
+        medium = Detection.objects.create(
+            source_image=self.captures[1],
+            bbox=[0, 0, 150, 150],
+            timestamp=self.captures[1].timestamp,
+            occurrence=occurrence,
+        )
+        medium.classifications.create(taxon=self.taxon, score=0.9, timestamp=self.captures[1].timestamp)
+        for threshold in (0.01, 0.05):
+            SmallSizeFilterTask(logger=logger, occurrence_id=occurrence.pk, size_threshold=threshold).run()
+
+        self.assertEqual(self.records().filter(occurrence=occurrence).count(), 2)
+        flags = Classification.objects.filter(detection__occurrence=occurrence, taxon__name="Not identifiable")
+        # Each detection carries exactly one flag: the second run did not flag the small one again.
+        self.assertEqual(
+            sorted(flags.values_list("detection_id", flat=True)),
+            sorted(occurrence.detections.values_list("pk", flat=True)),
+        )
+
+    def test_running_again_with_the_same_threshold_flags_nothing_twice(self):
         occurrence = self._singleton(self.captures[0], [0, 0, 10, 10])
         for _ in range(2):
             self.run_filter(occurrence)
-        self.assertEqual(self.records().filter(occurrence=occurrence).count(), 2)
+        self.assertEqual(self.records().filter(occurrence=occurrence).count(), 1)
+        self.assertEqual(occurrence.detections.get().classifications.filter(taxon__name="Not identifiable").count(), 1)
 
     def test_an_occurrence_with_nothing_flagged_gets_no_result(self):
         occurrence = self._singleton(self.captures[0], [0, 0, 500, 500])
