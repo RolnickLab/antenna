@@ -260,6 +260,7 @@ export const Species = () => {
       {verifyOccurrenceId ? (
         <OccurrenceDetailsDialog
           id={verifyOccurrenceId}
+          // No listKey: a verified row's example changes id, and the effect above follows it.
           occurrences={exampleNavItems}
           defaultTab={OCCURRENCE_TABS.IDENTIFICATION}
           onNavigate={(occurrenceId) => {

@@ -41,10 +41,13 @@ export const TABS = {
 
 export const OccurrenceDetails = ({
   occurrence,
+  onConfirmed,
   selectedTab,
   setSelectedTab,
 }: {
   occurrence: Occurrence
+  /** Called with the occurrence id after the header Confirm button confirms the determination. */
+  onConfirmed?: (occurrenceId: string) => void
   selectedTab?: string
   setSelectedTab: (selectedTab?: string) => void
 }) => {
@@ -171,6 +174,8 @@ export const OccurrenceDetails = ({
           {canUpdate && (
             <>
               <Agree
+                // Keyed so a confirmed state does not carry over to the next occurrence.
+                key={occurrence.id}
                 agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
                 agreeWith={{
                   identificationId: occurrence.determinationIdentificationId,
@@ -178,6 +183,7 @@ export const OccurrenceDetails = ({
                 }}
                 applied
                 occurrenceId={occurrence.id}
+                onSuccess={onConfirmed}
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button

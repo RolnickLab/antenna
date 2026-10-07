@@ -10,18 +10,32 @@ import { useLocation } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useSelectedView } from 'utils/useSelectedView'
-import { OccurrenceNavigation } from './occurrence-navigation'
+import {
+  OccurrenceNavigation,
+  useOccurrenceNavigation,
+} from './occurrence-navigation'
+import { useAdvanceOnConfirm } from './use-advance-on-confirm'
+import { useListSnapshot } from './use-list-snapshot'
 
 // Occurrence identification modal. Rendered over a list (occurrences or taxa);
 // the parent owns which occurrence is shown and how closing updates the URL.
 export const OccurrenceDetailsDialog = ({
+  advanceOnConfirm,
   id,
+  listKey,
   occurrences,
   onClose,
   onNavigate,
   defaultTab = TABS.FIELDS,
 }: {
+  // Confirming the determination moves on to the next occurrence, or closes the
+  // dialog after the last one, so reviewing a list is one click per occurrence.
+  advanceOnConfirm?: boolean
   id: string
+  // Identifies the list's page, filters and sort. When set, prev/next and advance follow the
+  // order the list had when opened or last changed by the user, not a background refetch.
+  // Omit it only when the list's ids are meant to change under the dialog, as on the taxa list.
+  listKey?: string
   // Ordered items the prev/next buttons page through. Only the id is used.
   occurrences?: { id: string }[]
   onClose: () => void
@@ -36,6 +50,19 @@ export const OccurrenceDetailsDialog = ({
   const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const navItems = useListSnapshot(occurrences, listKey)
+  const navigation = useOccurrenceNavigation(navItems, id, onNavigate)
+  // Clears ?tab= too, so the next occurrence opened from the list starts on the default tab.
+  const handleClose = () => {
+    setSelectedView(undefined)
+    onClose()
+  }
+  const advance = useAdvanceOnConfirm({
+    close: handleClose,
+    currentId: id,
+    goTo: navigation.goTo,
+    items: navItems,
+  })
   const detailsLabel = translate(STRING.ENTITY_DETAILS, {
     type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
   })
@@ -62,8 +89,7 @@ export const OccurrenceDetailsDialog = ({
       open={!!id}
       onOpenChange={(open) => {
         if (!open) {
-          setSelectedView(undefined)
-          onClose()
+          handleClose()
         }
       }}
     >
@@ -80,15 +106,12 @@ export const OccurrenceDetailsDialog = ({
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
+            onConfirmed={advanceOnConfirm ? advance : undefined}
             selectedTab={selectedView}
             setSelectedTab={setSelectedView}
           />
         ) : null}
-        <OccurrenceNavigation
-          occurrences={occurrences}
-          currentId={id}
-          onNavigate={onNavigate}
-        />
+        <OccurrenceNavigation navigation={navigation} />
       </Dialog.Content>
     </Dialog.Root>
   )
