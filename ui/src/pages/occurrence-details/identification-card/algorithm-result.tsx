@@ -198,7 +198,7 @@ export const AlgorithmResult = ({
       break
     }
   }
-  if (entry.kind !== 'tracking') {
+  if (entry.classifications.length) {
     stats.push({
       label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
       value: new Set(entry.classifications.map((c) => c.detection_id)).size,

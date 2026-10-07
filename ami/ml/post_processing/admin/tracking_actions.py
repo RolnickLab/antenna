@@ -13,7 +13,7 @@ import pydantic
 from django.db import transaction
 
 from ami.jobs.models import Job
-from ami.ml.post_processing.admin.actions import ConfigValidationErrors
+from ami.ml.post_processing.admin.actions import ConfigValidationErrors, _schema_errors_to_form_fields
 from ami.ml.post_processing.base import BasePostProcessingTask
 
 
@@ -43,10 +43,7 @@ def build_tracking_jobs_for_events(
         try:
             validated.append((project_id, task_cls.config_schema(**{**config, "event_ids": sorted(event_ids)})))
         except pydantic.ValidationError as exc:
-            for err in exc.errors():
-                loc = err.get("loc") or ()
-                field = str(loc[0]) if loc and str(loc[0]) in form_field_names else None
-                errors.append((field, err.get("msg", "Invalid value")))
+            errors.extend(_schema_errors_to_form_fields(exc, form_field_names))
 
     if errors:
         raise ConfigValidationErrors(errors)
