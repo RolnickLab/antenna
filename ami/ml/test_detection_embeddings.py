@@ -293,6 +293,65 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         with self.assertNumQueries(2):
             create_detection_embeddings(detections, parsed, algorithms_known)
 
+    def test_a_vector_matches_its_box_exactly_after_a_json_round_trip(self):
+        image = self._image()
+        self._save(self._rejected(image, box=0.1234567))
+        sent = DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=0.1234567))
+        round_tripped = DetectionResponse.parse_raw(sent.json())
+        detections = list(Detection.objects.filter(source_image=image))
+        algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
+
+        stored = create_detection_embeddings(detections, [round_tripped], algorithms_known)
+        self.assertEqual([embedding.detection_id for embedding in stored], [detections[0].pk])
+
+    def test_boxes_closer_than_three_decimals_each_get_their_own_vector(self):
+        image = self._image()
+        near, nearer = 10.0001, 10.0002
+        self._save(self._rejected(image, box=near), self._rejected(image, box=nearer))
+        self._save(
+            self._rejected(image, _embedding_payload(self.LOW), box=near),
+            self._rejected(image, _embedding_payload(self.HIGH), box=nearer),
+        )
+        self.assertEqual(self._stored(image), {(near, SPECIES.key): self.LOW, (nearer, SPECIES.key): self.HIGH})
+
+    def test_a_box_stored_twice_is_skipped_and_logged_not_guessed(self):
+        image = self._image()
+        self._save(self._rejected(image, box=5.0))
+        original = Detection.objects.get(source_image=image)
+        Detection.objects.create(
+            source_image=image, bbox=original.bbox, detection_algorithm=original.detection_algorithm
+        )
+        sent = DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=5.0))
+        algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
+
+        with self.assertLogs("ami.ml.embeddings.writer", level="WARNING") as logs:
+            stored = create_detection_embeddings(
+                list(Detection.objects.filter(source_image=image)), [sent], algorithms_known
+            )
+        self.assertEqual(stored, [])
+        self.assertFalse(DetectionEmbedding.objects.exists())
+        self.assertIn(f"capture {image.pk}", "\n".join(logs.output))
+
+    def test_only_the_first_write_of_an_algorithm_and_key_takes_the_advisory_lock(self):
+        image, other = self._image(), self._image()
+        self._save(self._rejected(image), self._rejected(other))
+
+        def locks(queries) -> int:
+            return sum("pg_advisory_xact_lock" in query["sql"] for query in queries)
+
+        with CaptureQueriesContext(connection) as first:
+            self._save(self._rejected(image, _embedding_payload(self.LOW)))
+        with CaptureQueriesContext(connection) as later:
+            self._save(self._rejected(other, _embedding_payload(self.LOW)))
+        self.assertEqual(locks(first.captured_queries), 1)
+        self.assertEqual(locks(later.captured_queries), 0)
+
+    def test_a_second_batch_of_another_length_is_refused_after_the_first_commits(self):
+        image, other = self._image(), self._image()
+        self._save(self._moth(image, _embedding_payload(self.LOW)))
+        with self.assertRaises(EmbeddingDimensionMismatch):
+            self._save(self._moth(other, _embedding_payload([0.5] * 8)))
+
 
 class TestEmbeddingProject(TestCase):
     """An embedding's project is its capture's, falling back to the capture's station's."""
