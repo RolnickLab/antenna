@@ -6,6 +6,7 @@ import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import styles from './blueprint-collection.module.scss'
+import { missingCropSize } from './crop-size'
 
 export interface BlueprintItem {
   id: string
@@ -38,7 +39,7 @@ export const BlueprintItem = ({
 }: {
   item: {
     id: string
-    image: { src: string; width: number; height: number }
+    image: { src?: string | null; width: number; height: number }
     label: string
     timeLabel: string
     countLabel: string
@@ -49,6 +50,7 @@ export const BlueprintItem = ({
     width: item.image.width,
     height: item.image.height,
   })
+  const [cropFailed, setCropFailed] = useState(false)
 
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
@@ -58,18 +60,31 @@ export const BlueprintItem = ({
         </span>
       </div>
       <div className="flex flex-col items-center gap-2">
-        <img
-          src={item.image.src}
-          alt=""
-          width={size.width}
-          height={size.height}
-          onLoad={(e) => {
-            setSize({
-              width: e.currentTarget.width,
-              height: e.currentTarget.height,
-            })
-          }}
-        />
+        {item.image.src && !cropFailed ? (
+          <img
+            src={item.image.src}
+            alt=""
+            width={size.width}
+            height={size.height}
+            onError={() => setCropFailed(true)}
+            onLoad={(e) => {
+              setSize({
+                width: e.currentTarget.width,
+                height: e.currentTarget.height,
+              })
+            }}
+          />
+        ) : (
+          // An empty box with the bounding box's proportions stands in for a crop that
+          // was never made or no longer loads, so the item still reads as a detection.
+          <div
+            className={styles.missingCrop}
+            role="img"
+            aria-label={translate(STRING.DETECTION_NO_CROP)}
+            title={translate(STRING.DETECTION_NO_CROP)}
+            style={missingCropSize(item.image.width, item.image.height)}
+          />
+        )}
         {item.to ? (
           <Link
             className={buttonVariants({ size: 'small', variant: 'ghost' })}

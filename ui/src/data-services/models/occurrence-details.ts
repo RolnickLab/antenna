@@ -35,6 +35,12 @@ export interface MachinePrediction extends Identification {
   terminal: boolean
 }
 
+/** Width and height of a `[x1, y1, x2, y2]` box, 0 when the box is malformed. */
+const bboxSize = (bbox?: number[]): [number, number] =>
+  bbox?.length === 4
+    ? [Math.max(bbox[2] - bbox[0], 0), Math.max(bbox[3] - bbox[1], 0)]
+    : [0, 0]
+
 export class OccurrenceDetails extends Occurrence {
   private readonly _detections: string[] = []
   private readonly _humanIdentifications: HumanIdentification[]
@@ -144,10 +150,11 @@ export class OccurrenceDetails extends Occurrence {
         detection.capture?.id !== undefined
           ? `${detection.capture.id}`
           : undefined,
+      // The bounding box gives the crop's proportions when the crop itself is missing.
       image: {
         src: detection.url,
-        width: detection.width,
-        height: detection.height,
+        width: detection.width ?? bboxSize(detection.bbox)[0],
+        height: detection.height ?? bboxSize(detection.bbox)[1],
       },
       label: label,
       timeLabel: getFormatedTimeString({
