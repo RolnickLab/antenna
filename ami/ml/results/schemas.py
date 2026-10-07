@@ -16,9 +16,9 @@ import pydantic
 
 
 def reference(ref_type: str, default: Any = None, **field_options: Any) -> Any:
-    """Declare a field that holds another record's id; the history resolves it to ``{type, id, name}``.
+    """Declare a settings field that holds another record's id; the history resolves it to ``{type, id, name}``.
 
-    Used by result data models and by task config schemas; ``field_options`` go to ``pydantic.Field``.
+    Used by post-processing task config schemas; ``field_options`` go to ``pydantic.Field``.
     """
     return pydantic.Field(default, reference=ref_type, **field_options)
 
@@ -26,6 +26,8 @@ def reference(ref_type: str, default: Any = None, **field_options: Any) -> Any:
 class AlgorithmResultData(pydantic.BaseModel):
     # The kind this model validates; each concrete model sets it, and the registry is keyed by it.
     kind: ClassVar[str]
+    # The data field the result's ``value`` repeats, for filtering and sorting; None for no value.
+    value_field: ClassVar[str | None] = None
 
     # Stored, shown and exported only, never read for logic; a value a feature needs becomes a typed field.
     extra: dict[str, Any] = {}
@@ -48,6 +50,7 @@ class ClassMaskingResultData(DeterminationSnapshot):
     """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
 
     kind: ClassVar[str] = "class_masking"
+    value_field: ClassVar[str | None] = "excluded_probability"
 
     # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
     excluded_probability: float
@@ -59,6 +62,7 @@ class SizeFilterResultData(DeterminationSnapshot):
     """Figures from the occurrence's smallest filtered detection."""
 
     kind: ClassVar[str] = "size_filter"
+    value_field: ClassVar[str | None] = "relative_size"
 
     # The detection's box area as a fraction of its image.
     relative_size: float
@@ -73,11 +77,6 @@ ALGORITHM_RESULT_DATA_SCHEMAS: dict[str, type[AlgorithmResultData]] = {
 
 def result_kinds() -> list[str]:
     return list(ALGORITHM_RESULT_DATA_SCHEMAS)
-
-
-def result_kind_title(kind: str) -> str:
-    """The kind in CamelCase, for OpenAPI component names: ``class_masking`` -> ``ClassMasking``."""
-    return "".join(part.title() for part in kind.split("_"))
 
 
 def _schema_for(kind: str) -> type[AlgorithmResultData]:
@@ -97,6 +96,12 @@ def validate_result_data(kind: str, data: dict | AlgorithmResultData | None) -> 
     return json.loads(schema.parse_obj(values).json())
 
 
+def result_value(kind: str, data: dict) -> float | None:
+    """The figure the kind's ``value_field`` names in validated ``data``, which a result stores as ``value``."""
+    field = _schema_for(kind).value_field
+    return data.get(field) if field else None
+
+
 def field_references(model: type[pydantic.BaseModel]) -> dict[str, str]:
     """The model's fields declared with ``reference()``, mapped to the reference type."""
     return {
@@ -109,13 +114,3 @@ def field_references(model: type[pydantic.BaseModel]) -> dict[str, str]:
 def field_titles(model: type[pydantic.BaseModel]) -> dict[str, str | None]:
     """Every field of the model, in declaration order, mapped to its ``title`` or None."""
     return {name: field.field_info.title for name, field in model.__fields__.items()}
-
-
-def reference_fields(kind: str) -> dict[str, str]:
-    """The kind's data fields that hold another record's id, mapped to the reference type."""
-    return field_references(_schema_for(kind))
-
-
-def data_json_schema(kind: str) -> dict:
-    """The kind's data model as a JSON schema, for its OpenAPI component."""
-    return _schema_for(kind).schema()

@@ -15,7 +15,6 @@ from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
-from ami.ml.results.schemas import data_json_schema, result_kind_title, result_kinds
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
@@ -2234,9 +2233,6 @@ class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
         allow_null=True, help_text="The kind's headline figure, for sorting and filtering; not a confidence."
     )
     data = serializers.JSONField(help_text="The kind's figures, validated against its data model.")
-    data_references = serializers.DictField(
-        child=RefSerializer(), help_text="Data fields that name another record, by field."
-    )
     determination_before = HistoryTaxonSerializer(allow_null=True)
     determination_after = HistoryTaxonSerializer(allow_null=True)
     classifications = CreatedClassificationSerializer(
@@ -2244,23 +2240,12 @@ class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
     )
 
 
-def _result_entry_component(kind: str) -> type[serializers.Serializer]:
-    """An OpenAPI-only serializer for one kind: ``kind`` is a literal and ``data`` is the kind's schema."""
-    name = result_kind_title(kind)
-    data_field = extend_schema_field(data_json_schema(kind))(type(f"{name}DataField", (serializers.JSONField,), {}))
-    return type(
-        f"{name}ResultEntrySerializer",
-        (AlgorithmResultEntrySerializer,),
-        {"kind": serializers.ChoiceField(choices=[kind]), "data": data_field()},
-    )
-
-
-# The history endpoint's response: a plain oneOf with literal ``type`` and ``kind`` fields, one
-# component per result kind, so a client generated from the schema can narrow ``data`` by kind.
+# The history endpoint's response: a plain oneOf with a literal ``type`` field. A result's ``data`` is
+# published as JSON; the server validates it against its kind's model, and the UI types it by kind.
+# Publishing one typed component per kind waits for a client generated from the schema (#1482).
 OCCURRENCE_HISTORY_ENTRY_SCHEMA = PolymorphicProxySerializer(
     component_name="OccurrenceHistoryEntry",
-    serializers=[IdentificationEntrySerializer, PredictionEntrySerializer]
-    + [_result_entry_component(kind) for kind in result_kinds()],
+    serializers=[IdentificationEntrySerializer, PredictionEntrySerializer, AlgorithmResultEntrySerializer],
     resource_type_field_name=None,
     many=True,
 )

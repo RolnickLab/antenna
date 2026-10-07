@@ -99,7 +99,6 @@ class SmallSizeFilterTask(BasePostProcessingTask):
             kind=SizeFilterResultData.kind,
             algorithm=self.algorithm,
             job=self.job,
-            value_field="relative_size",
         )
 
         def flush(i: int) -> None:

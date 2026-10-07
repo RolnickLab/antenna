@@ -135,7 +135,6 @@ def make_classifications_filtered_by_taxa_list(
         kind=ClassMaskingResultData.kind,
         algorithm=new_algorithm,
         job=job,
-        value_field="excluded_probability",
         timestamp=timestamp,
     )
 

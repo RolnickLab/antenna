@@ -115,10 +115,8 @@ interface ServerResultEntry<Kind extends string, Data>
   classifications: ServerCreatedClassification[]
   data: Data
   /** Data fields that name another record, by field. */
-  data_references: Record<string, Ref>
   determination_after: ServerHistoryTaxon | null
   determination_before: ServerHistoryTaxon | null
-  /** Whether it is the latest of its kind, not replaced by a later run. */
   kind: Kind
   type: 'algorithm_result'
   /** The kind's headline figure, for sorting and filtering; not a confidence. */

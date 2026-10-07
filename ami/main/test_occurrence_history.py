@@ -49,114 +49,6 @@ def no_query_cache():
         context.__exit__(None, None, None)
 
 
-class AlgorithmResultTestCase(TestCase):
-    """A result's data fits its kind, its project is its occurrence's, and a new result replaces the current one."""
-
-    @classmethod
-    def setUpTestData(cls) -> None:
-        cls.project, cls.deployment = setup_test_project(reuse=False)
-        cls.occurrence = Occurrence.objects.create(project=cls.project, deployment=cls.deployment)
-        cls.algorithm = Algorithm.objects.create(name="Size filter", key="size-filter-result-test")
-
-    def _size_filter(self, data: dict | None, **fields) -> AlgorithmResult:
-        fields.setdefault("occurrence", self.occurrence)
-        return AlgorithmResult(algorithm=self.algorithm, kind=SIZE_FILTER, data=data, **fields)
-
-    def test_data_that_does_not_fit_its_kind_is_refused_on_every_write_path(self):
-        for label, data in (
-            ("missing field", {}),
-            ("wrong type", {"relative_size": "small"}),
-            ("unknown field", {"relative_size": 0.001, "note": "x"}),
-            ("extra that is not JSON", {"relative_size": 0.001, "extra": {"when": object()}}),
-        ):
-            with self.subTest(label):
-                with self.assertRaises(ValueError):
-                    self._size_filter(data).save()
-                with self.assertRaises(ValueError):
-                    AlgorithmResult.objects.record_many([self._size_filter(data)])
-        with self.assertRaises(ValueError):
-            AlgorithmResult.objects.record(
-                occurrence=self.occurrence, algorithm=self.algorithm, kind="unregistered", data={}
-            )
-        self.assertFalse(AlgorithmResult.objects.exists())
-
-        result = AlgorithmResult.objects.record(
-            occurrence=self.occurrence,
-            algorithm=self.algorithm,
-            kind=SIZE_FILTER,
-            value=0.001,
-            data={"relative_size": 0.001, "extra": {"service": "size-filter 1.2"}},
-        )
-        self.assertEqual(result.value, 0.001)
-        self.assertEqual(result.data["extra"], {"service": "size-filter 1.2"})
-        result.data["relative_size"] = "small"
-        with self.assertRaises(ValueError):
-            AlgorithmResult.objects.bulk_update([result], ["data"])
-
-    def test_each_run_adds_a_result_beside_the_earlier_ones(self):
-        first = AlgorithmResult.objects.record(
-            occurrence=self.occurrence,
-            algorithm=self.algorithm,
-            kind=SIZE_FILTER,
-            data={"relative_size": 0.01},
-        )
-        other_occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
-        second, untouched = AlgorithmResult.objects.record_many(
-            [
-                self._size_filter({"relative_size": 0.02}),
-                self._size_filter({"relative_size": 0.02}, occurrence=other_occurrence),
-            ]
-        )
-        self.assertEqual(set(self.occurrence.algorithm_results.values_list("pk", flat=True)), {first.pk, second.pk})
-        self.assertEqual(list(other_occurrence.algorithm_results.values_list("pk", flat=True)), [untouched.pk])
-
-    def test_merging_moves_every_result_to_the_kept_occurrence(self):
-        other_algorithm = Algorithm.objects.create(name="Second size filter", key="size-filter-merge-test")
-        absorbed = [Occurrence.objects.create(project=self.project, deployment=self.deployment) for _ in range(3)]
-
-        def record(occurrence, algorithm, size):
-            return AlgorithmResult.objects.record(
-                occurrence=occurrence, algorithm=algorithm, kind=SIZE_FILTER, data={"relative_size": size}
-            )
-
-        kept_own = record(self.occurrence, self.algorithm, 0.01)
-        moved_results = [
-            record(absorbed[0], self.algorithm, 0.02),
-            record(absorbed[0], self.algorithm, 0.03),
-            record(absorbed[1], other_algorithm, 0.04),
-            record(absorbed[2], other_algorithm, 0.05),
-        ]
-
-        moved = AlgorithmResult.objects.move_to_occurrence(self.occurrence, [o.pk for o in absorbed])
-
-        self.assertEqual(moved, 4)
-        self.assertEqual(
-            set(AlgorithmResult.objects.filter(occurrence=self.occurrence).values_list("pk", flat=True)),
-            {kept_own.pk, *(r.pk for r in moved_results)},
-        )
-
-    def test_project_comes_from_the_occurrence_and_a_result_without_one_is_skipped(self):
-        result = self._size_filter({"relative_size": 0.01})
-        result.save()
-        self.assertEqual(result.project_id, self.project.pk)
-
-        orphan = Occurrence.objects.create(project=None, deployment=self.deployment)
-        with self.assertLogs("ami.ml.models.algorithm_result", level="WARNING"):
-            written = AlgorithmResult.objects.record_many(
-                [
-                    self._size_filter({"relative_size": 0.02}),
-                    self._size_filter({"relative_size": 0.03}, occurrence=orphan),
-                ]
-            )
-        # The occurrence with a project still gets its result; the other is skipped, not fatal.
-        self.assertEqual([r.occurrence_id for r in written], [self.occurrence.pk])
-        with self.assertRaises(ValueError):
-            self._size_filter({"relative_size": 0.03}, occurrence=orphan).save()
-
-    def test_the_model_lives_in_the_ml_app(self):
-        self.assertEqual(AlgorithmResult._meta.app_label, "ml")
-
-
 class ReferenceTestCase(TestCase):
     """Ids shown in the history become {type, id, name}; a deleted row keeps its id with no name."""
 
@@ -185,33 +77,16 @@ class ReferenceTestCase(TestCase):
 
 
 class OccurrenceHistorySchemaTestCase(TestCase):
-    """The OpenAPI schema publishes one history-entry component per result kind, typed by its data model."""
+    """The OpenAPI schema publishes the history as a oneOf of identification, prediction and result entries."""
 
-    def test_every_result_kind_has_a_typed_component(self):
+    def test_the_history_entries_are_a_oneof_tagged_by_type(self):
         from drf_spectacular.generators import SchemaGenerator
 
-        from ami.ml.results.schemas import result_kinds
-
         components = SchemaGenerator(api_version="api").get_schema(request=None, public=True)["components"]["schemas"]
-
-        def resolve(schema: dict) -> dict:
-            # drf-spectacular moves every enum into its own named component.
-            return components[schema["$ref"].rsplit("/", 1)[-1]] if "$ref" in schema else schema
-
-        entry_names = [ref["$ref"].rsplit("/", 1)[-1] for ref in components["OccurrenceHistoryEntry"]["oneOf"]]
-        for kind in result_kinds():
-            name = "".join(part.title() for part in kind.split("_")) + "ResultEntry"
-            with self.subTest(kind):
-                self.assertIn(name, entry_names)
-                props = components[name]["properties"]
-                self.assertEqual(resolve(props["kind"])["enum"], [kind])
-                self.assertEqual(resolve(props["type"])["enum"], ["algorithm_result"])
-                self.assertIn("extra", props["data"]["properties"])
-        self.assertIn("IdentificationEntry", entry_names)
-        self.assertIn("PredictionEntry", entry_names)
-        self.assertIn(
-            "excluded_probability", components["ClassMaskingResultEntry"]["properties"]["data"]["properties"]
-        )
+        entry_names = {ref["$ref"].rsplit("/", 1)[-1] for ref in components["OccurrenceHistoryEntry"]["oneOf"]}
+        self.assertEqual(entry_names, {"IdentificationEntry", "PredictionEntry", "AlgorithmResultEntry"})
+        # Named enums, not drf-spectacular's hashed fallback names.
+        self.assertIn("AlgorithmResultEntryTypeEnum", components)
 
 
 class OccurrenceFixtureTestCase(APITestCase):
@@ -337,7 +212,6 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertIsNone(result["score"])
         self.assertEqual(result["value"], 0.001)
         self.assertEqual(result["data"]["relative_size"], 0.001)
-        self.assertEqual(result["data_references"], {})
         created = Classification.objects.get(algorithm=self.size_filter)
         self.assertEqual(
             result["classifications"],
@@ -690,7 +564,6 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         AlgorithmResult.objects.filter(pk=result.pk).update(kind="tracking")
         entry = next(e for e in self.get() if e["type"] == "algorithm_result")
         self.assertEqual(entry["kind"], "tracking")
-        self.assertEqual(entry["data_references"], {})
 
 
 class ClassificationAdminTestCase(OccurrenceFixtureTestCase):

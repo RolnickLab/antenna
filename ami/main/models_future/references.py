@@ -36,16 +36,16 @@ def is_record_id(value: typing.Any) -> bool:
 
 
 def unmapped_reference_types(models: typing.Iterable[type] | None = None) -> set[str]:
-    """Reference types that result data models or task config schemas declare but this module does not map.
+    """Reference types that task config schemas declare but this module does not map.
 
-    Defaults to every registered result kind and post-processing task; a test keeps the answer empty.
+    Defaults to every registered post-processing task; a test keeps the answer empty.
     """
-    from ami.ml.results.schemas import ALGORITHM_RESULT_DATA_MODELS, field_references
+    from ami.ml.results.schemas import field_references
 
     if models is None:
         from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
 
-        models = [*ALGORITHM_RESULT_DATA_MODELS, *(task.config_schema for task in POSTPROCESSING_TASKS.values())]
+        models = [task.config_schema for task in POSTPROCESSING_TASKS.values()]
     return {ref_type for model in models for ref_type in field_references(model).values()} - set(REFERENCE_TYPES)
 
 
