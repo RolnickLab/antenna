@@ -2337,6 +2337,34 @@ class TestProjectOwnerAutoAssignment(APITestCase):
         self.assertEqual(self.user_1.id, project.owner.id)
 
 
+class TestProjectListSearch(APITestCase):
+    """The project list `search` parameter matches name and description, and never reveals drafts."""
+
+    endpoint = "/api/v2/projects/"
+
+    def setUp(self) -> None:
+        self.owner = User.objects.create_user(email="search-owner@insectai.org")
+        self.moth_project = Project.objects.create(name="Moths of Quebec", owner=self.owner)
+        self.beetle_project = Project.objects.create(
+            name="Field station", description="Night beetle survey", owner=self.owner
+        )
+        self.draft_project = Project.objects.create(name="Draft moths", owner=self.owner, draft=True)
+        return super().setUp()
+
+    def _search(self, term: str) -> set[int]:
+        response = self.client.get(self.endpoint, {"search": term})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["id"] for row in response.json()["results"]}
+
+    def test_search_matches_name_and_description(self):
+        self.assertEqual(self._search("moths"), {self.moth_project.pk})
+        self.assertEqual(self._search("beetle"), {self.beetle_project.pk})
+
+    def test_search_returns_draft_only_to_members(self):
+        self.client.force_authenticate(user=self.owner)
+        self.assertEqual(self._search("moths"), {self.moth_project.pk, self.draft_project.pk})
+
+
 class TestProjectPermissions(APITestCase):
     def _create_project(self, owner, member):
         self.project = Project.objects.create(name="T Project", description="Test Description", owner=owner)

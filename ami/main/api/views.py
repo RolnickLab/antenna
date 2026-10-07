@@ -184,6 +184,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
+    search_fields = ["name", "description"]
     ordering_fields = [
         "name",
         "created_at",
