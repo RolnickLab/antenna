@@ -1,3 +1,4 @@
+import { SearchInput } from 'components/search-input/search-input'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
 import {
   Button,
@@ -11,6 +12,7 @@ import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { useSearch } from 'utils/useSearch'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
@@ -51,10 +53,13 @@ export const Projects = () => {
     useSelectedView(user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS)
   const { sort, setSort } = useSort()
   const { pagination, setPage } = usePagination({ perPage: 40 })
-  const filters =
-    user.loggedIn && selectedTab === TABS.MY_PROJECTS
+  const { search, setSearch } = useSearch()
+  const filters = [
+    ...(user.loggedIn && selectedTab === TABS.MY_PROJECTS
       ? [{ field: 'user_id', value: userInfo?.id }]
-      : []
+      : []),
+    ...(search ? [{ field: 'search', value: search }] : []),
+  ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({ pagination, filters, sort })
   const canCreate = userPermissions?.includes(UserPermission.Create)
@@ -88,6 +93,11 @@ export const Projects = () => {
             </Tabs.List>
           </Tabs.Root>
         ) : null}
+        <SearchInput
+          label={translate(STRING.SEARCH_PROJECTS)}
+          value={search}
+          onChange={setSearch}
+        />
         {canCreate ? <NewProjectDialog /> : null}
         <SortControl
           columns={SORT_FIELDS.map((field) => ({
@@ -98,7 +108,7 @@ export const Projects = () => {
           sort={sort}
         />
       </PageHeader>
-      {projects && projects.length === 0 && canCreate ? (
+      {projects && projects.length === 0 && canCreate && !search ? (
         <div className="flex flex-col items-center pt-32">
           <h1 className="mb-8 heading-large">Get started</h1>
           <p className="text-center body-large mb-16">
