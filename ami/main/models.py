@@ -452,6 +452,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
+        RUN_EVALUATE_ALGORITHM_JOB = "run_evaluate_algorithm_job"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -540,6 +541,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
             ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
+            ("run_evaluate_algorithm_job", "Can run/retry/cancel Evaluate Algorithm jobs"),
             ("delete_job", "Can delete a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),

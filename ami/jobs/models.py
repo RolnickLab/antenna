@@ -977,6 +977,95 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
+class EvaluateAlgorithmJob(JobType):
+    """
+    Score an algorithm against a fixed set of occurrences people have verified.
+
+    Reads predictions that already exist rather than running anything, so an algorithm that
+    has processed the set is scored in one pass with no GPU. Comparing two models means
+    scoring both on the same set, which is why the set's membership is fixed.
+    """
+
+    name = "Evaluate algorithm"
+    key = "evaluate_algorithm"
+    required_params = ("algorithm_key", "occurrence_set_id")
+    user_creatable = True
+
+    STAGE_SCORE = "score"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        from ami.main.models import OccurrenceSet
+        from ami.ml import evaluation
+        from ami.ml.models import Algorithm
+
+        params = job.params or {}
+        algorithm_key = params.get("algorithm_key")
+        occurrence_set_id = params.get("occurrence_set_id")
+        if not algorithm_key or not occurrence_set_id:
+            raise ValueError("An evaluate_algorithm job needs 'algorithm_key' and 'occurrence_set_id' in its params.")
+
+        algorithm = Algorithm.objects.filter(key=algorithm_key).first()
+        if not algorithm:
+            raise ValueError(f"No algorithm with key '{algorithm_key}'.")
+        # Scoped to the project: the id comes from the job's params, which any member who
+        # can create a job may set. An unscoped lookup would score a model against another
+        # project's occurrences and, because an evaluation is stored once per algorithm and
+        # set, overwrite that project's own result.
+        occurrence_set = OccurrenceSet.objects.for_project(job.project).filter(pk=occurrence_set_id).first()
+        if not occurrence_set:
+            raise ValueError(f"No occurrence set with id {occurrence_set_id} in this project.")
+
+        job.progress.add_stage("Scoring", cls.STAGE_SCORE)
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage(cls.STAGE_SCORE, status=JobState.STARTED, progress=0)
+        job.save()
+
+        try:
+            result = evaluation.score(occurrence_set, algorithm)
+        except evaluation.NothingToScore as e:
+            # A missing step, not a bad model. Saying so beats recording an accuracy of zero.
+            job.logger.error(str(e))
+            job.progress.update_stage(cls.STAGE_SCORE, status=JobState.FAILURE, progress=0)
+            job.finished_at = datetime.datetime.now()
+            job.result = {"error": str(e)}
+            job.update_status(JobState.FAILURE, save=True)
+            return
+
+        stored = evaluation.save_evaluation(occurrence_set, algorithm, result, job=job)
+
+        job.logger.info(
+            f"{algorithm.key} on '{occurrence_set.name}': "
+            f"{result['micro_accuracy']:.3f} overall, {result['macro_accuracy']:.3f} averaged over "
+            f"{result['species_scored']} species"
+        )
+        # Said out loud because an accuracy over a handful of species reads the same as one
+        # over all of them. A score on 6 of 749 is a fact about this set, not about the model.
+        job.logger.info(
+            f"Scored {result['species_scored']} of the {result['species_in_set']} species in the set; "
+            f"{algorithm.key} can answer for {result['species_predictable']}."
+        )
+        if result["occurrences_skipped"]:
+            job.logger.info(
+                f"{result['occurrences_skipped']} occurrence(s) were left out: their species is not one "
+                "this algorithm can predict, or it never classified them."
+            )
+        job.progress.add_stage_param(cls.STAGE_SCORE, "Accuracy", round(result["micro_accuracy"], 3))
+        job.progress.add_stage_param(cls.STAGE_SCORE, "Averaged over species", round(result["macro_accuracy"], 3))
+        job.progress.add_stage_param(cls.STAGE_SCORE, "Occurrences scored", result["occurrences_scored"])
+        job.progress.add_stage_param(
+            cls.STAGE_SCORE, "Species", f"{result['species_scored']} of {result['species_in_set']} in set"
+        )
+        job.progress.add_stage_param(cls.STAGE_SCORE, "Species the model knows", result["species_predictable"])
+        job.progress.update_stage(cls.STAGE_SCORE, status=JobState.SUCCESS, progress=1)
+        job.result = {"evaluation_id": stored.pk, "micro_accuracy": result["micro_accuracy"]}
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=True)
+        job.save()
+
+
 VALID_JOB_TYPES = [
     MLJob,
     SourceImageCollectionPopulateJob,
@@ -985,6 +1074,7 @@ VALID_JOB_TYPES = [
     UnknownJobType,
     DataExportJob,
     PostProcessingJob,
+    EvaluateAlgorithmJob,
 ]
 
 

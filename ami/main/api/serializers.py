@@ -709,6 +709,7 @@ class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
     taxa_count = serializers.SerializerMethodField()
     projects = serializers.SerializerMethodField()
+    best_model = serializers.SerializerMethodField()
 
     class Meta:
         model = TaxaList
@@ -719,9 +720,28 @@ class TaxaListSerializer(DefaultSerializer):
             "taxa",
             "taxa_count",
             "projects",
+            "best_model",
             "created_at",
             "updated_at",
         ]
+
+    def get_best_model(self, obj) -> dict | None:
+        """
+        The algorithm scoring highest on this list's species, or null if none has been scored.
+
+        Read from the annotations the viewset attaches, so a page of lists costs one query
+        rather than one per list.
+        """
+        algorithm_id = getattr(obj, "best_algorithm_id", None)
+        if algorithm_id is None:
+            return None
+        return {
+            "id": algorithm_id,
+            "name": obj.best_algorithm_name,
+            "accuracy": obj.best_micro_accuracy,
+            "accuracy_by_species": obj.best_macro_accuracy,
+            "occurrence_set": obj.best_occurrence_set_name,
+        }
 
     def get_taxa(self, obj):
         """
@@ -1021,6 +1041,7 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 
 
 class TaxonSerializer(DefaultSerializer):
+    algorithm_performance = serializers.SerializerMethodField()
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True, source="example_occurrences")
     parent = TaxonNoParentNestedSerializer(read_only=True)
@@ -1062,7 +1083,23 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_credit",
             "summary_data",
             "common_name_en",
+            "algorithm_performance",
         ]
+
+    def get_algorithm_performance(self, obj) -> list[dict]:
+        """
+        How each scored algorithm has done on this species. Empty until one is evaluated.
+
+        Scoped to what the caller may see: a taxon is shared across the platform but an
+        evaluation set belongs to a project, so without this the page reports another
+        project's numbers.
+        """
+        from ami.ml import reporting
+
+        request = self.context.get("request")
+        return reporting.performance_for_taxon(
+            obj, project=reporting.project_for(request), user=getattr(request, "user", None)
+        )
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):
