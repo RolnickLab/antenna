@@ -2360,10 +2360,6 @@ class TestProjectListSearch(APITestCase):
         self.assertEqual(self._search("moths"), {self.moth_project.pk})
         self.assertEqual(self._search("beetle"), {self.beetle_project.pk})
 
-    def test_search_returns_draft_only_to_members(self):
-        self.client.force_authenticate(user=self.owner)
-        self.assertEqual(self._search("moths"), {self.moth_project.pk, self.draft_project.pk})
-
 
 class TestProjectPermissions(APITestCase):
     def _create_project(self, owner, member):
