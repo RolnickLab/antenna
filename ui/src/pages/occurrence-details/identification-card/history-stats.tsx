@@ -60,9 +60,3 @@ export const HistoryTime = ({ label }: { label: string }) => (
     {label}
   </span>
 )
-
-export const HistoryTypeBadge = ({ label }: { label: string }) => (
-  <span className="px-2 py-0.5 rounded-full border border-border body-small text-muted-foreground">
-    {label}
-  </span>
-)

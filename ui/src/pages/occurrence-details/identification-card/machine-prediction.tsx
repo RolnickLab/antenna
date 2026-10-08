@@ -27,34 +27,38 @@ import { HistoryStats, RefValue } from './history-stats'
 import machineAvatar from './machine-avatar.svg'
 
 export const MachinePrediction = ({
+  avatar,
+  avatarTooltip,
+  children,
   currentUser,
   identification,
   job,
   occurrence,
   subTitle,
+  timestamp,
+  title,
 }: {
+  /** Header overrides for a card that shows a run's prediction rather than a classifier's. */
+  avatar?: ReactNode
+  avatarTooltip?: string
+  /** Details shown below the other predictions when the card is expanded. */
+  children?: ReactNode
   currentUser?: UserInfo
   identification: Identification
   /** The job that wrote the prediction, shown as a row when the history names one. */
   job?: Ref
   occurrence: Occurrence
-  /** Replaces the terminal/intermediate label, e.g. to say which run superseded the prediction. */
+  /** Replaces the terminal/intermediate label. */
   subTitle?: string
+  timestamp?: string
+  title?: string
 }) => {
   const [open, setOpen] = useState(false)
-  const { classification, error, isLoading } = useClassificationDetails(
-    identification.id,
-    open
-  )
   const navigate = useNavigate()
   const { projectId } = useParams()
-  const topN = classification?.topN.filter(
-    ({ taxon }) => taxon.id !== identification.taxon.id
-  )
   const formattedTime = getFormatedDateTimeString({
-    date: new Date(identification.createdAt),
+    date: new Date(timestamp ?? identification.createdAt),
   })
-  const showAgree = occurrence.userPermissions.includes(UserPermission.Update)
 
   return (
     <div>
@@ -62,11 +66,17 @@ export const MachinePrediction = ({
         {formattedTime}
       </span>
       <IdentificationCard
-        avatar={<img alt="" src={machineAvatar} />}
-        collapsible
-        collapsibleTriggerTooltip={
-          open ? 'Hide top predictions' : 'Show top predictions'
+        avatar={
+          <BasicTooltip
+            content={avatarTooltip ?? translate(STRING.MACHINE_PREDICTION)}
+          >
+            <span className="flex items-center justify-center">
+              {avatar ?? <img alt="" src={machineAvatar} />}
+            </span>
+          </BasicTooltip>
         }
+        collapsible
+        collapsibleTriggerTooltip={getExpandTooltip(open)}
         onOpenChange={setOpen}
         open={open}
         subTitle={
@@ -76,7 +86,9 @@ export const MachinePrediction = ({
             : translate(STRING.INTERMEDIATE_CLASSIFICATION))
         }
         title={
-          identification.algorithm?.name ?? translate(STRING.MACHINE_SUGGESTION)
+          title ??
+          identification.algorithm?.name ??
+          translate(STRING.MACHINE_SUGGESTION)
         }
         onTitleClick={
           identification.algorithm
@@ -90,73 +102,40 @@ export const MachinePrediction = ({
             : undefined
         }
       >
-        <MachinePredictionDetails
+        <AgreeablePredictionRow
           applied={identification.applied}
+          currentUser={currentUser}
+          occurrence={occurrence}
+          predictionId={identification.id}
           score={identification.score}
           taxon={identification.taxon}
-        >
-          {showAgree && (
-            <Agree
-              agreed={
-                currentUser
-                  ? occurrence.userAgreed(
-                      currentUser.id,
-                      identification.taxon.id
-                    )
-                  : false
-              }
-              agreeWith={{ predictionId: identification.id }}
-              applied={identification.applied}
-              occurrenceId={occurrence.id}
-              taxonId={identification.taxon.id}
-            />
-          )}
-        </MachinePredictionDetails>
-        {job ? (
-          <HistoryStats
-            stats={[
-              {
-                label: translate(STRING.FIELD_LABEL_JOB),
-                value: (
-                  <RefValue projectId={projectId as string} reference={job} />
-                ),
-              },
-            ]}
-          />
-        ) : null}
+        />
         <Collapsible.Root open={open} onOpenChange={setOpen}>
           <Collapsible.Content>
-            <FetchDetails
-              empty={topN && topN.length === 0}
-              error={error}
-              isLoading={isLoading}
+            <MorePredictions
+              currentUser={currentUser}
+              occurrence={occurrence}
+              open={open}
+              predictionId={identification.id}
+              shownTaxonId={identification.taxon.id}
+              showEmpty={!children}
             />
-            {topN?.map(({ score, taxon }) => {
-              const applied = taxon.id === occurrence.determinationTaxon.id
-
-              return (
-                <MachinePredictionDetails
-                  key={taxon.id}
-                  applied={applied}
-                  score={score}
-                  taxon={taxon}
-                >
-                  {showAgree && (
-                    <Agree
-                      agreed={
-                        currentUser
-                          ? occurrence.userAgreed(currentUser.id, taxon.id)
-                          : false
-                      }
-                      agreeWith={{ predictionId: identification.id }}
-                      applied={applied}
-                      occurrenceId={occurrence.id}
-                      taxonId={taxon.id}
-                    />
-                  )}
-                </MachinePredictionDetails>
-              )
-            })}
+            {job ? (
+              <HistoryStats
+                stats={[
+                  {
+                    label: translate(STRING.FIELD_LABEL_JOB),
+                    value: (
+                      <RefValue
+                        projectId={projectId as string}
+                        reference={job}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
+            {children}
           </Collapsible.Content>
         </Collapsible.Root>
       </IdentificationCard>
@@ -164,14 +143,14 @@ export const MachinePrediction = ({
   )
 }
 
-const MachinePredictionDetails = ({
+const PredictionRow = ({
   applied,
   children,
   score,
   taxon,
 }: {
   applied?: boolean
-  children: ReactNode
+  children?: ReactNode
   score: number
   taxon: Taxon
 }) => {
@@ -207,15 +186,61 @@ const MachinePredictionDetails = ({
   )
 }
 
-const FetchDetails = ({
-  empty,
-  error,
-  isLoading,
+const AgreeablePredictionRow = ({
+  applied,
+  currentUser,
+  occurrence,
+  predictionId,
+  score,
+  taxon,
 }: {
-  empty?: boolean
-  error: unknown
-  isLoading: boolean
+  applied?: boolean
+  currentUser?: UserInfo
+  occurrence: Occurrence
+  predictionId: string
+  score: number
+  taxon: Taxon
+}) => (
+  <PredictionRow applied={applied} score={score} taxon={taxon}>
+    {occurrence.userPermissions.includes(UserPermission.Update) && (
+      <Agree
+        agreed={
+          currentUser ? occurrence.userAgreed(currentUser.id, taxon.id) : false
+        }
+        agreeWith={{ predictionId }}
+        applied={applied}
+        occurrenceId={occurrence.id}
+        taxonId={taxon.id}
+      />
+    )}
+  </PredictionRow>
+)
+
+/** The runner-up taxa of a classification, loaded when its card is expanded. */
+const MorePredictions = ({
+  currentUser,
+  occurrence,
+  open,
+  predictionId,
+  showEmpty = true,
+  shownTaxonId,
+}: {
+  currentUser?: UserInfo
+  occurrence: Occurrence
+  open: boolean
+  predictionId: string
+  showEmpty?: boolean
+  /** The taxon the card already shows, left out of the list. */
+  shownTaxonId: string
 }) => {
+  const { classification, error, isLoading } = useClassificationDetails(
+    predictionId,
+    open
+  )
+  const topN = classification?.topN.filter(
+    ({ taxon }) => taxon.id !== shownTaxonId
+  )
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-6 px-4 border-border border-t text-center">
@@ -229,19 +254,42 @@ const FetchDetails = ({
       <div className="flex justify-center py-6 px-4 border-border border-t text-center">
         <ErrorState
           compact
-          error={{ message: 'Could not load top predictions' }}
+          error={{ message: translate(STRING.PREDICTIONS_NOT_LOADED) }}
         />
       </div>
     )
   }
 
-  if (empty) {
-    return (
+  if (topN && topN.length === 0) {
+    return showEmpty ? (
       <div className="py-6 px-4 border-border border-t text-center text-muted-foreground">
-        <span className="body-small">No more predictions to show</span>
+        <span className="body-small">
+          {translate(STRING.NO_MORE_PREDICTIONS)}
+        </span>
       </div>
-    )
+    ) : null
   }
 
-  return null
+  return (
+    <>
+      {topN?.map(({ score, taxon }) => (
+        <AgreeablePredictionRow
+          key={taxon.id}
+          applied={taxon.id === occurrence.determinationTaxon.id}
+          currentUser={currentUser}
+          occurrence={occurrence}
+          predictionId={predictionId}
+          score={score}
+          taxon={taxon}
+        />
+      ))}
+    </>
+  )
 }
+
+const getExpandTooltip = (open: boolean) =>
+  translate(
+    open
+      ? STRING.FEWER_PREDICTIONS_AND_DETAILS
+      : STRING.MORE_PREDICTIONS_AND_DETAILS
+  )

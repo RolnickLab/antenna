@@ -22,8 +22,6 @@ const ROUTES: Record<string, (projectId: string, id: string) => string> = {
     APP_ROUTES.OCCURRENCE_DETAILS({ projectId, occurrenceId: id }),
   taxa_list: (projectId, id) =>
     APP_ROUTES.TAXA_LIST_DETAILS({ projectId, taxaListId: id }),
-  taxon: (projectId, id) =>
-    APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: id }),
 }
 
 /** Where a reference links to, or undefined when the record is gone or has no page. */

@@ -8,7 +8,7 @@ import { Loader2Icon } from 'lucide-react'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
-import { AlgorithmResult, getResultKindLabel } from './algorithm-result'
+import { AlgorithmResult } from './algorithm-result'
 import { HumanIdentification } from './human-identification'
 import { MachinePrediction } from './machine-prediction'
 
@@ -79,15 +79,6 @@ export const OccurrenceTimeline = ({
                 identification={item.prediction}
                 job={item.job}
                 occurrence={occurrence}
-                subTitle={
-                  item.supersededBy
-                    ? translate(STRING.HISTORY_SUPERSEDED_BY, {
-                        name: getResultKindLabel(
-                          item.supersededBy
-                        ).toLowerCase(),
-                      })
-                    : undefined
-                }
               />
             )
           case 'algorithm_result':

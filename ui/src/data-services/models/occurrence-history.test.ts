@@ -4,7 +4,7 @@ import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
 import {
   getFallbackTimelineItems,
-  getJobSettings,
+  getJobConfigFields,
   getResultPrediction,
   getTimelineItems,
   ServerOccurrenceHistoryEntry,
@@ -25,10 +25,9 @@ const base = {
 }
 
 const JOB = {
-  config: { taxa_list_id: 2 },
   id: 30,
   name: 'Masking run',
-  settings: [
+  config: [
     {
       key: 'taxa_list_id',
       label: 'Species list',
@@ -55,7 +54,6 @@ const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
 const predictionEntry = (
   id: number,
   taxon: typeof NOCTUA | null = XESTIA,
-  supersededByResultId: number | null = null,
   job: typeof JOB | null = null
 ): ServerOccurrenceHistoryEntry => ({
   ...base,
@@ -65,7 +63,6 @@ const predictionEntry = (
   details: {
     applied_to_id: null,
     detection_id: 1,
-    superseded_by_result_id: supersededByResultId,
     terminal: true,
   },
   score: 0.8,
@@ -180,24 +177,9 @@ describe('getTimelineItems', () => {
     )
   })
 
-  test('names the result that superseded a demoted prediction', () => {
-    const items = getTimelineItems({
-      entries: [
-        classMasking,
-        predictionEntry(6, XESTIA, 5),
-        predictionEntry(8),
-      ],
-      identifications: [],
-      predictions: [],
-    })
-
-    expect(items[1]).toMatchObject({ supersededBy: classMasking })
-    expect(items[2]).not.toHaveProperty('supersededBy', expect.anything())
-  })
-
   test('carries the job that wrote a prediction as a reference', () => {
     const items = getTimelineItems({
-      entries: [predictionEntry(6, XESTIA, null, JOB), predictionEntry(8)],
+      entries: [predictionEntry(6, XESTIA, JOB), predictionEntry(8)],
       identifications: [],
       predictions: [],
     })
@@ -208,7 +190,7 @@ describe('getTimelineItems', () => {
     expect(items[1]).not.toHaveProperty('job', expect.anything())
   })
 
-  test('drops results of a kind it has no card for, and predictions without a taxon', () => {
+  test('leaves out results of a kind it has no card for, and entries it cannot build a card from', () => {
     // A kind the server added before the UI has a card for it, e.g. tracking.
     const unknown = {
       ...classMasking,
@@ -217,20 +199,10 @@ describe('getTimelineItems', () => {
 
     expect(
       getTimelineItems({
-        entries: [unknown, predictionEntry(6, null)],
-        identifications: [],
-        predictions: [],
-      })
-    ).toEqual([])
-  })
-})
-
-describe('cards built from the history', () => {
-  test('are left out when a prediction names no algorithm or an identification no taxon', () => {
-    expect(
-      getTimelineItems({
         entries: [
-          { ...predictionEntry(6), algorithm: null },
+          unknown,
+          predictionEntry(6, null),
+          { ...predictionEntry(7), algorithm: null },
           { ...identificationEntry(2), taxon: null },
         ],
         identifications: [],
@@ -307,22 +279,45 @@ describe('fallback predictions', () => {
 
 describe('getResultPrediction', () => {
   test('is the best classification the run created, marked applied when it is the determination', () => {
-    expect(getResultPrediction(classMasking as never, '3')).toMatchObject({
+    expect(getResultPrediction(classMasking as never, [], '3')).toMatchObject({
       applied: true,
-      count: 2,
       id: '20',
       score: 0.7,
       taxon: { id: '3', name: 'Noctua pronuba' },
     })
-    expect(getResultPrediction(classMasking as never, '4')).toMatchObject({
+    expect(getResultPrediction(classMasking as never, [], '4')).toMatchObject({
       applied: false,
     })
+  })
+
+  test("is the occurrence's own record of the classification when it has one", () => {
+    const own = { id: '20', score: 0.7 } as never
+
+    expect(getResultPrediction(classMasking as never, [own], '3')).toBe(own)
+  })
+
+  test('keeps the taxon ranks the history sends', () => {
+    const withParents = {
+      ...classMasking,
+      classifications: classMasking.classifications.map((c) => ({
+        ...c,
+        taxon: c.taxon && {
+          ...c.taxon,
+          parents: [{ id: 1, name: 'Noctuidae', rank: 'FAMILY' }],
+        },
+      })),
+    }
+
+    expect(
+      getResultPrediction(withParents as never, [], '3')?.taxon.ranks
+    ).toMatchObject([{ id: '1', name: 'Noctuidae', rank: 'FAMILY' }])
   })
 
   test('is undefined for a run that created no classification', () => {
     expect(
       getResultPrediction(
         { ...classMasking, classifications: [] } as never,
+        [],
         '3'
       )
     ).toBeUndefined()
@@ -335,14 +330,14 @@ describe('getOccurrenceHistoryQueryKey', () => {
   })
 })
 
-describe('getJobSettings', () => {
-  test('lists the settings a job ran with, with their labels and records, leaving out unset ones', () => {
+describe('getJobConfigFields', () => {
+  test('lists the config a job ran with, with its labels and records, leaving out unset fields', () => {
     const deletedList: { type: string; id: number; name: string | null } = {
       type: 'taxa_list',
       id: 2,
       name: null,
     }
-    const setting = (
+    const field = (
       key: string,
       value: unknown,
       ref: typeof deletedList | null = null
@@ -353,34 +348,33 @@ describe('getJobSettings', () => {
       ref,
     })
     expect(
-      getJobSettings({
-        config: null,
+      getJobConfigFields({
         id: 1,
         name: 'Size filter',
-        settings: [
-          setting('occurrence_id', 4, {
+        config: [
+          field('occurrence_id', 4, {
             type: 'occurrence',
             id: 4,
             name: '#4',
           }),
-          setting('reweight', true),
-          setting('size_threshold', 0.01),
-          setting('source_image_collection_id', null),
+          field('reweight', true),
+          field('size_threshold', 0.01),
+          field('source_image_collection_id', null),
           // A deleted list keeps its reference with no name, so the card shows its id as text.
-          setting('taxa_list_id', 2, deletedList),
+          field('taxa_list_id', 2, deletedList),
         ],
       })
     ).toEqual([
-      setting('occurrence_id', 4, { type: 'occurrence', id: 4, name: '#4' }),
-      setting('reweight', true),
-      setting('taxa_list_id', 2, deletedList),
+      field('occurrence_id', 4, { type: 'occurrence', id: 4, name: '#4' }),
+      field('reweight', true),
+      field('taxa_list_id', 2, deletedList),
     ])
   })
 
-  test('is empty for a job without settings', () => {
-    expect(
-      getJobSettings({ config: null, id: 1, name: 'Pipeline', settings: [] })
-    ).toEqual([])
-    expect(getJobSettings(null)).toEqual([])
+  test('is empty for a job without config', () => {
+    expect(getJobConfigFields({ id: 1, name: 'Pipeline', config: [] })).toEqual(
+      []
+    )
+    expect(getJobConfigFields(null)).toEqual([])
   })
 })
