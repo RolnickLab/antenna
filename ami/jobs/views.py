@@ -657,6 +657,47 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @action(
         detail=True,
         methods=["post"],
+        url_path="training-progress",
+        name="training-progress",
+        # Same token as the result callback: a processing service has no Antenna account.
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+    )
+    def training_progress(self, request, pk=None):
+        """
+        Receive how far through its epochs a retraining run is.
+
+        Training is the long stage of the job and the service says nothing while it fits, so
+        this is what moves the progress bar in between.
+        """
+        from ami.jobs.models import TrainClassifierJob
+
+        job = self._job_for_callback(pk, request)
+
+        if job.job_type_key != TrainClassifierJob.key:
+            raise ValidationError(f"Job #{job.pk} is not a training job.")
+
+        if job.status in JobState.final_states():
+            # A ping overtaken by the result. The job is done; its stages say so.
+            return Response({"status": "finished"})
+
+        epoch = SingleParamSerializer[int].clean(
+            "epoch",
+            serializers.IntegerField(required=True, min_value=0),
+            request.data,
+        )
+        total_epochs = SingleParamSerializer[int].clean(
+            "total_epochs",
+            serializers.IntegerField(required=False, allow_null=True, default=None, min_value=1),
+            request.data,
+        )
+        TrainClassifierJob.record_progress(job=job, epoch=epoch, total_epochs=total_epochs)
+        return Response({"status": "recorded"})
+
+    @extend_schema(exclude=True)
+    @action(
+        detail=True,
+        methods=["post"],
         url_path="training-head",
         name="training-head",
         # Same token as the result callback: a processing service has no Antenna account.
