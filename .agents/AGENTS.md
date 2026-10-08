@@ -448,6 +448,8 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 ### Before requesting review (any PR)
 
 - [ ] Self-review the full diff: no WIP debris (commented-out code, stale `noqa`/TODOs, duplicated conditions, typos).
+- [ ] Hygiene sweep over the whole branch, not just the last commit: duplicated constants or helpers, a shared component carrying a feature-specific prop, overlapping ways to do one action, comments written against an earlier round of this PR rather than `main`. Whatever this branch created is this branch's work — a follow-up ticket is for debt it ran into but did not cause. See `docs/claude/reference/code-hygiene.md`.
+- [ ] Tests still earn their place: cut what another test already proves at the same layer, rewrite any whose name overclaims, and keep new fixtures on `setUpTestData` (the suite's growth is per-test cost, not test count — `docs/claude/reference/code-hygiene.md`, #1481).
 - [ ] Linters pass with the repo's pinned configs (pre-commit hooks; `cd ui && yarn lint` for frontend).
 - [ ] PR title and description follow the conventions above — and are refreshed if scope changed during review.
 - [ ] Feature spans FE+BE? Agree on the API contract (fields, nesting, lookup keys) in the issue *before* implementing. Mid-review contract renegotiation is the main cause of months-long PRs in this repo.
@@ -541,7 +543,7 @@ npm run build                    # Production build
 
 ## Important File Locations
 
-- `ami/main/models.py` (~3700 lines) - Core domain models
+- `ami/main/models.py` (5,236 lines) - Core domain models
 - `ami/main/models_future/filters.py` - Core filtering utilities (build_occurrence_default_filters_q)
 - `ami/ml/models/pipeline.py` - ML pipeline orchestration
 - `ami/ml/orchestration/processing.py` - Image processing workflow
@@ -556,6 +558,7 @@ npm run build                    # Production build
 
 - `docs/claude/INDEX.md` - Index of all agent docs (reference, runbooks, plans)
 - `docs/claude/reference/canonical-patterns.md` - Existing helpers/patterns to reuse, with file:line refs
+- `docs/claude/reference/code-hygiene.md` - Where the big files are, the module/subpackage precedents to follow when splitting them, the measured causes of the slow test suite, and the smells this repo has paid for
 - `docs/claude/reference/query-patterns.md` - DB schema table, indexes, prefetch patterns, QuerySet method catalog
 - `.agents/DATABASE_SCHEMA.md` - Visual ERD (Mermaid)
 - `.agents/USER_PERMISSION_ROLES.md` - Permission roles reference
@@ -569,7 +572,7 @@ npm run build                    # Production build
 
 ## Known Technical Debt & Areas for Improvement
 
-1. **Model File Size** - `ami/main/models.py` is very large (~3700 lines) containing model definitions, business logic, processing orchestration, and helper functions. Consider splitting into separate modules.
+1. **Model File Size** - `ami/main/models.py` is very large (5,236 lines, with `ami/main/tests.py` at 7,654) containing model definitions, business logic, processing orchestration, and helper functions. Splitting it is wanted; `docs/claude/reference/code-hygiene.md` lists the subpackage arrangements already used elsewhere in the repo.
 
 2. **Processing Logic Extraction** - Functions like `process_single_source_image()` and `group_images_into_events()` should be moved from models to dedicated service modules (e.g., `ami/ml/orchestration/`, `ami/main/services/`).
 

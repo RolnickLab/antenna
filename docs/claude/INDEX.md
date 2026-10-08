@@ -10,6 +10,7 @@ archived.
 | File | Description |
 |---|---|
 | `reference/canonical-patterns.md` | Existing helpers/patterns to reuse before writing new ones, with file:line refs (SingleParamSerializer, ProjectMixin, permissions, schemas, fixtures). Keywords: reuse, helpers, conventions, DRF |
+| `reference/code-hygiene.md` | Antenna-specific code-hygiene layer: the largest files and why `ami/main` wants new modules, the subpackage precedents to follow when splitting (`ami/ml/models/`, `ami/ml/orchestration/`, `ami/ml/results/`, `ami/main/models_future/`, `ami/jobs/tests/`), the measured causes of the 4.4 → 19.5 min CI growth (#1481), the #1461 smell table, and the naming conventions already settled. Keywords: hygiene, DRY, refactor, module split, file length, slow tests, setUpTestData, smells |
 | `reference/query-patterns.md` | DB model relationship table, composite indexes, prefetch/select_related patterns, full custom QuerySet method catalog, query anti-patterns. Keywords: N+1, indexes, ORM, performance |
 | `reference/api-stats-pattern.md` | How to add aggregate/leaderboard/chart endpoints (`/<entity>/stats/<kind>/`): GenericViewSet + @action, pure querysets in models_future. Keywords: stats, charts, aggregation |
 | `reference/monitoring-async-jobs.md` | Monitoring/debugging async_api (NATS JetStream) jobs: ORM, REST, consumer state, Redis counters, worker logs. Keywords: NATS, async, jobs, monitoring |
