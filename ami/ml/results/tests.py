@@ -1,23 +1,11 @@
-from django.test import SimpleTestCase, TestCase
+from django.test import TestCase
 
 from ami.main.models import Occurrence
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
-from ami.ml.results import schemas
-from ami.ml.results.schemas import SizeFilterResultData
+from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import setup_test_project
 
 SIZE_FILTER = SizeFilterResultData.kind
-
-
-class ResultKindRegistryTest(SimpleTestCase):
-    """Tasks declare only registered result kinds."""
-
-    def test_every_result_model_a_task_declares_is_a_registered_kind(self):
-        for key, task in POSTPROCESSING_TASKS.items():
-            for model in task.result_models:
-                with self.subTest(task=key, model=model.__name__):
-                    self.assertIs(schemas.ALGORITHM_RESULT_DATA_SCHEMAS.get(model.kind), model)
 
 
 class AlgorithmResultTestCase(TestCase):

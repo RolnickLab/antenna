@@ -1,12 +1,13 @@
-"""What each kind of algorithm result records: one pydantic model per kind, and the registry of kinds.
+"""The base for what each kind of algorithm result records, and the registry of kinds.
 
 A kind's model holds only what its run alone knows; the run's config lives on the job, and the new
 taxon on the classifications the run created. ``extra`` takes whatever else a method returns and is
 never read for logic. It imports nothing from Django, so models, writers and serializers can all
-import it. Adding a kind = a model with its
-``kind`` + an entry in ``ALGORITHM_RESULT_DATA_MODELS``; see README.md in this package.
+import it. A kind's model lives with the task that writes it and is listed in the task's
+``result_models``; see README.md in this package.
 """
 
+import functools
 import json
 from typing import Any, ClassVar
 
@@ -36,37 +37,21 @@ class DeterminationSnapshot(AlgorithmResultData):
     determination_after_id: int | None = None
 
 
-class ClassMaskingResultData(DeterminationSnapshot):
-    """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
+@functools.cache
+def result_data_models() -> dict[str, type[AlgorithmResultData]]:
+    """Every result kind, from the ``result_models`` the post-processing tasks declare, keyed by kind."""
+    from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
 
-    kind: ClassVar[str] = "class_masking"
-    value_field: ClassVar[str | None] = "excluded_probability"
-
-    # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
-    excluded_probability: float
-    # Where the class that wins after masking ranked before it; 1 means it was already the top.
-    new_winner_original_rank: int | None = None
-
-
-class SizeFilterResultData(DeterminationSnapshot):
-    """Figures from the occurrence's smallest filtered detection."""
-
-    kind: ClassVar[str] = "size_filter"
-    value_field: ClassVar[str | None] = "relative_size"
-
-    # The detection's box area as a fraction of its image.
-    relative_size: float
-
-
-ALGORITHM_RESULT_DATA_MODELS: tuple[type[AlgorithmResultData], ...] = (ClassMaskingResultData, SizeFilterResultData)
-
-ALGORITHM_RESULT_DATA_SCHEMAS: dict[str, type[AlgorithmResultData]] = {
-    model.kind: model for model in ALGORITHM_RESULT_DATA_MODELS
-}
+    models: dict[str, type[AlgorithmResultData]] = {}
+    for task in POSTPROCESSING_TASKS.values():
+        for model in task.result_models:
+            if models.setdefault(model.kind, model) is not model:
+                raise ValueError(f"Result kind {model.kind!r} is declared by two different data models.")
+    return models
 
 
 def _schema_for(kind: str) -> type[AlgorithmResultData]:
-    schema = ALGORITHM_RESULT_DATA_SCHEMAS.get(kind)
+    schema = result_data_models().get(kind)
     if schema is None:
         raise ValueError(f"No result data model is registered for {kind!r}.")
     return schema

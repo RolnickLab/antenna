@@ -2,8 +2,8 @@
 
 A model opts in by declaring ``reference_type`` (and ``reference_name_field``, the attribute shown
 as its name; None shows ``#<id>``). A pydantic schema marks a field that holds such an id with
-``reference()``. ``resolve_references`` reads the names with one query per type, and the UI maps
-each type to a page in ``ui/src/utils/references.ts``.
+``model_reference()``. ``resolve_model_references`` reads the names with one query per type, and the UI maps
+each type to a page in ``ui/src/utils/entity-references.ts``.
 """
 
 import collections
@@ -16,7 +16,7 @@ from django.apps import apps
 
 
 @dataclasses.dataclass(frozen=True)
-class Ref:
+class ModelRef:
     """A record a stored value names. ``name`` is None when the record no longer exists."""
 
     type: str
@@ -24,7 +24,7 @@ class Ref:
     name: str | None
 
 
-def reference(ref_type: str, default: typing.Any = None, **field_options: typing.Any) -> typing.Any:
+def model_reference(ref_type: str, default: typing.Any = None, **field_options: typing.Any) -> typing.Any:
     """Declare a pydantic field that holds the id of a record of ``ref_type``.
 
     ``field_options`` go to ``pydantic.Field``.
@@ -33,7 +33,7 @@ def reference(ref_type: str, default: typing.Any = None, **field_options: typing
 
 
 def field_references(schema: type[pydantic.BaseModel]) -> dict[str, str]:
-    """The schema's fields declared with ``reference()``, mapped to the reference type."""
+    """The schema's fields declared with ``model_reference()``, mapped to the reference type."""
     return {
         name: field.field_info.extra["reference"]
         for name, field in schema.__fields__.items()
@@ -71,7 +71,7 @@ def unmapped_reference_types(schemas: typing.Iterable[type[pydantic.BaseModel]])
     return declared - set(reference_types())
 
 
-def resolve_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[str, int], Ref]:
+def resolve_model_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[str, int], ModelRef]:
     """Each ``(type, id)`` as a ``Ref``, reading names with one query per type.
 
     An unknown type raises KeyError: a schema declared a reference type no model declares.
@@ -79,7 +79,7 @@ def resolve_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[s
     ids_by_type: dict[str, set[int]] = collections.defaultdict(set)
     for ref_type, ref_id in wanted:
         ids_by_type[ref_type].add(ref_id)
-    resolved: dict[tuple[str, int], Ref] = {}
+    resolved: dict[tuple[str, int], ModelRef] = {}
     for ref_type, ids in ids_by_type.items():
         model, name_field = reference_types()[ref_type]
         if name_field is None:
@@ -87,5 +87,5 @@ def resolve_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[s
         else:
             names = dict(model.objects.filter(pk__in=ids).values_list("pk", name_field))
         for ref_id in ids:
-            resolved[(ref_type, ref_id)] = Ref(ref_type, ref_id, names.get(ref_id))
+            resolved[(ref_type, ref_id)] = ModelRef(ref_type, ref_id, names.get(ref_id))
     return resolved

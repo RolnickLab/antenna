@@ -1,7 +1,7 @@
 """A job's config as labelled rows, with the records it names resolved, for showing it to people.
 
 A post-processing job stores its config in ``params["config"]``, validated by its task's
-``config_schema``. The schema gives each field its title, its order and, through ``reference()``,
+``config_schema``. The schema gives each field its title, its order and, through ``model_reference()``,
 the type of record an id names.
 """
 
@@ -10,8 +10,8 @@ import typing
 
 from rest_framework import serializers
 
-from ami.base.references import Ref, field_references, field_titles, is_record_id, resolve_references
-from ami.base.serializers import RefSerializer
+from ami.base.model_references import ModelRef, field_references, field_titles, is_record_id, resolve_model_references
+from ami.base.serializers import ModelRefSerializer
 from ami.jobs.models import Job
 from ami.ml.post_processing.registry import get_postprocessing_task
 
@@ -23,7 +23,7 @@ class JobConfigField:
     key: str
     label: str
     value: typing.Any
-    ref: Ref | None = None
+    ref: ModelRef | None = None
 
 
 class JobConfigFieldSerializer(serializers.Serializer):
@@ -32,7 +32,7 @@ class JobConfigFieldSerializer(serializers.Serializer):
     key = serializers.CharField()
     label = serializers.CharField()
     value = serializers.JSONField(allow_null=True)
-    ref = RefSerializer(allow_null=True, help_text="The record the field names, when it names one.")
+    ref = ModelRefSerializer(allow_null=True, help_text="The record the field names, when it names one.")
 
 
 def job_config(job: Job | None) -> dict | None:
@@ -46,7 +46,7 @@ def job_config_fields(jobs: typing.Iterable[Job]) -> dict[int, list[JobConfigFie
     """Each job's config fields by job id, resolving every record id they name with one query per type."""
     specs = {job.pk: _field_specs(job) for job in jobs}
     wanted = [(ref_type, value) for fields in specs.values() for _, _, value, ref_type in fields if ref_type]
-    resolved = resolve_references(wanted) if wanted else {}
+    resolved = resolve_model_references(wanted) if wanted else {}
     return {
         job_id: [
             JobConfigField(key, label, value, resolved[(ref_type, value)] if ref_type else None)

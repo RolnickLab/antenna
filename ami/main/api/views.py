@@ -32,7 +32,8 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.occurrence_history import occurrence_timeline
+from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
+from ami.main.api.occurrence_history.timeline import occurrence_timeline
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
@@ -69,7 +70,6 @@ from ..models import (
     verified_taxon_counts,
 )
 from .serializers import (
-    OCCURRENCE_HISTORY_ENTRY_SCHEMA,
     BulkIdentificationRequestSerializer,
     BulkIdentificationResponseSerializer,
     ClassificationListSerializer,
@@ -107,7 +107,6 @@ from .serializers import (
     TaxonSearchResultSerializer,
     TaxonSerializer,
     TopIdentifiersResponseSerializer,
-    serialize_history,
 )
 
 logger = logging.getLogger(__name__)

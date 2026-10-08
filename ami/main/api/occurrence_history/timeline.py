@@ -105,8 +105,6 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
             details={
                 "comment": identification.comment or "",
                 "withdrawn": identification.withdrawn,
-                "agreed_with_identification_id": identification.agreed_with_identification_id,
-                "agreed_with_prediction_id": identification.agreed_with_prediction_id,
             },
         )
         for identification in identifications
@@ -121,11 +119,7 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
             job=prediction.job,
             taxon=prediction.taxon,
             score=prediction.score,
-            details={
-                "detection_id": prediction.detection_id,
-                "terminal": prediction.terminal,
-                "applied_to_id": prediction.applied_to_id,
-            },
+            details={"terminal": prediction.terminal},
         )
         for prediction in _one_prediction_per_algorithm(occurrence)
         if prediction.pk not in created_ids

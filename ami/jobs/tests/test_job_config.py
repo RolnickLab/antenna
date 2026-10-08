@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from ami.base.references import Ref, unmapped_reference_types
+from ami.base.model_references import ModelRef, unmapped_reference_types
 from ami.jobs.job_config import JobConfigField, job_config_fields
 from ami.jobs.models import Job
 from ami.main.models import TaxaList
@@ -37,10 +37,10 @@ class JobConfigFieldsTestCase(TestCase):
                 # A value that is not an id names no record, whatever the schema declares.
                 JobConfigField("occurrence_id", "Occurrence", True, None),
                 JobConfigField(
-                    "taxa_list_id", "Species list", taxa_list.pk, Ref("taxa_list", taxa_list.pk, "Kept species")
+                    "taxa_list_id", "Species list", taxa_list.pk, ModelRef("taxa_list", taxa_list.pk, "Kept species")
                 ),
                 JobConfigField(
-                    "algorithm_id", "Classifier", classifier.pk, Ref("algorithm", classifier.pk, "Classifier")
+                    "algorithm_id", "Classifier", classifier.pk, ModelRef("algorithm", classifier.pk, "Classifier")
                 ),
                 JobConfigField("reweight", "Re-weighted scores", True, None),
             ],

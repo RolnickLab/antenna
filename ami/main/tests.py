@@ -46,7 +46,7 @@ from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.ml.results.schemas import SizeFilterResultData
+from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,

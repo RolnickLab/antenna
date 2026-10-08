@@ -4,7 +4,7 @@ An algorithm result (`ami/ml/models/algorithm_result.py`) records what one run o
 about one occurrence: the figures only that run knew, a headline `value`, and the occurrence's
 determination before and after, with the algorithm and job that produced it. Post-processing tasks
 write them today. The determination never reads them; it still comes only from identifications and
-classifications. The occurrence history (`ami/main/api/occurrence_history.py`,
+classifications. The occurrence history (`ami/main/api/occurrence_history/`,
 `GET /occurrences/{id}/history/`) shows each result with the classifications its run created.
 
 Processing services cannot write results: their contract (`ami/ml/schemas.py`) has no place for them
@@ -13,27 +13,28 @@ own tables, with the same algorithm and job provenance.
 
 ## Adding a kind
 
-1. **Data model** in `schemas.py`, listed in `ALGORITHM_RESULT_DATA_MODELS`. Set `kind` and
+1. **Data model** in the task's module, beside its config schema (`ClassMaskingResultData` in
+   `class_masking.py`), subclassing `AlgorithmResultData` from `schemas.py`. Set `kind` and
    `value_field` (the figure lists filter and sort on; every write copies it into `value`).
    Subclass `DeterminationSnapshot` if the run can change the determination. Record only what the
    run alone knows: its config stays on the job, the new taxon on the classifications it creates, and
    the prediction it replaced on their `applied_to`. Anything else the method returns goes in
    `extra`, which nothing reads for logic.
-2. **Task**: declare the model in the task's `result_models`, give every `config_schema` field a
-   `title`, and declare fields that hold a record id with `reference("capture_set", ...)`
-   (`ami/base/references.py`); `ami/jobs/job_config.py` labels and links them. A new reference type
+2. **Task**: declare the model in the task's `result_models` (which registers the kind), give every `config_schema` field a
+   `title`, and declare fields that hold a record id with `model_reference("capture_set", ...)`
+   (`ami/base/model_references.py`); `ami/jobs/job_config.py` labels and links them. A new reference type
    is declared on its model (`reference_type`, `reference_name_field`) and routed in
-   `ui/src/utils/references.ts`.
+   `ui/src/utils/entity-references.ts`.
 3. **Writing**: use `AlgorithmResultWriter` (`writer.py`) as `class_masking.py` and
    `small_size_filter.py` do. Per batch, inside one transaction: `note()` each changed detection's
    figures, `start_batch()` before inserting classifications (it points them at their result), then
    save the occurrences and call `finish_batch()`.
 4. **UI**: add the data interface and the kind to `ui/src/data-services/models/occurrence-history.ts`
-   and a stats case to `ui/src/pages/occurrence-details/identification-card/algorithm-result.tsx`.
+   and a stats case to `ui/src/pages/occurrence-details/history/algorithm-result.tsx`.
    The timeline skips kinds it does not know, so the server side can ship first.
 5. **Tests**: one result per touched occurrence with the expected `data` and `value`; created
    classifications carry `algorithm_result`, `job` and, where they replaced one, `applied_to`; the
-   history shows the result. `python manage.py test ami.ml.results ami.main.test_occurrence_history`.
+   history shows the result. `python manage.py test ami.ml.results ami.main.api.occurrence_history.tests`.
 
 No migration, serializer or OpenAPI change is needed: `kind` is a plain `CharField`, every write path
 validates `data` against the registry, and the API publishes `data` as JSON.

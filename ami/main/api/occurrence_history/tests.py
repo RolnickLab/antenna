@@ -9,7 +9,7 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
-from ami.main.api.occurrence_history import occurrence_timeline
+from ami.main.api.occurrence_history.timeline import occurrence_timeline
 from ami.main.models import (
     Classification,
     Detection,
@@ -21,7 +21,8 @@ from ami.main.models import (
     Taxon,
 )
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.results.schemas import ClassMaskingResultData, SizeFilterResultData
+from ami.ml.post_processing.class_masking import ClassMaskingResultData
+from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 from ami.tests.fixtures.queries import no_query_cache
 from ami.users.models import User
