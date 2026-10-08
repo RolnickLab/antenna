@@ -158,9 +158,9 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
     def get_count(self, queryset):
-        # The recent-activity orderings annotate correlated subqueries onto the
-        # queryset. They don't change the row count, so strip them (and ordering)
-        # before counting to keep the pagination COUNT query cheap.
+        # The overview totals and dates are correlated subqueries. They don't change
+        # the row count, so strip them (and ordering) before counting to keep the
+        # pagination COUNT query cheap.
         return super().get_count(queryset.order_by().values("pk"))
 
 
@@ -186,18 +186,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
     search_fields = ["name", "description"]
-    # Not Project fields: annotated on the list action by ProjectQuerySet.with_overview_counts()
-    # and with_recent_activity(), which run only when asked for (see get_queryset).
-    overview_fields = [
-        "deployments_count",
-        "captures_count",
-        "occurrences_count",
-        "members_count",
-        "last_capture_timestamp",
-        "last_occurrence_updated_at",
-        "last_job_updated_at",
-    ]
-    ordering_fields = ["name", "created_at", "updated_at", *overview_fields]
+    ordering_fields = ["name", "created_at", "updated_at", *ProjectQuerySet.OVERVIEW_FIELDS]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -214,10 +203,10 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         # the table asks for them with ?with_counts, or when the list is sorted by one of them.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
         if self.action == "list" and (
-            url_boolean_param(self.request, "with_counts") or ordering & set(self.overview_fields)
+            url_boolean_param(self.request, "with_counts") or ordering & set(ProjectQuerySet.OVERVIEW_FIELDS)
         ):
             # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
-            qs = qs.prefetch_related(None).with_overview_counts().with_recent_activity()
+            qs = qs.prefetch_related(None).with_overview(self.request.user)
         return qs
 
     def get_serializer_class(self):

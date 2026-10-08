@@ -28,6 +28,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectQuerySet,
     ProjectSettingsMixin,
     S3StorageSource,
     Site,
@@ -320,22 +321,14 @@ class ProjectListSerializer(DefaultSerializer):
             "name",
             "description",
             "details",
-            "deployments_count",
             "created_at",
             "updated_at",
             "image",
             "draft",
         ]
-        # Annotated by ProjectQuerySet.with_overview_counts() and with_recent_activity() when the
-        # list asks for them, and left out of the response otherwise.
-        fields = base_fields + [
-            "captures_count",
-            "occurrences_count",
-            "members_count",
-            "last_capture_timestamp",
-            "last_occurrence_updated_at",
-            "last_job_updated_at",
-        ]
+        # Annotated by ProjectQuerySet.with_overview() when the list asks for them, and left out
+        # of the response otherwise, except deployments_count, which falls back to the model method.
+        fields = base_fields + list(ProjectQuerySet.OVERVIEW_FIELDS)
 
 
 class ProjectSettingsSerializer(DefaultSerializer):
@@ -411,6 +404,7 @@ class ProjectSerializer(DefaultSerializer):
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.base_fields + [
+            "deployments_count",
             "deployments",
             "summary_data",  # Conditionally included based on with_charts query param
             "owner",

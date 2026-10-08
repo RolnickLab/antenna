@@ -223,60 +223,59 @@ def get_or_create_default_project(user: User) -> "Project":
     return project
 
 
+def _per_project(queryset: models.QuerySet, aggregate) -> Subquery:
+    """One aggregate over the rows of `queryset` that belong to the outer project, for a Project annotation."""
+    return Subquery(
+        queryset.filter(project=OuterRef("pk"))
+        .order_by()
+        .values("project")
+        .annotate(value=aggregate)
+        .values("value")[:1]
+    )
+
+
 class ProjectQuerySet(BaseQuerySet):
+    # Annotated by with_overview(). The projects API sorts and serializes by these names.
+    OVERVIEW_FIELDS = (
+        "deployments_count",
+        "captures_count",
+        "occurrences_count",
+        "members_count",
+        "last_capture_timestamp",
+        "last_occurrence_updated_at",
+        "last_job_updated_at",
+    )
+
     def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
         """
         return self.filter(members=user)
 
-    def with_overview_counts(self) -> "ProjectQuerySet":
+    def with_overview(self, user: User | AnonymousUser) -> "ProjectQuerySet":
         """
-        Annotate the per-project totals shown in the projects table.
+        Annotate the totals and latest activity shown in the projects table, named in OVERVIEW_FIELDS.
 
-        Totals are summed from the cached counts on each deployment, so they are only as
-        fresh as `Deployment.update_calculated_fields()`. Each is one correlated subquery
-        over the deployments or memberships of a single project.
-        """
-
-        def deployment_rollup(aggregate):
-            return Subquery(
-                Deployment.objects.filter(project=OuterRef("pk"))
-                .order_by()
-                .values("project")
-                .annotate(value=aggregate)
-                .values("value")[:1]
-            )
-
-        return self.annotate(
-            deployments_count=Coalesce(deployment_rollup(models.Count("pk")), 0),
-            captures_count=Coalesce(deployment_rollup(models.Sum("captures_count")), 0),
-            occurrences_count=Coalesce(deployment_rollup(models.Sum("occurrences_count")), 0),
-            members_count=Coalesce(
-                Subquery(
-                    UserProjectMembership.objects.filter(project=OuterRef("pk"))
-                    .order_by()
-                    .values("project")
-                    .annotate(value=models.Count("pk"))
-                    .values("value")[:1]
-                ),
-                0,
-            ),
-        )
-
-    def with_recent_activity(self) -> "ProjectQuerySet":
-        """
-        Annotate when each project last received a capture, an occurrence update and a job update.
-
-        Read live rather than from cached fields so the projects table never lags ingestion.
-        Each is a correlated subquery answered by an index-only scan on a (project, time) index.
+        Totals are summed from the cached counts on each deployment, so they are only as fresh as
+        `Deployment.update_calculated_fields()`. Activity dates are read live, each from a (project, time)
+        index. `members_count` follows the permission on the team list: it is null unless the user is
+        a member of the project or a superuser.
         """
         from ami.jobs.models import Job
 
         def latest(queryset: models.QuerySet, field: str) -> Subquery:
             return Subquery(queryset.filter(project=OuterRef("pk")).order_by(f"-{field}").values(field)[:1])
 
+        members_count = Coalesce(_per_project(UserProjectMembership.objects.all(), models.Count("pk")), 0)
+        if not user.is_superuser:
+            is_member = Exists(UserProjectMembership.objects.filter(project=OuterRef("pk"), user_id=user.pk))
+            members_count = models.Case(models.When(is_member, then=members_count), default=None)
+
         return self.annotate(
+            deployments_count=Coalesce(_per_project(Deployment.objects.all(), models.Count("pk")), 0),
+            captures_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("captures_count")), 0),
+            occurrences_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("occurrences_count")), 0),
+            members_count=members_count,
             # timestamp is nullable and DESC sorts NULLs first, so undated captures are excluded.
             last_capture_timestamp=latest(SourceImage.objects.filter(timestamp__isnull=False), "timestamp"),
             last_occurrence_updated_at=latest(Occurrence.objects.all(), "updated_at"),

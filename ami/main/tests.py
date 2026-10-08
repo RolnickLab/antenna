@@ -31,6 +31,7 @@ from ami.main.models import (
     Identification,
     Occurrence,
     Project,
+    ProjectQuerySet,
     S3StorageSource,
     Site,
     SourceImage,
@@ -2384,13 +2385,14 @@ class TestProjectListOverviewCounts(APITestCase):
         self.last_capture = last_capture
         return super().setUp()
 
-    def _rows(self, **params) -> list[dict]:
+    def _rows(self, user: User | None = None, **params) -> list[dict]:
+        self.client.force_authenticate(user)
         response = self.client.get(self.endpoint, {"with_counts": "true", **params})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         return response.json()["results"]
 
     def test_counts_are_rolled_up_from_deployments(self):
-        rows = {row["id"]: row for row in self._rows()}
+        rows = {row["id"]: row for row in self._rows(self.owner)}
         busy, empty = rows[self.busy.pk], rows[self.empty.pk]
         self.assertEqual(
             (busy["deployments_count"], busy["captures_count"], busy["occurrences_count"], busy["members_count"]),
@@ -2404,6 +2406,24 @@ class TestProjectListOverviewCounts(APITestCase):
         self.assertIsNone(empty["last_capture_timestamp"])
         self.assertIsNone(empty["last_occurrence_updated_at"])
         self.assertIsNone(empty["last_job_updated_at"])
+
+    def test_team_size_is_only_shown_to_those_who_can_see_the_team(self):
+        """members_count is null for projects whose team list the user may not open."""
+        superuser = User.objects.create_superuser(email="overview-admin@insectai.org", password="unused")
+        for user, expected in [
+            (None, (None, None)),
+            (self.member, (2, None)),
+            (self.owner, (2, 1)),
+            (superuser, (2, 1)),
+        ]:
+            rows = {row["id"]: row for row in self._rows(user)}
+            with self.subTest(user=user):
+                self.assertEqual((rows[self.busy.pk]["members_count"], rows[self.empty.pk]["members_count"]), expected)
+
+    def test_overview_fields_name_every_annotation(self):
+        """The API sorts and serializes by OVERVIEW_FIELDS, so it must match what with_overview() adds."""
+        annotated = Project.objects.with_overview(self.owner).query.annotations
+        self.assertEqual(set(annotated), set(ProjectQuerySet.OVERVIEW_FIELDS))
 
     def test_totals_are_left_out_unless_asked_for(self):
         response = self.client.get(self.endpoint)
