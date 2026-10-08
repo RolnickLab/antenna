@@ -2456,8 +2456,11 @@ class TestProjectListOverviewCounts(APITestCase):
         Deployment.objects.create(name="Placeholder", project=self.busy, latitude=0, longitude=0)
         Deployment.objects.create(name="Unknown", project=self.busy)
 
-        rows = {row["id"]: row for row in self._rows(with_center="true")}
+        # The map asks for centres without the totals.
+        response = self.client.get(self.endpoint, {"with_center": "true"})
+        rows = {row["id"]: row for row in response.json()["results"]}
         busy, empty = rows[self.busy.pk], rows[self.empty.pk]
+        self.assertNotIn("captures_count", busy)
         self.assertAlmostEqual(busy["center_latitude"], 46.0)
         self.assertAlmostEqual(busy["center_longitude"], -72.0)
         self.assertIsNone(empty["center_latitude"])

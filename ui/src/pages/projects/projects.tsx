@@ -26,6 +26,9 @@ import { columns } from './project-columns'
 import { ProjectGallery } from './project-gallery'
 import { ProjectsMap } from './projects-map'
 
+// The map shows every project at once rather than a page of them.
+const MAP_LIMIT = 1000
+
 export const TABS = {
   MY_PROJECTS: 'my-projects',
   ALL_PROJECTS: 'all-projects',
@@ -66,7 +69,8 @@ export const Projects = () => {
   ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({
-      pagination,
+      pagination:
+        layout === 'map' ? { page: 0, perPage: MAP_LIMIT } : pagination,
       filters,
       sort,
       // Totals are only shown, and only computed, in the table.
@@ -174,7 +178,7 @@ export const Projects = () => {
         />
       )}
       <PageFooter>
-        {projects?.length ? (
+        {projects?.length && layout !== 'map' ? (
           <PaginationBar
             pagination={pagination}
             total={total}

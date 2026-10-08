@@ -51,10 +51,6 @@ const ProjectsMapPopupContent = ({ project }: { project: Project }) => (
         label: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         value: project.numDeployments,
       },
-      {
-        label: translate(STRING.FIELD_LABEL_CAPTURES),
-        value: project.numCaptures,
-      },
     ]}
   />
 )
