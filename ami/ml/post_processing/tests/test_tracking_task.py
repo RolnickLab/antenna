@@ -342,8 +342,23 @@ class TestTrackingResults(_TrackingCase):
         self.assertEqual(result.data["determination_before_id"], self.taxa[0].pk)
         self.assertFalse(Classification.objects.filter(algorithm=task.algorithm).exists())
 
-    def test_machine_labels_leave_out_post_processing_classifications(self):
-        """A size filter's terminal row on a frame is not another vote on the taxon."""
+    def test_each_detection_counts_once_with_the_label_the_determination_would_use(self):
+        """A stray low-score terminal label next to a better one is not counted as another taxon."""
+        captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
+        second = captures[1].detections.get()
+        Classification.objects.create(
+            detection=second, taxon=self.taxa[1], score=0.02, terminal=True, timestamp=second.timestamp
+        )
+
+        self.run_task(captures[0].event)
+
+        result = AlgorithmResult.objects.get(kind="tracking")
+        self.assertEqual(result.data["distinct_taxa"], 1)
+        self.assertEqual(result.data["label_agreement"], 1.0)
+        self.assertEqual([t["taxon_id"] for t in result.data["taxa"]], [self.taxa[0].pk])
+
+    def test_a_post_processing_label_counts_when_it_is_the_detections_best(self):
+        """A size filter's terminal row decides the determination, so it is the detection's label too."""
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
         size_filter = Algorithm.objects.create(
             name="Test size filter", key="test-size-filter", task_type="post_processing"
@@ -361,10 +376,9 @@ class TestTrackingResults(_TrackingCase):
         self.run_task(captures[0].event)
 
         result = AlgorithmResult.objects.get(kind="tracking")
-        self.assertEqual(result.data["distinct_taxa"], 1)
-        # The filter's row wins the determination, and no machine label names that taxon.
         self.assertEqual(result.data["determination_after_id"], self.taxa[1].pk)
-        self.assertEqual(result.data["label_agreement"], 0.0)
+        self.assertEqual(result.data["distinct_taxa"], 2)
+        self.assertEqual(result.data["label_agreement"], 0.5)
 
     def test_each_links_cost_is_recorded_in_chain_order(self):
         captures = create_session(

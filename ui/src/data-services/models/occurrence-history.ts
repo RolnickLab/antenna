@@ -85,16 +85,16 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
 export interface TrackingTaxonLabels {
   taxon_id: number
   name: string
-  /** Detections with at least one label naming the taxon. */
+  /** Detections whose best classification names the taxon. */
   detection_count: number
   score_max: number | null
 }
 
 export interface TrackingResultData extends ServerDeterminationSnapshot {
   detection_count: number
-  /** Distinct taxa among the machine classifications of the occurrence's detections. */
+  /** Distinct taxa among the detections' best classifications at the time of the run. */
   distinct_taxa: number
-  /** The share of those classifications naming the determination after the run; null when there are none. */
+  /** The share of detections whose best classification names the determination after the run; null when none has one. */
   label_agreement: number | null
   /** Each of those distinct taxa, most detections first; missing on results recorded before it existed. */
   taxa?: TrackingTaxonLabels[]

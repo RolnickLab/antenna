@@ -1,7 +1,7 @@
 """Figures that describe one occurrence's path, computed from its detections' boxes and labels.
 
 Nothing here touches Django or the database. Boxes are ``(x1, y1, x2, y2)`` in capture order, and
-labels are the occurrence's terminal classifications.
+labels hold each detection's best classification at the time the figures are computed.
 """
 
 import math
@@ -16,7 +16,7 @@ _ROUND_TO = 4
 
 @dataclass(frozen=True)
 class Label:
-    """One terminal classification of a detection: the taxon it names, that taxon's name, and its score."""
+    """A detection's best classification: the taxon it names, that taxon's name, and its score."""
 
     detection_id: int
     taxon_id: int | None
@@ -101,7 +101,7 @@ def distinct_taxa(labels: Sequence[int | None]) -> int:
 def label_agreement(labels: Sequence[int | None], determination_id: int | None) -> float | None:
     """The share of labels naming the determination, or None when there are no labels.
 
-    Labels are machine classifications, not human identifications.
+    Labels are machine classifications, one per detection, not human identifications.
     """
     if not labels:
         return None
@@ -111,8 +111,7 @@ def label_agreement(labels: Sequence[int | None], determination_id: int | None) 
 def taxa_named(labels: Sequence[Label]) -> list[TaxonLabels]:
     """Each taxon the labels name, with how many detections it labels and its best score.
 
-    Most detections first, then the best score; a label without a taxon is left out. A low best score
-    shows a taxon that was never more than a minor guess.
+    Most detections first, then the best score; a label without a taxon is left out.
     """
     detections: dict[int, set[int]] = {}
     best: dict[int, float | None] = {}

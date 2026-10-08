@@ -13,7 +13,7 @@ from collections.abc import Iterator, Sequence
 
 from cachalot.api import cachalot_disabled
 from django.db import connection, transaction
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, F, OuterRef
 
 from ami.main.models import (
     Classification,
@@ -27,7 +27,6 @@ from ami.main.models import (
     update_occurrence_determination,
 )
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.results.schemas import TrackingResultData
 
@@ -327,9 +326,9 @@ def record_tracking_results(
 ) -> int:
     """Write one tracking result per group of two or more detections, or that absorbed an occurrence.
 
-    The figures are computed in memory from the plan's detections plus one query for their terminal
-    classifications. Only machine labels count: classifications by post-processing algorithms (size filter,
-    class masking) are left out, and a classification with no algorithm counts as a source label.
+    The figures are computed in memory from the plan's detections plus one query for each detection's
+    label: its best classification at the time of the run, chosen as the determination chooses (terminal
+    first, then the highest score), so the taxa and agreement describe what the determination was made from.
     Each result also records the occurrence every detection was in before the run, and the
     identifications moved or withdrawn, so a reset can put the earlier grouping back. Returns the
     number of results written.
@@ -338,13 +337,13 @@ def record_tracking_results(
     if not recorded:
         return 0
     detection_ids = [pk for group, _ in recorded for pk in group.detection_ids]
-    labels: dict[int, list[Label]] = collections.defaultdict(list)
-    for row in (
-        Classification.objects.filter(detection_id__in=detection_ids, terminal=True)
-        .exclude(algorithm__task_type=AlgorithmTaskType.POST_PROCESSING.value)
+    labels = {
+        row[0]: Label(*row)
+        for row in Classification.objects.filter(detection_id__in=detection_ids)
+        .order_by("detection_id", "-terminal", F("score").desc(nulls_last=True), "-created_at")
+        .distinct("detection_id")
         .values_list("detection_id", "taxon_id", "taxon__name", "score")
-    ):
-        labels[row[0]].append(Label(*row))
+    }
 
     images = {image.pk: image for image in plan.source_images}
     results = []
@@ -353,7 +352,7 @@ def record_tracking_results(
         figures = occurrence_figures(
             boxes=[d.bbox for d in detections],
             sizes=[(images[d.source_image_id].width, images[d.source_image_id].height) for d in detections],
-            labels=[label for d in detections for label in labels.get(d.pk, [])],
+            labels=[labels[d.pk] for d in detections if d.pk in labels],
             determination_id=keeper.determination_id,
         )
         results.append(

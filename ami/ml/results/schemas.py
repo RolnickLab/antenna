@@ -74,7 +74,7 @@ class TaxonLabelCount(pydantic.BaseModel):
     taxon_id: int
     # A copy of the taxon's name, kept so the record still reads after the taxon is renamed, merged or deleted.
     name: str
-    # Detections with at least one label naming the taxon.
+    # Detections whose label names the taxon.
     detection_count: int
     score_max: float | None = None
 
@@ -96,9 +96,10 @@ class TrackingResultData(DeterminationSnapshot):
     path_length: float
     # The largest box area over the smallest (at least 1), with areas floored at 1; 1 when the box never changed size.
     size_change: float
-    # Distinct taxa among the machine classifications of the occurrence's detections, leaving out post-processing ones.
+    # Distinct taxa among the detections' labels at the time of the run. Each detection's label is its best
+    # classification, chosen as the determination chooses (terminal first, then the highest score).
     distinct_taxa: int
-    # The share of those classifications naming the determination after the run; None when there are none.
+    # The share of detections whose label names the determination after the run; None when none has a label.
     label_agreement: float | None = None
     # Each of those distinct taxa, most detections first.
     taxa: list[TaxonLabelCount] = []
