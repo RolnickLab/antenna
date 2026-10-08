@@ -33,6 +33,8 @@ import { OccurrenceGallery } from './occurrence-gallery'
 import { OccurrenceStats } from './occurrence-stats'
 import { OccurrencesActions } from './occurrences-actions'
 
+const SIZE_FILTERS = ['size_min_mm', 'size_max_mm', 'size_min', 'size_max']
+
 export const Occurrences = () => {
   const { user } = useUser()
   const navigate = useNavigate()
@@ -47,6 +49,7 @@ export const Occurrences = () => {
       deployment: true,
       duration: false,
       detections: true,
+      size: true,
       score: true,
       ['updated-at']: true,
     }
@@ -104,6 +107,15 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
+          </FilterSection>
+          <FilterSection
+            title={translate(STRING.FIELD_LABEL_SIZE)}
+            defaultOpen={someActive(SIZE_FILTERS, activeFilters)}
+          >
+            <FilterControl field="size_min_mm" />
+            <FilterControl field="size_max_mm" />
+            <FilterControl field="size_min" />
+            <FilterControl field="size_max" />
           </FilterSection>
           <FilterSection
             title={translate(STRING.MORE_FILTERS)}

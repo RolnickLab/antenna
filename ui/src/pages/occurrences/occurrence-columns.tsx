@@ -86,6 +86,17 @@ export const columns = ({
     ),
   },
   {
+    id: 'size',
+    name: translate(STRING.FIELD_LABEL_SIZE),
+    sortField: 'relative_length',
+    tooltip: translate(STRING.TOOLTIP_SIZE),
+    renderCell: (item: Occurrence) => (
+      <BasicTableCell
+        value={item.sizeLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
+      />
+    ),
+  },
+  {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
     tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),

@@ -10,6 +10,7 @@ import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import styles from '../styles.module.scss'
+import { SectionCalibration } from './section-calibration/section-calibration'
 import { SectionGeneral } from './section-general/section-general'
 import { SectionLocation } from './section-location/section-location'
 import { SectionSourceImages } from './section-source-images/section-source-images'
@@ -48,6 +49,13 @@ export const DeploymentDetailsForm = ({
         values: {
           latitude: deployment.latitude,
           longitude: deployment.longitude,
+        },
+        isValid: true,
+      },
+      [Section.Calibration]: {
+        values: {
+          frameLongSideMm: deployment.frameLongSideMm,
+          frameShortSideMm: deployment.frameShortSideMm,
         },
         isValid: true,
       },
@@ -149,6 +157,10 @@ const FormStepper = () => {
           label: translate(STRING.FIELD_LABEL_LOCATION),
         },
         {
+          id: Section.Calibration,
+          label: translate(STRING.FIELD_LABEL_CALIBRATION),
+        },
+        {
           id: Section.SourceImages,
           label: translate(STRING.FIELD_LABEL_CAPTURES),
         },
@@ -186,6 +198,13 @@ const FormContent = ({ deployment }: { deployment: DeploymentDetails }) => {
       return (
         <SectionLocation
           onBack={() => setCurrentSection(Section.General)}
+          onNext={() => setCurrentSection(Section.Calibration)}
+        />
+      )
+    case Section.Calibration:
+      return (
+        <SectionCalibration
+          onBack={() => setCurrentSection(Section.Location)}
           onNext={() => setCurrentSection(Section.SourceImages)}
         />
       )
@@ -193,7 +212,7 @@ const FormContent = ({ deployment }: { deployment: DeploymentDetails }) => {
       return (
         <SectionSourceImages
           deployment={deployment}
-          onBack={() => setCurrentSection(Section.Location)}
+          onBack={() => setCurrentSection(Section.Calibration)}
         />
       )
     default:

@@ -22,6 +22,21 @@ interface FilterConfig {
   ) => string | undefined
 }
 
+const validateSize = (value?: string, { max }: { max?: number } = {}) => {
+  if (!value) {
+    return undefined
+  }
+  const number = Number(value)
+  if (
+    Number.isNaN(number) ||
+    number < 0 ||
+    (max !== undefined && number > max)
+  ) {
+    return 'Size is not valid'
+  }
+  return undefined
+}
+
 export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Include algorithm',
@@ -96,6 +111,30 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Site',
     field: 'deployment__research_site',
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_SIZE_MIN_MM),
+    field: 'size_min_mm',
+    tooltip: { text: translate(STRING.TOOLTIP_SIZE_FILTER_MM) },
+    validate: (value) => validateSize(value, { max: undefined }),
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_SIZE_MAX_MM),
+    field: 'size_max_mm',
+    tooltip: { text: translate(STRING.TOOLTIP_SIZE_FILTER_MM) },
+    validate: (value) => validateSize(value, { max: undefined }),
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_SIZE_MIN_RELATIVE),
+    field: 'size_min',
+    tooltip: { text: translate(STRING.TOOLTIP_SIZE_FILTER_RELATIVE) },
+    validate: (value) => validateSize(value, { max: 1 }),
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_SIZE_MAX_RELATIVE),
+    field: 'size_max',
+    tooltip: { text: translate(STRING.TOOLTIP_SIZE_FILTER_RELATIVE) },
+    validate: (value) => validateSize(value, { max: 1 }),
   },
   {
     label: 'End date',

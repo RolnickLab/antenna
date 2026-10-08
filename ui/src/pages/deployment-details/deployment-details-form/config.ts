@@ -56,6 +56,14 @@ export const config: FormConfig = {
       max: 180,
     },
   },
+  frameLongSideMm: {
+    label: translate(STRING.FIELD_LABEL_FRAME_LONG_SIDE_MM),
+    rules: { min: 0 },
+  },
+  frameShortSideMm: {
+    label: translate(STRING.FIELD_LABEL_FRAME_SHORT_SIDE_MM),
+    rules: { min: 0 },
+  },
   path: {
     label: translate(STRING.FIELD_LABEL_PATH),
   },
