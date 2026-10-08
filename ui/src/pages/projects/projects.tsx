@@ -123,13 +123,11 @@ export const Projects = () => {
           onValueChange={setLayout}
         />
         {canCreate ? <NewProjectDialog /> : null}
-        {layout === 'table' ? (
-          <ColumnSettings
-            columns={columns}
-            columnSettings={columnSettings}
-            onColumnSettingsChange={setColumnSettings}
-          />
-        ) : null}
+        <ColumnSettings
+          columns={columns}
+          columnSettings={columnSettings}
+          onColumnSettingsChange={setColumnSettings}
+        />
       </PageHeader>
       {projects && projects.length === 0 && canCreate && !search ? (
         <div className="flex flex-col items-center pt-32">
