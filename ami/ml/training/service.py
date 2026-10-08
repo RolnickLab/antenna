@@ -89,6 +89,12 @@ def head_upload_url_for(job: "Job") -> str:
     return urljoin(_callback_base(job).rstrip("/") + "/", path.lstrip("/"))
 
 
+def progress_url_for(job: "Job") -> str:
+    """Where the service should report how far through the epochs it is."""
+    path = reverse("api:job-training-progress", args=[job.pk])
+    return urljoin(_callback_base(job).rstrip("/") + "/", path.lstrip("/"))
+
+
 def absolute_media_url(url: str, base_url: str | None = None) -> str:
     """
     Turn a stored file's URL into one a processing service can fetch.
@@ -143,6 +149,9 @@ def send_training_request(
     # The head itself comes back here. A service that does not support the upload simply
     # ignores this, and the version is registered without a stored copy as before.
     payload["head_upload_url"] = head_upload_url_for(job)
+    # Optional for the service: without it the training stage simply stays at nought until
+    # the result lands, as it did before.
+    payload["progress_url"] = progress_url_for(job)
 
     job.logger.info(f"Sending training request to {endpoint} for {algorithm.key}")
     session = create_session()

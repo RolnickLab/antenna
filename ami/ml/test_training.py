@@ -260,6 +260,7 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         self.assertEqual(response.status_code, 403)
 
 
+<<<<<<< HEAD
 class TestTheJobsOccurrenceSet(TrainingSetFixture):
     def _job(self, **params):
         from ami.jobs.models import Job, TrainClassifierJob
@@ -295,3 +296,86 @@ class TestTheJobsOccurrenceSet(TrainingSetFixture):
 
         self.assertEqual(TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=mine.pk)), mine)
 
+=======
+class TestTheTrainingStageFollowsTheEpochs(TrainingSetFixture):
+    """
+    Training is the long stage and the service is silent while it fits, so the epochs it
+    reports are the only thing that can move the stage while a run is going.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key},
+        )
+        self.job.progress.add_stage("Training", TrainClassifierJob.STAGE_TRAIN)
+        self.url = reverse("api:job-training-progress", args=[self.job.pk])
+
+    def _stage(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.get(pk=self.job.pk)
+        return job.progress.get_stage(TrainClassifierJob.STAGE_TRAIN)
+
+    def _param(self, name: str):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.get(pk=self.job.pk)
+        return job.progress.get_stage_param(TrainClassifierJob.STAGE_TRAIN, job.progress.make_key(name)).value
+
+    def _post(self, **payload):
+        from ami.ml.training import make_callback_token
+
+        return APIClient().post(
+            self.url,
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Token {make_callback_token(self.job)}",
+        )
+
+    def test_a_ping_moves_the_stage(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        response = self._post(epoch=150, total_epochs=300)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._param(TrainClassifierJob.PARAM_EPOCH), 150)
+        self.assertEqual(self._param(TrainClassifierJob.PARAM_TOTAL_EPOCHS), 300)
+        self.assertEqual(self._stage().progress, 0.5)
+
+    def test_the_stage_is_never_finished_by_an_epoch(self):
+        """The result finishes it: the service still has to score the head and upload it."""
+        self._post(epoch=300, total_epochs=300)
+
+        self.assertEqual(self._stage().progress, 0.99)
+
+    def test_a_ping_that_arrives_late_is_ignored(self):
+        self._post(epoch=200, total_epochs=300)
+        self._post(epoch=100, total_epochs=300)
+
+        from ami.jobs.models import TrainClassifierJob
+
+        self.assertEqual(self._param(TrainClassifierJob.PARAM_EPOCH), 200)
+
+    def test_a_ping_without_the_token_is_refused(self):
+        response = APIClient().post(self.url, {"epoch": 10}, format="json")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_ping_after_the_job_finished_changes_nothing(self):
+        from ami.jobs.models import JobState, TrainClassifierJob
+
+        self.job.status = JobState.SUCCESS
+        self.job.save()
+
+        response = self._post(epoch=10, total_epochs=300)
+
+        self.assertEqual(response.status_code, 200)
+        with self.assertRaises(ValueError):
+            self._param(TrainClassifierJob.PARAM_EPOCH)
+>>>>>>> ef15edc4 (feat(jobs): follow a training run's epochs while it fits)
