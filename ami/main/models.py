@@ -429,6 +429,19 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
 
+    default_taxa_list = models.ForeignKey(
+        "TaxaList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_projects",
+        help_text=(
+            "The species this project expects to see. Used as the class list when retraining "
+            "a classifier head, so the head covers the region rather than only the species "
+            "someone happened to verify."
+        ),
+    )
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
