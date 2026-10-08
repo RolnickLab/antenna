@@ -91,7 +91,7 @@ export class Project {
   }
 
   get numTaxa(): number | undefined {
-    return this._project.taxa_count
+    return this._project.taxa_observed_count
   }
 
   get updatedAt(): Date | undefined {

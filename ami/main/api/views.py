@@ -159,8 +159,8 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
     def get_count(self, queryset):
-        # The overview totals and dates are correlated subqueries. They don't change
-        # the row count, so strip them (and ordering) before counting to keep the
+        # The overview totals and activity dates are correlated subqueries. They don't
+        # change the row count, so strip them (and ordering) before counting to keep the
         # pagination COUNT query cheap.
         return super().get_count(queryset.order_by().values("pk"))
 
@@ -187,7 +187,13 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
     search_fields = ["name", "description"]
-    ordering_fields = ["name", "created_at", "updated_at", *ProjectQuerySet.OVERVIEW_FIELDS]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+        *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
+    ]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -200,14 +206,16 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             if user:
                 qs = qs.filter_by_user(user)
 
-        # The totals and activity dates feed the projects table, so they are added only when
-        # the table asks for them with ?with_counts, or when the list is sorted by one of them.
+        if self.action == "list":
+            qs = qs.with_recent_activity()
+        # The totals feed the projects table, so they are added only when the table asks for them
+        # with ?with_counts, or when the list is sorted by one of them.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
         if self.action == "list" and (
-            url_boolean_param(self.request, "with_counts") or ordering & set(ProjectQuerySet.OVERVIEW_FIELDS)
+            url_boolean_param(self.request, "with_counts") or ordering & set(ProjectQuerySet.OVERVIEW_COUNT_FIELDS)
         ):
             # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
-            qs = qs.prefetch_related(None).with_overview(self.request.user)
+            qs = qs.prefetch_related(None).with_overview_counts(self.request.user)
         return qs
 
     def paginate_queryset(self, queryset):

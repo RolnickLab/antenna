@@ -237,7 +237,7 @@ def _per_project(queryset: models.QuerySet, aggregate) -> Subquery:
 
 def add_taxa_counts(projects: list["Project"]) -> None:
     """
-    Set `observed_taxa_count` on each project: its distinct taxa after its own default filters,
+    Set `taxa_observed_count` on each project: its distinct taxa after its own default filters,
     the number the project summary shows.
 
     Each project has its own filters, so this is one grouped query over a page of projects
@@ -259,20 +259,14 @@ def add_taxa_counts(projects: list["Project"]) -> None:
         .values_list("project", "taxa")
     )
     for project in projects:
-        project.observed_taxa_count = counts.get(project.pk, 0)
+        project.taxa_observed_count = counts.get(project.pk, 0)
 
 
 class ProjectQuerySet(BaseQuerySet):
-    # Annotated by with_overview(). The projects API sorts and serializes by these names.
-    OVERVIEW_FIELDS = (
-        "deployments_count",
-        "captures_count",
-        "occurrences_count",
-        "members_count",
-        "last_capture_timestamp",
-        "last_occurrence_updated_at",
-        "last_job_updated_at",
-    )
+    # Annotated by with_overview_counts() and with_recent_activity(). The projects API sorts and
+    # serializes by these names.
+    OVERVIEW_COUNT_FIELDS = ("deployments_count", "captures_count", "occurrences_count", "members_count")
+    RECENT_ACTIVITY_FIELDS = ("last_capture_timestamp", "last_occurrence_updated_at", "last_job_updated_at")
 
     def filter_by_user(self, user: User):
         """
@@ -280,20 +274,14 @@ class ProjectQuerySet(BaseQuerySet):
         """
         return self.filter(members=user)
 
-    def with_overview(self, user: User | AnonymousUser) -> "ProjectQuerySet":
+    def with_overview_counts(self, user: User | AnonymousUser) -> "ProjectQuerySet":
         """
-        Annotate the totals and latest activity shown in the projects table, named in OVERVIEW_FIELDS.
+        Annotate the totals shown in the projects table, named in OVERVIEW_COUNT_FIELDS.
 
         Totals are summed from the cached counts on each deployment, so they are only as fresh as
-        `Deployment.update_calculated_fields()`. Activity dates are read live, each from a (project, time)
-        index. `members_count` follows the permission on the team list: it is null unless the user is
-        a member of the project or a superuser.
+        `Deployment.update_calculated_fields()`. `members_count` follows the permission on the team
+        list: it is null unless the user is a member of the project or a superuser.
         """
-        from ami.jobs.models import Job
-
-        def latest(queryset: models.QuerySet, field: str) -> Subquery:
-            return Subquery(queryset.filter(project=OuterRef("pk")).order_by(f"-{field}").values(field)[:1])
-
         members_count = Coalesce(_per_project(UserProjectMembership.objects.all(), models.Count("pk")), 0)
         if not user.is_superuser:
             is_member = Exists(UserProjectMembership.objects.filter(project=OuterRef("pk"), user_id=user.pk))
@@ -304,6 +292,19 @@ class ProjectQuerySet(BaseQuerySet):
             captures_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("captures_count")), 0),
             occurrences_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("occurrences_count")), 0),
             members_count=members_count,
+        )
+
+    def with_recent_activity(self) -> "ProjectQuerySet":
+        """
+        Annotate when each project last received a capture, an occurrence update and a job update,
+        named in RECENT_ACTIVITY_FIELDS. Each is read live from a (project, time) index.
+        """
+        from ami.jobs.models import Job
+
+        def latest(queryset: models.QuerySet, field: str) -> Subquery:
+            return Subquery(queryset.filter(project=OuterRef("pk")).order_by(f"-{field}").values(field)[:1])
+
+        return self.annotate(
             # timestamp is nullable and DESC sorts NULLs first, so undated captures are excluded.
             last_capture_timestamp=latest(SourceImage.objects.filter(timestamp__isnull=False), "timestamp"),
             last_occurrence_updated_at=latest(Occurrence.objects.all(), "updated_at"),

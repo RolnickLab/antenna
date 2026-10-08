@@ -2406,7 +2406,7 @@ class TestProjectListOverviewCounts(APITestCase):
         self.assertIsNone(empty["last_occurrence_updated_at"])
         self.assertIsNone(empty["last_job_updated_at"])
 
-    def test_taxa_count_follows_each_projects_default_filters(self):
+    def test_taxa_observed_count_follows_each_projects_default_filters(self):
         """Distinct taxa above the project's score threshold, as on the project summary."""
         station = Deployment.objects.filter(project=self.busy).first()
         event = Event.objects.create(
@@ -2418,7 +2418,9 @@ class TestProjectListOverviewCounts(APITestCase):
                 project=self.busy, deployment=station, event=event, determination=taxon, determination_score=score
             )
         rows = {row["id"]: row for row in self._rows(self.owner)}
-        self.assertEqual((rows[self.busy.pk]["taxa_count"], rows[self.empty.pk]["taxa_count"]), (2, 0))
+        self.assertEqual(
+            (rows[self.busy.pk]["taxa_observed_count"], rows[self.empty.pk]["taxa_observed_count"]), (2, 0)
+        )
 
     def test_team_size_is_only_shown_to_those_who_can_see_the_team(self):
         """members_count is null for projects whose team list the user may not open."""
@@ -2434,17 +2436,13 @@ class TestProjectListOverviewCounts(APITestCase):
                 self.assertEqual((rows[self.busy.pk]["members_count"], rows[self.empty.pk]["members_count"]), expected)
 
     def test_totals_are_left_out_unless_asked_for(self):
+        """The gallery gets the activity dates but none of the totals, apart from the station count."""
         response = self.client.get(self.endpoint)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         row = next(row for row in response.json()["results"] if row["id"] == self.busy.pk)
         self.assertEqual(row["deployments_count"], 2)
-        for field in [
-            "captures_count",
-            "members_count",
-            "taxa_count",
-            "last_capture_timestamp",
-            "last_job_updated_at",
-        ]:
+        self.assertEqual(row["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
+        for field in ["captures_count", "members_count", "taxa_observed_count"]:
             self.assertNotIn(field, row)
 
     def test_sorting_by_a_total_works_without_asking_for_totals(self):
