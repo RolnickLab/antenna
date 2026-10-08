@@ -28,6 +28,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectQuerySet,
     ProjectSettingsMixin,
     S3StorageSource,
     Site,
@@ -306,19 +307,35 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
 
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
+    captures_count = serializers.IntegerField(read_only=True)
+    occurrences_count = serializers.IntegerField(read_only=True)
+    members_count = serializers.IntegerField(read_only=True)
+    last_capture_timestamp = serializers.DateTimeField(read_only=True)
+    last_occurrence_updated_at = serializers.DateTimeField(read_only=True)
+    last_job_updated_at = serializers.DateTimeField(read_only=True)
+    # Set on the page by add_taxa_counts().
+    taxa_observed_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Project
-        fields = [
+        base_fields = [
             "id",
             "name",
             "description",
             "details",
-            "deployments_count",
             "created_at",
             "updated_at",
             "image",
             "draft",
+        ]
+        # The list always adds the activity dates. The totals are added when it asks for them with
+        # ?with_counts and left out otherwise, except deployments_count, which falls back to the
+        # model method.
+        fields = [
+            *base_fields,
+            *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
+            *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+            "taxa_observed_count",
         ]
 
 
@@ -394,7 +411,8 @@ class ProjectSerializer(DefaultSerializer):
 
     class Meta:
         model = Project
-        fields = ProjectListSerializer.Meta.fields + [
+        fields = ProjectListSerializer.Meta.base_fields + [
+            "deployments_count",
             "deployments",
             "summary_data",  # Conditionally included based on with_charts query param
             "owner",

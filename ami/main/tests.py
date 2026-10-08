@@ -2361,6 +2361,131 @@ class TestProjectListSearch(APITestCase):
         self.assertEqual(self._search("beetle"), {self.beetle_project.pk})
 
 
+class TestProjectListOverviewCounts(APITestCase):
+    """The projects table gets per-project totals and activity dates, sortable, at a fixed query cost."""
+
+    endpoint = "/api/v2/projects/"
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.owner = User.objects.create_user(email="overview-owner@insectai.org")
+        cls.member = User.objects.create_user(email="overview-member@insectai.org")
+        cls.busy = Project.objects.create(name="Busy project", owner=cls.owner, create_defaults=False)
+        cls.busy.members.add(cls.member)
+        cls.empty = Project.objects.create(name="Empty project", owner=cls.owner, create_defaults=False)
+        last_capture = datetime.datetime(2026, 6, 1, 23, 0)
+        for name, captures, occurrences, timestamp in [
+            ("Station A", 100, 10, last_capture),
+            ("Station B", 50, 5, last_capture - datetime.timedelta(days=3)),
+        ]:
+            deployment = Deployment.objects.create(name=name, project=cls.busy)
+            SourceImage.objects.create(deployment=deployment, project=cls.busy, timestamp=timestamp, path=name)
+            # Set after create, which recalculates the cached counts from (no) captures.
+            Deployment.objects.filter(pk=deployment.pk).update(captures_count=captures, occurrences_count=occurrences)
+        cls.last_capture = last_capture
+
+    def _rows(self, user: User | None = None, **params) -> list[dict]:
+        self.client.force_authenticate(user)
+        response = self.client.get(self.endpoint, {"with_counts": "true", **params})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["results"]
+
+    def test_counts_are_rolled_up_from_deployments(self):
+        rows = {row["id"]: row for row in self._rows(self.owner)}
+        busy, empty = rows[self.busy.pk], rows[self.empty.pk]
+        self.assertEqual(
+            (busy["deployments_count"], busy["captures_count"], busy["occurrences_count"], busy["members_count"]),
+            (2, 150, 15, 2),
+        )
+        self.assertEqual(busy["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
+        self.assertEqual(
+            (empty["deployments_count"], empty["captures_count"], empty["occurrences_count"], empty["members_count"]),
+            (0, 0, 0, 1),
+        )
+        self.assertIsNone(empty["last_capture_timestamp"])
+        self.assertIsNone(empty["last_occurrence_updated_at"])
+        self.assertIsNone(empty["last_job_updated_at"])
+
+    def test_taxa_observed_count_follows_each_projects_default_filters(self):
+        """Distinct taxa above the project's score threshold, as on the project summary."""
+        station = Deployment.objects.filter(project=self.busy).first()
+        event = Event.objects.create(
+            project=self.busy, deployment=station, group_by="2026-06-01", start=self.last_capture
+        )
+        moth, beetle, unsure = (Taxon.objects.create(name=f"Overview {name}") for name in ("moth", "beetle", "unsure"))
+        for taxon, score in [(moth, 0.9), (moth, 0.8), (beetle, 0.9), (unsure, 0.1)]:
+            Occurrence.objects.create(
+                project=self.busy, deployment=station, event=event, determination=taxon, determination_score=score
+            )
+        rows = {row["id"]: row for row in self._rows(self.owner)}
+        self.assertEqual(
+            (rows[self.busy.pk]["taxa_observed_count"], rows[self.empty.pk]["taxa_observed_count"]), (2, 0)
+        )
+
+    def test_team_size_is_only_shown_to_those_who_can_see_the_team(self):
+        """members_count follows the permission to open the team list, whether held through a role or directly."""
+        superuser = User.objects.create_superuser(email="overview-admin@insectai.org", password="unused")
+        # Granted the team list on one project without joining it.
+        outsider = User.objects.create_user(email="overview-outsider@insectai.org")
+        assign_perm(Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP, outsider, self.busy)
+        for user, expected in [
+            (None, (None, None)),
+            (outsider, (2, None)),
+            (self.member, (2, None)),
+            (self.owner, (2, 1)),
+            (superuser, (2, 1)),
+        ]:
+            rows = {row["id"]: row for row in self._rows(user)}
+            with self.subTest(user=user):
+                self.assertEqual((rows[self.busy.pk]["members_count"], rows[self.empty.pk]["members_count"]), expected)
+
+    def test_totals_are_left_out_unless_asked_for(self):
+        """The gallery gets the activity dates but none of the totals, apart from the station count."""
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(row for row in response.json()["results"] if row["id"] == self.busy.pk)
+        self.assertEqual(row["deployments_count"], 2)
+        self.assertEqual(row["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
+        for field in ["captures_count", "members_count", "taxa_observed_count"]:
+            self.assertNotIn(field, row)
+
+    def test_sorting_by_a_total_works_without_asking_for_totals(self):
+        """A sort carried over from the table to the gallery still gets the totals it orders by."""
+        response = self.client.get(self.endpoint, {"ordering": "-captures_count"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"][0]["id"], self.busy.pk)
+
+    def test_counts_are_read_inside_the_list_query(self):
+        """The tables behind the totals and dates are only read by the one list query, never once per project.
+
+        The per-row permission lookups the list serializer already makes are outside this check.
+        Cachalot is off so every query is seen.
+        """
+        from cachalot.api import cachalot_disabled
+
+        for i in range(5):
+            project = Project.objects.create(name=f"Extra {i}", owner=self.owner, create_defaults=False)
+            Deployment.objects.create(name=f"Extra station {i}", project=project)
+        disabled = cachalot_disabled()
+        disabled.__enter__()
+        try:
+            with CaptureQueriesContext(connection) as queries:
+                rows = self._rows()
+        finally:
+            # cachalot_disabled() does not restore itself when the block raises.
+            disabled.__exit__(None, None, None)
+        self.assertGreaterEqual(len(rows), 7)
+        tables = ['"main_deployment"', '"main_userprojectmembership"', '"main_sourceimage"', '"jobs_job"']
+        rollup_queries = [q["sql"] for q in queries if any(table in q["sql"] for table in tables)]
+        self.assertEqual(len(rollup_queries), 1, rollup_queries)
+        # Taxa are counted for the whole page in one grouped query, with each project's taxa filters prefetched.
+        for marker in [
+            'COUNT(DISTINCT "main_occurrence"."determination_id")',
+            '"main_project_default_filters_include_taxa"',
+        ]:
+            self.assertEqual(sum(marker in q["sql"] for q in queries), 1, marker)
+
+
 class TestProjectPermissions(APITestCase):
     def _create_project(self, owner, member):
         self.project = Project.objects.create(name="T Project", description="Test Description", owner=owner)
