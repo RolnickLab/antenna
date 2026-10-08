@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { JobDetailsForm } from './job-details-form/job-details-form'
+import { JOB_TYPE_TRAIN_CLASSIFIER } from './job-details-form/types'
 import styles from './job-details.module.scss'
 
 const CLOSE_TIMEOUT = 1000
@@ -37,9 +38,28 @@ export const NewJobDialog = () => {
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}
-            onSubmit={(data) => {
+            onSubmit={({
+              algorithmKey,
+              jobType,
+              minPerSpecies,
+              occurrenceSet,
+              testFraction,
+              ...data
+            }) => {
               createJob({
                 ...data,
+                jobType,
+                params:
+                  jobType === JOB_TYPE_TRAIN_CLASSIFIER
+                    ? {
+                        algorithm_key: algorithmKey,
+                        occurrence_set_id: occurrenceSet
+                          ? Number(occurrenceSet)
+                          : undefined,
+                        test_fraction: testFraction,
+                        min_per_species: minPerSpecies,
+                      }
+                    : undefined,
                 projectId: projectId as string,
               })
             }}
