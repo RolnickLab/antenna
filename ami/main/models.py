@@ -267,6 +267,8 @@ class ProjectQuerySet(BaseQuerySet):
     # serializes by these names.
     OVERVIEW_COUNT_FIELDS = ("deployments_count", "captures_count", "occurrences_count", "members_count")
     RECENT_ACTIVITY_FIELDS = ("last_capture_timestamp", "last_occurrence_updated_at", "last_job_updated_at")
+    # Annotated by with_location().
+    LOCATION_FIELDS = ("centroid_latitude", "centroid_longitude")
 
     def filter_by_user(self, user: User):
         """
@@ -320,6 +322,22 @@ class ProjectQuerySet(BaseQuerySet):
             last_capture_timestamp=latest(SourceImage.objects.filter(timestamp__isnull=False), "timestamp"),
             last_occurrence_updated_at=latest(Occurrence.objects.all(), "updated_at"),
             last_job_updated_at=latest(Job.objects.all(), "updated_at"),
+        )
+
+    def with_location(self) -> "ProjectQuerySet":
+        """
+        Annotate LOCATION_FIELDS: the centroid of the project's stations, as the mean of their coordinates.
+
+        Stations without coordinates, or at (0, 0) where default stations are created, are left
+        out; a project with none of its own gets nulls. A plain mean is wrong for stations on
+        both sides of the antimeridian.
+        """
+        located = Deployment.objects.filter(latitude__isnull=False, longitude__isnull=False).exclude(
+            latitude=0, longitude=0
+        )
+        return self.annotate(
+            centroid_latitude=_per_project(located, models.Avg("latitude")),
+            centroid_longitude=_per_project(located, models.Avg("longitude")),
         )
 
 

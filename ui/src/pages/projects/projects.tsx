@@ -1,6 +1,6 @@
 import { SearchInput } from 'components/search-input/search-input'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
-import { Grid2X2Icon, TableIcon } from 'lucide-react'
+import { Grid2X2Icon, MapIcon, TableIcon } from 'lucide-react'
 import {
   Button,
   ColumnSettings,
@@ -24,6 +24,10 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './project-columns'
 import { ProjectGallery } from './project-gallery'
+import { ProjectsMap } from './projects-map'
+
+// The map shows every project at once rather than a page of them.
+const MAP_LIMIT = 300
 
 export const TABS = {
   MY_PROJECTS: 'my-projects',
@@ -61,10 +65,12 @@ export const Projects = () => {
       ? [{ field: 'user_id', value: userInfo?.id }]
       : []),
     ...(search ? [{ field: 'search', value: search }] : []),
+    ...(layout === 'map' ? [{ field: 'with_location', value: 'true' }] : []),
   ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
     useProjects({
-      pagination,
+      pagination:
+        layout === 'map' ? { page: 0, perPage: MAP_LIMIT } : pagination,
       filters,
       sort,
       // Totals are only shown, and only computed, in the table.
@@ -119,6 +125,11 @@ export const Projects = () => {
               label: translate(STRING.TAB_ITEM_GALLERY),
               Icon: Grid2X2Icon,
             },
+            {
+              value: 'map',
+              label: translate(STRING.TAB_ITEM_MAP),
+              Icon: MapIcon,
+            },
           ]}
           value={layout}
           onValueChange={setLayout}
@@ -157,6 +168,8 @@ export const Projects = () => {
           sortable
           sortSettings={sort}
         />
+      ) : layout === 'map' ? (
+        <ProjectsMap error={error} isLoading={isLoading} projects={projects} />
       ) : (
         <ProjectGallery
           error={error}
@@ -165,7 +178,7 @@ export const Projects = () => {
         />
       )}
       <PageFooter>
-        {projects?.length ? (
+        {projects?.length && layout !== 'map' ? (
           <PaginationBar
             pagination={pagination}
             total={total}

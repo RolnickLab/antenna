@@ -1,3 +1,4 @@
+import { MarkerPosition } from 'components/map/types'
 import { UserPermission } from 'utils/user/types'
 import { Deployment, ServerDeployment } from './deployment'
 
@@ -16,6 +17,14 @@ export class Project {
 
   get canDelete(): boolean {
     return this._project.user_permissions.includes(UserPermission.Delete)
+  }
+
+  get location(): MarkerPosition | undefined {
+    const { location } = this._project
+
+    return location
+      ? new MarkerPosition(location.latitude, location.longitude)
+      : undefined
   }
 
   get createdAt(): Date | undefined {
