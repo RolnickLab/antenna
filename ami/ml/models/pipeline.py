@@ -504,7 +504,15 @@ def get_or_create_algorithm_and_category_map(
     fields_to_update = {
         "task_type": algorithm_config.task_type,
         "uri": algorithm_config.uri,
+        # Whether the service can retrain this one. Mirrored here so the UI can offer it
+        # without asking the service, and so a service that drops the ability stops
+        # offering it too.
+        "trainable": algorithm_config.trainable,
     }
+    if algorithm_config.training_config and _created:
+        # Seeded from the service once. After that the settings are Antenna's, so an
+        # admin's edits are not overwritten every time the pipelines are re-registered.
+        fields_to_update["training_config"] = algorithm_config.training_config
     for field in fields_to_update:
         new_value = fields_to_update[field]
         if getattr(algo, field) != new_value:

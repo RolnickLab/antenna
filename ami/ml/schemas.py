@@ -92,6 +92,76 @@ class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     )
 
 
+class AlgorithmTrainingConfig(pydantic.BaseModel):
+    """
+    How to retrain an algorithm. Declared by the processing service, editable afterwards.
+
+    Split across two sides on purpose: Antenna reads the dataset settings when it builds
+    the training set, and passes the rest to the service, which owns the fitting.
+    """
+
+    # Dataset settings, used by Antenna.
+    min_per_species: int = pydantic.Field(
+        default=2,
+        ge=1,
+        description="Drop species with fewer verified crops than this. One example cannot be evaluated.",
+    )
+    test_fraction: float = pydantic.Field(
+        default=0.2,
+        gt=0,
+        lt=1,
+        description="Share of occurrences held out for evaluation.",
+    )
+    split_salt: str = pydantic.Field(
+        default="antenna-head-v1",
+        min_length=1,
+        description="Changing this reshuffles the held-out set, which makes old and new heads incomparable.",
+    )
+
+    # Fitting settings, used by the processing service.
+    head_type: str = pydantic.Field(
+        default="linear",
+        min_length=1,
+        description="Shape of the head to fit, e.g. 'linear' or 'mlp1'.",
+        examples=["linear", "mlp1"],
+    )
+    epochs: int = pydantic.Field(default=300, ge=1)
+    learning_rate: float = pydantic.Field(default=0.01, gt=0)
+    weight_decay: float = pydantic.Field(default=1e-4, ge=0)
+    min_improvement: float = pydantic.Field(
+        default=0.0,
+        ge=0,
+        description="A new head must beat the current one by more than this to be worth swapping in.",
+    )
+
+    class Config:
+        extra = "allow"
+
+    @classmethod
+    def for_run(
+        cls,
+        base: "AlgorithmTrainingConfig",
+        overrides: dict | None = None,
+    ) -> "AlgorithmTrainingConfig":
+        """
+        The settings for one run: the algorithm's config with a job's params on top.
+
+        Params reach this straight from the API, so they are checked here rather than read
+        raw at the point of use. The bounds are not housekeeping: a test_fraction of 1.5
+        holds out every occurrence and leaves nothing to train on, and a negative one holds
+        out nothing and then scores the head on the rows it just learned. Both finish
+        looking like a successful run and report a number that means nothing.
+
+        Only keys this config already carries are taken, so job settings such as
+        algorithm_key and taxa_list_id stay out of what is sent to the service. A setting a
+        service declared itself is carried on the base config, so it can be overridden too.
+        """
+        current = base.dict()
+        allowed = set(cls.__fields__) | set(current)
+        taken = {key: value for key, value in (overrides or {}).items() if key in allowed}
+        return cls(**{**current, **taken})
+
+
 class AlgorithmConfigResponse(pydantic.BaseModel):
     name: str
     key: str = pydantic.Field(
@@ -114,6 +184,14 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
     uri: str | None = pydantic.Field(
         default=None,
         description="A URI to the weight or model details, could be a public web URL or object store path.",
+    )
+    trainable: bool = pydantic.Field(
+        default=False,
+        description="Whether this service can retrain this algorithm from a dataset of verified crops.",
+    )
+    training_config: AlgorithmTrainingConfig | None = pydantic.Field(
+        default=None,
+        description="The settings this service would retrain with. Seeds the algorithm's config in Antenna.",
     )
     category_map: AlgorithmCategoryMapResponse | None = None
 
@@ -393,76 +471,6 @@ class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
 
     processing_service_name: str
     pipelines: list[PipelineConfigResponse] = []
-
-
-class AlgorithmTrainingConfig(pydantic.BaseModel):
-    """
-    How to retrain an algorithm. Declared by the processing service, editable afterwards.
-
-    Split across two sides on purpose: Antenna reads the dataset settings when it builds
-    the training set, and passes the rest to the service, which owns the fitting.
-    """
-
-    # Dataset settings, used by Antenna.
-    min_per_species: int = pydantic.Field(
-        default=2,
-        ge=1,
-        description="Drop species with fewer verified crops than this. One example cannot be evaluated.",
-    )
-    test_fraction: float = pydantic.Field(
-        default=0.2,
-        gt=0,
-        lt=1,
-        description="Share of occurrences held out for evaluation.",
-    )
-    split_salt: str = pydantic.Field(
-        default="antenna-head-v1",
-        min_length=1,
-        description="Changing this reshuffles the held-out set, which makes old and new heads incomparable.",
-    )
-
-    # Fitting settings, used by the processing service.
-    head_type: str = pydantic.Field(
-        default="linear",
-        min_length=1,
-        description="Shape of the head to fit, e.g. 'linear' or 'mlp1'.",
-        examples=["linear", "mlp1"],
-    )
-    epochs: int = pydantic.Field(default=300, ge=1)
-    learning_rate: float = pydantic.Field(default=0.01, gt=0)
-    weight_decay: float = pydantic.Field(default=1e-4, ge=0)
-    min_improvement: float = pydantic.Field(
-        default=0.0,
-        ge=0,
-        description="A new head must beat the current one by more than this to be worth swapping in.",
-    )
-
-    class Config:
-        extra = "allow"
-
-    @classmethod
-    def for_run(
-        cls,
-        base: "AlgorithmTrainingConfig",
-        overrides: dict | None = None,
-    ) -> "AlgorithmTrainingConfig":
-        """
-        The settings for one run: the algorithm's config with a job's params on top.
-
-        Params reach this straight from the API, so they are checked here rather than read
-        raw at the point of use. The bounds are not housekeeping: a test_fraction of 1.5
-        holds out every occurrence and leaves nothing to train on, and a negative one holds
-        out nothing and then scores the head on the rows it just learned. Both finish
-        looking like a successful run and report a number that means nothing.
-
-        Only keys this config already carries are taken, so job settings such as
-        algorithm_key and taxa_list_id stay out of what is sent to the service. A setting a
-        service declared itself is carried on the base config, so it can be overridden too.
-        """
-        current = base.dict()
-        allowed = set(cls.__fields__) | set(current)
-        taken = {key: value for key, value in (overrides or {}).items() if key in allowed}
-        return cls(**{**current, **taken})
 
 
 class AlgorithmTrainingInfo(pydantic.BaseModel):
