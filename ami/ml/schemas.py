@@ -503,3 +503,61 @@ class AlgorithmTrainingInfo(pydantic.BaseModel):
     class Config:
         extra = "allow"
 
+
+class NamedReference(pydantic.BaseModel):
+    """
+    A row a training set came from.
+
+    Carries the name as well as the id so a dataset still says where it came from after the
+    row it points at is deleted.
+    """
+
+    id: int
+    name: str
+
+
+class TrainedAlgorithmReference(AlgorithmReference):
+    """The algorithm a training set was built for, at the version it was then."""
+
+    version: int | None = None
+
+
+class TrainingDatasetSettings(pydantic.BaseModel):
+    """The settings a training set was built under, so a later run can be made to match."""
+
+    min_per_species: int
+    split_salt: str
+    test_fraction: float
+    split_grouped_by: str = pydantic.Field(
+        default="occurrence",
+        description=(
+            "What the train/test split is grouped by. Splitting per detection puts "
+            "near-identical crops on both sides."
+        ),
+    )
+
+
+class TrainingDatasetMetadata(pydantic.BaseModel):
+    """
+    What a training set is, written inside the file and echoed back by the service.
+
+    Declared rather than assembled as a dict so the shape is checked once, here, instead of
+    at each reader.
+    """
+
+    url: str
+    project: NamedReference
+    algorithm: TrainedAlgorithmReference
+    dimensions: int = pydantic.Field(description="Width of one feature vector, read from the stored vectors.")
+    dtype: str
+    classes: list[str] = pydantic.Field(description="The head's output classes, in order.")
+    counts: dict[str, int] = pydantic.Field(default_factory=dict, description="Verified crops per class.")
+    taxa_list: NamedReference | None = None
+    occurrence_set: NamedReference | None = None
+    classes_without_verified_data: list[str] = pydantic.Field(default_factory=list)
+    dropped_species: list[str] = pydantic.Field(default_factory=list)
+    rows: int
+    train: int
+    test: int
+    verified_detections_without_embedding: int = 0
+    settings: TrainingDatasetSettings

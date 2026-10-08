@@ -54,6 +54,7 @@ taxa_lists_router.register(
 router.register(r"taxa", views.TaxonViewSet)
 router.register(r"tags", views.TagViewSet)
 router.register(r"ml/algorithms", ml_views.AlgorithmViewSet)
+router.register(r"ml/training-data", ml_views.TrainingDataViewSet, basename="training-data")
 router.register(r"ml/labels", ml_views.AlgorithmCategoryMapViewSet)
 router.register(r"ml/pipelines", ml_views.PipelineViewSet)
 router.register(r"ml/processing_services", ml_views.ProcessingServiceViewSet)
