@@ -1026,6 +1026,10 @@ class TrainClassifierJob(JobType):
     STAGE_DISPATCH = "dispatch"
     STAGE_TRAIN = "train"
 
+    # Reported by the service while it fits, and read back to move the training stage.
+    PARAM_EPOCH = "Epoch"
+    PARAM_TOTAL_EPOCHS = "Total epochs"
+
     @classmethod
     def run(cls, job: "Job"):
         from ami.ml.models import Algorithm
@@ -1204,6 +1208,12 @@ class TrainClassifierJob(JobType):
         """Hand the service the dataset URL and leave the job running until it reports back."""
         from ami.ml.training import send_training_request
 
+        # Written before the request so the stage reads "0 of 300" while the service is
+        # still starting, rather than an empty pair of parameters.
+        config = cls.config_for(job, algorithm)
+        job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_EPOCH, 0)
+        job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_TOTAL_EPOCHS, config.epochs)
+
         response = send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
 
         # The service posts its callback before returning from /train, so a fast run is
@@ -1239,6 +1249,50 @@ class TrainClassifierJob(JobType):
                     "dataset_url": dataset["url"],
                 },
             )
+
+    @classmethod
+    def record_progress(cls, job: "Job", epoch: int, total_epochs: int | None = None) -> None:
+        """
+        Move the training stage to the epoch a service says it has reached.
+
+        Training is the long stage and the service is silent while it runs, so without this
+        the stage sits at nought for as long as the run takes. The epoch count is the only
+        progress the service has to report.
+        """
+        # As in record_result: a callback can arrive on a job whose stages were never set
+        # up, for instance after a restart.
+        if not any(stage.key == cls.STAGE_TRAIN for stage in job.progress.stages):
+            job.progress.add_stage("Training", cls.STAGE_TRAIN)
+
+        try:
+            reached = job.progress.get_stage_param(cls.STAGE_TRAIN, job.progress.make_key(cls.PARAM_EPOCH)).value
+        except ValueError:
+            reached = 0
+        # Pings can arrive late or out of order, and a stale one must not drag a run
+        # backwards past the epoch it actually reached.
+        if epoch <= (reached or 0):
+            return
+
+        total = total_epochs
+        if not total:
+            try:
+                total = job.progress.get_stage_param(
+                    cls.STAGE_TRAIN, job.progress.make_key(cls.PARAM_TOTAL_EPOCHS)
+                ).value
+            except ValueError:
+                total = None
+
+        job.progress.add_or_update_stage_param(cls.STAGE_TRAIN, cls.PARAM_EPOCH, epoch)
+        if total:
+            job.progress.add_or_update_stage_param(cls.STAGE_TRAIN, cls.PARAM_TOTAL_EPOCHS, total)
+        job.progress.update_stage(
+            cls.STAGE_TRAIN,
+            status=JobState.STARTED,
+            # Never a full stage: the result finishes it, not the last epoch, since the
+            # service still has to score the head and upload it.
+            progress=min(epoch / total, 0.99) if total else 0,
+        )
+        job.save(update_fields=["progress", "updated_at"])
 
     @classmethod
     def record_result(cls, job: "Job", payload: dict) -> None:
