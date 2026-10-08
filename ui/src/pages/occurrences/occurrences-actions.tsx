@@ -3,6 +3,7 @@ import { useCreateIdentifications } from 'data-services/hooks/identifications/us
 import { Occurrence } from 'data-services/models/occurrence'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
 import { BasicTooltip, Button } from 'nova-ui-kit'
+import { CreateOccurrenceSetPopover } from 'pages/occurrences/create-occurrence-set/create-occurrence-set-popover'
 import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { useMemo } from 'react'
@@ -27,22 +28,24 @@ export const OccurrencesActions = ({
     ({ userPermissions }) => !userPermissions.includes(UserPermission.Update)
   )
 
-  if (!canUpdate) {
-    return null
-  }
+  const occurrenceIds = occurrences.map((occurrence) => occurrence.id)
 
   return (
     <div className="flex items-center justify-center gap-2">
-      <Agree allAgreed={allAgreed} occurrences={occurrences} />
-      <SuggestIdPopover
-        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-      />
-      <IdQuickActions
-        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-        occurrenceTaxa={occurrences.map(
-          (occurrence) => occurrence.determinationTaxon
-        )}
-      />
+      {/* Saving a set changes no occurrence, so it is not gated on update rights. */}
+      {canUpdate ? (
+        <>
+          <Agree allAgreed={allAgreed} occurrences={occurrences} />
+          <SuggestIdPopover occurrenceIds={occurrenceIds} />
+          <IdQuickActions
+            occurrenceIds={occurrenceIds}
+            occurrenceTaxa={occurrences.map(
+              (occurrence) => occurrence.determinationTaxon
+            )}
+          />
+        </>
+      ) : null}
+      <CreateOccurrenceSetPopover occurrenceIds={occurrenceIds} />
     </div>
   )
 }
