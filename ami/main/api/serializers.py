@@ -536,11 +536,30 @@ class DeploymentSerializer(DeploymentListSerializer):
             "data_source_last_checked",
             "data_source_subdir",
             "data_source_regex",
+            "frame_long_side_mm",
+            "frame_short_side_mm",
             "description",
             "example_captures",
             "manually_uploaded_captures",
             # "capture_images",
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        long_side = attrs.get("frame_long_side_mm", getattr(self.instance, "frame_long_side_mm", None))
+        short_side = attrs.get("frame_short_side_mm", getattr(self.instance, "frame_short_side_mm", None))
+        if (long_side is None) != (short_side is None):
+            raise serializers.ValidationError(
+                {"frame_short_side_mm": "Enter both sides of the camera's view, or neither."}
+            )
+        if long_side is not None and short_side is not None:
+            if long_side <= 0 or short_side <= 0:
+                raise serializers.ValidationError({"frame_long_side_mm": "Sides must be greater than zero."})
+            if short_side > long_side:
+                raise serializers.ValidationError(
+                    {"frame_short_side_mm": "The short side cannot be longer than the long side."}
+                )
+        return attrs
 
     def get_data_source(self, obj):
         """
@@ -1549,6 +1568,8 @@ class OccurrenceListSerializer(DefaultSerializer):
             "duration_label",
             "determination",
             "detections_count",
+            "relative_length",
+            "length_mm",
             "detection_images",
             "determination_score",
             "determination_details",

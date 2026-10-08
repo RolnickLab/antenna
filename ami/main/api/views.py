@@ -1399,6 +1399,35 @@ class OccurrenceDateFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceSizeFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences by their stored size: the median longest side of their detection boxes.
+
+    ``size_min`` / ``size_max`` are a fraction of the capture's longest side (0 to 1) and work in every
+    project. ``size_min_mm`` / ``size_max_mm`` are millimetres and only match occurrences from stations
+    with a calibrated field of view; uncalibrated occurrences are left out rather than guessed.
+    """
+
+    # (query param, lookup, upper bound): relative sizes are fractions of the capture, mm are unbounded.
+    params = (
+        ("size_min", "relative_length__gte", 1),
+        ("size_max", "relative_length__lte", 1),
+        ("size_min_mm", "length_mm__gte", None),
+        ("size_max_mm", "length_mm__lte", None),
+    )
+
+    def filter_queryset(self, request, queryset, view):
+        for param, lookup, max_value in self.params:
+            value = SingleParamSerializer[float].clean(
+                param,
+                serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=max_value),
+                request.query_params,
+            )
+            if value is not None:
+                queryset = queryset.filter(**{lookup: value})
+        return queryset
+
+
 class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
     """
     Filters occurrences based on a TaxaList.
@@ -1473,6 +1502,7 @@ OCCURRENCE_FILTER_BACKENDS = (
     OccurrenceAlgorithmFilter,
     OccurrenceJobFilter,
     OccurrenceDateFilter,
+    OccurrenceSizeFilter,
     OccurrenceVerified,
     OccurrenceVerifiedByMeFilter,
     OccurrenceTaxaListFilter,
@@ -1525,6 +1555,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination_score",
         "event",
         "detections_count",
+        "relative_length",
+        "length_mm",
     ]
 
     def get_serializer_class(self):
@@ -1583,6 +1615,39 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 description="Filter occurrences created or updated by a job.",
                 required=False,
                 type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="size_min",
+                description=(
+                    "Minimum size: the median longest side of the occurrence's detection boxes, "
+                    "as a fraction (0 to 1) of the capture's longest side."
+                ),
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="size_max",
+                description="Maximum size, as a fraction (0 to 1) of the capture's longest side.",
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="size_min_mm",
+                description=(
+                    "Minimum size in millimetres. "
+                    "Only matches occurrences from stations with a calibrated field of view."
+                ),
+                required=False,
+                type=OpenApiTypes.FLOAT,
+            ),
+            OpenApiParameter(
+                name="size_max_mm",
+                description=(
+                    "Maximum size in millimetres. "
+                    "Only matches occurrences from stations with a calibrated field of view."
+                ),
+                required=False,
+                type=OpenApiTypes.FLOAT,
             ),
         ]
     )

@@ -41,6 +41,7 @@ from ami.main.models_future.filters import (
     build_occurrence_score_threshold_q,
     build_taxa_recursive_filter_q,
 )
+from ami.main.models_future.occurrence_size import update_occurrence_sizes
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
@@ -797,6 +798,21 @@ class Deployment(BaseModel):
     captures_count = models.IntegerField(blank=True, null=True)
     detections_count = models.IntegerField(blank=True, null=True)
     taxa_count = models.IntegerField(blank=True, null=True)
+    # Calibration: the size of the camera's field of view on the sheet, used to convert box sizes to mm.
+    # Long and short side rather than width and height, so portrait and landscape captures both work.
+    frame_long_side_mm = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Length of the longer edge of the camera's view, measured on the sheet, in millimetres.",
+    )
+    frame_short_side_mm = models.FloatField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Length of the shorter edge of the camera's view, measured on the sheet, in millimetres. "
+            "Captures whose aspect ratio does not match are treated as uncalibrated."
+        ),
+    )
     first_capture_timestamp = models.DateTimeField(blank=True, null=True)
     last_capture_timestamp = models.DateTimeField(blank=True, null=True)
 
@@ -1131,8 +1147,18 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
+    def _calibration_changed(self) -> bool:
+        if not self.pk:
+            return False
+        stored = Deployment.objects.filter(pk=self.pk).values_list("frame_long_side_mm", "frame_short_side_mm").first()
+        return stored is not None and stored != (self.frame_long_side_mm, self.frame_short_side_mm)
+
     def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
+        calibration_changed = self._calibration_changed()
         super().save(*args, **kwargs)
+        if calibration_changed:
+            # Occurrence sizes in mm depend on the calibration; recalculate them off the request.
+            transaction.on_commit(lambda: ami.tasks.update_deployment_occurrence_sizes.delay(self.pk))
         if self.pk and update_calculated_fields:
             if deployment_events_need_update(self):
                 logger.info(f"Deployment {self} has events that need to be regrouped")
@@ -3333,6 +3359,7 @@ class Detection(BaseModel):
         self.occurrence = occurrence
         self.save()
         occurrence.save()  # Need to save again to update the aggregate values
+        update_occurrence_sizes([occurrence.pk])
         # Update aggregate values on source image
         # @TODO this should be done async in a task with an eta of a few seconds
         # so it isn't done for every detection in a batch
@@ -3665,6 +3692,25 @@ class Occurrence(BaseModel):
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
+    # Stored sizes, kept current by ami.main.models_future.occurrence_size.update_occurrence_sizes
+    relative_length = models.FloatField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Median length of the longest side of this occurrence's detection boxes, as a fraction of the "
+            "longest side of the capture. Empty when no detection has a usable box."
+        ),
+    )
+    length_mm = models.FloatField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Median length of the longest side of this occurrence's detection boxes in millimetres. "
+            "Approximate: the box can include legs, antennae and blur. Empty when the station's field of view "
+            "is not calibrated."
+        ),
+    )
+
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
@@ -3844,6 +3890,9 @@ class Occurrence(BaseModel):
                 fields=["determination_id", "project_id", "event_id"],
                 name="occur_det_proj_evt",
             ),
+            # Size filters and sorting on the occurrence list (#377)
+            models.Index(fields=["project", "relative_length"], name="occur_proj_rel_length"),
+            models.Index(fields=["project", "length_mm"], name="occur_proj_length_mm"),
             # Supports sorting projects by their most recently updated occurrence
             # (see ProjectViewSet ordering "last_occurrence_updated_at").
             models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
