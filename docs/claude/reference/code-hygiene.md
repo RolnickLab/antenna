@@ -19,7 +19,7 @@ before acting on any of them; they start going stale on the next merge.
 
 ## The established practice behind each question
 
-The questions in `.agents/AGENTS.md` are well-trodden ground elsewhere. Naming the source keeps the
+The lines in `.agents/AGENTS.md` are well-trodden ground elsewhere. Naming the source keeps the
 checklist short and settles arguments faster than re-deriving the reasoning.
 
 | Question | Known as |
@@ -34,6 +34,7 @@ checklist short and settles arguments faster than re-deriving the reasoning.
 | Is it safe to delete this? | **Chesterton's fence**: find out why it is there first |
 | Should I tidy this while I am here? | The **boy scout rule** (Martin), opportunistic and preparatory refactoring (Fowler, Beck), without gold-plating the PR |
 | Dead code and stale comments | **Broken windows** (Hunt and Thomas); comment rot |
+| Is the newest feature taking over a shared surface? | Don't let newest win: **recency bias** in design. A feature is one note in the chord; it slots into the existing order, default off or collapsed. Related to the **open/closed principle** (extend without reshaping what already serves others) |
 | Is a failure being swallowed? | **Fail fast**: an empty handler turns a bug into "nothing happens" |
 | Are the tests still earning their place? | Beck's **test desiderata** (fast, isolated, deterministic); **DAMP over DRY** inside tests; one reason to fail per test; mock what you own |
 | Deferred cleanup | **Technical debt** (Cunningham): fine when named and tracked, expensive when silent |
