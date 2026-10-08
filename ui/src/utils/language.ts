@@ -135,6 +135,7 @@ export enum STRING {
   FIELD_LABEL_LONGITUDE,
   FIELD_LABEL_MOST_RECENT,
   CREATE_OCCURRENCE_SET,
+  CREATE_SET,
   FIELD_LABEL_NAME,
   FIELD_LABEL_NEW_PASSWORD,
   FIELD_LABEL_NUM_PIPELINES_REGISTERED,
@@ -503,6 +504,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_LONGITUDE]: 'Longitude',
   [STRING.FIELD_LABEL_MOST_RECENT]: 'Most recent',
   [STRING.CREATE_OCCURRENCE_SET]: 'Create occurrence set',
+  [STRING.CREATE_SET]: 'Create set',
   [STRING.MESSAGE_OCCURRENCE_SET_IS_FIXED]:
     'Saves the {{count}} selected occurrence(s) as a set. Its contents do not change afterwards.',
   [STRING.FIELD_LABEL_NAME]: 'Name',
