@@ -41,8 +41,6 @@ const identificationEntry = (id: number): ServerOccurrenceHistoryEntry => ({
   ...base,
   id,
   details: {
-    agreed_with_identification_id: null,
-    agreed_with_prediction_id: null,
     comment: 'Looks right',
     withdrawn: false,
   },
@@ -61,8 +59,6 @@ const predictionEntry = (
   id,
   job,
   details: {
-    applied_to_id: null,
-    detection_id: 1,
     terminal: true,
   },
   score: 0.8,

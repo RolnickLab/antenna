@@ -1,5 +1,5 @@
 import { STRING, translate } from 'utils/language'
-import { Ref } from 'utils/references'
+import { EntityRef } from 'utils/entity-references'
 import { getUserLabel } from 'utils/user/getUserLabel'
 import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
@@ -35,7 +35,7 @@ export interface ServerJobConfigField {
   key: string
   label: string
   /** The record the field names, when it names one. */
-  ref: Ref | null
+  ref: EntityRef | null
   value: unknown
 }
 
@@ -83,15 +83,11 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
 }
 
 export interface ServerIdentificationDetails {
-  agreed_with_identification_id: number | null
-  agreed_with_prediction_id: number | null
   comment: string
   withdrawn: boolean
 }
 
 export interface ServerPredictionDetails {
-  applied_to_id: number | null
-  detection_id: number
   terminal: boolean
 }
 
@@ -159,7 +155,7 @@ export type TimelineItem =
       id: string
       prediction: MachinePrediction
       /** The job that wrote the prediction, when the history names one. */
-      job?: Ref
+      job?: EntityRef
     }
   | { type: 'algorithm_result'; id: string; entry: AlgorithmResultEntry }
 
@@ -294,7 +290,7 @@ export const getTimelineItems = ({
                 determinationTaxonId
               )
             : undefined)
-        const job: Ref | undefined = entry.job
+        const job: EntityRef | undefined = entry.job
           ? { type: 'job', id: entry.job.id, name: entry.job.name }
           : undefined
 

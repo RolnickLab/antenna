@@ -20,10 +20,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { Ref } from 'utils/references'
+import { EntityRef } from 'utils/entity-references'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
-import { HistoryStats, RefValue } from './history-stats'
+import { EntityRefValue } from 'components/entity-ref-value/entity-ref-value'
+import { HistoryStats } from './history-stats'
 import machineAvatar from './machine-avatar.svg'
 
 export const MachinePrediction = ({
@@ -46,7 +47,7 @@ export const MachinePrediction = ({
   currentUser?: UserInfo
   identification: Identification
   /** The job that wrote the prediction, shown as a row when the history names one. */
-  job?: Ref
+  job?: EntityRef
   occurrence: Occurrence
   /** Replaces the terminal/intermediate label. */
   subTitle?: string
@@ -126,7 +127,7 @@ export const MachinePrediction = ({
                   {
                     label: translate(STRING.FIELD_LABEL_JOB),
                     value: (
-                      <RefValue
+                      <EntityRefValue
                         projectId={projectId as string}
                         reference={job}
                       />

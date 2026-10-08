@@ -1,3 +1,4 @@
+import { EntityRefValue } from 'components/entity-ref-value/entity-ref-value'
 import {
   AlgorithmResultEntry,
   getJobConfigField,
@@ -10,16 +11,11 @@ import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence
 import { FilterIcon, LucideIcon, RulerIcon } from 'lucide-react'
 import { BasicTooltip, IdentificationCard } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
+import { getEntityRefLabel } from 'utils/entity-references'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
-import {
-  HistoryStat,
-  HistoryStats,
-  HistoryTime,
-  getRefLabel,
-  RefValue,
-} from './history-stats'
+import { HistoryStat, HistoryStats, HistoryTime } from './history-stats'
 import { MachinePrediction } from './machine-prediction'
 
 const KIND_ICONS: Record<AlgorithmResultEntry['kind'], LucideIcon> = {
@@ -47,9 +43,9 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
 
     return translate(STRING.HISTORY_MASKING_SUBTITLE, {
       algorithm: classifier
-        ? getRefLabel(classifier)
+        ? getEntityRefLabel(classifier)
         : entry.algorithm?.name ?? translate(STRING.VALUE_NOT_AVAILABLE),
-      list: getRefLabel(refFor('taxa_list_id')),
+      list: getEntityRefLabel(refFor('taxa_list_id')),
     })
   }
 
@@ -150,7 +146,7 @@ export const AlgorithmResult = ({
     stats.push({
       label,
       value: ref ? (
-        <RefValue projectId={projectId as string} reference={ref} />
+        <EntityRefValue projectId={projectId as string} reference={ref} />
       ) : (
         formatConfigValue(value)
       ),
@@ -160,7 +156,7 @@ export const AlgorithmResult = ({
     stats.push({
       label: translate(STRING.FIELD_LABEL_ALGORITHM),
       value: (
-        <RefValue
+        <EntityRefValue
           projectId={projectId as string}
           reference={{
             type: 'algorithm',
@@ -175,7 +171,7 @@ export const AlgorithmResult = ({
     stats.push({
       label: translate(STRING.FIELD_LABEL_JOB),
       value: (
-        <RefValue
+        <EntityRefValue
           projectId={projectId as string}
           reference={{ type: 'job', id: entry.job.id, name: entry.job.name }}
         />
