@@ -86,6 +86,7 @@ export enum STRING {
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
   FIELD_LABEL_CAPTURE_SET,
+  FIELD_LABEL_OCCURRENCE_SET,
   FIELD_LABEL_CAPTURE,
   FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_CAPTURES,
@@ -277,6 +278,7 @@ export enum STRING {
   /* TOOLTIPS */
   TOOLTIP_ALGORITHM,
   TOOLTIP_CAPTURE_SET,
+  TOOLTIP_OCCURRENCE_SET,
   TOOLTIP_JOB_FILTER,
   TOOLTIP_CAPTURE,
   TOOLTIP_DEPLOYMENT,
@@ -450,6 +452,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
   [STRING.FIELD_LABEL_CAPTURE_SET]: 'Capture set',
+  [STRING.FIELD_LABEL_OCCURRENCE_SET]: 'Occurrence set',
   [STRING.FIELD_LABEL_CAPTURE]: 'Capture',
   [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
@@ -693,6 +696,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* TOOLTIPS */
   [STRING.TOOLTIP_ALGORITHM]:
     'An algorithm is used in a pipeline for processing captures.',
+  [STRING.TOOLTIP_OCCURRENCE_SET]:
+    'A fixed list of occurrences, saved so the same ones can be looked at again. Its contents do not change after it is created.',
   [STRING.TOOLTIP_CAPTURE_SET]:
     'A capture set is a group of captures. A capture set contains all or some captures in a project. Capture sets are useful when specifying what captures to process.',
   [STRING.TOOLTIP_JOB_FILTER]:
