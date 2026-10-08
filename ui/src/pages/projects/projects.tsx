@@ -61,11 +61,15 @@ export const Projects = () => {
       ? [{ field: 'user_id', value: userInfo?.id }]
       : []),
     ...(search ? [{ field: 'search', value: search }] : []),
-    // Totals and activity dates are only shown, and only computed, in the table.
-    ...(layout === 'table' ? [{ field: 'with_counts', value: 'true' }] : []),
   ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
-    useProjects({ pagination, filters, sort })
+    useProjects({
+      pagination,
+      filters,
+      sort,
+      // Totals are only shown, and only computed, in the table.
+      withCounts: layout === 'table',
+    })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
