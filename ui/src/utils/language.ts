@@ -347,6 +347,7 @@ export enum STRING {
   HISTORY_TRACKING_SIZE_CHANGE,
   HISTORY_TRACKING_SIZE_CHANGE_VALUE,
   HISTORY_TRACKING_TAXA,
+  HISTORY_TRACKING_TAXON_VALUE,
   ID_APPLIED,
   INFO,
   INTERMEDIATE_CLASSIFICATION,
@@ -816,6 +817,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.HISTORY_TRACKING_SIZE_CHANGE_VALUE]:
     '{{ratio}}× from smallest to largest',
   [STRING.HISTORY_TRACKING_TAXA]: 'Taxa',
+  [STRING.HISTORY_TRACKING_TAXON_VALUE]:
+    'detections: {{count}}, best score: {{score}}',
   [STRING.ID_APPLIED]: 'ID applied',
   [STRING.INFO]: 'Info',
   [STRING.INTERMEDIATE_CLASSIFICATION]: 'Intermediate classification',

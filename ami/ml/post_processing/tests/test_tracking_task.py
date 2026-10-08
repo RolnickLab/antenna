@@ -310,6 +310,23 @@ class TestTrackingResults(_TrackingCase):
         self.assertEqual(result.data["size_change"], round(300 * 300 / (290 * 300), 4))
         self.assertEqual(result.data["label_agreement"], 0.5)
         self.assertEqual(result.data["determination_before_id"], self.taxa[0].pk)
+        self.assertCountEqual(
+            [(t["taxon_id"], t["name"], t["detection_count"]) for t in result.data["taxa"]],
+            [(self.taxa[0].pk, self.taxa[0].name, 1), (self.taxa[1].pk, self.taxa[1].name, 1)],
+        )
+        self.assertEqual(next(t for t in result.data["taxa"] if t["taxon_id"] == self.taxa[1].pk)["score_max"], 0.6)
+
+    def test_the_result_keeps_the_taxon_name_it_saw_after_a_rename(self):
+        """The breakdown is a copy, so renaming or merging a taxon later does not rewrite what the run recorded."""
+        captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
+        name = self.taxa[0].name
+
+        self.run_task(captures[0].event)
+        Taxon.objects.filter(pk=self.taxa[0].pk).update(name="Renamed later")
+
+        result = AlgorithmResult.objects.get(kind="tracking")
+        [taxon] = result.data["taxa"]
+        self.assertEqual((taxon["taxon_id"], taxon["name"], taxon["detection_count"]), (self.taxa[0].pk, name, 2))
 
     def test_the_result_records_the_determination_before_and_after_without_a_classification(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])

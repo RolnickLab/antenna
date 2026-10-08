@@ -1,7 +1,7 @@
 """Figures that describe one occurrence's path, computed from its detections' boxes and labels.
 
 Nothing here touches Django or the database. Boxes are ``(x1, y1, x2, y2)`` in capture order, and
-labels are the taxon ids of the occurrence's terminal classifications.
+labels are the occurrence's terminal classifications.
 """
 
 import math
@@ -15,6 +15,30 @@ _ROUND_TO = 4
 
 
 @dataclass(frozen=True)
+class Label:
+    """One terminal classification of a detection: the taxon it names, that taxon's name, and its score."""
+
+    detection_id: int
+    taxon_id: int | None
+    taxon_name: str | None
+    score: float | None
+
+
+@dataclass(frozen=True)
+class TaxonLabels:
+    """How the labels of an occurrence's detections name one taxon.
+
+    The name is copied when the figures are computed, so it still reads correctly after the taxon is
+    renamed, merged into a synonym or deleted.
+    """
+
+    taxon_id: int
+    name: str
+    detection_count: int
+    score_max: float | None
+
+
+@dataclass(frozen=True)
 class OccurrenceFigures:
     detection_count: int
     motion: float
@@ -22,6 +46,7 @@ class OccurrenceFigures:
     size_change: float
     distinct_taxa: int
     label_agreement: float | None
+    taxa: list[TaxonLabels]
 
 
 def frame_diagonal(sizes: Sequence[tuple[int | None, int | None]], boxes: Sequence[BBox]) -> float:
@@ -83,19 +108,50 @@ def label_agreement(labels: Sequence[int | None], determination_id: int | None) 
     return round(sum(label == determination_id and label is not None for label in labels) / len(labels), _ROUND_TO)
 
 
+def taxa_named(labels: Sequence[Label]) -> list[TaxonLabels]:
+    """Each taxon the labels name, with how many detections it labels and its best score.
+
+    Most detections first, then the best score; a label without a taxon is left out. A low best score
+    shows a taxon that was never more than a minor guess.
+    """
+    detections: dict[int, set[int]] = {}
+    best: dict[int, float | None] = {}
+    names: dict[int, str] = {}
+    for label in labels:
+        if label.taxon_id is None:
+            continue
+        detections.setdefault(label.taxon_id, set()).add(label.detection_id)
+        names.setdefault(label.taxon_id, label.taxon_name or "")
+        if label.score is not None:
+            current = best.get(label.taxon_id)
+            best[label.taxon_id] = label.score if current is None else max(current, label.score)
+    taxa = [
+        TaxonLabels(
+            taxon_id=taxon_id,
+            name=names[taxon_id],
+            detection_count=len(detection_ids),
+            score_max=round(best[taxon_id], _ROUND_TO) if best.get(taxon_id) is not None else None,
+        )
+        for taxon_id, detection_ids in detections.items()
+    ]
+    return sorted(taxa, key=lambda t: (-t.detection_count, -(t.score_max or 0.0), t.taxon_id))
+
+
 def occurrence_figures(
     boxes: Sequence[BBox],
     sizes: Sequence[tuple[int | None, int | None]],
-    labels: Sequence[int | None],
+    labels: Sequence[Label],
     determination_id: int | None,
 ) -> OccurrenceFigures:
     """All the figures for one occurrence: ``sizes`` holds the width and height of each detection's capture."""
     diagonal = frame_diagonal(sizes, boxes)
+    taxon_ids = [label.taxon_id for label in labels]
     return OccurrenceFigures(
         detection_count=len(boxes),
         motion=motion(boxes, diagonal),
         path_length=path_length(boxes, diagonal),
         size_change=size_change(boxes),
-        distinct_taxa=distinct_taxa(labels),
-        label_agreement=label_agreement(labels, determination_id),
+        distinct_taxa=distinct_taxa(taxon_ids),
+        label_agreement=label_agreement(taxon_ids, determination_id),
+        taxa=taxa_named(labels),
     )

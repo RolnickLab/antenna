@@ -55,17 +55,48 @@ class TestLabels(SimpleTestCase):
         self.assertEqual(stats.label_agreement([None, 1], None), 0.0)
 
 
+class TestTaxaNamed(SimpleTestCase):
+    def test_counts_detections_per_taxon_and_keeps_the_best_score(self):
+        labels = [
+            stats.Label(1, 7, "Cydia pomonella", 0.9),
+            stats.Label(1, 7, "Cydia pomonella", 0.95),
+            stats.Label(2, 7, "Cydia pomonella", 0.8),
+            stats.Label(2, 8, "Aroga flavicomella", 0.03),
+            stats.Label(3, None, None, 0.5),
+        ]
+        self.assertEqual(
+            stats.taxa_named(labels),
+            [
+                stats.TaxonLabels(taxon_id=7, name="Cydia pomonella", detection_count=2, score_max=0.95),
+                stats.TaxonLabels(taxon_id=8, name="Aroga flavicomella", detection_count=1, score_max=0.03),
+            ],
+        )
+
+    def test_a_taxon_without_scores_has_no_best_score(self):
+        taxa = stats.taxa_named([stats.Label(1, 7, "Cydia pomonella", None)])
+        self.assertIsNone(taxa[0].score_max)
+
+
 class TestOccurrenceFigures(SimpleTestCase):
     def test_collects_every_figure(self):
         figures = stats.occurrence_figures(
             boxes=[[0, 0, 10, 10], [30, 0, 40, 10]],
             sizes=[(600, 800), (600, 800)],
-            labels=[1, 2],
+            labels=[stats.Label(1, 1, "A", 0.4), stats.Label(2, 2, "B", 0.7)],
             determination_id=2,
         )
         self.assertEqual(
             figures,
             stats.OccurrenceFigures(
-                detection_count=2, motion=0.03, path_length=0.03, size_change=1.0, distinct_taxa=2, label_agreement=0.5
+                detection_count=2,
+                motion=0.03,
+                path_length=0.03,
+                size_change=1.0,
+                distinct_taxa=2,
+                label_agreement=0.5,
+                taxa=[
+                    stats.TaxonLabels(taxon_id=2, name="B", detection_count=1, score_max=0.7),
+                    stats.TaxonLabels(taxon_id=1, name="A", detection_count=1, score_max=0.4),
+                ],
             ),
         )

@@ -4,6 +4,7 @@ import {
   getJobSettings,
   getResultPrediction,
   ServerHistoryTaxon,
+  TrackingTaxonLabels,
 } from 'data-services/models/occurrence-history'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { FilterIcon, RouteIcon, RulerIcon } from 'lucide-react'
@@ -72,6 +73,35 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
 /** A fraction as a percentage with at most one decimal, e.g. 0.0315 reads "3.2%". */
 const formatPercent = (fraction: number) =>
   `${Math.round(fraction * 1000) / 10}%`
+
+/** Each taxon the labels named, its detections and best score; the name is the copy saved with the result. */
+const TaxaNamed = ({
+  projectId,
+  taxa,
+}: {
+  projectId: string
+  taxa: TrackingTaxonLabels[]
+}) => (
+  <ul className="space-y-1">
+    {taxa.map((taxon) => (
+      <li key={taxon.taxon_id}>
+        <RefValue
+          projectId={projectId}
+          reference={{ type: 'taxon', id: taxon.taxon_id, name: taxon.name }}
+        />{' '}
+        <span className="text-muted-foreground">
+          {translate(STRING.HISTORY_TRACKING_TAXON_VALUE, {
+            count: `${taxon.detection_count}`,
+            score:
+              taxon.score_max !== null
+                ? formatPercent(taxon.score_max)
+                : translate(STRING.VALUE_NOT_AVAILABLE),
+          })}
+        </span>
+      </li>
+    ))}
+  </ul>
+)
 
 /** The determination row, left out when there was no determination before or after. */
 const getDeterminationStats = (
@@ -181,7 +211,11 @@ export const AlgorithmResult = ({
         },
         {
           label: translate(STRING.HISTORY_TRACKING_TAXA),
-          value: data.distinct_taxa,
+          value: data.taxa?.length ? (
+            <TaxaNamed projectId={projectId as string} taxa={data.taxa} />
+          ) : (
+            data.distinct_taxa
+          ),
         },
         {
           label: translate(STRING.HISTORY_TRACKING_LABEL_AGREEMENT),

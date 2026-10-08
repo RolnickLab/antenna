@@ -35,7 +35,7 @@ from .chains import MergeGroup, merge_groups
 from .config import TrackingConfig
 from .matching import captures_too_far_apart, image_diagonal, select_links
 from .sessions import lock_sessions
-from .stats import occurrence_figures
+from .stats import Label, occurrence_figures
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -338,13 +338,13 @@ def record_tracking_results(
     if not recorded:
         return 0
     detection_ids = [pk for group, _ in recorded for pk in group.detection_ids]
-    labels: dict[int, list[int | None]] = collections.defaultdict(list)
-    for detection_id, taxon_id in (
+    labels: dict[int, list[Label]] = collections.defaultdict(list)
+    for row in (
         Classification.objects.filter(detection_id__in=detection_ids, terminal=True)
         .exclude(algorithm__task_type=AlgorithmTaskType.POST_PROCESSING.value)
-        .values_list("detection_id", "taxon_id")
+        .values_list("detection_id", "taxon_id", "taxon__name", "score")
     ):
-        labels[detection_id].append(taxon_id)
+        labels[row[0]].append(Label(*row))
 
     images = {image.pk: image for image in plan.source_images}
     results = []

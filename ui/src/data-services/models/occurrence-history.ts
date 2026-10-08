@@ -81,12 +81,23 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
   relative_size: number
 }
 
+/** A taxon the machine labels named, with its name copied when the run recorded it. */
+export interface TrackingTaxonLabels {
+  taxon_id: number
+  name: string
+  /** Detections with at least one label naming the taxon. */
+  detection_count: number
+  score_max: number | null
+}
+
 export interface TrackingResultData extends ServerDeterminationSnapshot {
   detection_count: number
   /** Distinct taxa among the machine classifications of the occurrence's detections. */
   distinct_taxa: number
   /** The share of those classifications naming the determination after the run; null when there are none. */
   label_agreement: number | null
+  /** Each of those distinct taxa, most detections first; missing on results recorded before it existed. */
+  taxa?: TrackingTaxonLabels[]
   /** The matching cost of each link the run made, in chain order. */
   link_costs: number[]
   /** Occurrences the run folded into this one; they no longer exist. */

@@ -68,6 +68,20 @@ class SizeFilterResultData(DeterminationSnapshot):
     relative_size: float
 
 
+class TaxonLabelCount(pydantic.BaseModel):
+    """One taxon named by the machine labels of an occurrence's detections, as it was when the run recorded it."""
+
+    taxon_id: int
+    # A copy of the taxon's name, kept so the record still reads after the taxon is renamed, merged or deleted.
+    name: str
+    # Detections with at least one label naming the taxon.
+    detection_count: int
+    score_max: float | None = None
+
+    class Config:
+        extra = "forbid"
+
+
 class TrackingResultData(DeterminationSnapshot):
     """Figures from the detections the run linked into the occurrence, in capture order."""
 
@@ -86,6 +100,8 @@ class TrackingResultData(DeterminationSnapshot):
     distinct_taxa: int
     # The share of those classifications naming the determination after the run; None when there are none.
     label_agreement: float | None = None
+    # Each of those distinct taxa, most detections first.
+    taxa: list[TaxonLabelCount] = []
     # The matching cost of each link this run made in the chain, rounded to 4 places, in chain order.
     link_costs: list[float] = []
     # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.
