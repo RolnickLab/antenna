@@ -30,6 +30,7 @@ checklist short and settles arguments faster than re-deriving the reasoning.
 | Are string keys and `if`-chains multiplying? | Fowler's *primitive obsession* and *switch statements* smells; replace them with an enum or a small registry |
 | Has a file stopped having one subject? | **Single responsibility principle**; the *large class* and *divergent change* smells; separation of concerns |
 | Is there already a home for this? | **Principle of least astonishment**; follow the conventions already in the codebase |
+| Is the first layout the right one? | **Design it twice** (Ousterhout, *A Philosophy of Software Design*): compare alternatives before committing to one, because the first idea is rarely the best and the comparison is cheap before code depends on it |
 | Is this PR mixing a refactor with a behaviour change? | Fowler's **two hats**: wear one at a time, ideally in separate commits or PRs |
 | Is it safe to delete this? | **Chesterton's fence**: find out why it is there first |
 | Should I tidy this while I am here? | The **boy scout rule** (Martin), opportunistic and preparatory refactoring (Fowler, Beck), without gold-plating the PR |
@@ -67,6 +68,15 @@ adding to them hides the addition; new modules and subpackages are welcome. On t
 file is over 420 lines.
 
 ## Where new code goes
+
+A new subsystem gets two or three candidate layouts before code depends on any of them, compared
+on the module each piece lives in, what it is called, the import direction, which existing component
+it extends, and what the next feature would have to touch. Re-run the comparison when review ends:
+a branch that has been through several rounds tends to defend its first layout, but `main` sees
+every file of it for the first time. In #1461 this pass moved the occurrence history out of
+`ami/main/models_future` (it imported `ami.ml`), gave record references and job config their own
+modules, renamed "settings" to the repository's "config", and reused the prediction card instead of
+a second card, all after the PR had been through six review rounds.
 
 When `ami/main` needs a new module, follow one of the arrangements the repository already uses
 rather than inventing another:
