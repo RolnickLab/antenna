@@ -41,6 +41,7 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.ml import reporting
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
@@ -2325,6 +2326,7 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         # database once per row.
         qs = qs.prefetch_related("projects")
         project = self.get_active_project()
+        qs = reporting.annotate_best_model(qs, project=project, user=self.request.user)
         if project:
             return qs.filter(projects=project)
         return qs

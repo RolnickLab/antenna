@@ -156,6 +156,9 @@ class MLDataManager(Role):
         Project.Permissions.POPULATE_COLLECTION,
         # Whoever curates the data a model is measured on is the same person who manages
         # the data it learns from, so this sits with the collection permissions.
+        # Scoring a model is ML data work, so it sits with the other run_*_job permissions
+        # this role already holds.
+        Project.Permissions.RUN_EVALUATE_ALGORITHM_JOB,
         Project.Permissions.CREATE_OCCURRENCE_SET,
         Project.Permissions.UPDATE_OCCURRENCE_SET,
         Project.Permissions.DELETE_OCCURRENCE_SET,
