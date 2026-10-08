@@ -106,6 +106,7 @@ export const Projects = () => {
           value={search}
           onChange={setSearch}
         />
+        {canCreate ? <NewProjectDialog /> : null}
         <ToggleGroup
           items={[
             {
@@ -122,7 +123,6 @@ export const Projects = () => {
           value={layout}
           onValueChange={setLayout}
         />
-        {canCreate ? <NewProjectDialog /> : null}
         <ColumnSettings
           columns={columns}
           columnSettings={columnSettings}
