@@ -157,12 +157,12 @@ const FormStepper = () => {
           label: translate(STRING.FIELD_LABEL_LOCATION),
         },
         {
-          id: Section.Calibration,
-          label: translate(STRING.FIELD_LABEL_CALIBRATION),
-        },
-        {
           id: Section.SourceImages,
           label: translate(STRING.FIELD_LABEL_CAPTURES),
+        },
+        {
+          id: Section.Calibration,
+          label: translate(STRING.FIELD_LABEL_CALIBRATION),
         },
       ]}
       currentItemId={currentSection}
@@ -198,21 +198,21 @@ const FormContent = ({ deployment }: { deployment: DeploymentDetails }) => {
       return (
         <SectionLocation
           onBack={() => setCurrentSection(Section.General)}
-          onNext={() => setCurrentSection(Section.Calibration)}
+          onNext={() => setCurrentSection(Section.SourceImages)}
         />
       )
     case Section.Calibration:
       return (
         <SectionCalibration
-          onBack={() => setCurrentSection(Section.Location)}
-          onNext={() => setCurrentSection(Section.SourceImages)}
+          onBack={() => setCurrentSection(Section.SourceImages)}
         />
       )
     case Section.SourceImages:
       return (
         <SectionSourceImages
           deployment={deployment}
-          onBack={() => setCurrentSection(Section.Calibration)}
+          onBack={() => setCurrentSection(Section.Location)}
+          onNext={() => setCurrentSection(Section.Calibration)}
         />
       )
     default:

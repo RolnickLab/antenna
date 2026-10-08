@@ -106,6 +106,7 @@ export const Occurrences = () => {
               </>
             )}
             <FilterControl field="verified" />
+            {user.loggedIn && <FilterControl field="verified_by_me" />}
             {(project?.hasCalibratedStations ||
               someActive(['size_min_mm'], activeFilters)) && (
               <FilterControl field="size_min_mm" />
@@ -114,7 +115,6 @@ export const Occurrences = () => {
               someActive(['size_min'], activeFilters)) && (
               <FilterControl field="size_min" />
             )}
-            {user.loggedIn && <FilterControl field="verified_by_me" />}
           </FilterSection>
           <FilterSection
             title={translate(STRING.MORE_FILTERS)}

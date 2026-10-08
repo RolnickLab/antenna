@@ -9,10 +9,9 @@ An occurrence's size is the median, over its detections, of the bounding box's l
   (``Deployment.frame_long_side_mm`` and ``frame_short_side_mm``). A capture whose aspect ratio
   does not match the calibrated frame (for example a cropped camera mode) is left out.
 
-The values are stored on the occurrence instead of computed per request because filtering on a
-per-request aggregate over detections made occurrence counts about 20x slower on large projects.
-Every code path that attaches detections to occurrences or changes a station's calibration must
-call ``update_occurrence_sizes``. See #377.
+The values are stored rather than aggregated per request so the size filters stay index scans
+(measurements in #1488). Every code path that attaches detections to occurrences or changes a
+station's calibration must call ``update_occurrence_sizes``.
 
 This module uses raw SQL and imports no models, so ``ami.main.models`` can call it.
 """

@@ -21,13 +21,7 @@ type SectionCalibrationFieldValues = Pick<
   'frameLongSideMm' | 'frameShortSideMm'
 >
 
-export const SectionCalibration = ({
-  onBack,
-  onNext,
-}: {
-  onBack: () => void
-  onNext: () => void
-}) => {
+export const SectionCalibration = ({ onBack }: { onBack: () => void }) => {
   const { formSectionRef, formState, setFormSectionValues } =
     useContext(FormContext)
 
@@ -67,9 +61,6 @@ export const SectionCalibration = ({
       <FormActions>
         <Button onClick={onBack} size="small" type="button" variant="outline">
           <span>{translate(STRING.BACK)}</span>
-        </Button>
-        <Button onClick={onNext} size="small" type="button" variant="success">
-          <span>{translate(STRING.NEXT)}</span>
         </Button>
       </FormActions>
     </form>

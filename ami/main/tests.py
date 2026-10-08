@@ -8534,42 +8534,45 @@ class TestOccurrenceSize(APITestCase):
     in mm only where the capture matches the station's calibrated field of view.
     """
 
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
         from ami.main.models import Taxon
         from ami.main.models_future.occurrence_size import update_occurrence_sizes
 
-        self.project = Project.objects.create(name="Occurrence Size Project")
-        self.taxon = Taxon.objects.create(name="Occurrence Size Taxon")
-        self.deployment = Deployment.objects.create(
-            project=self.project, name="calibrated", frame_long_side_mm=400.0, frame_short_side_mm=300.0
+        cls.project = Project.objects.create(name="Occurrence Size Project")
+        cls.taxon = Taxon.objects.create(name="Occurrence Size Taxon")
+        cls.deployment = Deployment.objects.create(
+            project=cls.project, name="calibrated", frame_long_side_mm=400.0, frame_short_side_mm=300.0
         )
-        self.landscape = self._image(4000, 3000)
-        self.portrait = self._image(3000, 4000)
-        self.widescreen = self._image(4096, 2160)  # Different crop mode: aspect does not match calibration
-        self.no_dims = self._image(None, None)
+        cls.landscape = cls._image(4000, 3000)
+        cls.portrait = cls._image(3000, 4000)
+        cls.widescreen = cls._image(4096, 2160)  # Different crop mode: aspect does not match calibration
+        cls.no_dims = cls._image(None, None)
 
         # Long sides 0.1, 0.075 and 0.2 of the frame: median 0.1, i.e. 40 mm on a 400 mm frame.
-        self.occ_median = self._occurrence(
-            (self.landscape, [0, 0, 400, 100]), (self.landscape, [0, 0, 200, 300]), (self.landscape, [0, 0, 800, 10])
+        cls.occ_median = cls._occurrence(
+            (cls.landscape, [0, 0, 400, 100]), (cls.landscape, [0, 0, 200, 300]), (cls.landscape, [0, 0, 800, 10])
         )
-        self.occ_portrait = self._occurrence((self.portrait, [0, 0, 100, 400]))
-        self.occ_widescreen = self._occurrence((self.widescreen, [0, 0, 1024, 100]))
-        self.occ_no_dims = self._occurrence((self.no_dims, [0, 0, 100, 100]))
-        self.occ_bad_box = self._occurrence((self.landscape, [0, 0, 5000, 100]), (self.landscape, None))
-        update_occurrence_sizes(Occurrence.objects.filter(project=self.project).values_list("pk", flat=True))
+        cls.occ_portrait = cls._occurrence((cls.portrait, [0, 0, 100, 400]))
+        cls.occ_widescreen = cls._occurrence((cls.widescreen, [0, 0, 1024, 100]))
+        cls.occ_no_dims = cls._occurrence((cls.no_dims, [0, 0, 100, 100]))
+        cls.occ_bad_box = cls._occurrence((cls.landscape, [0, 0, 5000, 100]), (cls.landscape, None))
+        update_occurrence_sizes(Occurrence.objects.filter(project=cls.project).values_list("pk", flat=True))
 
-    def _image(self, width, height) -> SourceImage:
+    @classmethod
+    def _image(cls, width, height) -> SourceImage:
         return SourceImage.objects.create(
-            deployment=self.deployment,
-            project=self.project,
+            deployment=cls.deployment,
+            project=cls.project,
             path=f"size-{width}x{height}.jpg",
             width=width,
             height=height,
         )
 
-    def _occurrence(self, *detections) -> Occurrence:
+    @classmethod
+    def _occurrence(cls, *detections) -> Occurrence:
         occ = Occurrence.objects.create(
-            project=self.project, deployment=self.deployment, determination=self.taxon, determination_score=0.9
+            project=cls.project, deployment=cls.deployment, determination=cls.taxon, determination_score=0.9
         )
         for image, bbox in detections:
             Detection.objects.create(source_image=image, bbox=bbox, occurrence=occ)

@@ -110,22 +110,6 @@ export const DeploymentDetailsInfo = ({
           </FormRow>
         </FormSection>
 
-        <FormSection
-          title={translate(STRING.FIELD_LABEL_CALIBRATION)}
-          description={translate(STRING.DESCRIPTION_FRAME_SIZE_MM)}
-        >
-          <FormRow>
-            <InputValue
-              label={translate(STRING.FIELD_LABEL_FRAME_LONG_SIDE_MM)}
-              value={deployment.frameLongSideMm}
-            />
-            <InputValue
-              label={translate(STRING.FIELD_LABEL_FRAME_SHORT_SIDE_MM)}
-              value={deployment.frameShortSideMm}
-            />
-          </FormRow>
-        </FormSection>
-
         <FormSection title={translate(STRING.FIELD_LABEL_CAPTURES)}>
           <FormRow>
             <InputValue
@@ -159,6 +143,22 @@ export const DeploymentDetailsInfo = ({
               </div>
             </InputContent>
           )}
+        </FormSection>
+
+        <FormSection
+          title={translate(STRING.FIELD_LABEL_CALIBRATION)}
+          description={translate(STRING.DESCRIPTION_FRAME_SIZE_MM)}
+        >
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_FRAME_LONG_SIDE_MM)}
+              value={deployment.frameLongSideMm}
+            />
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_FRAME_SHORT_SIDE_MM)}
+              value={deployment.frameShortSideMm}
+            />
+          </FormRow>
         </FormSection>
       </div>
     </>

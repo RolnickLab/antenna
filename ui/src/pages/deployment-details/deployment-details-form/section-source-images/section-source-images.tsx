@@ -33,9 +33,11 @@ type SectionSourceImagesFieldValues = Pick<
 export const SectionSourceImages = ({
   deployment,
   onBack,
+  onNext,
 }: {
   deployment: DeploymentDetails
   onBack: () => void
+  onNext: () => void
 }) => {
   const { projectId } = useParams()
   const { formSectionRef, formState, setFormSectionValues } =
@@ -112,6 +114,9 @@ export const SectionSourceImages = ({
       <FormActions>
         <Button onClick={onBack} size="small" type="button" variant="outline">
           <span>{translate(STRING.BACK)}</span>
+        </Button>
+        <Button onClick={onNext} size="small" type="button" variant="success">
+          <span>{translate(STRING.NEXT)}</span>
         </Button>
       </FormActions>
     </form>
