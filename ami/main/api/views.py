@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models import OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -32,13 +32,15 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
+from ami.main.api.occurrence_history.timeline import occurrence_timeline
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.main.models_future.history import occurrence_timeline
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
+from ami.utils.fields import url_boolean_param
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -63,11 +65,11 @@ from ..models import (
     Taxon,
     TaxonRank,
     User,
+    add_taxa_counts,
     update_detection_counts,
     verified_taxon_counts,
 )
 from .serializers import (
-    OCCURRENCE_HISTORY_ENTRY_SCHEMA,
     BulkIdentificationRequestSerializer,
     BulkIdentificationResponseSerializer,
     ClassificationListSerializer,
@@ -105,7 +107,6 @@ from .serializers import (
     TaxonSearchResultSerializer,
     TaxonSerializer,
     TopIdentifiersResponseSerializer,
-    serialize_history,
 )
 
 logger = logging.getLogger(__name__)
@@ -160,9 +161,9 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
     def get_count(self, queryset):
-        # The recent-activity orderings annotate correlated subqueries onto the
-        # queryset. They don't change the row count, so strip them (and ordering)
-        # before counting to keep the pagination COUNT query cheap.
+        # The overview totals and activity dates are correlated subqueries. They don't
+        # change the row count, so strip them (and ordering) before counting to keep the
+        # pagination COUNT query cheap.
         return super().get_count(queryset.order_by().values("pk"))
 
 
@@ -187,16 +188,13 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
+    search_fields = ["name", "description"]
     ordering_fields = [
         "name",
         "created_at",
         "updated_at",
-        # The three below are not Project fields; get_queryset annotates them on
-        # demand (see below). last_capture_timestamp mirrors the DeploymentViewSet
-        # ordering of the same name, but is a per-project rollup of capture times.
-        "last_capture_timestamp",
-        "last_occurrence_updated_at",
-        "last_job_updated_at",
+        *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+        *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
     ]
 
     def get_queryset(self):
@@ -210,38 +208,25 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             if user:
                 qs = qs.filter_by_user(user)
 
-        # Annotate "recent activity" fields only when sorting by them, so the
-        # default list stays cheap. Each is a correlated subquery returning one
-        # row via a covering index, and only one is ever added per request.
+        if self.action == "list":
+            qs = qs.with_recent_activity()
+        # The totals feed the projects table, so they are added only when the table asks for them
+        # with ?with_counts, or when the list is sorted by one of them.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
-        if "last_capture_timestamp" in ordering:
-            # Live max capture time per project (Index Only Scan on
-            # main_source_proj_ts_desc_idx); kept live rather than reading the
-            # denormalized Deployment field so the sort never lags ingestion.
-            # timestamp is nullable, and DESC sorts NULLs first, so exclude them
-            # explicitly — otherwise a single undated capture masks the real max.
-            qs = qs.annotate(
-                last_capture_timestamp=Subquery(
-                    SourceImage.objects.filter(project=OuterRef("pk"), timestamp__isnull=False)
-                    .order_by("-timestamp")
-                    .values("timestamp")[:1]
-                )
-            )
-        if "last_occurrence_updated_at" in ordering:
-            qs = qs.annotate(
-                last_occurrence_updated_at=Subquery(
-                    Occurrence.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
-                )
-            )
-        if "last_job_updated_at" in ordering:
-            from ami.jobs.models import Job
-
-            qs = qs.annotate(
-                last_job_updated_at=Subquery(
-                    Job.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
-                )
-            )
+        if self.action == "list" and (
+            url_boolean_param(self.request, "with_counts") or ordering & set(ProjectQuerySet.OVERVIEW_COUNT_FIELDS)
+        ):
+            # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
+            qs = qs.prefetch_related(None).with_overview_counts(self.request.user)
+        if self.action == "list" and url_boolean_param(self.request, "with_location"):
+            qs = qs.with_location()
         return qs
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == "list" and url_boolean_param(self.request, "with_counts"):
+            add_taxa_counts(page)
+        return page
 
     def get_serializer_class(self):
         """

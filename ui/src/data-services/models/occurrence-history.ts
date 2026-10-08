@@ -1,4 +1,5 @@
-import { Ref } from 'utils/references'
+import { STRING, translate } from 'utils/language'
+import { EntityRef } from 'utils/entity-references'
 import { getUserLabel } from 'utils/user/getUserLabel'
 import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
@@ -12,6 +13,8 @@ import { Taxon } from './taxa'
 export interface ServerHistoryTaxon {
   id: number
   name: string
+  /** The taxon's ancestors, highest rank first. */
+  parents?: { id: number; name: string; rank: string }[]
   rank: string
 }
 
@@ -27,21 +30,19 @@ export interface ServerHistoryAlgorithm {
   name: string
 }
 
-/** One setting a job ran with. `label` is the title the task's config schema gives it, else the key. */
-export interface ServerHistoryJobSetting {
+/** One field of a job's config. `label` is the title the task's config schema gives it, else the key. */
+export interface ServerJobConfigField {
   key: string
   label: string
-  /** The record the setting names, when it names one. */
-  ref: Ref | null
+  /** The record the field names, when it names one. */
+  ref: EntityRef | null
   value: unknown
 }
 
 export interface ServerHistoryJob {
-  /** The settings a post-processing job ran with; null for other jobs. */
-  config: Record<string, unknown> | null
   id: number
   name: string
-  settings: ServerHistoryJobSetting[]
+  config: ServerJobConfigField[]
 }
 
 /** The classification a run's classification replaced, when there was one and it still exists. */
@@ -80,7 +81,6 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
   /** The filtered detection's box area as a fraction of its image. */
   relative_size: number
 }
-
 /** A taxon the machine labels named, with its name copied when the run recorded it. */
 export interface TrackingTaxonLabels {
   taxon_id: number
@@ -124,17 +124,11 @@ export interface TrackingResultData extends ServerDeterminationSnapshot {
 }
 
 export interface ServerIdentificationDetails {
-  agreed_with_identification_id: number | null
-  agreed_with_prediction_id: number | null
   comment: string
   withdrawn: boolean
 }
 
 export interface ServerPredictionDetails {
-  applied_to_id: number | null
-  detection_id: number
-  /** The result of the run that re-scored and demoted this prediction, when one did. */
-  superseded_by_result_id: number | null
   terminal: boolean
 }
 
@@ -156,7 +150,6 @@ interface ServerResultEntry<Kind extends string, Data>
   /** The classifications the run created, best score first. */
   classifications: ServerCreatedClassification[]
   data: Data
-  /** Data fields that name another record, by field. */
   determination_after: ServerHistoryTaxon | null
   determination_before: ServerHistoryTaxon | null
   kind: Kind
@@ -208,21 +201,32 @@ export type TimelineItem =
       id: string
       prediction: MachinePrediction
       /** The job that wrote the prediction, when the history names one. */
-      job?: Ref
-      /** The result of the run that demoted this prediction, when one did. */
-      supersededBy?: AlgorithmResultEntry
+      job?: EntityRef
     }
   | { type: 'algorithm_result'; id: string; entry: AlgorithmResultEntry }
 
-/** The result kinds this UI has a card for; results of any other kind are skipped. */
-const ALGORITHM_RESULT_KINDS: string[] = [
-  'class_masking',
-  'size_filter',
-  'tracking',
-]
+/** The result kinds this UI has a card for, with their names; results of any other kind are skipped. */
+const RESULT_KIND_LABELS: Record<AlgorithmResultEntry['kind'], STRING> = {
+  class_masking: STRING.HISTORY_CLASS_MASKING,
+  size_filter: STRING.HISTORY_SIZE_FILTER,
+  tracking: STRING.HISTORY_TRACKING,
+}
+
+/** What to call a result's kind, e.g. "Class masking". */
+export const getResultKindLabel = (entry: AlgorithmResultEntry) =>
+  translate(RESULT_KIND_LABELS[entry.kind])
 
 export const convertHistoryTaxon = (taxon: ServerHistoryTaxon) =>
-  new Taxon({ ...taxon, id: `${taxon.id}`, cover_image_url: null })
+  new Taxon({
+    ...taxon,
+    id: `${taxon.id}`,
+    cover_image_url: null,
+    parents: taxon.parents?.map((parent) => ({
+      ...parent,
+      id: `${parent.id}`,
+      cover_image_url: null,
+    })),
+  })
 
 const toIdentification = (
   entry: IdentificationEntry & { taxon: ServerHistoryTaxon },
@@ -248,24 +252,36 @@ const toIdentification = (
   }
 }
 
+/** A prediction built from the history, for when the occurrence has no record of its own for it. */
 const toPrediction = (
-  entry: PredictionEntry & {
+  {
+    algorithm,
+    id,
+    score,
+    taxon: historyTaxon,
+    terminal,
+    timestamp,
+  }: {
     algorithm: ServerHistoryAlgorithm
+    id: number
+    score: number | null
     taxon: ServerHistoryTaxon
+    terminal: boolean
+    timestamp: string
   },
   determinationTaxonId?: string
 ): MachinePrediction => {
-  const taxon = convertHistoryTaxon(entry.taxon)
+  const taxon = convertHistoryTaxon(historyTaxon)
 
   return {
-    algorithm: new Algorithm(entry.algorithm),
+    algorithm: new Algorithm(algorithm),
     applied: taxon.id === determinationTaxonId,
-    createdAt: entry.timestamp,
-    id: `${entry.id}`,
+    createdAt: timestamp,
+    id: `${id}`,
     overridden: taxon.id !== determinationTaxonId,
-    score: entry.score ?? 0,
+    score: score ?? 0,
     taxon,
-    terminal: entry.details.terminal,
+    terminal,
     userPermissions: [],
   }
 }
@@ -273,8 +289,7 @@ const toPrediction = (
 const isAlgorithmResult = (
   entry: ServerOccurrenceHistoryEntry
 ): entry is AlgorithmResultEntry =>
-  entry.type === 'algorithm_result' &&
-  ALGORITHM_RESULT_KINDS.includes(entry.kind)
+  entry.type === 'algorithm_result' && entry.kind in RESULT_KIND_LABELS
 
 /**
  * The history as cards to render, newest first. Identifications and predictions reuse the
@@ -291,8 +306,6 @@ export const getTimelineItems = ({
   identifications: HumanIdentification[]
   predictions: MachinePrediction[]
 }): TimelineItem[] => {
-  const results = entries.filter(isAlgorithmResult)
-
   return entries.flatMap((entry): TimelineItem[] => {
     const id = `${entry.type}-${entry.id}`
 
@@ -314,18 +327,21 @@ export const getTimelineItems = ({
         const prediction =
           predictions.find((p) => p.id === `${entry.id}`) ??
           (algorithm && taxon
-            ? toPrediction({ ...entry, algorithm, taxon }, determinationTaxonId)
+            ? toPrediction(
+                {
+                  ...entry,
+                  algorithm,
+                  taxon,
+                  terminal: entry.details.terminal,
+                },
+                determinationTaxonId
+              )
             : undefined)
-        const supersededBy = results.find(
-          (result) => result.id === entry.details.superseded_by_result_id
-        )
-        const job: Ref | undefined = entry.job
+        const job: EntityRef | undefined = entry.job
           ? { type: 'job', id: entry.job.id, name: entry.job.name }
           : undefined
 
-        return prediction
-          ? [{ type: 'prediction', id, prediction, job, supersededBy }]
-          : []
+        return prediction ? [{ type: 'prediction', id, prediction, job }] : []
       }
       case 'algorithm_result':
         return isAlgorithmResult(entry)
@@ -423,47 +439,49 @@ const getCreatedAt = (item: TimelineItem) => {
   }
 }
 
-export interface ResultPrediction {
-  applied: boolean
-  /** How many classifications the run created on the occurrence; the card shows the best. */
-  count: number
-  id: string
-  score: number
-  taxon: Taxon
-}
-
-/** The prediction a result stands for: the best classification its run created, if any. */
+/**
+ * The prediction a result stands for: the best classification its run created, if any. The
+ * occurrence's own record is used when it has one, since only that carries the viewer's permissions.
+ */
 export const getResultPrediction = (
   entry: AlgorithmResultEntry,
+  predictions: MachinePrediction[],
   determinationTaxonId?: string
-): ResultPrediction | undefined => {
+): MachinePrediction | undefined => {
   const best = entry.classifications.find(
     (classification) => classification.taxon !== null
   )
-  if (!best?.taxon) {
+  if (!best?.taxon || !entry.algorithm) {
     return undefined
   }
-  const taxon = convertHistoryTaxon(best.taxon)
-
-  return {
-    applied: taxon.id === determinationTaxonId,
-    count: entry.classifications.length,
-    id: `${best.id}`,
-    score: best.score ?? 0,
-    taxon,
-  }
+  return (
+    predictions.find((p) => p.id === `${best.id}`) ??
+    toPrediction(
+      {
+        ...best,
+        algorithm: entry.algorithm,
+        taxon: best.taxon,
+        timestamp: entry.timestamp,
+      },
+      determinationTaxonId
+    )
+  )
 }
 
-/** Settings the result card already shows in a row of their own. */
-const SETTINGS_SHOWN_ELSEWHERE = ['size_threshold']
+/** One field of a job's config, when the job set it. */
+export const getJobConfigField = (job: ServerHistoryJob | null, key: string) =>
+  job?.config.find((field) => field.key === key)
 
-/** A job's settings to show as rows, leaving out unset ones and those shown elsewhere. */
-export const getJobSettings = (
+/** Config fields the result card already shows in a row of their own. */
+const CONFIG_SHOWN_ELSEWHERE = ['size_threshold']
+
+/** A job's config fields to show as rows, leaving out unset ones and those shown elsewhere. */
+export const getJobConfigFields = (
   job: ServerHistoryJob | null
-): ServerHistoryJobSetting[] =>
-  (job?.settings ?? []).filter(
+): ServerJobConfigField[] =>
+  (job?.config ?? []).filter(
     ({ key, value }) =>
       value !== null &&
       value !== undefined &&
-      !SETTINGS_SHOWN_ELSEWHERE.includes(key)
+      !CONFIG_SHOWN_ELSEWHERE.includes(key)
   )

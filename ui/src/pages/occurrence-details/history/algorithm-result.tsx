@@ -1,46 +1,31 @@
-import { TaxonDetails } from 'components/taxon-details/taxon-details'
+import { EntityRefValue } from 'components/entity-ref-value/entity-ref-value'
 import {
   AlgorithmResultEntry,
-  getJobSettings,
+  getJobConfigField,
+  getJobConfigFields,
+  getResultKindLabel,
   getResultPrediction,
   ServerHistoryTaxon,
   TrackingTaxonLabels,
 } from 'data-services/models/occurrence-history'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { FilterIcon, RouteIcon, RulerIcon } from 'lucide-react'
-import {
-  BasicTooltip,
-  IdentificationCard,
-  IdentificationDetails,
-  IdentificationScore,
-} from 'nova-ui-kit'
-import { Link, useParams } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import { FilterIcon, LucideIcon, RouteIcon, RulerIcon } from 'lucide-react'
+import { BasicTooltip, IdentificationCard } from 'nova-ui-kit'
+import { useParams } from 'react-router-dom'
+import { getEntityRefLabel } from 'utils/entity-references'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
-import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { UserInfo, UserPermission } from 'utils/user/types'
-import { Agree } from '../agree/agree'
-import {
-  HistoryStat,
-  HistoryStats,
-  HistoryTime,
-  getRefLabel,
-  HistoryTypeBadge,
-  RefValue,
-} from './history-stats'
+import { UserInfo } from 'utils/user/types'
+import { HistoryStat, HistoryStats, HistoryTime } from './history-stats'
+import { MachinePrediction } from './machine-prediction'
 
-const KINDS = {
-  class_masking: { icon: FilterIcon, label: STRING.HISTORY_CLASS_MASKING },
-  size_filter: { icon: RulerIcon, label: STRING.HISTORY_SIZE_FILTER },
-  tracking: { icon: RouteIcon, label: STRING.HISTORY_TRACKING },
+const KIND_ICONS: Record<AlgorithmResultEntry['kind'], LucideIcon> = {
+  class_masking: FilterIcon,
+  size_filter: RulerIcon,
+  tracking: RouteIcon,
 }
 
-/** What to call a result's kind, e.g. "Class masking", for the card and for predictions it superseded. */
-export const getResultKindLabel = (entry: AlgorithmResultEntry) =>
-  translate(KINDS[entry.kind].label)
-
-const formatSettingValue = (value: unknown) => {
+const formatConfigValue = (value: unknown) => {
   if (typeof value === 'boolean') {
     return translate(value ? STRING.YES : STRING.NO)
   }
@@ -55,15 +40,14 @@ const formatSettingValue = (value: unknown) => {
 const getSubTitle = (entry: AlgorithmResultEntry) => {
   if (entry.kind === 'class_masking') {
     const refFor = (key: string) =>
-      entry.job?.settings.find((setting) => setting.key === key)?.ref ??
-      undefined
+      getJobConfigField(entry.job, key)?.ref ?? undefined
     const classifier = refFor('algorithm_id')
 
     return translate(STRING.HISTORY_MASKING_SUBTITLE, {
       algorithm: classifier
-        ? getRefLabel(classifier)
+        ? getEntityRefLabel(classifier)
         : entry.algorithm?.name ?? translate(STRING.VALUE_NOT_AVAILABLE),
-      list: getRefLabel(refFor('taxa_list_id')),
+      list: getEntityRefLabel(refFor('taxa_list_id')),
     })
   }
 
@@ -73,7 +57,6 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
 /** A fraction as a percentage with at most one decimal, e.g. 0.0315 reads "3.2%". */
 const formatPercent = (fraction: number) =>
   `${Math.round(fraction * 1000) / 10}%`
-
 /** A score as a percentage, or "not available" when it is missing. */
 const formatScore = (score?: number | null) =>
   score === null || score === undefined
@@ -112,7 +95,7 @@ const TaxaNamed = ({
   <ul className="space-y-1">
     {taxa.map((taxon) => (
       <li key={taxon.taxon_id}>
-        <RefValue
+        <EntityRefValue
           projectId={projectId}
           reference={{ type: 'taxon', id: taxon.taxon_id, name: taxon.name }}
         />{' '}
@@ -161,12 +144,12 @@ export const AlgorithmResult = ({
   occurrence: Occurrence
 }) => {
   const { projectId } = useParams()
-  const { icon: Icon } = KINDS[entry.kind]
+  const Icon = KIND_ICONS[entry.kind]
   const prediction = getResultPrediction(
     entry,
+    occurrence.machinePredictions,
     occurrence.determinationTaxon?.id
   )
-  const showAgree = occurrence.userPermissions.includes(UserPermission.Update)
 
   const stats: HistoryStat[] = getDeterminationStats(
     entry.determination_before,
@@ -194,7 +177,7 @@ export const AlgorithmResult = ({
       break
     }
     case 'size_filter': {
-      const threshold = entry.job?.config?.size_threshold
+      const threshold = getJobConfigField(entry.job, 'size_threshold')?.value
       stats.push({
         label: translate(STRING.HISTORY_DETECTION_SIZE),
         value:
@@ -284,26 +267,63 @@ export const AlgorithmResult = ({
       value: new Set(entry.classifications.map((c) => c.detection_id)).size,
     })
   }
-  getJobSettings(entry.job).forEach(({ label, value, ref }) => {
+  getJobConfigFields(entry.job).forEach(({ label, value, ref }) => {
     stats.push({
       label,
       value: ref ? (
-        <RefValue projectId={projectId as string} reference={ref} />
+        <EntityRefValue projectId={projectId as string} reference={ref} />
       ) : (
-        formatSettingValue(value)
+        formatConfigValue(value)
       ),
     })
   })
+  if (entry.algorithm) {
+    stats.push({
+      label: translate(STRING.FIELD_LABEL_ALGORITHM),
+      value: (
+        <EntityRefValue
+          projectId={projectId as string}
+          reference={{
+            type: 'algorithm',
+            id: entry.algorithm.id,
+            name: entry.algorithm.name,
+          }}
+        />
+      ),
+    })
+  }
   if (entry.job) {
     stats.push({
       label: translate(STRING.FIELD_LABEL_JOB),
       value: (
-        <RefValue
+        <EntityRefValue
           projectId={projectId as string}
           reference={{ type: 'job', id: entry.job.id, name: entry.job.name }}
         />
       ),
     })
+  }
+
+  const header = {
+    avatar: <Icon className="w-4 h-4 text-generic-white" />,
+    avatarTooltip: translate(STRING.HISTORY_ALGORITHM_RESULT),
+    subTitle: getSubTitle(entry),
+    title: getResultKindLabel(entry),
+  }
+
+  // The run's best new classification, with the classifier's other top predictions and the run's details.
+  if (prediction) {
+    return (
+      <MachinePrediction
+        {...header}
+        currentUser={currentUser}
+        identification={prediction}
+        occurrence={occurrence}
+        timestamp={entry.timestamp}
+      >
+        <HistoryStats stats={stats} />
+      </MachinePrediction>
+    )
   }
 
   return (
@@ -312,62 +332,16 @@ export const AlgorithmResult = ({
         label={getFormatedDateTimeString({ date: new Date(entry.timestamp) })}
       />
       <IdentificationCard
-        avatar={<Icon className="w-4 h-4 text-generic-white" />}
-        subTitle={getSubTitle(entry)}
-        title={getResultKindLabel(entry)}
-        titleAddon={
-          <HistoryTypeBadge
-            label={translate(STRING.HISTORY_ALGORITHM_RESULT)}
-          />
+        avatar={
+          <BasicTooltip content={header.avatarTooltip}>
+            <span className="flex items-center justify-center">
+              {header.avatar}
+            </span>
+          </BasicTooltip>
         }
+        subTitle={header.subTitle}
+        title={header.title}
       >
-        {/* The prediction the run made: its best new classification, which can be agreed with. */}
-        {prediction ? (
-          <IdentificationDetails
-            applied={prediction.applied}
-            className="border-border border-t"
-          >
-            <div className="w-full flex flex-col items-end gap-4">
-              <div className="w-full flex items-center gap-4">
-                <BasicTooltip
-                  content={translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: `${prediction.score}`,
-                  })}
-                >
-                  <div className="px-1">
-                    <IdentificationScore confidenceScore={prediction.score} />
-                  </div>
-                </BasicTooltip>
-                <Link
-                  to={getAppRoute({
-                    to: APP_ROUTES.TAXON_DETAILS({
-                      projectId: projectId as string,
-                      taxonId: prediction.taxon.id,
-                    }),
-                  })}
-                >
-                  <TaxonDetails compact taxon={prediction.taxon} />
-                </Link>
-              </div>
-              {showAgree && (
-                <Agree
-                  agreed={
-                    currentUser
-                      ? occurrence.userAgreed(
-                          currentUser.id,
-                          prediction.taxon.id
-                        )
-                      : false
-                  }
-                  agreeWith={{ predictionId: prediction.id }}
-                  applied={prediction.applied}
-                  occurrenceId={occurrence.id}
-                  taxonId={prediction.taxon.id}
-                />
-              )}
-            </div>
-          </IdentificationDetails>
-        ) : null}
         <HistoryStats stats={stats} />
       </IdentificationCard>
     </div>

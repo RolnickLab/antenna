@@ -2,9 +2,10 @@ import collections
 import datetime
 
 from django.db.models import QuerySet
-from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
+from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.fields import SkipField
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
@@ -28,6 +29,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectQuerySet,
     ProjectSettingsMixin,
     S3StorageSource,
     Site,
@@ -304,21 +306,52 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
+class ProjectLocationSerializer(serializers.Serializer):
+    """Where a project's stations are, from ProjectQuerySet.with_location(); null when none has coordinates."""
+
+    latitude = serializers.FloatField(source="centroid_latitude")
+    longitude = serializers.FloatField(source="centroid_longitude")
+
+    def get_attribute(self, instance):
+        # Left out of the response unless the list asked for it with ?with_location.
+        if not hasattr(instance, "centroid_latitude"):
+            raise SkipField
+        return instance if instance.centroid_latitude is not None else None
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
+    captures_count = serializers.IntegerField(read_only=True)
+    occurrences_count = serializers.IntegerField(read_only=True)
+    members_count = serializers.IntegerField(read_only=True)
+    last_capture_timestamp = serializers.DateTimeField(read_only=True)
+    last_occurrence_updated_at = serializers.DateTimeField(read_only=True)
+    last_job_updated_at = serializers.DateTimeField(read_only=True)
+    # Set on the page by add_taxa_counts().
+    taxa_observed_count = serializers.IntegerField(read_only=True)
+    location = ProjectLocationSerializer(source="*", read_only=True)
 
     class Meta:
         model = Project
-        fields = [
+        base_fields = [
             "id",
             "name",
             "description",
             "details",
-            "deployments_count",
             "created_at",
             "updated_at",
             "image",
             "draft",
+        ]
+        # The list always adds the activity dates. The totals and location are added when it asks for
+        # them with ?with_counts or ?with_location and left out otherwise, except deployments_count,
+        # which falls back to the model method.
+        fields = [
+            *base_fields,
+            *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
+            *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+            "taxa_observed_count",
+            "location",
         ]
 
 
@@ -394,7 +427,8 @@ class ProjectSerializer(DefaultSerializer):
 
     class Meta:
         model = Project
-        fields = ProjectListSerializer.Meta.fields + [
+        fields = ProjectListSerializer.Meta.base_fields + [
+            "deployments_count",
             "deployments",
             "summary_data",  # Conditionally included based on with_charts query param
             "owner",
@@ -2065,163 +2099,3 @@ class ModelAgreementSerializer(serializers.Serializer):
         required=False,
         help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )
-
-
-class HistoryUserSerializer(serializers.Serializer):
-    """A person in an occurrence's history: name and picture only, never an email address."""
-
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    image = serializers.ImageField(allow_null=True)
-
-
-class HistoryAlgorithmSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    key = serializers.CharField()
-
-
-class HistoryTaxonSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    rank = serializers.CharField()
-
-
-class RefSerializer(serializers.Serializer):
-    """Another record the history mentions. ``name`` is null when it no longer exists."""
-
-    type = serializers.CharField(help_text="What kind of record: job, taxa_list, capture_set, algorithm, ...")
-    id = serializers.IntegerField()
-    name = serializers.CharField(allow_null=True)
-
-
-class HistoryJobSettingSerializer(serializers.Serializer):
-    """One setting a job ran with. ``label`` is the title the task's config schema gives it, else the key."""
-
-    key = serializers.CharField()
-    label = serializers.CharField()
-    value = serializers.JSONField(allow_null=True)
-    ref = RefSerializer(allow_null=True, help_text="The record the setting names, when it names one.")
-
-
-class HistoryJobSerializer(serializers.Serializer):
-    """A job in the history. ``settings`` is filled per entry by ``HistoryEntryBaseSerializer``."""
-
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    config = serializers.SerializerMethodField(
-        help_text=(
-            "The settings a post-processing job ran with, as its task validated them. "
-            "Null for other jobs, and for a post-processing job whose stored config is not an object."
-        )
-    )
-    settings = HistoryJobSettingSerializer(many=True, read_only=True, help_text="The settings, in the job's order.")
-
-    @extend_schema_field(serializers.JSONField(allow_null=True))
-    def get_config(self, job) -> dict | None:
-        from ami.main.models_future.history import job_config
-
-        return job_config(job)
-
-
-class ReplacedClassificationSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    taxon = HistoryTaxonSerializer(allow_null=True)
-    score = serializers.FloatField(allow_null=True)
-
-
-class CreatedClassificationSerializer(serializers.Serializer):
-    """A classification a run created, and the one it replaced (null when none, or when it was deleted)."""
-
-    id = serializers.IntegerField(source="classification.id")
-    taxon = HistoryTaxonSerializer(source="classification.taxon", allow_null=True)
-    score = serializers.FloatField(source="classification.score", allow_null=True)
-    terminal = serializers.BooleanField(source="classification.terminal")
-    detection_id = serializers.IntegerField(source="classification.detection_id")
-    replaced = ReplacedClassificationSerializer(allow_null=True)
-
-
-class HistoryEntryBaseSerializer(serializers.Serializer):
-    """The fields every entry of an occurrence's history has."""
-
-    id = serializers.IntegerField(help_text="Primary key of the row in the table ``type`` names.")
-    timestamp = serializers.DateTimeField()
-    user = HistoryUserSerializer(allow_null=True)
-    algorithm = HistoryAlgorithmSerializer(allow_null=True)
-    job = serializers.SerializerMethodField()
-    taxon = HistoryTaxonSerializer(allow_null=True, help_text="The identified or predicted taxon.")
-    score = serializers.FloatField(allow_null=True, help_text="A prediction's score; null for other entries.")
-
-    @extend_schema_field(HistoryJobSerializer(allow_null=True))
-    def get_job(self, entry) -> dict | None:
-        if entry.job is None:
-            return None
-        return {
-            **HistoryJobSerializer(entry.job).data,
-            "settings": HistoryJobSettingSerializer(entry.job_settings, many=True).data,
-        }
-
-
-class IdentificationDetailsSerializer(serializers.Serializer):
-    comment = serializers.CharField(allow_blank=True)
-    withdrawn = serializers.BooleanField()
-    agreed_with_identification_id = serializers.IntegerField(allow_null=True)
-    agreed_with_prediction_id = serializers.IntegerField(allow_null=True)
-
-
-class PredictionDetailsSerializer(serializers.Serializer):
-    detection_id = serializers.IntegerField()
-    terminal = serializers.BooleanField()
-    applied_to_id = serializers.IntegerField(
-        allow_null=True, help_text="The classification this one re-scored and demoted, when there is one."
-    )
-    superseded_by_result_id = serializers.IntegerField(
-        allow_null=True, help_text="The algorithm result whose classification replaced this one."
-    )
-
-
-class IdentificationEntrySerializer(HistoryEntryBaseSerializer):
-    type = serializers.ChoiceField(choices=["identification"])
-    details = IdentificationDetailsSerializer()
-
-
-class PredictionEntrySerializer(HistoryEntryBaseSerializer):
-    type = serializers.ChoiceField(choices=["prediction"])
-    details = PredictionDetailsSerializer()
-
-
-class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
-    """What a post-processing run decided about the occurrence, with the classifications it created."""
-
-    type = serializers.ChoiceField(choices=["algorithm_result"])
-    kind = serializers.CharField()
-    value = serializers.FloatField(
-        allow_null=True, help_text="The kind's headline figure, for sorting and filtering; not a confidence."
-    )
-    data = serializers.JSONField(help_text="The kind's figures, validated against its data model.")
-    determination_before = HistoryTaxonSerializer(allow_null=True)
-    determination_after = HistoryTaxonSerializer(allow_null=True)
-    classifications = CreatedClassificationSerializer(
-        many=True, help_text="The classifications the run created, best score first."
-    )
-
-
-# The history endpoint's response: a plain oneOf with a literal ``type`` field. A result's ``data`` is
-# published as JSON; the server validates it against its kind's model, and the UI types it by kind.
-# Publishing one typed component per kind waits for a client generated from the schema (#1482).
-OCCURRENCE_HISTORY_ENTRY_SCHEMA = PolymorphicProxySerializer(
-    component_name="OccurrenceHistoryEntry",
-    serializers=[IdentificationEntrySerializer, PredictionEntrySerializer, AlgorithmResultEntrySerializer],
-    resource_type_field_name=None,
-    many=True,
-)
-
-HISTORY_ENTRY_SERIALIZERS = {
-    "identification": IdentificationEntrySerializer,
-    "prediction": PredictionEntrySerializer,
-    "algorithm_result": AlgorithmResultEntrySerializer,
-}
-
-
-def serialize_history(entries, context) -> list[dict]:
-    return [HISTORY_ENTRY_SERIALIZERS[entry.type](entry, context=context).data for entry in entries]

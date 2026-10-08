@@ -5,7 +5,7 @@ This module uses pydantic only and has no Django imports, so it can be used and 
 
 import pydantic
 
-from ami.ml.results.schemas import reference
+from ami.base.model_references import model_reference
 
 COST_NOTE = (
     "The default is a starting point that is still being tuned by experiment. "
@@ -27,7 +27,7 @@ class TrackingConfig(pydantic.BaseModel):
     shown on the admin form.
     """
 
-    source_image_collection_id: int | None = reference(
+    source_image_collection_id: int | None = model_reference(
         "capture_set",
         None,
         title="Capture set",
@@ -38,7 +38,7 @@ class TrackingConfig(pydantic.BaseModel):
         ),
     )
     event_ids: list[int] = pydantic.Field([], title="Sessions")
-    detection_algorithm_id: int | None = reference(
+    detection_algorithm_id: int | None = model_reference(
         "algorithm",
         None,
         title="Detector",

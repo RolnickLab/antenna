@@ -8,8 +8,7 @@ from django.test import TestCase
 from ami.jobs.models import Job, PostProcessingJob
 from ami.main.models import Classification, Detection, Occurrence, SourceImage, Taxon
 from ami.ml.models import AlgorithmResult
-from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
-from ami.ml.results.schemas import SizeFilterResultData
+from ami.ml.post_processing.small_size_filter import SizeFilterResultData, SmallSizeFilterTask
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)

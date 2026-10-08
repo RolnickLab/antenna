@@ -28,11 +28,11 @@ from ami.main.models import (
 )
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.base import BasePostProcessingTask
-from ami.ml.results.schemas import TrackingResultData
 
 from .chains import MergeGroup, merge_groups
 from .config import TrackingConfig
 from .matching import captures_too_far_apart, image_diagonal, select_links
+from .results import TrackingResultData
 from .sessions import lock_sessions
 from .stats import Label, occurrence_figures
 
@@ -440,6 +440,7 @@ def write_session_plan(
     ).values_list("pk", "occurrence_id"):
         withdrawn[occurrence_id].append(pk)
 
+    # Every keeper and emptied occurrence is in the session being tracked, so all share one project.
     with_results = set(
         AlgorithmResult.objects.filter(occurrence_id__in=list(emptied))
         .values_list("occurrence_id", flat=True)
@@ -447,7 +448,7 @@ def write_session_plan(
     )
     for keeper_id, absorbed in merged.items():
         if with_results.intersection(absorbed):
-            AlgorithmResult.objects.move_to_occurrence(keepers[keeper_id], absorbed)
+            AlgorithmResult.objects.filter(occurrence_id__in=absorbed).update(occurrence_id=keeper_id)
     if emptied:
         Occurrence.objects.filter(pk__in=list(emptied)).delete()
 

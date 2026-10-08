@@ -1,4 +1,4 @@
-import { linkFor } from './references'
+import { linkFor } from './entity-references'
 
 // utils/constants reads import.meta, which ts-jest cannot compile; these mirror its route shapes.
 jest.mock('utils/constants', () => ({

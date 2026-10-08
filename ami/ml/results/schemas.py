@@ -1,26 +1,17 @@
-"""What each kind of algorithm result records: one pydantic model per kind, and the registry of kinds.
+"""The base for what each kind of algorithm result records, and the registry of kinds.
 
-A kind's model holds only what its run alone knows; settings live on the job, and the new taxon on
-the classifications the run created. ``extra`` takes whatever else a method returns and is never read
-for logic. This is the only module that calls pydantic's API for results, and it imports nothing from
-Django, so models, writers, serializers and settings can all import it. Adding a kind = a model with its
-``kind`` + an entry in ``ALGORITHM_RESULT_DATA_MODELS``; see README.md in this package.
-The field helpers below also read post-processing task config schemas, which declare setting titles and
-references the same way.
+A kind's model holds only what its run alone knows; the run's config lives on the job, and the new
+taxon on the classifications the run created. ``extra`` takes whatever else a method returns and is
+never read for logic. It imports nothing from Django, so models, writers and serializers can all
+import it. A kind's model lives with the task that writes it and is listed in the task's
+``result_models``; see README.md in this package.
 """
 
+import functools
 import json
 from typing import Any, ClassVar
 
 import pydantic
-
-
-def reference(ref_type: str, default: Any = None, **field_options: Any) -> Any:
-    """Declare a settings field that holds another record's id; the history resolves it to ``{type, id, name}``.
-
-    Used by post-processing task config schemas; ``field_options`` go to ``pydantic.Field``.
-    """
-    return pydantic.Field(default, reference=ref_type, **field_options)
 
 
 class AlgorithmResultData(pydantic.BaseModel):
@@ -46,100 +37,21 @@ class DeterminationSnapshot(AlgorithmResultData):
     determination_after_id: int | None = None
 
 
-class ClassMaskingResultData(DeterminationSnapshot):
-    """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
+@functools.cache
+def result_data_models() -> dict[str, type[AlgorithmResultData]]:
+    """Every result kind, from the ``result_models`` the post-processing tasks declare, keyed by kind."""
+    from ami.ml.post_processing.registry import POSTPROCESSING_TASKS
 
-    kind: ClassVar[str] = "class_masking"
-    value_field: ClassVar[str | None] = "excluded_probability"
-
-    # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
-    excluded_probability: float
-    # Where the class that wins after masking ranked before it; 1 means it was already the top.
-    new_winner_original_rank: int | None = None
-
-
-class SizeFilterResultData(DeterminationSnapshot):
-    """Figures from the occurrence's smallest filtered detection."""
-
-    kind: ClassVar[str] = "size_filter"
-    value_field: ClassVar[str | None] = "relative_size"
-
-    # The detection's box area as a fraction of its image.
-    relative_size: float
-
-
-class TaxonLabelCount(pydantic.BaseModel):
-    """One taxon named by the machine labels of an occurrence's detections, as it was when the run recorded it."""
-
-    taxon_id: int
-    # A copy of the taxon's name, kept so the record still reads after the taxon is renamed, merged or deleted.
-    name: str
-    # Detections whose label names the taxon, and the mean and best score of those labels.
-    detection_count: int
-    score_mean: float | None = None
-    score_max: float | None = None
-
-    class Config:
-        extra = "forbid"
-
-
-class TrackingResultData(DeterminationSnapshot):
-    """Figures from the detections the run linked into the occurrence, in capture order."""
-
-    kind: ClassVar[str] = "tracking"
-    value_field: ClassVar[str | None] = "motion"
-
-    detection_count: int
-    # Mean distance per step between consecutive detection centres, as a fraction of the image diagonal;
-    # 0 for one detection.
-    motion: float
-    # The same distances added up over the whole path, as a fraction of the image diagonal.
-    path_length: float
-    # The largest box area over the smallest (at least 1), with areas floored at 1; 1 when the box never changed size.
-    size_change: float
-    # Distinct taxa among the detections' labels at the time of the run. Each detection's label is its best
-    # classification, chosen as the determination chooses (terminal first, then the highest score).
-    distinct_taxa: int
-    # The share of detections whose label names the determination after the run; None when none has a label.
-    label_agreement: float | None = None
-    # Each of those distinct taxa, most detections first.
-    taxa: list[TaxonLabelCount] = []
-    # Seconds from the first capture to the last; None when fewer than two have a time.
-    duration_seconds: float | None = None
-    # The lowest, mean and highest score of the detections' labels; None when no label has a score.
-    score_min: float | None = None
-    score_mean: float | None = None
-    score_max: float | None = None
-    # The matching cost of each link this run made in the chain, rounded to 4 places, in chain order.
-    link_costs: list[float] = []
-    # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.
-    merged_occurrence_ids: list[int] = []
-    # The grouping before the run, so a reset can restore it: the occurrence's detections in capture order,
-    # the occurrence each one was in, each identification moved here as (identification, earlier occurrence),
-    # and the identifications withdrawn because their user had another active one on a merged occurrence.
-    detection_ids: list[int] = []
-    previous_occurrence_ids: list[int | None] = []
-    moved_identifications: list[tuple[int, int]] = []
-    withdrawn_identification_ids: list[int] = []
-
-
-ALGORITHM_RESULT_DATA_MODELS: tuple[type[AlgorithmResultData], ...] = (
-    ClassMaskingResultData,
-    SizeFilterResultData,
-    TrackingResultData,
-)
-
-ALGORITHM_RESULT_DATA_SCHEMAS: dict[str, type[AlgorithmResultData]] = {
-    model.kind: model for model in ALGORITHM_RESULT_DATA_MODELS
-}
-
-
-def result_kinds() -> list[str]:
-    return list(ALGORITHM_RESULT_DATA_SCHEMAS)
+    models: dict[str, type[AlgorithmResultData]] = {}
+    for task in POSTPROCESSING_TASKS.values():
+        for model in task.result_models:
+            if models.setdefault(model.kind, model) is not model:
+                raise ValueError(f"Result kind {model.kind!r} is declared by two different data models.")
+    return models
 
 
 def _schema_for(kind: str) -> type[AlgorithmResultData]:
-    schema = ALGORITHM_RESULT_DATA_SCHEMAS.get(kind)
+    schema = result_data_models().get(kind)
     if schema is None:
         raise ValueError(f"No result data model is registered for {kind!r}.")
     return schema
@@ -159,17 +71,3 @@ def result_value(kind: str, data: dict) -> float | None:
     """The figure the kind's ``value_field`` names in validated ``data``, which a result stores as ``value``."""
     field = _schema_for(kind).value_field
     return data.get(field) if field else None
-
-
-def field_references(model: type[pydantic.BaseModel]) -> dict[str, str]:
-    """The model's fields declared with ``reference()``, mapped to the reference type."""
-    return {
-        name: field.field_info.extra["reference"]
-        for name, field in model.__fields__.items()
-        if "reference" in field.field_info.extra
-    }
-
-
-def field_titles(model: type[pydantic.BaseModel]) -> dict[str, str | None]:
-    """Every field of the model, in declaration order, mapped to its ``title`` or None."""
-    return {name: field.field_info.title for name, field in model.__fields__.items()}

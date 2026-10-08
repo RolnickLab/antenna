@@ -8,10 +8,11 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
+from ami.base.model_references import model_reference
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
-from ami.ml.results.schemas import ClassMaskingResultData, reference
+from ami.ml.results.schemas import DeterminationSnapshot
 from ami.ml.results.writer import AlgorithmResultWriter
 
 if typing.TYPE_CHECKING:
@@ -25,12 +26,12 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = reference("capture_set", None, title="Capture set")
-    occurrence_id: int | None = reference("occurrence", None, title="Occurrence")
+    source_image_collection_id: int | None = model_reference("capture_set", None, title="Capture set")
+    occurrence_id: int | None = model_reference("occurrence", None, title="Occurrence")
     # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int = reference("taxa_list", ..., title="Species list")
+    taxa_list_id: int = model_reference("taxa_list", ..., title="Species list")
     # The source classifier whose terminal classifications are re-scored.
-    algorithm_id: int = reference("algorithm", ..., title="Classifier")
+    algorithm_id: int = model_reference("algorithm", ..., title="Classifier")
     # When True (default), renormalise the kept classes' scores to sum to 1 after
     # masking. When False, the kept classes retain their original absolute scores and
     # the excluded classes are zeroed; the chosen species is identical either way.
@@ -45,6 +46,18 @@ class ClassMaskingConfig(pydantic.BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+class ClassMaskingResultData(DeterminationSnapshot):
+    """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
+
+    kind: typing.ClassVar[str] = "class_masking"
+    value_field: typing.ClassVar[str | None] = "excluded_probability"
+
+    # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
+    excluded_probability: float
+    # Where the class that wins after masking ranked before it; 1 means it was already the top.
+    new_winner_original_rank: int | None = None
 
 
 def make_classifications_filtered_by_taxa_list(

@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import functools
 import logging
+import operator
 import textwrap
 import time
 import typing
@@ -20,7 +21,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.functions import Coalesce
 from django.db.models.signals import pre_delete
@@ -223,12 +224,121 @@ def get_or_create_default_project(user: User) -> "Project":
     return project
 
 
+def _per_project(queryset: models.QuerySet, aggregate) -> Subquery:
+    """One aggregate over the rows of `queryset` that belong to the outer project, for a Project annotation."""
+    return Subquery(
+        queryset.filter(project=OuterRef("pk"))
+        .order_by()
+        .values("project")
+        .annotate(value=aggregate)
+        .values("value")[:1]
+    )
+
+
+def add_taxa_counts(projects: list["Project"]) -> None:
+    """
+    Set `taxa_observed_count` on each project: its distinct taxa after its own default filters,
+    the number the project summary shows.
+
+    Each project has its own filters, so this is one grouped query over a page of projects
+    rather than an annotation, and the count cannot be sorted on.
+    """
+    from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+    if not projects:
+        return
+    models.prefetch_related_objects(projects, "default_filters_include_taxa", "default_filters_exclude_taxa")
+    in_scope = functools.reduce(
+        operator.or_, (Q(project=project) & build_occurrence_default_filters_q(project) for project in projects)
+    )
+    # The same conditions as OccurrenceQuerySet.unique_taxa().
+    counts = dict(
+        Occurrence.objects.filter(in_scope, determination__isnull=False, event__isnull=False)
+        .values("project")
+        .annotate(taxa=models.Count("determination", distinct=True))
+        .values_list("project", "taxa")
+    )
+    for project in projects:
+        project.taxa_observed_count = counts.get(project.pk, 0)
+
+
 class ProjectQuerySet(BaseQuerySet):
+    # Annotated by with_overview_counts() and with_recent_activity(). The projects API sorts and
+    # serializes by these names.
+    OVERVIEW_COUNT_FIELDS = ("deployments_count", "captures_count", "occurrences_count", "members_count")
+    RECENT_ACTIVITY_FIELDS = ("last_capture_timestamp", "last_occurrence_updated_at", "last_job_updated_at")
+    # Annotated by with_location().
+    LOCATION_FIELDS = ("centroid_latitude", "centroid_longitude")
+
     def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
         """
         return self.filter(members=user)
+
+    def with_overview_counts(self, user: User | AnonymousUser) -> "ProjectQuerySet":
+        """
+        Annotate the totals shown in the projects table, named in OVERVIEW_COUNT_FIELDS.
+
+        Totals are summed from the cached counts on each deployment, so they are only as fresh as
+        `Deployment.update_calculated_fields()`. `members_count` is null on projects whose team list
+        the user may not open, the same check as `UserProjectMembership.check_permission()`.
+        """
+        from guardian.shortcuts import get_objects_for_user
+
+        can_view_team = get_objects_for_user(
+            user,
+            Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP,
+            klass=Project,
+            accept_global_perms=False,
+        )
+        members_count = models.Case(
+            models.When(
+                pk__in=can_view_team.values("pk"),
+                then=Coalesce(_per_project(UserProjectMembership.objects.all(), models.Count("pk")), 0),
+            ),
+            default=None,
+        )
+
+        return self.annotate(
+            deployments_count=Coalesce(_per_project(Deployment.objects.all(), models.Count("pk")), 0),
+            captures_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("captures_count")), 0),
+            occurrences_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("occurrences_count")), 0),
+            members_count=members_count,
+        )
+
+    def with_recent_activity(self) -> "ProjectQuerySet":
+        """
+        Annotate when each project last received a capture, an occurrence update and a job update,
+        named in RECENT_ACTIVITY_FIELDS. Each is read live from a (project, time) index.
+        """
+        from ami.jobs.models import Job
+
+        def latest(queryset: models.QuerySet, field: str) -> Subquery:
+            return Subquery(queryset.filter(project=OuterRef("pk")).order_by(f"-{field}").values(field)[:1])
+
+        return self.annotate(
+            # timestamp is nullable and DESC sorts NULLs first, so undated captures are excluded.
+            last_capture_timestamp=latest(SourceImage.objects.filter(timestamp__isnull=False), "timestamp"),
+            last_occurrence_updated_at=latest(Occurrence.objects.all(), "updated_at"),
+            last_job_updated_at=latest(Job.objects.all(), "updated_at"),
+        )
+
+    def with_location(self) -> "ProjectQuerySet":
+        """
+        Annotate LOCATION_FIELDS: the centroid of the project's stations, as the mean of their coordinates.
+
+        Stations without coordinates, or at (0, 0) where default stations are created, are left
+        out; a project with none of its own gets nulls. A plain mean is wrong for stations on
+        both sides of the antimeridian.
+        """
+        located = Deployment.objects.filter(latitude__isnull=False, longitude__isnull=False).exclude(
+            latitude=0, longitude=0
+        )
+        return self.annotate(
+            centroid_latitude=_per_project(located, models.Avg("latitude")),
+            centroid_longitude=_per_project(located, models.Avg("longitude")),
+        )
 
 
 class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
@@ -1954,7 +2064,6 @@ class S3StorageSource(BaseModel):
     def total_files_indexed(self) -> int:
         return self.deployments.aggregate(total_files=models.Sum("data_source_total_files"))["total_files"]
 
-    @functools.cache
     def total_size_indexed(self) -> int:
         return self.deployments.aggregate(total_size=models.Sum("data_source_total_size"))["total_size"]
 
@@ -3761,6 +3870,9 @@ class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
 
+    reference_type = "occurrence"
+    reference_name_field = None
+
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -4920,6 +5032,9 @@ class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
 class TaxaList(BaseModel):
     """A checklist of taxa"""
 
+    reference_type = "taxa_list"
+    reference_name_field = "name"
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
@@ -5103,6 +5218,9 @@ class SourceImageCollection(BaseModel):
     Collections are saved so that they can be reviewed or re-used later.
 
     """
+
+    reference_type = "capture_set"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
