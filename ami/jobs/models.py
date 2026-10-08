@@ -1030,7 +1030,7 @@ class TrainClassifierJob(JobType):
     def run(cls, job: "Job"):
         from ami.ml.models import Algorithm
         from ami.ml.models.processing_service import ProcessingService
-        from ami.ml.training_dataset import NotEnoughVerifiedData, build_training_dataset
+        from ami.ml.training import NotEnoughVerifiedData, build_training_dataset
 
         params = job.params or {}
         algorithm_key = params.get("algorithm_key")
@@ -1198,7 +1198,7 @@ class TrainClassifierJob(JobType):
     @classmethod
     def dispatch(cls, job: "Job", service, algorithm, dataset: dict) -> None:
         """Hand the service the dataset URL and leave the job running until it reports back."""
-        from ami.ml.training_dispatch import send_training_request
+        from ami.ml.training import send_training_request
 
         response = send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
 
