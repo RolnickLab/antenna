@@ -8,9 +8,6 @@ from django.utils import timezone
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.ml.results.schemas import result_value, validate_result_data
 
-if typing.TYPE_CHECKING:
-    from ami.main.models import Occurrence
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,21 +53,6 @@ class AlgorithmResultQuerySet(BaseQuerySet):
                 continue
             kept.append(result)
         return self.bulk_create(kept) if kept else []
-
-    def move_to_occurrence(self, kept: "Occurrence", absorbed_ids: typing.Iterable[int]) -> int:
-        """Move the results of occurrences merged into ``kept``, so their history follows the merge.
-
-        Call it before deleting the absorbed occurrences, whose results would otherwise be deleted
-        with them. Occurrences of another project are refused, so a result never ends up filed under
-        a project other than its occurrence's. Returns the number of results moved.
-        """
-        absorbed_ids = set(absorbed_ids) - {kept.pk}
-        if not absorbed_ids:
-            return 0
-        occurrences = self.model._meta.get_field("occurrence").related_model.objects
-        if occurrences.filter(pk__in=absorbed_ids).exclude(project_id=kept.project_id).exists():
-            raise ValueError(f"Cannot move results into Occurrence #{kept.pk} from occurrences of another project.")
-        return self.filter(occurrence_id__in=absorbed_ids).update(occurrence=kept)
 
 
 @typing.final

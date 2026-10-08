@@ -8,10 +8,11 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
+from ami.base.references import reference
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
-from ami.ml.results.schemas import ClassMaskingResultData, reference
+from ami.ml.results.schemas import ClassMaskingResultData
 from ami.ml.results.writer import AlgorithmResultWriter
 
 if typing.TYPE_CHECKING:

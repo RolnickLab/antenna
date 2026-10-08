@@ -12,6 +12,7 @@ from ami.base.fields import DateStringField
 from ami.base.permissions import add_m2m_object_permissions
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.base.views import get_active_project
+from ami.jobs.job_config import JobConfigFieldSerializer
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
@@ -2119,43 +2120,17 @@ class HistoryTaxonSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     rank = serializers.CharField()
-
-
-class RefSerializer(serializers.Serializer):
-    """Another record the history mentions. ``name`` is null when it no longer exists."""
-
-    type = serializers.CharField(help_text="What kind of record: job, taxa_list, capture_set, algorithm, ...")
-    id = serializers.IntegerField()
-    name = serializers.CharField(allow_null=True)
-
-
-class HistoryJobSettingSerializer(serializers.Serializer):
-    """One setting a job ran with. ``label`` is the title the task's config schema gives it, else the key."""
-
-    key = serializers.CharField()
-    label = serializers.CharField()
-    value = serializers.JSONField(allow_null=True)
-    ref = RefSerializer(allow_null=True, help_text="The record the setting names, when it names one.")
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
 
 class HistoryJobSerializer(serializers.Serializer):
-    """A job in the history. ``settings`` is filled per entry by ``HistoryEntryBaseSerializer``."""
+    """A job in the history. ``config`` is filled per entry by ``HistoryEntryBaseSerializer``."""
 
     id = serializers.IntegerField()
     name = serializers.CharField()
-    config = serializers.SerializerMethodField(
-        help_text=(
-            "The settings a post-processing job ran with, as its task validated them. "
-            "Null for other jobs, and for a post-processing job whose stored config is not an object."
-        )
+    config = JobConfigFieldSerializer(
+        many=True, read_only=True, help_text="The job's config, in the order its task's config schema declares it."
     )
-    settings = HistoryJobSettingSerializer(many=True, read_only=True, help_text="The settings, in the job's order.")
-
-    @extend_schema_field(serializers.JSONField(allow_null=True))
-    def get_config(self, job) -> dict | None:
-        from ami.main.models_future.history import job_config
-
-        return job_config(job)
 
 
 class ReplacedClassificationSerializer(serializers.Serializer):
@@ -2192,7 +2167,7 @@ class HistoryEntryBaseSerializer(serializers.Serializer):
             return None
         return {
             **HistoryJobSerializer(entry.job).data,
-            "settings": HistoryJobSettingSerializer(entry.job_settings, many=True).data,
+            "config": JobConfigFieldSerializer(entry.job_config, many=True).data,
         }
 
 
@@ -2208,9 +2183,6 @@ class PredictionDetailsSerializer(serializers.Serializer):
     terminal = serializers.BooleanField()
     applied_to_id = serializers.IntegerField(
         allow_null=True, help_text="The classification this one re-scored and demoted, when there is one."
-    )
-    superseded_by_result_id = serializers.IntegerField(
-        allow_null=True, help_text="The algorithm result whose classification replaced this one."
     )
 
 
@@ -2240,21 +2212,21 @@ class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
     )
 
 
-# The history endpoint's response: a plain oneOf with a literal ``type`` field. A result's ``data`` is
-# published as JSON; the server validates it against its kind's model, and the UI types it by kind.
-# Publishing one typed component per kind waits for a client generated from the schema (#1482).
-OCCURRENCE_HISTORY_ENTRY_SCHEMA = PolymorphicProxySerializer(
-    component_name="OccurrenceHistoryEntry",
-    serializers=[IdentificationEntrySerializer, PredictionEntrySerializer, AlgorithmResultEntrySerializer],
-    resource_type_field_name=None,
-    many=True,
-)
-
 HISTORY_ENTRY_SERIALIZERS = {
     "identification": IdentificationEntrySerializer,
     "prediction": PredictionEntrySerializer,
     "algorithm_result": AlgorithmResultEntrySerializer,
 }
+
+# The history endpoint's response: a plain oneOf with a literal ``type`` field. A result's ``data`` is
+# published as JSON; the server validates it against its kind's model, and the UI types it by kind.
+# Publishing one typed component per kind waits for a client generated from the schema (#1482).
+OCCURRENCE_HISTORY_ENTRY_SCHEMA = PolymorphicProxySerializer(
+    component_name="OccurrenceHistoryEntry",
+    serializers=list(HISTORY_ENTRY_SERIALIZERS.values()),
+    resource_type_field_name=None,
+    many=True,
+)
 
 
 def serialize_history(entries, context) -> list[dict]:

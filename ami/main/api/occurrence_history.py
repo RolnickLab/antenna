@@ -12,27 +12,15 @@ import dataclasses
 import datetime
 import typing
 
+from ami.jobs.job_config import JobConfigField, job_config_fields
 from ami.main.models import Classification, Identification, Occurrence, Taxon, User
-from ami.main.models_future.references import Ref, is_record_id, resolve_references
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.post_processing.registry import get_postprocessing_task
-from ami.ml.results.schemas import field_references, field_titles
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
 
 # A job's progress and logs can be large JSON documents, and the history shows neither.
 JOB_FIELDS_NOT_SHOWN = ("job__progress", "job__logs")
-
-
-@dataclasses.dataclass
-class JobSetting:
-    """One setting a job ran with: its label from the task's config schema, and the record it names, if any."""
-
-    key: str
-    label: str
-    value: typing.Any
-    ref: Ref | None = None
 
 
 @dataclasses.dataclass
@@ -54,7 +42,7 @@ class OccurrenceTimelineEntry:
     user: User | None = None  # identification
     algorithm: Algorithm | None = None  # result, prediction
     job: Job | None = None  # result, prediction
-    job_settings: list[JobSetting] = dataclasses.field(default_factory=list)  # empty without a job
+    job_config: list[JobConfigField] = dataclasses.field(default_factory=list)  # empty without a job
     taxon: Taxon | None = None  # identification, prediction
     score: float | None = None  # prediction
     # --- Algorithm result
@@ -73,10 +61,8 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
 
     A result comes with the classifications its run created, so the history shows the run and
     what it changed as one entry; those classifications are not listed again as predictions.
-    Every other algorithm contributes one prediction, its best. A prediction names the result
-    that superseded it when a result's classification re-scored it, or when a result's
-    classification on the same detection outranks it as a terminal prediction. Ids the entries
-    show are resolved to references with one query per type. The query count does not grow
+    Every other algorithm contributes one prediction, its best. Ids the entries show are resolved
+    to references with one query per type. The query count does not grow
     with the entries.
     """
     results = list(
@@ -91,28 +77,6 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
     )
     created_by_result = _classifications_created_by(results, occurrence)
     created_ids = {c.classification.pk for created in created_by_result.values() for c in created}
-    rescored_by = {
-        c.classification.applied_to_id: result_id
-        for result_id, created in created_by_result.items()
-        for c in created
-        if c.classification.applied_to_id is not None
-    }
-    # Only a classification that re-scored nothing (the size filter's) supersedes by detection; a
-    # re-scored one names its original through applied_to, so other classifiers stay unmarked.
-    outranked_by = {
-        c.classification.detection_id: result_id
-        for result_id, created in created_by_result.items()
-        for c in created
-        if c.classification.applied_to_id is None
-    }
-
-    def superseded_by(prediction: Classification) -> int | None:
-        if prediction.pk in rescored_by:
-            return rescored_by[prediction.pk]
-        if prediction.terminal:
-            return outranked_by.get(prediction.detection_id)
-        return None
-
     entries = [
         OccurrenceTimelineEntry(
             type="algorithm_result",
@@ -161,55 +125,18 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
                 "detection_id": prediction.detection_id,
                 "terminal": prediction.terminal,
                 "applied_to_id": prediction.applied_to_id,
-                "superseded_by_result_id": superseded_by(prediction),
             },
         )
         for prediction in _one_prediction_per_algorithm(occurrence)
         if prediction.pk not in created_ids
     )
 
-    _fill_job_settings_and_references(entries)
-    entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
-    return entries
-
-
-def _fill_job_settings_and_references(entries: list[OccurrenceTimelineEntry]) -> None:
-    """Fill each entry's job settings, resolving every record id the settings name at once."""
-    settings = {id(entry): _job_settings(entry.job) for entry in entries if entry.job is not None}
-    wanted = [(ref_type, value) for specs in settings.values() for _, _, value, ref_type in specs if ref_type]
-    resolved = resolve_references(wanted) if wanted else {}
+    config_fields = job_config_fields({entry.job.pk: entry.job for entry in entries if entry.job}.values())
     for entry in entries:
         if entry.job is not None:
-            entry.job_settings = [
-                JobSetting(key, label, value, resolved[(ref_type, value)] if ref_type else None)
-                for key, label, value, ref_type in settings[id(entry)]
-            ]
-
-
-def job_config(job: Job | None) -> dict | None:
-    """The settings a post-processing job ran with, or None for any other job or malformed params."""
-    params = job.params if job is not None else None
-    config = params.get("config") if isinstance(params, dict) else None
-    return config if isinstance(config, dict) else None
-
-
-def _job_settings(job: Job) -> list[tuple[str, str, typing.Any, str | None]]:
-    """``(key, label, value, reference type)`` per setting, labelled, typed and ordered by the task's config schema.
-
-    The stored config's key order is not kept (Postgres orders a JSON object's keys), so settings follow the
-    schema and any key it does not declare comes after. A job whose task is not registered shows its
-    settings by key, naming no records.
-    """
-    config = job_config(job) or {}
-    task_key = job.params.get("task") if config else None
-    task = get_postprocessing_task(task_key) if isinstance(task_key, str) else None
-    titles = field_titles(task.config_schema) if task else {}
-    references = field_references(task.config_schema) if task else {}
-    keys = [key for key in titles if key in config] + [key for key in config if key not in titles]
-    return [
-        (key, titles.get(key) or key, config[key], references.get(key) if is_record_id(config[key]) else None)
-        for key in keys
-    ]
+            entry.job_config = config_fields[entry.job.pk]
+    entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
+    return entries
 
 
 def _by_id(model, ids: set) -> dict:
@@ -244,7 +171,7 @@ def _classifications_created_by(
             c.pk: c
             for c in Classification.objects.filter(pk__in=replaced_ids)
             .select_related("taxon")
-            .only("pk", "score", "taxon", "taxon__name", "taxon__rank")
+            .only("pk", "score", "taxon", "taxon__name", "taxon__rank", "taxon__parents_json")
         }
         if replaced_ids
         else {}

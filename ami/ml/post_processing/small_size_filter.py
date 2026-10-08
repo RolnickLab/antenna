@@ -3,9 +3,10 @@ from django.db import transaction
 from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
+from ami.base.references import reference
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
-from ami.ml.results.schemas import SizeFilterResultData, reference
+from ami.ml.results.schemas import SizeFilterResultData
 from ami.ml.results.writer import AlgorithmResultWriter
 from ami.ml.schemas import BoundingBox
 

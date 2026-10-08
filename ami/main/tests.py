@@ -7512,21 +7512,16 @@ class TestOccurrenceJobFilter(APITestCase):
         """The filter adds no queries of its own: one statement for the rows and one for the count,
         with no ids read into Python first and no query per occurrence. Cachalot is off so every
         query counts."""
-        from cachalot.api import cachalot_disabled
+        from ami.tests.fixtures.queries import no_query_cache
 
         def filtered():
             return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
 
-        disabled = cachalot_disabled()
-        disabled.__enter__()
-        try:
+        with no_query_cache():
             with self.assertNumQueries(1):
                 ids = {occurrence.pk for occurrence in filtered()}
             with self.assertNumQueries(1):
                 count = filtered().count()
-        finally:
-            # cachalot_disabled() does not restore itself when the block raises.
-            disabled.__exit__(None, None, None)
         self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk})
         self.assertEqual(count, 4)
 

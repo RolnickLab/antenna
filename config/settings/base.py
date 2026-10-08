@@ -9,8 +9,6 @@ from urllib.parse import urlparse, urlunparse
 import django_stubs_ext
 import environ
 
-# A leaf module (pydantic only, no Django imports), so settings can read the result kinds.
-
 # Monkeypatching Django, so stubs will work for all generics,
 # see: https://github.com/typeddjango/django-stubs
 django_stubs_ext.monkeypatch()

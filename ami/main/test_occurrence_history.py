@@ -1,16 +1,15 @@
 """Algorithm results and the occurrence history endpoint that reads them."""
 
-import contextlib
 import datetime
 import re
 
-from cachalot.api import cachalot_disabled
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
+from ami.main.api.occurrence_history import occurrence_timeline
 from ami.main.models import (
     Classification,
     Detection,
@@ -21,11 +20,10 @@ from ami.main.models import (
     TaxaList,
     Taxon,
 )
-from ami.main.models_future.history import JobSetting, OccurrenceTimelineEntry, occurrence_timeline
-from ami.main.models_future.references import Ref, resolve_references, unmapped_reference_types
 from ami.ml.models import Algorithm, AlgorithmResult
-from ami.ml.results.schemas import AlgorithmResultData, ClassMaskingResultData, SizeFilterResultData, reference
+from ami.ml.results.schemas import ClassMaskingResultData, SizeFilterResultData
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
+from ami.tests.fixtures.queries import no_query_cache
 from ami.users.models import User
 from ami.users.roles import BasicMember, ProjectManager
 
@@ -36,44 +34,6 @@ HISTORY_QUERIES = 11
 
 SIZE_FILTER = SizeFilterResultData.kind
 CLASS_MASKING = ClassMaskingResultData.kind
-
-
-@contextlib.contextmanager
-def no_query_cache():
-    """``cachalot_disabled`` that restores the cache even when the block raises, so one failure stays one."""
-    context = cachalot_disabled()
-    context.__enter__()
-    try:
-        yield
-    finally:
-        context.__exit__(None, None, None)
-
-
-class ReferenceTestCase(TestCase):
-    """Ids shown in the history become {type, id, name}; a deleted row keeps its id with no name."""
-
-    @classmethod
-    def setUpTestData(cls) -> None:
-        cls.project, cls.deployment = setup_test_project(reuse=False)
-
-    def test_resolves_each_type_in_one_query_and_marks_missing_rows(self):
-        taxa_list = TaxaList.objects.create(name="Kept species")
-        algorithm = Algorithm.objects.create(name="Classifier", key="ref-test-classifier")
-        wanted = [("taxa_list", taxa_list.pk), ("algorithm", algorithm.pk), ("taxa_list", 999999)]
-        with no_query_cache(), self.assertNumQueries(2):
-            refs = resolve_references(wanted)
-        self.assertEqual(refs[("taxa_list", taxa_list.pk)], Ref("taxa_list", taxa_list.pk, "Kept species"))
-        self.assertEqual(refs[("algorithm", algorithm.pk)].name, "Classifier")
-        self.assertEqual(refs[("taxa_list", 999999)], Ref("taxa_list", 999999, None))
-
-    def test_every_declared_reference_type_is_mapped(self):
-        """A kind or task declaring a reference type with no mapping would fail the history at request time."""
-
-        class Probe(AlgorithmResultData):
-            merged_into_id: int | None = reference("not_a_type")
-
-        self.assertEqual(unmapped_reference_types([Probe]), {"not_a_type"})
-        self.assertEqual(unmapped_reference_types(), set())
 
 
 class OccurrenceHistorySchemaTestCase(TestCase):
@@ -119,7 +79,7 @@ class OccurrenceFixtureTestCase(APITestCase):
 
 
 class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
-    """GET /occurrences/{id}/history/ merges results, reviews, identifications and predictions, newest first."""
+    """GET /occurrences/{id}/history/ merges results, identifications and predictions, newest first."""
 
     @classmethod
     def setUpTestData(cls) -> None:
@@ -201,9 +161,8 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             {
                 "id": self.job.pk,
                 "name": self.job.name,
-                "config": {"size_threshold": 0.01},
                 # The label is the title the size filter's config schema gives the setting.
-                "settings": [{"key": "size_threshold", "label": "Size threshold", "value": 0.01, "ref": None}],
+                "config": [{"key": "size_threshold", "label": "Size threshold", "value": 0.01, "ref": None}],
             },
         )
         self.assertIsNone(result["taxon"])
@@ -218,7 +177,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
             [
                 {
                     "id": created.pk,
-                    "taxon": {"id": self.taxon.pk, "name": self.taxon.name, "rank": self.taxon.rank},
+                    "taxon": {"id": self.taxon.pk, "name": self.taxon.name, "rank": self.taxon.rank, "parents": []},
                     "score": 0.1,
                     "terminal": True,
                     "detection_id": self.detections[0].pk,
@@ -228,7 +187,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         )
         self.assertNotIn("email", str(data))
 
-    def test_a_demoted_prediction_names_the_result_that_superseded_it(self):
+    def test_a_masked_prediction_shows_inside_its_result_and_the_original_stays_as_a_prediction(self):
         """Class masking demotes the original classification and links its replacement to the result."""
         classifier = Algorithm.objects.create(name="Classifier", key="classifier-history-test")
         masker = Algorithm.objects.create(name="Masked classifier", key="masker-history-test")
@@ -279,7 +238,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         result_entry = next(entry for entry in data if entry["type"] == "algorithm_result")
         self.assertEqual([c["id"] for c in result_entry["classifications"]], [masked.pk])
         # The masked classification shows inside the result, not as a prediction; the original
-        # still has its card, marked as superseded by the run.
+        # keeps its card, demoted to non-terminal.
         predictions = {
             entry["algorithm"]["key"] if entry["algorithm"] else None: entry
             for entry in data
@@ -287,15 +246,12 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         }
         self.assertEqual(set(predictions), {None, classifier.key, bystander_algorithm.key})
         self.assertEqual(predictions[bystander_algorithm.key]["id"], bystander.pk)
-        self.assertIsNone(predictions[bystander_algorithm.key]["details"]["superseded_by_result_id"])
         demoted = predictions[classifier.key]
         self.assertEqual(demoted["id"], original.pk)
-        self.assertEqual(demoted["details"]["superseded_by_result_id"], result.pk)
         self.assertFalse(demoted["details"]["terminal"])
-        self.assertIsNone(predictions[None]["details"]["superseded_by_result_id"])
-        settings = {setting["key"]: setting for setting in result_entry["job"]["settings"]}
+        config = {field["key"]: field for field in result_entry["job"]["config"]}
         self.assertEqual(
-            settings["taxa_list_id"],
+            config["taxa_list_id"],
             {
                 "key": "taxa_list_id",
                 "label": "Species list",
@@ -303,39 +259,14 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 "ref": {"type": "taxa_list", "id": taxa_list.pk, "name": "Kept species"},
             },
         )
-        self.assertEqual(settings["algorithm_id"]["label"], "Classifier")
+        self.assertEqual(config["algorithm_id"]["label"], "Classifier")
         self.assertEqual(
-            settings["algorithm_id"]["ref"], {"type": "algorithm", "id": classifier.pk, "name": classifier.name}
+            config["algorithm_id"]["ref"], {"type": "algorithm", "id": classifier.pk, "name": classifier.name}
         )
         # The top prediction before masking is the classification the masked one replaced.
         self.assertEqual(result_entry["classifications"][0]["replaced"]["id"], original.pk)
         self.assertEqual(result_entry["classifications"][0]["replaced"]["taxon"]["id"], self.taxon.pk)
         self.assertEqual(result_entry["value"], 0.4)
-
-    def test_a_terminal_prediction_outranked_on_its_detection_is_superseded(self):
-        """The size filter does not demote the prediction it outranks, so the link is the shared detection."""
-        # The fixture's tied predictions resolve to the latest one, on the last detection.
-        outranked = self.detections[3].classifications.get()
-        result = AlgorithmResult.objects.record(
-            occurrence=self.occurrence,
-            algorithm=self.size_filter,
-            job=self.job,
-            kind=SIZE_FILTER,
-            data={"relative_size": 0.001},
-        )
-        Classification.objects.create(
-            detection=self.detections[3],
-            taxon=self.other_taxon,
-            score=1.0,
-            algorithm=self.size_filter,
-            timestamp=datetime.datetime.now(),
-            algorithm_result=result,
-        )
-        data = self.get()
-
-        prediction = next(entry for entry in data if entry["type"] == "prediction")
-        self.assertEqual(prediction["id"], outranked.pk)
-        self.assertEqual(prediction["details"]["superseded_by_result_id"], result.pk)
 
     def test_each_algorithm_shows_one_prediction_preferring_terminal_then_latest(self):
         """Tied top scores would otherwise show the same prediction once per detection."""
@@ -488,63 +419,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertTrue(predictions)
         self.assertTrue(all(e.job == self.job for e in predictions))
 
-    def _size_filter_result(self, job: Job | None) -> OccurrenceTimelineEntry:
-        AlgorithmResult.objects.record(
-            occurrence=self.occurrence,
-            algorithm=self.size_filter,
-            job=job,
-            kind=SIZE_FILTER,
-            data={"relative_size": 0.001},
-        )
-        return next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
-
-    def test_job_settings_take_labels_and_references_from_the_task_config_schema(self):
-        taxa_list = TaxaList.objects.create(name="Kept species")
-        classifier = Algorithm.objects.create(name="Classifier", key="settings-test-classifier")
-        self.job.params = {
-            "task": "class_masking",
-            "config": {
-                "source_image_collection_id": None,
-                "occurrence_id": True,
-                "taxa_list_id": taxa_list.pk,
-                "algorithm_id": classifier.pk,
-                "reweight": True,
-            },
-        }
-        self.job.save()
-        self.assertEqual(
-            self._size_filter_result(self.job).job_settings,
-            [
-                JobSetting("source_image_collection_id", "Capture set", None, None),
-                # A value that is not an id names no record, whatever the schema declares.
-                JobSetting("occurrence_id", "Occurrence", True, None),
-                JobSetting(
-                    "taxa_list_id", "Species list", taxa_list.pk, Ref("taxa_list", taxa_list.pk, "Kept species")
-                ),
-                JobSetting("algorithm_id", "Classifier", classifier.pk, Ref("algorithm", classifier.pk, "Classifier")),
-                JobSetting("reweight", "Re-weighted scores", True, None),
-            ],
-        )
-
-    def test_a_job_without_a_registered_task_shows_its_settings_by_key_with_no_references(self):
-        self.job.params = {"config": {"taxa_list_id": 3, "size_threshold": 0.01}}
-        self.job.save()
-        self.assertEqual(
-            self._size_filter_result(self.job).job_settings,
-            [
-                JobSetting("taxa_list_id", "taxa_list_id", 3, None),
-                JobSetting("size_threshold", "size_threshold", 0.01),
-            ],
-        )
-
-    def test_a_job_whose_params_are_not_an_object_has_no_settings(self):
-        Job.objects.filter(pk=self.job.pk).update(params=["not", "an", "object"])
-        self.job.refresh_from_db()
-        self.assertEqual(self._size_filter_result(self.job).job_settings, [])
-        result = next(e for e in self.get() if e["type"] == "algorithm_result")
-        self.assertIsNone(result["job"]["config"])
-
-    def test_a_result_without_a_job_has_no_settings_or_references(self):
+    def test_a_result_without_a_job_has_no_config(self):
         AlgorithmResult.objects.record(
             occurrence=self.occurrence,
             algorithm=self.size_filter,
@@ -554,7 +429,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         )
         entry = next(e for e in occurrence_timeline(self.occurrence) if e.type == "algorithm_result")
         self.assertIsNone(entry.job)
-        self.assertEqual(entry.job_settings, [])
+        self.assertEqual(entry.job_config, [])
 
     def test_a_result_of_a_kind_no_longer_registered_still_shows_in_the_history(self):
         """A row written by a branch with an extra kind, or before a kind was renamed, must not break the history."""
@@ -564,21 +439,3 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         AlgorithmResult.objects.filter(pk=result.pk).update(kind="rank_rollup")
         entry = next(e for e in self.get() if e["type"] == "algorithm_result")
         self.assertEqual(entry["kind"], "rank_rollup")
-
-
-class ClassificationAdminTestCase(OccurrenceFixtureTestCase):
-    """The classification change page must not preload every algorithm result into a select."""
-
-    def test_the_algorithm_result_field_is_a_raw_id_input(self):
-        superuser = User.objects.create_superuser(email="admin-history@insectai.org")  # type: ignore
-        algorithm = Algorithm.objects.create(name="Size filter", key="size-filter-admin-test")
-        result = AlgorithmResult.objects.record(
-            occurrence=self.occurrence, algorithm=algorithm, kind=SIZE_FILTER, data={"relative_size": 0.001}
-        )
-        classification = Classification.objects.get(detection=self.detections[0])
-        Classification.objects.filter(pk=classification.pk).update(algorithm_result=result)
-        self.client.force_login(superuser)
-        response = self.client.get(f"/admin/main/classification/{classification.pk}/change/")
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, '<select name="algorithm_result"')
-        self.assertContains(response, 'name="algorithm_result"')

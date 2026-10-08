@@ -4,7 +4,7 @@ An algorithm result (`ami/ml/models/algorithm_result.py`) records what one run o
 about one occurrence: the figures only that run knew, a headline `value`, and the occurrence's
 determination before and after, with the algorithm and job that produced it. Post-processing tasks
 write them today. The determination never reads them; it still comes only from identifications and
-classifications. The occurrence history (`ami/main/models_future/history.py`,
+classifications. The occurrence history (`ami/main/api/occurrence_history.py`,
 `GET /occurrences/{id}/history/`) shows each result with the classifications its run created.
 
 Processing services cannot write results: their contract (`ami/ml/schemas.py`) has no place for them
@@ -16,13 +16,14 @@ own tables, with the same algorithm and job provenance.
 1. **Data model** in `schemas.py`, listed in `ALGORITHM_RESULT_DATA_MODELS`. Set `kind` and
    `value_field` (the figure lists filter and sort on; every write copies it into `value`).
    Subclass `DeterminationSnapshot` if the run can change the determination. Record only what the
-   run alone knows: settings stay on the job, the new taxon on the classifications it creates, and
+   run alone knows: its config stays on the job, the new taxon on the classifications it creates, and
    the prediction it replaced on their `applied_to`. Anything else the method returns goes in
    `extra`, which nothing reads for logic.
 2. **Task**: declare the model in the task's `result_models`, give every `config_schema` field a
-   `title`, and declare settings that hold a record id with `reference("capture_set", ...)`; the
-   history labels and links them. A new reference type goes in `REFERENCE_TYPES`
-   (`ami/main/models_future/references.py`) and `ui/src/utils/references.ts`.
+   `title`, and declare fields that hold a record id with `reference("capture_set", ...)`
+   (`ami/base/references.py`); `ami/jobs/job_config.py` labels and links them. A new reference type
+   is declared on its model (`reference_type`, `reference_name_field`) and routed in
+   `ui/src/utils/references.ts`.
 3. **Writing**: use `AlgorithmResultWriter` (`writer.py`) as `class_masking.py` and
    `small_size_filter.py` do. Per batch, inside one transaction: `note()` each changed detection's
    figures, `start_batch()` before inserting classifications (it points them at their result), then
@@ -43,10 +44,8 @@ validates `data` against the registry, and the API publishes `data` as JSON.
   twice leaves two. A retried job reuses its own results. A list that needs an algorithm's latest
   value takes the latest by timestamp.
 - **A run gets its own `Algorithm` only when it changes what can be output.** Class masking makes one
-  per source classifier and species list, because the list changes which species can be named. Other
-  settings stay on the job: the size filter uses one algorithm whatever its threshold.
+  per source classifier and species list, because the list changes which species can be named. The
+  rest of the config stays on the job: the size filter uses one algorithm whatever its threshold.
 - **Demote only what the run replaced**, set `job` on every row it creates, and never call
   `.distinct()` on a classification queryset that includes the `scores` or `logits` arrays (#1376).
-- **Merges**: call `AlgorithmResult.objects.move_to_occurrence(kept, absorbed_ids)` before deleting
-  absorbed occurrences. Occurrences of another project are refused.
 - **Occurrences without a project** get no result and a warning; the run carries on (#1188).

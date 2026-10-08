@@ -3788,6 +3788,9 @@ class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
 
+    reference_type = "occurrence"
+    reference_name_field = None
+
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
     determination = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="occurrences")
@@ -4951,6 +4954,9 @@ class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
 class TaxaList(BaseModel):
     """A checklist of taxa"""
 
+    reference_type = "taxa_list"
+    reference_name_field = "name"
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
@@ -5134,6 +5140,9 @@ class SourceImageCollection(BaseModel):
     Collections are saved so that they can be reviewed or re-used later.
 
     """
+
+    reference_type = "capture_set"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
