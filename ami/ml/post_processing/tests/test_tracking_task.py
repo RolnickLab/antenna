@@ -315,6 +315,10 @@ class TestTrackingResults(_TrackingCase):
             [(self.taxa[0].pk, self.taxa[0].name, 1), (self.taxa[1].pk, self.taxa[1].name, 1)],
         )
         self.assertEqual(next(t for t in result.data["taxa"] if t["taxon_id"] == self.taxa[1].pk)["score_max"], 0.6)
+        self.assertEqual((result.data["score_min"], result.data["score_max"]), (0.6, 0.9))
+        self.assertEqual(result.data["score_mean"], 0.75)
+        timestamps = [capture.timestamp for capture in captures]
+        self.assertEqual(result.data["duration_seconds"], (timestamps[1] - timestamps[0]).total_seconds())
 
     def test_the_result_keeps_the_taxon_name_it_saw_after_a_rename(self):
         """The breakdown is a copy, so renaming or merging a taxon later does not rewrite what the run recorded."""

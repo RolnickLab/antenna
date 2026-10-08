@@ -1,3 +1,5 @@
+import datetime
+
 from django.test import SimpleTestCase
 
 from ami.ml.post_processing.tracking import stats
@@ -67,14 +69,35 @@ class TestTaxaNamed(SimpleTestCase):
         self.assertEqual(
             stats.taxa_named(labels),
             [
-                stats.TaxonLabels(taxon_id=7, name="Cydia pomonella", detection_count=2, score_max=0.95),
-                stats.TaxonLabels(taxon_id=8, name="Aroga flavicomella", detection_count=1, score_max=0.03),
+                stats.TaxonLabels(
+                    taxon_id=7, name="Cydia pomonella", detection_count=2, score_mean=0.8833, score_max=0.95
+                ),
+                stats.TaxonLabels(
+                    taxon_id=8, name="Aroga flavicomella", detection_count=1, score_mean=0.03, score_max=0.03
+                ),
             ],
         )
 
     def test_a_taxon_without_scores_has_no_best_score(self):
         taxa = stats.taxa_named([stats.Label(1, 7, "Cydia pomonella", None)])
         self.assertIsNone(taxa[0].score_max)
+        self.assertIsNone(taxa[0].score_mean)
+
+
+class TestScoresAndDuration(SimpleTestCase):
+    def test_score_range_leaves_out_missing_scores(self):
+        self.assertEqual(stats.score_range([0.2, None, 0.8, 0.5]), (0.2, 0.5, 0.8))
+
+    def test_score_range_is_empty_without_scores(self):
+        self.assertEqual(stats.score_range([None]), (None, None, None))
+
+    def test_duration_spans_the_first_to_the_last_time(self):
+        start = datetime.datetime(2026, 7, 1, 22, 0, 0)
+        times = [start + datetime.timedelta(seconds=40), start, None, start + datetime.timedelta(seconds=20)]
+        self.assertEqual(stats.duration_seconds(times), 40.0)
+
+    def test_duration_needs_two_times(self):
+        self.assertIsNone(stats.duration_seconds([datetime.datetime(2026, 7, 1), None]))
 
 
 class TestOccurrenceFigures(SimpleTestCase):
@@ -84,6 +107,7 @@ class TestOccurrenceFigures(SimpleTestCase):
             sizes=[(600, 800), (600, 800)],
             labels=[stats.Label(1, 1, "A", 0.4), stats.Label(2, 2, "B", 0.7)],
             determination_id=2,
+            timestamps=[datetime.datetime(2026, 7, 1, 22, 0, 0), datetime.datetime(2026, 7, 1, 22, 0, 20)],
         )
         self.assertEqual(
             figures,
@@ -95,8 +119,12 @@ class TestOccurrenceFigures(SimpleTestCase):
                 distinct_taxa=2,
                 label_agreement=0.5,
                 taxa=[
-                    stats.TaxonLabels(taxon_id=2, name="B", detection_count=1, score_max=0.7),
-                    stats.TaxonLabels(taxon_id=1, name="A", detection_count=1, score_max=0.4),
+                    stats.TaxonLabels(taxon_id=2, name="B", detection_count=1, score_mean=0.7, score_max=0.7),
+                    stats.TaxonLabels(taxon_id=1, name="A", detection_count=1, score_mean=0.4, score_max=0.4),
                 ],
+                duration_seconds=20.0,
+                score_min=0.4,
+                score_mean=0.55,
+                score_max=0.7,
             ),
         )

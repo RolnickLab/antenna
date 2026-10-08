@@ -74,6 +74,33 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
 const formatPercent = (fraction: number) =>
   `${Math.round(fraction * 1000) / 10}%`
 
+/** A score as a percentage, or "not available" when it is missing. */
+const formatScore = (score?: number | null) =>
+  score === null || score === undefined
+    ? translate(STRING.VALUE_NOT_AVAILABLE)
+    : formatPercent(score)
+
+/** A span of seconds, e.g. "40 s", "3 min 20 s" or "2 hours 5 min". */
+const formatDuration = (seconds: number) => {
+  const whole = Math.round(seconds)
+  if (whole < 60) {
+    return translate(STRING.HISTORY_TRACKING_DURATION_SECONDS, {
+      seconds: `${whole}`,
+    })
+  }
+  if (whole < 3600) {
+    return translate(STRING.HISTORY_TRACKING_DURATION_MINUTES, {
+      minutes: `${Math.floor(whole / 60)}`,
+      seconds: `${whole % 60}`,
+    })
+  }
+
+  return translate(STRING.HISTORY_TRACKING_DURATION_HOURS, {
+    hours: `${Math.floor(whole / 3600)}`,
+    minutes: `${Math.floor((whole % 3600) / 60)}`,
+  })
+}
+
 /** Each taxon the labels named, its detections and best score; the name is the copy saved with the result. */
 const TaxaNamed = ({
   projectId,
@@ -92,10 +119,8 @@ const TaxaNamed = ({
         <span className="text-muted-foreground">
           {translate(STRING.HISTORY_TRACKING_TAXON_VALUE, {
             count: `${taxon.detection_count}`,
-            score:
-              taxon.score_max !== null
-                ? formatPercent(taxon.score_max)
-                : translate(STRING.VALUE_NOT_AVAILABLE),
+            mean: formatScore(taxon.score_mean),
+            score: formatScore(taxon.score_max),
           })}
         </span>
       </li>
@@ -191,6 +216,15 @@ export const AlgorithmResult = ({
           label: translate(STRING.HISTORY_TRACKING_DETECTIONS),
           value: data.detection_count,
         },
+        ...(data.duration_seconds !== undefined &&
+        data.duration_seconds !== null
+          ? [
+              {
+                label: translate(STRING.FIELD_LABEL_DURATION),
+                value: formatDuration(data.duration_seconds),
+              },
+            ]
+          : []),
         {
           label: translate(STRING.HISTORY_TRACKING_MOVEMENT),
           value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
@@ -224,6 +258,18 @@ export const AlgorithmResult = ({
               ? formatPercent(data.label_agreement)
               : translate(STRING.VALUE_NOT_AVAILABLE),
         },
+        ...(data.score_mean !== undefined && data.score_mean !== null
+          ? [
+              {
+                label: translate(STRING.HISTORY_TRACKING_SCORE_RANGE),
+                value: translate(STRING.HISTORY_TRACKING_SCORE_RANGE_VALUE, {
+                  min: formatScore(data.score_min),
+                  max: formatScore(data.score_max),
+                  mean: formatScore(data.score_mean),
+                }),
+              },
+            ]
+          : []),
         {
           label: translate(STRING.HISTORY_TRACKING_MERGED),
           value: data.merged_occurrence_ids.length,

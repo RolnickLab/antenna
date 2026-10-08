@@ -85,8 +85,9 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
 export interface TrackingTaxonLabels {
   taxon_id: number
   name: string
-  /** Detections whose best classification names the taxon. */
+  /** Detections whose best classification names the taxon, and the mean and best score of those labels. */
   detection_count: number
+  score_mean?: number | null
   score_max: number | null
 }
 
@@ -98,6 +99,12 @@ export interface TrackingResultData extends ServerDeterminationSnapshot {
   label_agreement: number | null
   /** Each of those distinct taxa, most detections first; missing on results recorded before it existed. */
   taxa?: TrackingTaxonLabels[]
+  /** Seconds from the first capture to the last; null when fewer than two have a time. */
+  duration_seconds?: number | null
+  /** The lowest, mean and highest score of the detections' labels; null when no label has a score. */
+  score_min?: number | null
+  score_mean?: number | null
+  score_max?: number | null
   /** The matching cost of each link the run made, in chain order. */
   link_costs: number[]
   /** Occurrences the run folded into this one; they no longer exist. */

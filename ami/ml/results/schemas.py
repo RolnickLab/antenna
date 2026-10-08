@@ -74,8 +74,9 @@ class TaxonLabelCount(pydantic.BaseModel):
     taxon_id: int
     # A copy of the taxon's name, kept so the record still reads after the taxon is renamed, merged or deleted.
     name: str
-    # Detections whose label names the taxon.
+    # Detections whose label names the taxon, and the mean and best score of those labels.
     detection_count: int
+    score_mean: float | None = None
     score_max: float | None = None
 
     class Config:
@@ -103,6 +104,12 @@ class TrackingResultData(DeterminationSnapshot):
     label_agreement: float | None = None
     # Each of those distinct taxa, most detections first.
     taxa: list[TaxonLabelCount] = []
+    # Seconds from the first capture to the last; None when fewer than two have a time.
+    duration_seconds: float | None = None
+    # The lowest, mean and highest score of the detections' labels; None when no label has a score.
+    score_min: float | None = None
+    score_mean: float | None = None
+    score_max: float | None = None
     # The matching cost of each link this run made in the chain, rounded to 4 places, in chain order.
     link_costs: list[float] = []
     # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.

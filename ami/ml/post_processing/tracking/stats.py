@@ -4,7 +4,9 @@ Nothing here touches Django or the database. Boxes are ``(x1, y1, x2, y2)`` in c
 labels hold each detection's best classification at the time the figures are computed.
 """
 
+import datetime
 import math
+import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -35,6 +37,7 @@ class TaxonLabels:
     taxon_id: int
     name: str
     detection_count: int
+    score_mean: float | None
     score_max: float | None
 
 
@@ -47,6 +50,10 @@ class OccurrenceFigures:
     distinct_taxa: int
     label_agreement: float | None
     taxa: list[TaxonLabels]
+    duration_seconds: float | None
+    score_min: float | None
+    score_mean: float | None
+    score_max: float | None
 
 
 def frame_diagonal(sizes: Sequence[tuple[int | None, int | None]], boxes: Sequence[BBox]) -> float:
@@ -108,31 +115,47 @@ def label_agreement(labels: Sequence[int | None], determination_id: int | None) 
     return round(sum(label == determination_id and label is not None for label in labels) / len(labels), _ROUND_TO)
 
 
+def _rounded(value: float | None) -> float | None:
+    return None if value is None else round(value, _ROUND_TO)
+
+
+def score_range(scores: Sequence[float | None]) -> tuple[float | None, float | None, float | None]:
+    """The lowest, mean and highest of the scores, leaving out missing ones; all None when there are none."""
+    known = [score for score in scores if score is not None]
+    if not known:
+        return None, None, None
+    return _rounded(min(known)), _rounded(statistics.fmean(known)), _rounded(max(known))
+
+
+def duration_seconds(timestamps: Sequence[datetime.datetime | None]) -> float | None:
+    """Seconds from the first to the last timestamp, leaving out missing ones; None with fewer than two."""
+    known = [timestamp for timestamp in timestamps if timestamp is not None]
+    if len(known) < 2:
+        return None
+    return (max(known) - min(known)).total_seconds()
+
+
 def taxa_named(labels: Sequence[Label]) -> list[TaxonLabels]:
-    """Each taxon the labels name, with how many detections it labels and its best score.
+    """Each taxon the labels name, with how many detections it labels and their mean and best scores.
 
     Most detections first, then the best score; a label without a taxon is left out.
     """
-    detections: dict[int, set[int]] = {}
-    best: dict[int, float | None] = {}
-    names: dict[int, str] = {}
+    by_taxon: dict[int, list[Label]] = {}
     for label in labels:
-        if label.taxon_id is None:
-            continue
-        detections.setdefault(label.taxon_id, set()).add(label.detection_id)
-        names.setdefault(label.taxon_id, label.taxon_name or "")
-        if label.score is not None:
-            current = best.get(label.taxon_id)
-            best[label.taxon_id] = label.score if current is None else max(current, label.score)
-    taxa = [
-        TaxonLabels(
-            taxon_id=taxon_id,
-            name=names[taxon_id],
-            detection_count=len(detection_ids),
-            score_max=round(best[taxon_id], _ROUND_TO) if best.get(taxon_id) is not None else None,
+        if label.taxon_id is not None:
+            by_taxon.setdefault(label.taxon_id, []).append(label)
+    taxa = []
+    for taxon_id, taxon_labels in by_taxon.items():
+        _, mean, best = score_range([label.score for label in taxon_labels])
+        taxa.append(
+            TaxonLabels(
+                taxon_id=taxon_id,
+                name=taxon_labels[0].taxon_name or "",
+                detection_count=len({label.detection_id for label in taxon_labels}),
+                score_mean=mean,
+                score_max=best,
+            )
         )
-        for taxon_id, detection_ids in detections.items()
-    ]
     return sorted(taxa, key=lambda t: (-t.detection_count, -(t.score_max or 0.0), t.taxon_id))
 
 
@@ -141,10 +164,15 @@ def occurrence_figures(
     sizes: Sequence[tuple[int | None, int | None]],
     labels: Sequence[Label],
     determination_id: int | None,
+    timestamps: Sequence[datetime.datetime | None] = (),
 ) -> OccurrenceFigures:
-    """All the figures for one occurrence: ``sizes`` holds the width and height of each detection's capture."""
+    """All the figures for one occurrence.
+
+    ``sizes`` holds the width and height of each detection's capture, and ``timestamps`` each capture's time.
+    """
     diagonal = frame_diagonal(sizes, boxes)
     taxon_ids = [label.taxon_id for label in labels]
+    score_min, score_mean, score_max = score_range([label.score for label in labels])
     return OccurrenceFigures(
         detection_count=len(boxes),
         motion=motion(boxes, diagonal),
@@ -153,4 +181,8 @@ def occurrence_figures(
         distinct_taxa=distinct_taxa(taxon_ids),
         label_agreement=label_agreement(taxon_ids, determination_id),
         taxa=taxa_named(labels),
+        duration_seconds=duration_seconds(timestamps),
+        score_min=score_min,
+        score_mean=score_mean,
+        score_max=score_max,
     )

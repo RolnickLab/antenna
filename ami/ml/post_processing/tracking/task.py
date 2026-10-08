@@ -354,6 +354,7 @@ def record_tracking_results(
             sizes=[(images[d.source_image_id].width, images[d.source_image_id].height) for d in detections],
             labels=[labels[d.pk] for d in detections if d.pk in labels],
             determination_id=keeper.determination_id,
+            timestamps=[images[d.source_image_id].timestamp for d in detections],
         )
         results.append(
             AlgorithmResult(
