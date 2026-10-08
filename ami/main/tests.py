@@ -2366,23 +2366,23 @@ class TestProjectListOverviewCounts(APITestCase):
 
     endpoint = "/api/v2/projects/"
 
-    def setUp(self) -> None:
-        self.owner = User.objects.create_user(email="overview-owner@insectai.org")
-        self.member = User.objects.create_user(email="overview-member@insectai.org")
-        self.busy = Project.objects.create(name="Busy project", owner=self.owner, create_defaults=False)
-        self.busy.members.add(self.member)
-        self.empty = Project.objects.create(name="Empty project", owner=self.owner, create_defaults=False)
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.owner = User.objects.create_user(email="overview-owner@insectai.org")
+        cls.member = User.objects.create_user(email="overview-member@insectai.org")
+        cls.busy = Project.objects.create(name="Busy project", owner=cls.owner, create_defaults=False)
+        cls.busy.members.add(cls.member)
+        cls.empty = Project.objects.create(name="Empty project", owner=cls.owner, create_defaults=False)
         last_capture = datetime.datetime(2026, 6, 1, 23, 0)
         for name, captures, occurrences, timestamp in [
             ("Station A", 100, 10, last_capture),
             ("Station B", 50, 5, last_capture - datetime.timedelta(days=3)),
         ]:
-            deployment = Deployment.objects.create(name=name, project=self.busy)
-            SourceImage.objects.create(deployment=deployment, project=self.busy, timestamp=timestamp, path=name)
+            deployment = Deployment.objects.create(name=name, project=cls.busy)
+            SourceImage.objects.create(deployment=deployment, project=cls.busy, timestamp=timestamp, path=name)
             # Set after create, which recalculates the cached counts from (no) captures.
             Deployment.objects.filter(pk=deployment.pk).update(captures_count=captures, occurrences_count=occurrences)
-        self.last_capture = last_capture
-        return super().setUp()
+        cls.last_capture = last_capture
 
     def _rows(self, user: User | None = None, **params) -> list[dict]:
         self.client.force_authenticate(user)
