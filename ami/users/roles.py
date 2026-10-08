@@ -154,6 +154,9 @@ class MLDataManager(Role):
         Project.Permissions.UPDATE_COLLECTION,
         Project.Permissions.DELETE_COLLECTION,
         Project.Permissions.POPULATE_COLLECTION,
+        # Scoring a model is ML data work, so it sits with the other run_*_job permissions
+        # this role already holds.
+        Project.Permissions.RUN_EVALUATE_ALGORITHM_JOB,
         # Occurrence sets feed ML work such as scoring and training data, so they go
         # with the capture set permissions.
         Project.Permissions.CREATE_OCCURRENCE_SET,
