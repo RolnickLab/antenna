@@ -14,7 +14,15 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import JOB_LOGS_DEFAULT_LIMIT, Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
+from .models import (
+    JOB_LOGS_DEFAULT_LIMIT,
+    Job,
+    JobProgress,
+    MLJob,
+    _legacy_logs_shape,
+    get_job_type_by_key,
+    serialize_job_logs,
+)
 from .schemas import QueuedTaskAcknowledgment
 
 
@@ -55,6 +63,10 @@ class JobListSerializer(DefaultSerializer):
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
     job_type_key = serializers.SlugField(write_only=True, default=MLJob.key)
+    # Settings a job type reads from its own params, such as which algorithm to retrain and
+    # what split to hold out. Kept as one field rather than a column per type: only the type
+    # knows what its params mean, and it is the type that validates them when it runs.
+    params = serializers.JSONField(required=False, allow_null=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -129,6 +141,7 @@ class JobListSerializer(DefaultSerializer):
             "logs",
             "job_type",
             "job_type_key",
+            "params",
             "data_export",
             "dispatch_mode",
             # "duration",
@@ -147,6 +160,40 @@ class JobListSerializer(DefaultSerializer):
             "duration",
             "dispatch_mode",
         ]
+
+    def validate(self, attrs):
+        """
+        Refuse a job its type could not run, while it is still being created.
+
+        A missing setting is otherwise found minutes later by the worker, which leaves a
+        failed job in the list and a person wondering what they got wrong. Only creation is
+        checked: an existing job's type cannot be changed.
+        """
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            return attrs
+
+        job_type_key = attrs.get("job_type_key") or MLJob.key
+        job_type = get_job_type_by_key(job_type_key)
+        if not job_type:
+            raise serializers.ValidationError({"job_type_key": f"Unknown job type '{job_type_key}'."})
+        # ``user_creatable`` is not enforced here: several types the platform creates as a
+        # side effect are also posted directly by existing clients. It says which types a
+        # job form should offer as a choice, which is the UI's question, not the API's.
+
+        missing_fields = [name for name in job_type.required_fields if not attrs.get(name)]
+        if missing_fields:
+            raise serializers.ValidationError(
+                {f"{name}_id": f"A {job_type.name} job needs this." for name in missing_fields}
+            )
+
+        params = attrs.get("params") or {}
+        missing_params = [name for name in job_type.required_params if not params.get(name)]
+        if missing_params:
+            raise serializers.ValidationError(
+                {"params": f"A {job_type.name} job needs {', '.join(missing_params)} in its params."}
+            )
+        return attrs
 
     @extend_schema_field(
         {
