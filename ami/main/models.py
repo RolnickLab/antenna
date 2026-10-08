@@ -696,6 +696,31 @@ class DeploymentManager(models.Manager.from_queryset(ProjectQuerySet)):
     pass
 
 
+def _log_sync_summary(
+    deployment: "Deployment",
+    objects_checked: int,
+    objects_listed_as_images: int,
+    imported: int,
+    failed: int,
+    job: "Job | None" = None,
+) -> None:
+    """Tell the user how many listed objects were skipped, so a folder of unsupported files is not a silent "0"."""
+    job_logger = job.logger if job else logger
+    skipped = objects_checked - objects_listed_as_images
+    job_logger.info(
+        f"Checked {objects_checked} objects: {imported} images imported, {skipped} skipped "
+        f"(not a supported image type, excluded by the filename filter, empty, or a folder), {failed} failed"
+    )
+    if objects_checked > 0 and objects_listed_as_images == 0:
+        msg = (
+            f"None of the {objects_checked} objects found were imported. "
+            f"Supported file types: {', '.join(ami.utils.s3.IMAGE_FILE_EXTENSIONS)}."
+        )
+        if deployment.data_source_regex:
+            msg += f' Filenames must also match the filter "{deployment.data_source_regex}".'
+        job_logger.warning(msg)
+
+
 def _create_source_image_for_sync(
     deployment: "Deployment",
     obj: ami.utils.s3.ObjectTypeDef,
@@ -722,8 +747,10 @@ def _insert_or_update_batch_for_sync(
     total_size: int,
     sql_batch_size=500,
     regroup_events_per_batch=False,
-):
+) -> int:
+    """Write one batch of captures. Returns how many could not be written, which the sync summary counts as failed."""
     logger.info(f"Bulk inserting or updating batch of {len(source_images)} SourceImages")
+    not_written = 0
     try:
         SourceImage.objects.bulk_create(
             source_images,
@@ -734,6 +761,7 @@ def _insert_or_update_batch_for_sync(
         )
     except IntegrityError as e:
         logger.error(f"Error bulk inserting batch of SourceImages: {e}")
+        not_written = len(source_images)
 
     if total_files > (deployment.data_source_total_files or 0):
         deployment.data_source_total_files = total_files
@@ -745,6 +773,7 @@ def _insert_or_update_batch_for_sync(
         group_images_into_events(deployment)
 
     deployment.save(update_calculated_fields=False)
+    return not_written
 
 
 def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
@@ -906,6 +935,9 @@ class Deployment(BaseModel):
         total_size = 0
         total_files = 0
         failed = 0
+        not_written = 0
+        objects_checked = 0
+        objects_listed_as_images = 0
         source_images = []
         django_batch_size = batch_size
         sql_batch_size = 1000
@@ -921,8 +953,10 @@ class Deployment(BaseModel):
             regex_filter=self.data_source_regex,
         ):
             logger.debug(f"Processing file {file_index}: {obj}")
+            objects_checked = file_index
             if not obj:
                 continue
+            objects_listed_as_images += 1
             try:
                 source_image = _create_source_image_for_sync(deployment, obj)
             except Exception:
@@ -956,7 +990,7 @@ class Deployment(BaseModel):
                 source_images.append(source_image)
 
             if len(source_images) >= django_batch_size:
-                _insert_or_update_batch_for_sync(
+                not_written += _insert_or_update_batch_for_sync(
                     deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
                 )
                 source_images = []
@@ -967,13 +1001,22 @@ class Deployment(BaseModel):
 
         if source_images:
             # Insert/update the last batch
-            _insert_or_update_batch_for_sync(
+            not_written += _insert_or_update_batch_for_sync(
                 deployment, source_images, total_files, total_size, sql_batch_size, regroup_events_per_batch
             )
         if job:
             job.logger.info(f"Processed {total_files} files")
             job.progress.update_stage(job.job_type().key, total_files=total_files, failed=failed)
             job.update_progress()
+
+        _log_sync_summary(
+            deployment,
+            objects_checked=objects_checked,
+            objects_listed_as_images=objects_listed_as_images,
+            imported=total_files - not_written,
+            failed=failed + not_written,
+            job=job,
+        )
 
         _compare_totals_for_sync(deployment, total_files)
 
@@ -2204,9 +2247,10 @@ class SourceImage(BaseModel):
         """Join a public base URL with a stored object path.
 
         Shared with callers that have annotated `public_base_url` + `path` onto a
-        queryset row and want to skip loading the SourceImage instance.
+        queryset row and want to skip loading the SourceImage instance. See
+        `ami.utils.s3.join_public_url` for the slash and encoding rules.
         """
-        return urllib.parse.urljoin(base_url, path.lstrip("/"))
+        return ami.utils.s3.join_public_url(base_url, path)
 
     def public_url(self, raise_errors=False) -> str | None:
         """

@@ -63,6 +63,7 @@ from ami.users.roles import (
     Researcher,
     create_roles_for_project,
 )
+from ami.utils import s3
 
 logger = logging.getLogger(__name__)
 
@@ -283,8 +284,6 @@ class TestImageThumbnailViews(TestCase):
         rotate the pixels nor propagate the EXIF Orientation tag to the output.
         """
         from django.core.files.storage import default_storage
-
-        from ami.utils import s3
 
         ORIENTATION_TAG = 274  # EXIF tag id for Orientation
         source = Image.new("RGB", (320, 240), (10, 120, 30))
@@ -3003,6 +3002,55 @@ class TestRolePermissions(APITestCase):
 
 
 class TestDeploymentSyncCreatesEvents(TestCase):
+    def test_sync_reports_skipped_files(self):
+        """A sync must say how many listed objects it skipped, otherwise unsupported files vanish silently."""
+        project, deployment = setup_test_project(reuse=False)
+        assert deployment.data_source is not None
+        config = deployment.data_source.config
+        subdir = f"deployment_{deployment.pk}"
+        frames = populate_bucket(config=config, subdir=subdir, num_nights=1, images_per_day=2, skip_existing=False)
+        s3.write_file(config, f"{subdir}/notes.txt", b"not an image")
+        s3.write_file(config, f"{subdir}/.DS_Store", b"not an image")
+
+        with self.assertLogs("ami.main.models", level="INFO") as logs:
+            deployment.sync_captures()
+
+        expected = f"Checked {len(frames) + 2} objects: {len(frames)} images imported, 2 skipped"
+        self.assertTrue(any(expected in line for line in logs.output), logs.output)
+        self.assertFalse(any("None of the" in line for line in logs.output), logs.output)
+
+    def test_sync_summary_counts_unwritten_batches_as_failed(self):
+        """Captures that the database refused must show up as failed in the summary, not as imported."""
+        project, deployment = setup_test_project(reuse=False)
+        assert deployment.data_source is not None
+        config = deployment.data_source.config
+        subdir = f"deployment_{deployment.pk}"
+        populate_bucket(config=config, subdir=subdir, num_nights=1, images_per_day=2, skip_existing=False)
+
+        with mock.patch.object(SourceImage.objects, "bulk_create", side_effect=IntegrityError("boom")):
+            with self.assertLogs("ami.main.models", level="INFO") as logs:
+                deployment.sync_captures()
+
+        summary = [line for line in logs.output if "Checked" in line and "objects:" in line]
+        self.assertEqual(len(summary), 1, logs.output)
+        self.assertIn("0 images imported", summary[0])
+        self.assertIn("2 failed", summary[0])
+
+    def test_sync_warns_when_every_file_is_skipped(self):
+        """When nothing is importable, the sync must name the supported file types so the user knows why."""
+        project, deployment = setup_test_project(reuse=False)
+        assert deployment.data_source is not None
+        config = deployment.data_source.config
+        s3.write_file(config, f"deployment_{deployment.pk}/IMG_0001.CR2", b"raw photo")
+
+        with self.assertLogs("ami.main.models", level="INFO") as logs:
+            deployment.sync_captures()
+
+        self.assertTrue(any("0 images imported, 1 skipped" in line for line in logs.output), logs.output)
+        warnings = [line for line in logs.output if line.startswith("WARNING") and "None of the 1 objects" in line]
+        self.assertEqual(len(warnings), 1, logs.output)
+        self.assertIn("jpg", warnings[0])
+
     def test_sync_creates_events_and_updates_counts(self):
         # Set up a new project and deployment with test data
         project, deployment = setup_test_project(reuse=False)
