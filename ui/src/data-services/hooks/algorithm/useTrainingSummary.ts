@@ -45,6 +45,12 @@ export const useTrainingSummary = ({
   isFetching: boolean
   error?: unknown
 } => {
+  // A ratio outside (0, 1) is refused by the server, so it is not worth asking.
+  const ratio =
+    testFraction !== undefined && testFraction > 0 && testFraction < 1
+      ? testFraction
+      : undefined
+
   // Settings are sent only when set, so the server answers with the algorithm's own.
   const params: FetchParams = {
     projectId,
@@ -53,7 +59,7 @@ export const useTrainingSummary = ({
       { field: 'occurrence_set', value: occurrenceSet },
       {
         field: 'test_fraction',
-        value: testFraction !== undefined ? `${testFraction}` : undefined,
+        value: ratio !== undefined ? `${ratio}` : undefined,
       },
       {
         field: 'min_per_species',
