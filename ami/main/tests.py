@@ -2406,6 +2406,20 @@ class TestProjectListOverviewCounts(APITestCase):
         self.assertIsNone(empty["last_occurrence_updated_at"])
         self.assertIsNone(empty["last_job_updated_at"])
 
+    def test_taxa_count_follows_each_projects_default_filters(self):
+        """Distinct taxa above the project's score threshold, as on the project summary."""
+        station = Deployment.objects.filter(project=self.busy).first()
+        event = Event.objects.create(
+            project=self.busy, deployment=station, group_by="2026-06-01", start=self.last_capture
+        )
+        moth, beetle, unsure = (Taxon.objects.create(name=f"Overview {name}") for name in ("moth", "beetle", "unsure"))
+        for taxon, score in [(moth, 0.9), (moth, 0.8), (beetle, 0.9), (unsure, 0.1)]:
+            Occurrence.objects.create(
+                project=self.busy, deployment=station, event=event, determination=taxon, determination_score=score
+            )
+        rows = {row["id"]: row for row in self._rows(self.owner)}
+        self.assertEqual((rows[self.busy.pk]["taxa_count"], rows[self.empty.pk]["taxa_count"]), (2, 0))
+
     def test_team_size_is_only_shown_to_those_who_can_see_the_team(self):
         """members_count is null for projects whose team list the user may not open."""
         superuser = User.objects.create_superuser(email="overview-admin@insectai.org", password="unused")
@@ -2424,7 +2438,13 @@ class TestProjectListOverviewCounts(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         row = next(row for row in response.json()["results"] if row["id"] == self.busy.pk)
         self.assertEqual(row["deployments_count"], 2)
-        for field in ["captures_count", "members_count", "last_capture_timestamp", "last_job_updated_at"]:
+        for field in [
+            "captures_count",
+            "members_count",
+            "taxa_count",
+            "last_capture_timestamp",
+            "last_job_updated_at",
+        ]:
             self.assertNotIn(field, row)
 
     def test_sorting_by_a_total_works_without_asking_for_totals(self):
@@ -2456,6 +2476,12 @@ class TestProjectListOverviewCounts(APITestCase):
         tables = ['"main_deployment"', '"main_userprojectmembership"', '"main_sourceimage"', '"jobs_job"']
         rollup_queries = [q["sql"] for q in queries if any(table in q["sql"] for table in tables)]
         self.assertEqual(len(rollup_queries), 1, rollup_queries)
+        # Taxa are counted for the whole page in one grouped query, with each project's taxa filters prefetched.
+        for marker in [
+            'COUNT(DISTINCT "main_occurrence"."determination_id")',
+            '"main_project_default_filters_include_taxa"',
+        ]:
+            self.assertEqual(sum(marker in q["sql"] for q in queries), 1, marker)
 
 
 class TestProjectPermissions(APITestCase):

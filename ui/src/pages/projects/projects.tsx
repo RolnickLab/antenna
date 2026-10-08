@@ -45,10 +45,11 @@ export const Projects = () => {
     deployments: true,
     captures: true,
     occurrences: true,
-    members: true,
+    taxa: true,
+    members: false,
     'last-capture': true,
-    'last-occurrence-update': true,
-    'last-job-update': true,
+    'last-occurrence-update': false,
+    'last-job-update': false,
     'created-at': false,
   })
   const { sort, setSort } = useSort()

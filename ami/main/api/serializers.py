@@ -313,6 +313,8 @@ class ProjectListSerializer(DefaultSerializer):
     last_capture_timestamp = serializers.DateTimeField(read_only=True)
     last_occurrence_updated_at = serializers.DateTimeField(read_only=True)
     last_job_updated_at = serializers.DateTimeField(read_only=True)
+    # Set on the page by add_taxa_counts(); Project.taxa_count() counts something else.
+    taxa_count = serializers.IntegerField(read_only=True, source="observed_taxa_count")
 
     class Meta:
         model = Project
@@ -326,9 +328,9 @@ class ProjectListSerializer(DefaultSerializer):
             "image",
             "draft",
         ]
-        # Annotated by ProjectQuerySet.with_overview() when the list asks for them, and left out
-        # of the response otherwise, except deployments_count, which falls back to the model method.
-        fields = base_fields + list(ProjectQuerySet.OVERVIEW_FIELDS)
+        # Added when the list asks for them with ?with_counts, and left out of the response otherwise,
+        # except deployments_count, which falls back to the model method.
+        fields = base_fields + list(ProjectQuerySet.OVERVIEW_FIELDS) + ["taxa_count"]
 
 
 class ProjectSettingsSerializer(DefaultSerializer):

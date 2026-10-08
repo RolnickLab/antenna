@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import functools
 import logging
+import operator
 import textwrap
 import time
 import typing
@@ -232,6 +233,33 @@ def _per_project(queryset: models.QuerySet, aggregate) -> Subquery:
         .annotate(value=aggregate)
         .values("value")[:1]
     )
+
+
+def add_taxa_counts(projects: list["Project"]) -> None:
+    """
+    Set `observed_taxa_count` on each project: its distinct taxa after its own default filters,
+    the number the project summary shows.
+
+    Each project has its own filters, so this is one grouped query over a page of projects
+    rather than an annotation, and the count cannot be sorted on.
+    """
+    from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+    if not projects:
+        return
+    models.prefetch_related_objects(projects, "default_filters_include_taxa", "default_filters_exclude_taxa")
+    in_scope = functools.reduce(
+        operator.or_, (Q(project=project) & build_occurrence_default_filters_q(project) for project in projects)
+    )
+    # The same conditions as OccurrenceQuerySet.unique_taxa().
+    counts = dict(
+        Occurrence.objects.filter(in_scope, determination__isnull=False, event__isnull=False)
+        .values("project")
+        .annotate(taxa=models.Count("determination", distinct=True))
+        .values_list("project", "taxa")
+    )
+    for project in projects:
+        project.observed_taxa_count = counts.get(project.pk, 0)
 
 
 class ProjectQuerySet(BaseQuerySet):

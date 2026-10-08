@@ -89,4 +89,8 @@ export class Project {
   get numOccurrences(): number | undefined {
     return this._project.occurrences_count
   }
+
+  get numTaxa(): number | undefined {
+    return this._project.taxa_count
+  }
 }

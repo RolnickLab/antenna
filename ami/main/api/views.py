@@ -63,6 +63,7 @@ from ..models import (
     Taxon,
     TaxonRank,
     User,
+    add_taxa_counts,
     update_detection_counts,
     verified_taxon_counts,
 )
@@ -208,6 +209,12 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
             qs = qs.prefetch_related(None).with_overview(self.request.user)
         return qs
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == "list" and url_boolean_param(self.request, "with_counts"):
+            add_taxa_counts(page)
+        return page
 
     def get_serializer_class(self):
         """

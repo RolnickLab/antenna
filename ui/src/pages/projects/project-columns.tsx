@@ -20,7 +20,7 @@ const countColumn = ({
 }: {
   id: string
   name: string
-  sortField: string
+  sortField?: string
   value: (item: Project) => number | undefined
 }): TableColumn<Project> => ({
   id,
@@ -73,6 +73,12 @@ export const columns: TableColumn<Project>[] = [
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
     value: (item) => item.numOccurrences,
+  }),
+  // Not sortable: each project counts its taxa with its own default filters.
+  countColumn({
+    id: 'taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
+    value: (item) => item.numTaxa,
   }),
   countColumn({
     id: 'members',
