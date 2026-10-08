@@ -1037,7 +1037,9 @@ class TrainClassifierJob(JobType):
         if not algorithm_key:
             raise ValueError("A train_classifier job needs an 'algorithm_key' in its params.")
 
-        algorithm = Algorithm.objects.filter(key=algorithm_key).first()
+        # A key is shared by every version of an algorithm, and embeddings are stored per
+        # version row, so the newest is chosen rather than whichever row came back first.
+        algorithm = Algorithm.objects.filter(key=algorithm_key).order_by("-version", "-pk").first()
         if not algorithm:
             raise ValueError(f"No algorithm with key '{algorithm_key}'.")
         if not algorithm.trainable:
