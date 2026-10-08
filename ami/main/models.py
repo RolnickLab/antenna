@@ -1991,7 +1991,6 @@ class S3StorageSource(BaseModel):
     def total_files_indexed(self) -> int:
         return self.deployments.aggregate(total_files=models.Sum("data_source_total_files"))["total_files"]
 
-    @functools.cache
     def total_size_indexed(self) -> int:
         return self.deployments.aggregate(total_size=models.Sum("data_source_total_size"))["total_size"]
 
