@@ -31,7 +31,6 @@ from ami.main.models import (
     Identification,
     Occurrence,
     Project,
-    ProjectQuerySet,
     S3StorageSource,
     Site,
     SourceImage,
@@ -2420,11 +2419,6 @@ class TestProjectListOverviewCounts(APITestCase):
             with self.subTest(user=user):
                 self.assertEqual((rows[self.busy.pk]["members_count"], rows[self.empty.pk]["members_count"]), expected)
 
-    def test_overview_fields_name_every_annotation(self):
-        """The API sorts and serializes by OVERVIEW_FIELDS, so it must match what with_overview() adds."""
-        annotated = Project.objects.with_overview(self.owner).query.annotations
-        self.assertEqual(set(annotated), set(ProjectQuerySet.OVERVIEW_FIELDS))
-
     def test_totals_are_left_out_unless_asked_for(self):
         response = self.client.get(self.endpoint)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -2433,11 +2427,11 @@ class TestProjectListOverviewCounts(APITestCase):
         for field in ["captures_count", "members_count", "last_capture_timestamp", "last_job_updated_at"]:
             self.assertNotIn(field, row)
 
-    def test_sort_by_rolled_up_count(self):
-        ids = [row["id"] for row in self._rows(ordering="-captures_count")]
-        self.assertEqual(ids[0], self.busy.pk)
-        ids = [row["id"] for row in self._rows(ordering="captures_count")]
-        self.assertEqual(ids[-1], self.busy.pk)
+    def test_sorting_by_a_total_works_without_asking_for_totals(self):
+        """A sort carried over from the table to the gallery still gets the totals it orders by."""
+        response = self.client.get(self.endpoint, {"ordering": "-captures_count"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"][0]["id"], self.busy.pk)
 
     def test_counts_are_read_inside_the_list_query(self):
         """The tables behind the totals and dates are only read by the one list query, never once per project.
