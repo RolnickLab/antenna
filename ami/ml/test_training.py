@@ -260,7 +260,7 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         self.assertEqual(response.status_code, 403)
 
 
-class TestTheJobRequiresASet(TrainingSetFixture):
+class TestTheJobsOccurrenceSet(TrainingSetFixture):
     def _job(self, **params):
         from ami.jobs.models import Job, TrainClassifierJob
 
@@ -271,13 +271,10 @@ class TestTheJobRequiresASet(TrainingSetFixture):
             params={"algorithm_key": self.algorithm.key, **params},
         )
 
-    def test_a_job_without_a_set_is_refused(self):
+    def test_a_job_without_a_set_learns_from_everything_verified(self):
         from ami.jobs.models import TrainClassifierJob
 
-        with self.assertRaises(ValueError) as caught:
-            TrainClassifierJob.target_occurrence_set(self._job())
-
-        self.assertIn("occurrence_set_id", str(caught.exception))
+        self.assertIsNone(TrainClassifierJob.target_occurrence_set(self._job()))
 
     def test_a_set_from_another_project_is_refused(self):
         from ami.jobs.models import TrainClassifierJob
@@ -297,3 +294,4 @@ class TestTheJobRequiresASet(TrainingSetFixture):
         mine = self.make_set("Mine", [self.make_occurrence(self.taxa[0])])
 
         self.assertEqual(TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=mine.pk)), mine)
+

@@ -17,7 +17,7 @@ from guardian.shortcuts import get_perms
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
-from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
+from ami.main.models import Deployment, OccurrenceSet, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.utils.schemas import OrderedEnum
@@ -1013,7 +1013,7 @@ class TrainClassifierJob(JobType):
 
     name = "Train classifier"
     key = "train_classifier"
-    required_params = ("algorithm_key", "occurrence_set_id")
+    required_params = ("algorithm_key",)
     user_creatable = True
 
     # This job dispatches and then waits for the service to report back, writing nothing to
@@ -1157,19 +1157,21 @@ class TrainClassifierJob(JobType):
             raise ValueError(f"This job's training settings are out of range: {problems}")
 
     @classmethod
-    def target_occurrence_set(cls, job: "Job"):
+    def target_occurrence_set(cls, job: "Job") -> OccurrenceSet | None:
         """
-        The set of occurrences this run learns from.
+        The set of occurrences this run learns from, or None for every verified one.
 
-        Required rather than optional: a set is fixed once created, so a run that names one
-        can be repeated and says for itself what it learned from. Training on whatever
-        happened to be verified that day leaves nothing a later reader can reconstruct.
+        Naming a set is worth doing: a set is fixed once created, so the run can be repeated
+        and says for itself what it learned from. It is not required, because the common case
+        is retraining on everything verified so far, and making someone save a set first to
+        do that is a step with no decision in it.
+
+        The dataset file records which set was used, or that there was none, so a run without
+        one is still legible afterwards.
         """
-        from ami.main.models import OccurrenceSet
-
         occurrence_set_id = (job.params or {}).get("occurrence_set_id")
         if not occurrence_set_id:
-            raise ValueError("A train_classifier job needs an 'occurrence_set_id' in its params.")
+            return None
         # Scoped to the project, since params are set by any member who can create a job.
         occurrence_set = OccurrenceSet.objects.for_project(job.project).filter(pk=occurrence_set_id).first()
         if not occurrence_set:
