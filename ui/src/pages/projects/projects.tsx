@@ -27,7 +27,7 @@ import { ProjectGallery } from './project-gallery'
 import { ProjectsMap } from './projects-map'
 
 // The map shows every project at once rather than a page of them.
-const MAP_LIMIT = 1000
+const MAP_LIMIT = 300
 
 export const TABS = {
   MY_PROJECTS: 'my-projects',
