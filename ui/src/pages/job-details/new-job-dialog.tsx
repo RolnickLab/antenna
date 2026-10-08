@@ -56,8 +56,10 @@ export const NewJobDialog = () => {
                         occurrence_set_id: occurrenceSet
                           ? Number(occurrenceSet)
                           : undefined,
-                        test_fraction: testFraction,
-                        min_per_species: minPerSpecies,
+                        // A field left empty means the algorithm's own setting, so it
+                        // is left out rather than sent as an empty string.
+                        test_fraction: testFraction || undefined,
+                        min_per_species: minPerSpecies || undefined,
                       }
                     : undefined,
                 projectId: projectId as string,
