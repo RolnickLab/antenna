@@ -476,6 +476,10 @@ class JobType:
 class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
+    # The one type a person starts by hand today. A pipeline is not declared required here:
+    # single-capture runs created from a session page carry one, but the API has always
+    # accepted a job without it and failing it at creation would change that.
+    user_creatable = True
 
     @classmethod
     def run(cls, job: "Job"):
