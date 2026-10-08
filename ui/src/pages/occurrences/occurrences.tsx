@@ -110,6 +110,7 @@ export const Occurrences = () => {
             defaultOpen={someActive(
               [
                 'collection',
+                'occurrence_set',
                 'deployment',
                 'deployment__device',
                 'deployment__research_site',
@@ -123,6 +124,7 @@ export const Occurrences = () => {
             <FilterControl field="date_start" />
             <FilterControl field="date_end" />
             <FilterControl field="collection" />
+            <FilterControl field="occurrence_set" />
             <FilterControl field="deployment" />
             <FilterControl field="deployment__device" />
             <FilterControl field="deployment__research_site" />
