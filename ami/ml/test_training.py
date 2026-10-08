@@ -9,6 +9,8 @@ import datetime
 import uuid
 
 from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from ami.main.models import (
     Classification,
@@ -29,6 +31,7 @@ from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import NamedReference
 from ami.ml.training import NotEnoughVerifiedData, build_training_dataset, verified_training_rows
 from ami.users.models import User
+from ami.users.roles import ProjectManager
 
 VECTOR_LENGTH = 8
 
@@ -158,3 +161,100 @@ class TestTheSetDecidesWhatIsLearnedFrom(TrainingSetFixture):
 
         self.assertEqual(dataset["metadata"].dimensions, VECTOR_LENGTH)
 
+
+class TestTheSummaryTheFormShows(TrainingSetFixture):
+    """
+    The numbers the training job form puts in front of someone before they start a run.
+
+    A form that asked for a split ratio without saying how many occurrences it would split
+    would be asking blind, so these cover what changes when the set or the ratio changes.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        ProjectManager.assign_user(self.user, self.project)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.url = reverse("api:training-data-summary")
+
+    def _summary(self, **params):
+        response = self.client.get(
+            self.url,
+            {"project_id": self.project.pk, "algorithm": self.algorithm.key, **params},
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data
+
+    def test_without_a_set_it_counts_every_verified_occurrence(self):
+        for taxon in self.taxa:
+            self.make_occurrence(taxon)
+
+        summary = self._summary()
+
+        self.assertIsNone(summary["occurrence_set"])
+        self.assertEqual(summary["occurrences"], 2)
+        self.assertEqual(summary["rows"], 2)
+
+    def test_a_set_narrows_the_counts_and_is_named_back(self):
+        mine = self.make_set("Mine", [self.make_occurrence(self.taxa[0])])
+        self.make_occurrence(self.taxa[1])
+
+        summary = self._summary(occurrence_set=mine.pk)
+
+        self.assertEqual(summary["occurrence_set"], {"id": mine.pk, "name": "Mine"})
+        self.assertEqual(summary["occurrences"], 1)
+
+    def test_a_set_from_another_project_is_not_counted(self):
+        other = Project.objects.create(name="Someone else", owner=self.user)
+        theirs = OccurrenceSet.objects.create(name="Theirs")
+        theirs.projects.add(other)
+
+        response = self.client.get(
+            self.url,
+            {"project_id": self.project.pk, "algorithm": self.algorithm.key, "occurrence_set": theirs.pk},
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_split_ratio_moves_the_counts(self):
+        for taxon in self.taxa:
+            self.make_occurrence(taxon)
+            self.make_occurrence(taxon)
+
+        everything_held_out = self._summary(test_fraction=0.99)
+
+        self.assertEqual(everything_held_out["test"], everything_held_out["rows"])
+        self.assertEqual(everything_held_out["train"], 0)
+        self.assertEqual(everything_held_out["settings"]["test_fraction"], 0.99)
+
+    def test_a_ratio_no_run_could_use_is_refused(self):
+        response = self.client.get(
+            self.url,
+            {"project_id": self.project.pk, "algorithm": self.algorithm.key, "test_fraction": 1.5},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_species_without_enough_crops_are_reported_as_dropped(self):
+        self.make_occurrence(self.taxa[0])
+        self.make_occurrence(self.taxa[1])
+        self.make_occurrence(self.taxa[1])
+
+        summary = self._summary(min_per_species=2)
+
+        self.assertEqual(summary["classes"], 2)
+        self.assertEqual(summary["trainable_classes"], 1)
+        self.assertEqual(summary["dropped_species"], [self.taxa[0].name])
+
+    def test_someone_who_cannot_retrain_cannot_read_the_training_set(self):
+        """
+        A non-draft project is readable by anyone, so visibility alone would hand every
+        verified label and vector to any account. The permission is the gate.
+        """
+        self.make_occurrence(self.taxa[0])
+        outsider = User.objects.create_user(email="outsider@example.com", password="testpass123")
+        self.client.force_authenticate(user=outsider)
+
+        response = self.client.get(self.url, {"project_id": self.project.pk, "algorithm": self.algorithm.key})
+
+        self.assertEqual(response.status_code, 403)
