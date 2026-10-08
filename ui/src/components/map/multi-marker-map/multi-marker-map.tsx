@@ -17,6 +17,13 @@ import { MarkerPosition } from '../types'
 
 setup()
 
+// Hovering opens a marker's popup. Leaflet toggles the popup on click, and a tap also
+// reports a hover, so a click reopens it after the toggle to leave it open either way.
+const POPUP_EVENT_HANDLERS: L.LeafletEventHandlerFnMap = {
+  mouseover: (e) => e.target.openPopup(),
+  click: (e) => setTimeout(() => e.target.openPopup()),
+}
+
 export const MultiMarkerMap = ({
   className,
   markers,
@@ -74,6 +81,7 @@ export const MultiMarkerMap = ({
           key={index}
           position={marker.position}
           interactive={!!marker.popupContent}
+          eventHandlers={marker.popupContent ? POPUP_EVENT_HANDLERS : undefined}
         >
           {marker.popupContent ? (
             <Popup offset={[0, -32]}>{marker.popupContent}</Popup>
