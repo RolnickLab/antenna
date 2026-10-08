@@ -2423,10 +2423,14 @@ class TestProjectListOverviewCounts(APITestCase):
         )
 
     def test_team_size_is_only_shown_to_those_who_can_see_the_team(self):
-        """members_count is null for projects whose team list the user may not open."""
+        """members_count follows the permission to open the team list, whether held through a role or directly."""
         superuser = User.objects.create_superuser(email="overview-admin@insectai.org", password="unused")
+        # Granted the team list on one project without joining it.
+        outsider = User.objects.create_user(email="overview-outsider@insectai.org")
+        assign_perm(Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP, outsider, self.busy)
         for user, expected in [
             (None, (None, None)),
+            (outsider, (2, None)),
             (self.member, (2, None)),
             (self.owner, (2, 1)),
             (superuser, (2, 1)),

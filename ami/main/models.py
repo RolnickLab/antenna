@@ -279,13 +279,24 @@ class ProjectQuerySet(BaseQuerySet):
         Annotate the totals shown in the projects table, named in OVERVIEW_COUNT_FIELDS.
 
         Totals are summed from the cached counts on each deployment, so they are only as fresh as
-        `Deployment.update_calculated_fields()`. `members_count` follows the permission on the team
-        list: it is null unless the user is a member of the project or a superuser.
+        `Deployment.update_calculated_fields()`. `members_count` is null on projects whose team list
+        the user may not open, the same check as `UserProjectMembership.check_permission()`.
         """
-        members_count = Coalesce(_per_project(UserProjectMembership.objects.all(), models.Count("pk")), 0)
-        if not user.is_superuser:
-            is_member = Exists(UserProjectMembership.objects.filter(project=OuterRef("pk"), user_id=user.pk))
-            members_count = models.Case(models.When(is_member, then=members_count), default=None)
+        from guardian.shortcuts import get_objects_for_user
+
+        can_view_team = get_objects_for_user(
+            user,
+            Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP,
+            klass=Project,
+            accept_global_perms=False,
+        )
+        members_count = models.Case(
+            models.When(
+                pk__in=can_view_team.values("pk"),
+                then=Coalesce(_per_project(UserProjectMembership.objects.all(), models.Count("pk")), 0),
+            ),
+            default=None,
+        )
 
         return self.annotate(
             deployments_count=Coalesce(_per_project(Deployment.objects.all(), models.Count("pk")), 0),
