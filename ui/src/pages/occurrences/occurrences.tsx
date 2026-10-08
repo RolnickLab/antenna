@@ -1,4 +1,5 @@
 import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
@@ -33,8 +34,6 @@ import { OccurrenceGallery } from './occurrence-gallery'
 import { OccurrenceStats } from './occurrence-stats'
 import { OccurrencesActions } from './occurrences-actions'
 
-const SIZE_FILTERS = ['size_min_mm', 'size_max_mm', 'size_min', 'size_max']
-
 export const Occurrences = () => {
   const { user } = useUser()
   const navigate = useNavigate()
@@ -60,6 +59,7 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
+  const { project } = useProjectDetails(projectId as string, true)
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -106,16 +106,15 @@ export const Occurrences = () => {
               </>
             )}
             <FilterControl field="verified" />
+            {(project?.hasCalibratedStations ||
+              someActive(['size_min_mm'], activeFilters)) && (
+              <FilterControl field="size_min_mm" />
+            )}
+            {(!project?.hasCalibratedStations ||
+              someActive(['size_min'], activeFilters)) && (
+              <FilterControl field="size_min" />
+            )}
             {user.loggedIn && <FilterControl field="verified_by_me" />}
-          </FilterSection>
-          <FilterSection
-            title={translate(STRING.FIELD_LABEL_SIZE)}
-            defaultOpen={someActive(SIZE_FILTERS, activeFilters)}
-          >
-            <FilterControl field="size_min_mm" />
-            <FilterControl field="size_max_mm" />
-            <FilterControl field="size_min" />
-            <FilterControl field="size_max" />
           </FilterSection>
           <FilterSection
             title={translate(STRING.MORE_FILTERS)}

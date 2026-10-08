@@ -8645,6 +8645,12 @@ class TestOccurrenceSize(APITestCase):
         self.assertIn("relative_length", response.json()["results"][0])
         self.assertIn("length_mm", response.json()["results"][0])
 
+    def test_project_reports_whether_any_station_is_calibrated(self):
+        url = f"/api/v2/projects/{self.project.pk}/"
+        self.assertTrue(self.client.get(url).json()["has_calibrated_stations"])
+        Deployment.objects.filter(project=self.project).update(frame_long_side_mm=None, frame_short_side_mm=None)
+        self.assertFalse(self.client.get(url).json()["has_calibrated_stations"])
+
     def test_calibration_needs_both_sides_and_short_not_longer(self):
         superuser = User.objects.create_superuser(email="size-admin@insectai.org", password="secret")
         self.client.force_authenticate(superuser)

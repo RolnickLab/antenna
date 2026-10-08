@@ -363,6 +363,9 @@ class ProjectSerializer(DefaultSerializer):
     owner = UserNestedSerializer(read_only=True)
     settings = ProjectSettingsSerializer(source="*", required=False)
     is_member = serializers.SerializerMethodField()
+    has_calibrated_stations = serializers.SerializerMethodField(
+        help_text="Whether any station has a calibrated camera view, so occurrence sizes can be shown in mm."
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -374,6 +377,9 @@ class ProjectSerializer(DefaultSerializer):
         if obj.feature_flags:
             return obj.feature_flags.dict()
         return {}
+
+    def get_has_calibrated_stations(self, obj) -> bool:
+        return obj.deployments.filter(frame_long_side_mm__isnull=False).exists()
 
     def get_is_member(self, obj):
         """Check if the current user is a member of this project."""
@@ -401,6 +407,7 @@ class ProjectSerializer(DefaultSerializer):
             "feature_flags",
             "settings",
             "is_member",  # is the current user a member of this project
+            "has_calibrated_stations",
         ]
 
 

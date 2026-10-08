@@ -24,6 +24,10 @@ export class ProjectDetails extends Project {
     return this._project.is_member
   }
 
+  get hasCalibratedStations(): boolean {
+    return !!this._project.has_calibrated_stations
+  }
+
   get settings(): Settings {
     const includeTaxa = this._project.settings.default_filters_include_taxa.map(
       (taxon: any) => ({
