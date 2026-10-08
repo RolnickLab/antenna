@@ -30,6 +30,7 @@ MinimalCategoryMapNestedSerializer = MinimalNestedModelSerializer.create_for_mod
 
 class AlgorithmSerializer(DefaultSerializer):
     category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
+    evaluations = serializers.SerializerMethodField()
 
     class Meta:
         model = Algorithm
@@ -43,11 +44,30 @@ class AlgorithmSerializer(DefaultSerializer):
             "version",
             "version_name",
             "task_type",
+            "evaluations",
             "category_map",
             "category_count",
             "created_at",
             "updated_at",
         ]
+
+    def get_evaluations(self, obj) -> list[dict]:
+        """
+        How this algorithm has scored on each evaluation set. Empty until one is scored.
+
+        Scoped to what the caller may see: an algorithm is shared across the platform but an
+        evaluation set belongs to a project.
+        """
+        from ami.ml import reporting
+
+        # .get(): this serializer is nested inside other responses, which do not always
+        # carry a request. The user is passed as well as the project, because this route has
+        # no project id, and scoping to the global sets alone would hide every score a
+        # project has recorded.
+        request = self.context.get("request")
+        return reporting.latest_evaluations(
+            obj, project=reporting.project_for(request), user=getattr(request, "user", None)
+        )
 
 
 class AlgorithmNestedSerializer(DefaultSerializer):
