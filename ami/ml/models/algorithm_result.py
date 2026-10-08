@@ -64,7 +64,7 @@ class AlgorithmResult(BaseModel):
     ``Classification.algorithm_result`` so the history can show a run with what it changed.
     ``data`` holds the run's own figures, validated against the model for ``kind``
     (ami/ml/results/schemas.py), and ``value`` repeats the one figure lists filter and sort on. The
-    ``extra`` object inside ``data`` is stored, shown and exported only; nothing reads it for
+    ``extra`` object inside ``data`` is stored and returned by the API only; nothing reads it for
     logic, and a value a feature needs becomes a typed field. Every run adds its own result,
     so running a method twice leaves two results on the occurrence, one per job. Write through
     ``AlgorithmResult.objects.record`` or ``record_many``. Tracking and rank roll-ups are the

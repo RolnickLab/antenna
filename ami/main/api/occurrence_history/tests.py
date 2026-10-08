@@ -355,6 +355,12 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         self.assertEqual(detail.status_code, 404)
         self.assertEqual(self.client.get(self.url()).status_code, 200)
 
+    def test_the_list_filters_do_not_hide_the_history(self):
+        """A list filter in the query string names no occurrence, so it must not turn the history into a 404."""
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(f"{self.url()}&event=0&taxon=0&search=nothing-matches")
+        self.assertEqual(response.status_code, 200)
+
     def test_a_result_lists_what_each_created_classification_replaced(self):
         classifier = Algorithm.objects.create(name="Classifier", key="replaced-test-classifier")
         masker = Algorithm.objects.create(name="Masked", key="replaced-test-masker")

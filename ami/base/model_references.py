@@ -72,7 +72,7 @@ def unmapped_reference_types(schemas: typing.Iterable[type[pydantic.BaseModel]])
 
 
 def resolve_model_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[str, int], ModelRef]:
-    """Each ``(type, id)`` as a ``Ref``, reading names with one query per type.
+    """Each ``(type, id)`` as a ``ModelRef``, reading names with one query per type.
 
     An unknown type raises KeyError: a schema declared a reference type no model declares.
     """
