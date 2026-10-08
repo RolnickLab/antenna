@@ -2342,14 +2342,14 @@ class TestProjectListSearch(APITestCase):
 
     endpoint = "/api/v2/projects/"
 
-    def setUp(self) -> None:
-        self.owner = User.objects.create_user(email="search-owner@insectai.org")
-        self.moth_project = Project.objects.create(name="Moths of Quebec", owner=self.owner)
-        self.beetle_project = Project.objects.create(
-            name="Field station", description="Night beetle survey", owner=self.owner
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.owner = User.objects.create_user(email="search-owner@insectai.org")
+        cls.moth_project = Project.objects.create(name="Moths of Quebec", owner=cls.owner)
+        cls.beetle_project = Project.objects.create(
+            name="Field station", description="Night beetle survey", owner=cls.owner
         )
-        self.draft_project = Project.objects.create(name="Draft moths", owner=self.owner, draft=True)
-        return super().setUp()
+        cls.draft_project = Project.objects.create(name="Draft moths", owner=cls.owner, draft=True)
 
     def _search(self, term: str) -> set[int]:
         response = self.client.get(self.endpoint, {"search": term})
