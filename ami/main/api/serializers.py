@@ -26,6 +26,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectSettingsMixin,
@@ -1416,6 +1417,59 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
         data = super().to_representation(instance)
         # Don't return the kwargs if they are empty
         return {key: value for key, value in data.items() if value is not None}
+
+
+class OccurrenceSetSerializer(DefaultSerializer):
+    """A fixed list of occurrences. ``occurrence_ids`` is accepted only when it is created."""
+
+    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True)
+    occurrence_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Occurrence.objects.all(), many=True, write_only=True, allow_empty=False
+    )
+    occurrences_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OccurrenceSet
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "project_id",
+            "occurrence_ids",
+            "occurrences_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_occurrences_count(self, obj) -> int:
+        return getattr(obj, "annotated_occurrences_count", None) or obj.occurrences.count()
+
+    def validate(self, attrs):
+        # Scores recorded against a set were measured on these occurrences, so moving them
+        # would change what those numbers mean. Another set is the way to change the list.
+        if self.instance is not None and "occurrence_ids" in attrs:
+            raise serializers.ValidationError(
+                {"occurrence_ids": "A set's occurrences cannot be changed. Create another set instead."}
+            )
+
+        project = attrs.get("project_id")
+        occurrences = attrs.get("occurrence_ids")
+        if project and occurrences:
+            outside = sorted(o.pk for o in occurrences if o.project_id != project.pk)
+            if outside:
+                raise serializers.ValidationError(
+                    {"occurrence_ids": f"Not occurrences in this project: {outside[:10]}"}
+                )
+        return attrs
+
+    def create(self, validated_data):
+        project = validated_data.pop("project_id")
+        occurrences = validated_data.pop("occurrence_ids")
+        occurrence_set = OccurrenceSet.objects.create(**validated_data)
+        occurrence_set.projects.add(project)
+        occurrence_set.occurrences.set(occurrences)
+        return occurrence_set
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
