@@ -258,3 +258,42 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         response = self.client.get(self.url, {"project_id": self.project.pk, "algorithm": self.algorithm.key})
 
         self.assertEqual(response.status_code, 403)
+
+
+class TestTheJobRequiresASet(TrainingSetFixture):
+    def _job(self, **params):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        return Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key, **params},
+        )
+
+    def test_a_job_without_a_set_is_refused(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        with self.assertRaises(ValueError) as caught:
+            TrainClassifierJob.target_occurrence_set(self._job())
+
+        self.assertIn("occurrence_set_id", str(caught.exception))
+
+    def test_a_set_from_another_project_is_refused(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        other = Project.objects.create(name="Someone else", owner=self.user)
+        theirs = OccurrenceSet.objects.create(name="Theirs")
+        theirs.projects.add(other)
+
+        with self.assertRaises(ValueError) as caught:
+            TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=theirs.pk))
+
+        self.assertIn("in this project", str(caught.exception))
+
+    def test_a_set_in_this_project_is_used(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        mine = self.make_set("Mine", [self.make_occurrence(self.taxa[0])])
+
+        self.assertEqual(TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=mine.pk)), mine)
