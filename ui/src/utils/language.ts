@@ -85,8 +85,12 @@ export enum STRING {
   FIELD_LABEL_ALGORITHM_URI,
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
+  FIELD_LABEL_ALGORITHM,
   FIELD_LABEL_CAPTURE_SET,
+  FIELD_LABEL_JOB_TYPE,
+  FIELD_LABEL_MIN_PER_SPECIES,
   FIELD_LABEL_OCCURRENCE_SET,
+  FIELD_LABEL_TEST_FRACTION,
   FIELD_LABEL_CAPTURE,
   FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_CAPTURES,
@@ -196,6 +200,15 @@ export enum STRING {
   MESSAGE_CONFIGURE_LOCATION,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_OCCURRENCE_SET_IS_FIXED,
+  MESSAGE_MIN_PER_SPECIES,
+  MESSAGE_TEST_FRACTION,
+  MESSAGE_TRAINING_ALGORITHM,
+  MESSAGE_TRAINING_DATA_COUNT,
+  MESSAGE_TRAINING_DATA_EMPTY,
+  MESSAGE_TRAINING_DATA_MISSING_EMBEDDINGS,
+  MESSAGE_TRAINING_OCCURRENCE_SET,
+  JOB_TYPE_ML,
+  JOB_TYPE_TRAIN_CLASSIFIER,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DEFAULT_FILTERS,
   MESSAGE_DEFAULT_PIPELINE,
@@ -457,8 +470,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ALGORITHM_URI]: 'Algorithm source',
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
+  [STRING.FIELD_LABEL_ALGORITHM]: 'Algorithm',
   [STRING.FIELD_LABEL_CAPTURE_SET]: 'Capture set',
+  [STRING.FIELD_LABEL_JOB_TYPE]: 'Job type',
+  [STRING.FIELD_LABEL_MIN_PER_SPECIES]: 'Minimum crops per species',
   [STRING.FIELD_LABEL_OCCURRENCE_SET]: 'Occurrence set',
+  [STRING.FIELD_LABEL_TEST_FRACTION]: 'Held out for testing',
   [STRING.FIELD_LABEL_CAPTURE]: 'Capture',
   [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
@@ -586,6 +603,22 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_SET_FORM_INTRO]:
     'In this form, you will define the logic for your capture set. When the capture set is defined, it can be populated with captures from the table view.',
   [STRING.MESSAGE_CAPTURE_SET_COUNT]: 'This will select {{total}} captures.',
+  [STRING.JOB_TYPE_ML]: 'Process captures',
+  [STRING.JOB_TYPE_TRAIN_CLASSIFIER]: 'Retrain classifier',
+  [STRING.MESSAGE_TRAINING_ALGORITHM]:
+    'The classifier to retrain. Only algorithms a processing service reports as trainable are listed.',
+  [STRING.MESSAGE_TRAINING_OCCURRENCE_SET]:
+    'Leave empty to train on every verified occurrence in this project.',
+  [STRING.MESSAGE_TEST_FRACTION]:
+    'Share of occurrences held back to score the new head. Leave empty to use the algorithm setting.',
+  [STRING.MESSAGE_MIN_PER_SPECIES]:
+    'Species with fewer verified crops than this are left out. Leave empty to use the algorithm setting.',
+  [STRING.MESSAGE_TRAINING_DATA_COUNT]:
+    '{{rows}} verified crops from {{occurrences}} occurrences, covering {{classes}} species. Split {{train}} to train and {{test}} to test.',
+  [STRING.MESSAGE_TRAINING_DATA_EMPTY]:
+    'Nothing to train on yet: no verified crop here has an embedding from this algorithm.',
+  [STRING.MESSAGE_TRAINING_DATA_MISSING_EMBEDDINGS]:
+    '{{total}} verified crops have no embedding from this algorithm and will be left out. Process them again to include them.',
   [STRING.MESSAGE_CAPTURE_SET_EMPTY]: 'This capture set is empty.',
   [STRING.MESSAGE_CAPTURE_SET_TIP]:
     'To define a capture set for all captures, use method "Full" without setting filters.',
