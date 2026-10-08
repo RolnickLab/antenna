@@ -3,6 +3,8 @@ export const API_URL = '/api/v2'
 export const API_ROUTES = {
   ALGORITHM: 'ml/algorithms',
   CAPTURE_SET_CHOICES: 'captures/collections/choices',
+  OCCURRENCE_SETS: 'occurrences/sets',
+  OCCURRENCE_SET_CHOICES: 'occurrences/sets/choices',
   CAPTURE_SETS: 'captures/collections',
   CAPTURES: 'captures',
   CLASSIFICATIONS: 'classifications',
