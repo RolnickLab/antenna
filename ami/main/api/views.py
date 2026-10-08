@@ -216,8 +216,8 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         ):
             # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
             qs = qs.prefetch_related(None).with_overview_counts(self.request.user)
-        if self.action == "list" and url_boolean_param(self.request, "with_center"):
-            qs = qs.with_center()
+        if self.action == "list" and url_boolean_param(self.request, "with_location"):
+            qs = qs.with_location()
         return qs
 
     def paginate_queryset(self, queryset):

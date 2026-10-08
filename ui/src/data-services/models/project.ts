@@ -19,11 +19,11 @@ export class Project {
     return this._project.user_permissions.includes(UserPermission.Delete)
   }
 
-  get center(): MarkerPosition | undefined {
-    const { center_latitude, center_longitude } = this._project
+  get location(): MarkerPosition | undefined {
+    const { location } = this._project
 
-    return center_latitude !== null && center_latitude !== undefined
-      ? new MarkerPosition(center_latitude, center_longitude)
+    return location
+      ? new MarkerPosition(location.latitude, location.longitude)
       : undefined
   }
 

@@ -16,10 +16,10 @@ export const ProjectsMap = ({
   const markers = useMemo(
     () =>
       projects.flatMap((project) =>
-        project.center
+        project.location
           ? [
               {
-                position: project.center,
+                position: project.location,
                 popupContent: <ProjectsMapPopupContent project={project} />,
               },
             ]

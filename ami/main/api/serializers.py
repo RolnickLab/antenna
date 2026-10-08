@@ -5,6 +5,7 @@ from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.fields import SkipField
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
@@ -305,6 +306,19 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
+class ProjectLocationSerializer(serializers.Serializer):
+    """Where a project's stations are, from ProjectQuerySet.with_location(); null when none has coordinates."""
+
+    latitude = serializers.FloatField(source="centroid_latitude")
+    longitude = serializers.FloatField(source="centroid_longitude")
+
+    def get_attribute(self, instance):
+        # Left out of the response unless the list asked for it with ?with_location.
+        if not hasattr(instance, "centroid_latitude"):
+            raise SkipField
+        return instance if instance.centroid_latitude is not None else None
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
     captures_count = serializers.IntegerField(read_only=True)
@@ -315,8 +329,7 @@ class ProjectListSerializer(DefaultSerializer):
     last_job_updated_at = serializers.DateTimeField(read_only=True)
     # Set on the page by add_taxa_counts().
     taxa_observed_count = serializers.IntegerField(read_only=True)
-    center_latitude = serializers.FloatField(read_only=True)
-    center_longitude = serializers.FloatField(read_only=True)
+    location = ProjectLocationSerializer(source="*", read_only=True)
 
     class Meta:
         model = Project
@@ -330,15 +343,15 @@ class ProjectListSerializer(DefaultSerializer):
             "image",
             "draft",
         ]
-        # The list always adds the activity dates. The totals and centres are added when it asks for
-        # them with ?with_counts or ?with_center and left out otherwise, except deployments_count,
+        # The list always adds the activity dates. The totals and location are added when it asks for
+        # them with ?with_counts or ?with_location and left out otherwise, except deployments_count,
         # which falls back to the model method.
         fields = [
             *base_fields,
             *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
             *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
             "taxa_observed_count",
-            *ProjectQuerySet.CENTER_FIELDS,
+            "location",
         ]
 
 
