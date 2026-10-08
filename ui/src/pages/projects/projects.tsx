@@ -51,6 +51,7 @@ export const Projects = () => {
     'last-occurrence-update': false,
     'last-job-update': false,
     'created-at': false,
+    'updated-at': true,
   })
   const { sort, setSort } = useSort()
   const { pagination, setPage } = usePagination({ perPage: 40 })

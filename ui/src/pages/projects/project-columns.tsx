@@ -116,4 +116,10 @@ export const columns: TableColumn<Project>[] = [
     sortField: 'created_at',
     renderCell: (item: Project) => <DateTableCell date={item.createdAt} />,
   },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Project) => <DateTableCell date={item.updatedAt} />,
+  },
 ]
