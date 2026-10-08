@@ -393,3 +393,105 @@ class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
 
     processing_service_name: str
     pipelines: list[PipelineConfigResponse] = []
+
+
+class AlgorithmTrainingConfig(pydantic.BaseModel):
+    """
+    How to retrain an algorithm. Declared by the processing service, editable afterwards.
+
+    Split across two sides on purpose: Antenna reads the dataset settings when it builds
+    the training set, and passes the rest to the service, which owns the fitting.
+    """
+
+    # Dataset settings, used by Antenna.
+    min_per_species: int = pydantic.Field(
+        default=2,
+        ge=1,
+        description="Drop species with fewer verified crops than this. One example cannot be evaluated.",
+    )
+    test_fraction: float = pydantic.Field(
+        default=0.2,
+        gt=0,
+        lt=1,
+        description="Share of occurrences held out for evaluation.",
+    )
+    split_salt: str = pydantic.Field(
+        default="antenna-head-v1",
+        min_length=1,
+        description="Changing this reshuffles the held-out set, which makes old and new heads incomparable.",
+    )
+
+    # Fitting settings, used by the processing service.
+    head_type: str = pydantic.Field(
+        default="linear",
+        min_length=1,
+        description="Shape of the head to fit, e.g. 'linear' or 'mlp1'.",
+        examples=["linear", "mlp1"],
+    )
+    epochs: int = pydantic.Field(default=300, ge=1)
+    learning_rate: float = pydantic.Field(default=0.01, gt=0)
+    weight_decay: float = pydantic.Field(default=1e-4, ge=0)
+    min_improvement: float = pydantic.Field(
+        default=0.0,
+        ge=0,
+        description="A new head must beat the current one by more than this to be worth swapping in.",
+    )
+
+    class Config:
+        extra = "allow"
+
+    @classmethod
+    def for_run(
+        cls,
+        base: "AlgorithmTrainingConfig",
+        overrides: dict | None = None,
+    ) -> "AlgorithmTrainingConfig":
+        """
+        The settings for one run: the algorithm's config with a job's params on top.
+
+        Params reach this straight from the API, so they are checked here rather than read
+        raw at the point of use. The bounds are not housekeeping: a test_fraction of 1.5
+        holds out every occurrence and leaves nothing to train on, and a negative one holds
+        out nothing and then scores the head on the rows it just learned. Both finish
+        looking like a successful run and report a number that means nothing.
+
+        Only keys this config already carries are taken, so job settings such as
+        algorithm_key and taxa_list_id stay out of what is sent to the service. A setting a
+        service declared itself is carried on the base config, so it can be overridden too.
+        """
+        current = base.dict()
+        allowed = set(cls.__fields__) | set(current)
+        taken = {key: value for key, value in (overrides or {}).items() if key in allowed}
+        return cls(**{**current, **taken})
+
+
+class AlgorithmTrainingInfo(pydantic.BaseModel):
+    """
+    What actually happened when this version was trained. Written by the service, read-only.
+
+    Every retrain produces a new algorithm version, so this is the record of where a
+    particular set of weights came from.
+    """
+
+    trained_at: datetime.datetime | None = None
+    dataset_url: str | None = pydantic.Field(default=None, description="The exact training set this was fitted on.")
+    occurrence_set_id: int | None = None
+    occurrence_set_name: str | None = pydantic.Field(
+        default=None,
+        description="Named as well as numbered, so a version still says what it learned from if the set is deleted.",
+    )
+    dataset_rows: int | None = None
+    dataset_classes: int | None = None
+    metrics: dict = pydantic.Field(default_factory=dict, description="Scores on the held-out split.")
+    previous_metrics: dict = pydantic.Field(
+        default_factory=dict, description="What the version it was compared against scored on the same rows."
+    )
+    parent_algorithm_key: str | None = pydantic.Field(
+        default=None, description="The version this one was trained to beat."
+    )
+    job_id: int | None = None
+    warnings: list[str] = pydantic.Field(default_factory=list)
+
+    class Config:
+        extra = "allow"
+
