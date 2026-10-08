@@ -1,3 +1,4 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { DEFAULT_ZOOM } from 'components/map/config'
 import { MultiMarkerMap } from 'components/map/multi-marker-map/multi-marker-map'
 import { Project } from 'data-services/models/project'
@@ -7,9 +8,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
 export const ProjectsMap = ({
+  error,
   isLoading,
   projects = [],
 }: {
+  error?: any
   isLoading: boolean
   projects?: Project[]
 }) => {
@@ -27,6 +30,10 @@ export const ProjectsMap = ({
       ),
     [projects]
   )
+
+  if (error) {
+    return <ErrorState error={error} />
+  }
 
   return (
     <MultiMarkerMap

@@ -169,7 +169,7 @@ export const Projects = () => {
           sortSettings={sort}
         />
       ) : layout === 'map' ? (
-        <ProjectsMap isLoading={isLoading} projects={projects} />
+        <ProjectsMap error={error} isLoading={isLoading} projects={projects} />
       ) : (
         <ProjectGallery
           error={error}
