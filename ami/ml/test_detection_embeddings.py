@@ -19,6 +19,7 @@ from rest_framework.test import APITestCase
 from ami.jobs.models import Job
 from ami.main.models import Classification, Deployment, Detection, Occurrence, SourceImage
 from ami.ml.embeddings.reader import (
+    algorithm_with_most_vectors,
     detections_missing_vectors,
     project_vectors,
     vector_counts_by_algorithm,
@@ -547,6 +548,13 @@ class TestQueryHelpers(TestCase):
             {(self.eight.pk, "embedding"): 5, (self.four.pk, "embedding"): 3},
         )
         self.assertEqual(vector_counts_by_algorithm(pk, key="nothing"), {})
+        self.assertEqual(algorithm_with_most_vectors(self.project), self.eight.pk)
+
+    def test_the_default_algorithm_breaks_ties_by_lowest_id(self):
+        detections = self._detections(2)
+        self._store(detections, self.four, 4)
+        self._store(detections, self.eight, 8)
+        self.assertEqual(algorithm_with_most_vectors(self.project), min(self.four.pk, self.eight.pk))
 
     def test_detections_missing_vectors_keeps_the_callers_scope(self):
         detections = self._fill(4)

@@ -20,13 +20,16 @@ import styles from './occurrences.module.scss'
 export const columns = ({
   projectId,
   showActions,
+  canSortBySimilarity,
 }: {
   projectId: string
   showActions?: boolean
+  canSortBySimilarity?: boolean
 }): TableColumn<Occurrence>[] => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
+    sortField: canSortBySimilarity ? 'visual_similarity' : undefined,
     styles: {
       textAlign: TextAlign.Center,
     },

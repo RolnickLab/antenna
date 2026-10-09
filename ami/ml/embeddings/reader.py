@@ -13,7 +13,7 @@ from collections.abc import Iterable, Iterator
 import numpy as np
 from django.db.models import Count, Exists, OuterRef, QuerySet
 
-from ami.main.models import Detection
+from ami.main.models import Detection, Project
 from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
 
@@ -76,9 +76,9 @@ def project_vectors(
 def vector_counts_by_algorithm(project_id: int, key: str | None = None) -> dict[tuple[int, str], int]:
     """How many vectors each (algorithm id, key) has in a project, in one grouped query.
 
-    Serves "which models have vectors here", for callers that must choose a model to compare. It reads
-    only the (project, algorithm, key, detection) index. ``key`` limits the result to one output name; the
-    result is keyed by pair so nothing is merged across models.
+    Serves "which models have vectors here" (the default model of a similarity sort, and any caller that
+    must choose a model to compare). It reads only the (project, algorithm, key, detection) index. ``key``
+    limits the result to one output name; the result is keyed by pair so nothing is merged across models.
     """
     rows = DetectionEmbedding.objects.filter(project_id=project_id)
     if key is not None:
@@ -100,3 +100,29 @@ def detections_missing_vectors(
     # exclude(), not filter(~Exists(...)): django-cachalot 2.6 does not see the tables inside a
     # negated Exists, so writes to the vector table would not invalidate a cached result.
     return detections.exclude(Exists(has_vector))
+
+
+def representative_embeddings(occurrence_id, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
+    """One occurrence's vectors from one (algorithm, key), its representative detection's first.
+
+    The representative detection is the earliest one that has such a vector, by frame number,
+    then time, then id: the detection whose crop the occurrence list shows, when that crop has
+    a vector. The seed of a similarity sort and every occurrence it ranks both go through this,
+    so they are compared the same way. ``occurrence_id`` may be an ``OuterRef``.
+    """
+    return (
+        DetectionEmbedding.objects.for_algorithm(algorithm_id, key)
+        .filter(detection__occurrence_id=occurrence_id)
+        .order_by("detection__frame_num", "detection__timestamp", "detection_id")
+    )
+
+
+def algorithm_with_most_vectors(project: Project, key: str = DEFAULT_EMBEDDING_KEY) -> int | None:
+    """The algorithm that stored the most vectors under ``key`` in the project, or None when there are none.
+
+    Ties go to the lowest algorithm id.
+    """
+    counts = vector_counts_by_algorithm(project.pk, key)
+    if not counts:
+        return None
+    return min(counts, key=lambda pair: (-counts[pair], pair[0]))[0]

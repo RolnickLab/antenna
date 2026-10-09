@@ -23,6 +23,7 @@ canonical but was undocumented.
 | Permission matrix test | `ami/main/tests.py:1532-1590` | Template: owner / member / other-user tests asserting 200/403 per endpoint action |
 | `update_calculated_fields()` | `ami/base/models.py:165` (usage: `ami/tests/fixtures/main.py:166`) | Refresh cached aggregates after related-data changes / bulk operations |
 | Feature vectors (`DetectionEmbedding`) | `ami/ml/models/embedding.py` (`DetectionEmbeddingQuerySet.store()`), reader in `ami/ml/embeddings/reader.py` | One row per (detection, algorithm, key), written from `DetectionResponse.embeddings` by `create_detection_embeddings()` in `ami/ml/embeddings/writer.py`. Read with `vectors_for_detections(ids, algorithm_id)`; never compare vectors across algorithms. Full guide: `docs/claude/reference/feature-vectors.md` |
+| Similarity sort | `OccurrenceQuerySet.with_visual_similarity()` (usage: `OccurrenceViewSet._order_by_visual_similarity`, `ami/main/api/views.py`) | `?ordering=visual_similarity&similar_to=<id>`: cosine distance to one algorithm's vectors, computed inside a correlated subquery so GROUP BY evaluates it once per occurrence; NULL (no vector) sorts last |
 
 ## Conventions
 

@@ -160,6 +160,7 @@ export enum STRING {
   FIELD_LABEL_SCORE,
   FIELD_LABEL_SESSION,
   FIELD_LABEL_SESSIONS,
+  FIELD_LABEL_SIMILAR_TO,
   FIELD_LABEL_SITE,
   FIELD_LABEL_SIZE,
   FIELD_LABEL_SLUG,
@@ -298,6 +299,7 @@ export enum STRING {
   TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_SCORE,
   TOOLTIP_SESSION,
+  TOOLTIP_SIMILAR_TO,
   TOOLTIP_SITE,
   TOOLTIP_STATS,
   TOOLTIP_STATS_AGREEMENT_ANY_RANK,
@@ -387,6 +389,7 @@ export enum STRING {
   SET_PASSWORD,
   SETTINGS,
   SHOW_DETECTIONS,
+  SHOW_SIMILAR_OCCURRENCES,
   SNAP_TO_DETECTIONS,
   SORT_BY,
   STAGES,
@@ -553,6 +556,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SCORE]: 'Score',
   [STRING.FIELD_LABEL_SESSION]: 'Session',
   [STRING.FIELD_LABEL_SESSIONS]: 'Sessions',
+  [STRING.FIELD_LABEL_SIMILAR_TO]: 'Similar to occurrence',
   [STRING.FIELD_LABEL_SITE]: 'Site',
   [STRING.FIELD_LABEL_SIZE]: 'Size',
   [STRING.FIELD_LABEL_SLUG]: 'Slug',
@@ -756,6 +760,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'This is a model derived prediction score, not a real-world probability. Think of it as a relative metric that will vary based on model calibration and available training data.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
+  [STRING.TOOLTIP_SIMILAR_TO]:
+    'Occurrences are sorted by how similar they look to this occurrence, most similar first. Occurrences without a feature vector come last.',
   [STRING.TOOLTIP_SITE]:
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
   [STRING.TOOLTIP_STATS]:
@@ -853,6 +859,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SET_PASSWORD]: 'Set password',
   [STRING.SETTINGS]: 'Settings',
   [STRING.SHOW_DETECTIONS]: 'Show detections',
+  [STRING.SHOW_SIMILAR_OCCURRENCES]: 'Show similar occurrences',
   [STRING.SNAP_TO_DETECTIONS]: 'Snap to captures with detections',
   [STRING.SORT_BY]: 'Sort by',
   [STRING.STAGES]: 'Stages',
