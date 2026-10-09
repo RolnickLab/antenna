@@ -12,8 +12,6 @@ import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
-import pgvector
-import pgvector.django
 import PIL.Image
 import pydantic
 from django.apps import apps
@@ -3381,31 +3379,6 @@ class OccurrenceQuerySet(BaseQuerySet):
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
-
-    def with_vectors(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
-        """Occurrences with at least one detection that has a feature vector from the algorithm."""
-        from ami.ml.embeddings.reader import representative_embeddings
-
-        return self.filter(Exists(representative_embeddings(OuterRef("pk"), algorithm_id, key).order_by()))
-
-    def with_visual_similarity(self, seed_vector, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
-        """Annotate ``visual_similarity``: the cosine distance from ``seed_vector`` to each occurrence's vector.
-
-        The occurrence's vector is its representative detection's (see
-        ``representative_embeddings``), from one algorithm only: distances between vectors of
-        different algorithms are meaningless. NULL for an occurrence without such a vector, so an
-        ascending ``nulls_last`` ordering puts the most similar first and vector-less ones last.
-        The distance is computed inside the subquery, so the aggregate annotations' GROUP BY
-        evaluates it once per occurrence rather than once per joined detection.
-        """
-        from ami.ml.embeddings.reader import representative_embeddings
-
-        nearest = (
-            representative_embeddings(OuterRef("pk"), algorithm_id, key)
-            .annotate(distance=pgvector.django.CosineDistance("vector", seed_vector))
-            .values("distance")[:1]
-        )
-        return self.annotate(visual_similarity=models.Subquery(nearest))
 
     def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
         """Subquery matching occurrences with any result from the given algorithms —

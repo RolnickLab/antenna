@@ -11,7 +11,6 @@ type FilterType =
   | 'include_unobserved'
   | 'job'
   | 'occurrence'
-  | 'similar_to'
   | 'source_image_collection'
   | 'source_image_single'
   | 'taxa_list_id'

@@ -17,7 +17,6 @@ from django.test.utils import CaptureQueriesContext
 from ami.jobs.models import Job
 from ami.main.models import Classification, Deployment, Detection, SourceImage
 from ami.ml.embeddings.reader import (
-    algorithm_with_most_vectors,
     detections_missing_vectors,
     project_vectors,
     vector_counts_by_algorithm,
@@ -545,13 +544,6 @@ class TestQueryHelpers(TestCase):
             {(self.eight.pk, "embedding"): 5, (self.four.pk, "embedding"): 3},
         )
         self.assertEqual(vector_counts_by_algorithm(pk, key="nothing"), {})
-        self.assertEqual(algorithm_with_most_vectors(self.project), self.eight.pk)
-
-    def test_the_default_algorithm_breaks_ties_by_lowest_id(self):
-        detections = self._detections(2)
-        self._store(detections, self.four, 4)
-        self._store(detections, self.eight, 8)
-        self.assertEqual(algorithm_with_most_vectors(self.project), min(self.four.pk, self.eight.pk))
 
     def test_counts_take_one_query_at_any_size(self):
         counts = []
@@ -559,9 +551,8 @@ class TestQueryHelpers(TestCase):
             self._fill(size)
             with cache_off(), CaptureQueriesContext(connection) as queries:
                 vector_counts_by_algorithm(self.project.pk)
-                algorithm_with_most_vectors(self.project)
             counts.append(len(queries))
-        self.assertEqual(counts, [2, 2])
+        self.assertEqual(counts, [1, 1])
 
     def test_detections_missing_vectors_keeps_the_callers_scope(self):
         detections = self._fill(4)

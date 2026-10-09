@@ -1,7 +1,7 @@
 import collections
 import datetime
 
-from django.db.models import Exists, OuterRef, QuerySet
+from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -13,8 +13,8 @@ from ami.base.permissions import add_m2m_object_permissions
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
-from ami.main.models import DEFAULT_EMBEDDING_KEY, Tag
-from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
+from ami.main.models import Tag
+from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
@@ -1664,15 +1664,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
-    embedding_algorithms = serializers.SerializerMethodField()
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
-
-    def get_embedding_algorithms(self, obj: Occurrence) -> list[dict]:
-        """The algorithms with a feature vector on one of this occurrence's detections, one query."""
-        has_vector = DetectionEmbedding.objects.filter(
-            algorithm_id=OuterRef("pk"), key=DEFAULT_EMBEDDING_KEY, detection__occurrence_id=obj.pk
-        )
-        return list(Algorithm.objects.filter(Exists(has_vector)).order_by("pk").values("id", "name"))
 
     class Meta:
         model = Occurrence
@@ -1680,7 +1672,6 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "determination_id",
             "detections",
             "predictions",
-            "embedding_algorithms",
         ]
         read_only_fields = [
             "determination_score",
