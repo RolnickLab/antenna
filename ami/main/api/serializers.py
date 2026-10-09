@@ -1700,10 +1700,29 @@ class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):
         ]
 
 
+class EventBusiestCaptureSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    timestamp = serializers.DateTimeField()
+    detections_count = serializers.IntegerField()
+
+
+class EventStatsSerializer(serializers.Serializer):
+    """Distribution of detections per capture in a session (see ``Event.stats``)."""
+
+    captures_count = serializers.IntegerField()
+    detections_min_count = serializers.IntegerField(allow_null=True)
+    detections_max_count = serializers.IntegerField(allow_null=True)
+    detections_q1_count = serializers.FloatField(allow_null=True)
+    detections_median_count = serializers.FloatField(allow_null=True)
+    detections_q3_count = serializers.FloatField(allow_null=True)
+    busiest_capture = EventBusiestCaptureSerializer(allow_null=True)
+
+
 class EventSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(
         read_only=True,
     )
+    stats = EventStatsSerializer(read_only=True)
     deployment_id = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Deployment.objects.all(),
