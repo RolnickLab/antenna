@@ -41,7 +41,9 @@ from ami.main.models import (
     Taxon,
     TaxonRank,
     group_images_into_events,
+    update_occurrence_determination,
 )
+from ami.ml.models import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
@@ -8690,3 +8692,97 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
         html = self._get_html("/api/v2/identifications/")
         self._assert_number_input(html, "occurrence")
         self._assert_number_input(html, "taxon")
+
+
+class TestOccurrenceDeterminationRefresh(TestCase):
+    """Pin how ``update_occurrence_determination`` keeps the cached determination
+    fields in step with the best identification or prediction.
+
+    The score must follow the winner even when the winning taxon is unchanged:
+    class masking re-scores a classification under a new algorithm without
+    changing its taxon, and a stale lower score hides the occurrence below the
+    project's score threshold. See #1461.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        taxa = list(Taxon.objects.filter(projects=self.project, rank=TaxonRank.SPECIES.name).order_by("name")[:2])
+        self.taxon_a, self.taxon_b = taxa
+        create_occurrences(deployment=self.deployment, num=1, taxon=self.taxon_a, determination_score=0.38)
+        self.detection = Detection.objects.filter(source_image__deployment=self.deployment).latest("pk")
+        self.occurrence = self.detection.occurrence
+        assert self.occurrence is not None
+        self.assertEqual(self.occurrence.determination, self.taxon_a)
+        self.assertEqual(self.occurrence.determination_score, 0.38)
+        self.masking_algorithm = Algorithm.objects.create(name="Masked classifier", key="masked_classifier_test")
+
+    def _rescore(self, taxon: Taxon, score: float) -> Classification:
+        """Mimic class masking: demote the current terminal classification and add a new
+        terminal one from another algorithm."""
+        self.detection.classifications.update(terminal=False)
+        return self.detection.classifications.create(
+            taxon=taxon,
+            score=score,
+            terminal=True,
+            algorithm=self.masking_algorithm,
+            timestamp=datetime.datetime.now(),
+        )
+
+    def _refresh(self) -> bool:
+        needs_update = update_occurrence_determination(
+            self.occurrence, current_determination=self.occurrence.determination
+        )
+        self.occurrence.refresh_from_db()
+        return needs_update
+
+    def test_score_follows_a_rescored_prediction_with_the_same_taxon(self):
+        """A new best prediction with the same taxon but a different score updates the score."""
+        self._rescore(self.taxon_a, 0.55)
+
+        self.assertTrue(self._refresh())
+        self.assertEqual(self.occurrence.determination, self.taxon_a)
+        self.assertEqual(self.occurrence.determination_score, 0.55)
+
+    def test_taxon_and_score_follow_a_new_best_prediction(self):
+        """A new best prediction with a different taxon updates both fields."""
+        self._rescore(self.taxon_b, 0.55)
+
+        self.assertTrue(self._refresh())
+        self.assertEqual(self.occurrence.determination, self.taxon_b)
+        self.assertEqual(self.occurrence.determination_score, 0.55)
+
+    def test_no_save_when_nothing_changed(self):
+        """When the winner and its score already match, the occurrence is not written."""
+        updated_at = self.occurrence.updated_at
+
+        self.assertFalse(self._refresh())
+        self.assertEqual(self.occurrence.determination, self.taxon_a)
+        self.assertEqual(self.occurrence.determination_score, 0.38)
+        self.assertEqual(self.occurrence.updated_at, updated_at)
+
+    def test_human_identification_wins_over_a_rescored_prediction(self):
+        """A human identification sets the determination and its own score, and a later
+        machine re-score does not overwrite either."""
+        user = User.objects.create_user(email="identifier@insectai.org")  # type: ignore
+        identification = Identification.objects.create(occurrence=self.occurrence, user=user, taxon=self.taxon_b)
+        self.occurrence.refresh_from_db()
+        self.assertEqual(self.occurrence.determination, self.taxon_b)
+        self.assertEqual(self.occurrence.determination_score, identification.score)
+
+        self._rescore(self.taxon_a, 0.99)
+
+        self.assertFalse(self._refresh())
+        self.assertEqual(self.occurrence.determination, self.taxon_b)
+        self.assertEqual(self.occurrence.determination_score, identification.score)
+
+    def test_human_identification_with_the_same_taxon_sets_its_own_score(self):
+        """Confirming the machine's taxon still replaces the machine score with the
+        identification's score, the same as when the human picks a different taxon."""
+        user = User.objects.create_user(email="identifier@insectai.org")  # type: ignore
+        identification = Identification.objects.create(occurrence=self.occurrence, user=user, taxon=self.taxon_a)
+
+        self.occurrence.refresh_from_db()
+        self.assertEqual(self.occurrence.determination, self.taxon_a)
+        self.assertEqual(self.occurrence.determination_score, identification.score)
