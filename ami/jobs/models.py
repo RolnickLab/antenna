@@ -500,6 +500,7 @@ class MLJob(JobType):
 
         if not job.pipeline:
             raise ValueError("No pipeline specified to process images in ML job")
+        job.pipeline.raise_if_embedding_only()
 
         job.progress.update_stage(
             "collect",
