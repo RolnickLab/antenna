@@ -31,6 +31,9 @@ from ami.jobs.serializers import (
     MLJobResultsResponseSerializer,
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
+    TrainingProgressRequestSerializer,
+    TrainingResultRequestSerializer,
+    TrainingResultResponseSerializer,
 )
 from ami.jobs.tasks import (
     HEARTBEAT_THROTTLE_SECONDS,
@@ -614,11 +617,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         return job
 
     @extend_schema(
-        request=MLJobResultsRequestSerializer,
-        responses={200: MLJobResultsResponseSerializer},
-        parameters=[project_id_doc_param],
+        request=TrainingResultRequestSerializer,
+        responses={200: TrainingResultResponseSerializer},
     )
-    @extend_schema(exclude=True)
     @action(
         detail=True,
         methods=["post"],
@@ -633,8 +634,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         Receive the outcome of a retraining run from a processing service.
 
-        Training can outlast the request that started it, so the service reports back here
-        instead of holding the connection open.
+        Training outlasts the request that started it, so this is the one way a result
+        comes back. A service that also answers its caller inline is acknowledged and that
+        body ignored, so there is a single shape to read.
         """
         from ami.jobs.models import TrainClassifierJob
 
@@ -644,14 +646,27 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError(f"Job #{job.pk} is not a training job.")
 
         if job.status in JobState.final_states():
-            # The service answered inline and the result is already recorded, or a retry
-            # arrived late. Either way the first answer stands.
+            # A retry of a callback that already landed. The first answer stands.
             logger.info("Ignoring a training result for job %s, which already finished", job.pk)
-            return Response({"status": "already recorded"})
+            return Response({"status": "already recorded", "job_id": job.pk, "algorithm": None})
 
-        TrainClassifierJob.record_result(job=job, payload=request.data)
+        serializer = TrainingResultRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_version = TrainClassifierJob.record_result(
+            job=job,
+            result=serializer.validated_data["result"],
+            dataset=serializer.validated_data["dataset"],
+            dataset_url=serializer.validated_data["dataset_url"],
+        )
         logger.info("Recorded a training result for job %s", job.pk)
-        return Response({"status": "recorded"})
+        return Response(
+            {
+                "status": "recorded",
+                "job_id": job.pk,
+                "algorithm": new_version.key if new_version else None,
+            }
+        )
 
     @extend_schema(exclude=True)
     @action(
@@ -681,17 +696,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             # A ping overtaken by the result. The job is done; its stages say so.
             return Response({"status": "finished"})
 
-        epoch = SingleParamSerializer[int].clean(
-            "epoch",
-            serializers.IntegerField(required=True, min_value=0),
-            request.data,
+        serializer = TrainingProgressRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        TrainClassifierJob.record_progress(
+            job=job,
+            epoch=serializer.validated_data["epoch"],
+            total_epochs=serializer.validated_data["total_epochs"],
         )
-        total_epochs = SingleParamSerializer[int].clean(
-            "total_epochs",
-            serializers.IntegerField(required=False, allow_null=True, default=None, min_value=1),
-            request.data,
-        )
-        TrainClassifierJob.record_progress(job=job, epoch=epoch, total_epochs=total_epochs)
         return Response({"status": "recorded"})
 
     @extend_schema(exclude=True)

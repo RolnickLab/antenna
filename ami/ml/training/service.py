@@ -20,7 +20,7 @@ from django.core.files.storage import default_storage
 from django.urls import reverse
 from django.utils.text import slugify
 
-from ami.ml.schemas import AlgorithmTrainingConfig
+from ami.ml.schemas import AlgorithmTrainingConfig, TrainingRequest
 from ami.utils.requests import create_session, extract_error_message_from_response
 
 if TYPE_CHECKING:
@@ -113,59 +113,51 @@ def absolute_media_url(url: str, base_url: str | None = None) -> str:
     return urljoin(base.rstrip("/") + "/", url.lstrip("/"))
 
 
-def send_training_request(
-    job: "Job", service: "ProcessingService", algorithm: "Algorithm", dataset: dict
-) -> dict | None:
+def send_training_request(job: "Job", service: "ProcessingService", algorithm: "Algorithm", dataset: dict) -> None:
     """
     Ask a processing service to retrain a head.
 
-    Returns the service's result if it answered inline, or None if it accepted the work and
-    will report back later. Raises if the service refused the request.
+    Returns once the service has accepted the work. The result is not read from the
+    response: it arrives at the job's result callback, which is the only way a run that
+    outlasts its request can report. A service that answers inline as well is simply
+    acknowledged. Raises if the service refused the request.
     """
     endpoint = urljoin(service.endpoint_url.rstrip("/") + "/", "train")
     # The same merge the job validated before it built the dataset, so the service is told
     # the settings the training set was actually made under. Reading job.params again here
     # would let the two drift, and would send values nothing had checked.
     config = AlgorithmTrainingConfig.for_run(algorithm.training_config, job.params or {})
-    payload: dict[str, typing.Any] = {
-        "dataset_url": absolute_media_url(dataset["url"]),
-        "algorithm_key": algorithm.key,
-        "job_id": job.pk,
-        "name": f"{algorithm.key}-job-{job.pk}",
-        "min_per_species": config.min_per_species,
+    request = TrainingRequest(
+        dataset_url=absolute_media_url(dataset["url"]),
+        algorithm_key=algorithm.key,
+        job_id=job.pk,
+        name=f"{algorithm.key}-job-{job.pk}",
+        min_per_species=config.min_per_species,
         # The fitting settings the service published, so an admin can tune them in Antenna
         # without redeploying the service.
-        "min_improvement": config.min_improvement,
-        "head_type": config.head_type,
-        "epochs": config.epochs,
-        "learning_rate": config.learning_rate,
-        "weight_decay": config.weight_decay,
-    }
-
-    # Always sent: a service that finishes after the request times out reports back here
-    # instead, which is the only way a real training set can work.
-    payload["callback_url"] = callback_url_for(job)
-    payload["callback_token"] = make_callback_token(job)
-    # The head itself comes back here. A service that does not support the upload simply
-    # ignores this, and the version is registered without a stored copy as before.
-    payload["head_upload_url"] = head_upload_url_for(job)
-    # Optional for the service: without it the training stage simply stays at nought until
-    # the result lands, as it did before.
-    payload["progress_url"] = progress_url_for(job)
+        min_improvement=config.min_improvement,
+        head_type=config.head_type,
+        epochs=config.epochs,
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay,
+        # Always sent: a service that finishes after the request times out reports back
+        # here instead, which is the only way a real training set can work.
+        callback_url=callback_url_for(job),
+        callback_token=make_callback_token(job),
+        # The head itself comes back here. A service that does not support the upload
+        # ignores this, and the version is registered without a stored copy.
+        head_upload_url=head_upload_url_for(job),
+        # Without this the training stage simply stays at nought until the result lands.
+        progress_url=progress_url_for(job),
+    )
 
     job.logger.info(f"Sending training request to {endpoint} for {algorithm.key}")
     session = create_session()
-    response = session.post(endpoint, json=payload, timeout=DISPATCH_TIMEOUT_SECONDS)
+    response = session.post(endpoint, json=request.dict(), timeout=DISPATCH_TIMEOUT_SECONDS)
 
     if not response.ok:
         message = extract_error_message_from_response(response)
         raise ValueError(f"The processing service refused the training request: {message}")
-
-    try:
-        return response.json()
-    except ValueError:
-        # Accepted, but nothing useful in the body. The service will report back.
-        return None
 
 
 HEAD_DIRECTORY = "algorithms"

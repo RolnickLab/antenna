@@ -24,6 +24,10 @@ from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
 
+if typing.TYPE_CHECKING:
+    from ami.ml.models import Algorithm
+    from ami.ml.schemas import TrainingResult
+
 
 class JobDispatchMode(models.TextChoices):
     """
@@ -1214,11 +1218,11 @@ class TrainClassifierJob(JobType):
         job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_EPOCH, 0)
         job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_TOTAL_EPOCHS, config.epochs)
 
-        response = send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
+        send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
 
-        # The service posts its callback before returning from /train, so a fast run is
-        # already finished by the time this line is reached. Writing this copy's progress
-        # would put the training stage back to "started" on a job that is done.
+        # A fast run reports its result before the request it came from returns, so the
+        # job can already be finished here. Writing this copy's progress would put the
+        # training stage back to "started" on a job that is done.
         job.refresh_from_db()
         if job.status in JobState.final_states():
             job.logger.info(f"{service.name} already reported its result.")
@@ -1226,29 +1230,10 @@ class TrainClassifierJob(JobType):
 
         job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
         job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.STARTED, progress=0)
-        job.logger.info(f"Training request accepted by {service.name}. Waiting for it to report back.")
         job.save(update_fields=["progress", "updated_at"])
-
-        if response is None:
-            # The service accepted the work and will post to the job's training-result
-            # endpoint when it finishes. Leaving the job STARTED is the point: a real
-            # training set outlasts the request that started it.
-            job.logger.info("Waiting for the service to report back.")
-            return
-
-        if response is not None:
-            # Answered inline, which small datasets do. Record it now rather than waiting
-            # for a callback that has already been overtaken.
-            cls.record_result(
-                job=job,
-                payload={
-                    "result": response,
-                    "dataset": dataset["metadata"],
-                    # Kept alongside the metadata so the registered version can point at the
-                    # exact file it was fitted on, not just describe it.
-                    "dataset_url": dataset["url"],
-                },
-            )
+        # Leaving the job STARTED is the point: a real training set outlasts the request
+        # that started it, and the result arrives at the job's callback.
+        job.logger.info(f"Training request accepted by {service.name}. Waiting for it to report back.")
 
     @classmethod
     def record_progress(cls, job: "Job", epoch: int, total_epochs: int | None = None) -> None:
@@ -1295,19 +1280,28 @@ class TrainClassifierJob(JobType):
         job.save(update_fields=["progress", "updated_at"])
 
     @classmethod
-    def record_result(cls, job: "Job", payload: dict) -> None:
-        """Store what the service reported, register the new version, and finish the job."""
-        # A service posts its callback before returning from /train, so a fast run reports
-        # twice: once through the callback and once inline. Without this guard each retrain
-        # registered two algorithm versions. Re-read first, because the inline caller holds
-        # a copy from before the callback landed.
+    def record_result(
+        cls,
+        job: "Job",
+        result: "TrainingResult",
+        dataset: dict | None = None,
+        dataset_url: str | None = None,
+    ) -> "Algorithm | None":
+        """
+        Store what the service reported, register the new version, and finish the job.
+
+        The result arrives one way only: through the callback, parsed at the view. A
+        service that also answers inline is acknowledged and its body ignored, so there is
+        a single shape to read here.
+        """
         job.refresh_from_db(fields=["status", "result"])
         if job.status in JobState.final_states():
+            # A retry of the callback, or a second service reporting on the same job. The
+            # first answer stands; recording this one would register a second version.
             job.logger.info("A training result is already recorded for this job; ignoring a duplicate.")
-            return
+            return None
 
-        result = payload.get("result") or {}
-        job.result = payload
+        job.result = {"result": result.dict(), "dataset": dataset, "dataset_url": dataset_url}
 
         # A result can arrive through the callback on a job whose stages were never set up,
         # for instance after a restart. Make sure the stage exists before reporting into it.
@@ -1318,17 +1312,16 @@ class TrainClassifierJob(JobType):
         if any(stage.key == cls.STAGE_DISPATCH for stage in job.progress.stages):
             job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
 
-        for warning in result.get("warnings", []):
+        for warning in result.warnings:
             job.logger.warning(warning)
 
-        candidate = result.get("candidate_metrics") or {}
-        incumbent = result.get("incumbent_metrics") or {}
-        job.progress.add_stage_param(cls.STAGE_TRAIN, "New head top-1", candidate.get("top1"))
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "New head top-1", result.candidate_metrics.get("top1"))
+        incumbent = result.incumbent_metrics or {}
         job.progress.add_stage_param(cls.STAGE_TRAIN, "Current head top-1", incumbent.get("top1"))
-        job.progress.add_stage_param(cls.STAGE_TRAIN, "Better", result.get("promote"))
-        job.logger.info(result.get("reason", "Training finished."))
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "Better", result.promote)
+        job.logger.info(result.reason or "Training finished.")
 
-        new_version = cls.register_new_version(job=job, payload=payload)
+        new_version = cls.register_new_version(job=job, result=result, dataset=dataset, dataset_url=dataset_url)
         if new_version:
             job.progress.add_stage_param(cls.STAGE_TRAIN, "New version", new_version.key)
             job.logger.info(f"Registered {new_version} as version {new_version.version}")
@@ -1337,9 +1330,16 @@ class TrainClassifierJob(JobType):
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=True)
         job.save()
+        return new_version
 
     @classmethod
-    def register_new_version(cls, job: "Job", payload: dict):
+    def register_new_version(
+        cls,
+        job: "Job",
+        result: "TrainingResult",
+        dataset: dict | None = None,
+        dataset_url: str | None = None,
+    ):
         """
         Record the trained head as a new version of the algorithm it was trained from.
 
@@ -1352,29 +1352,29 @@ class TrainClassifierJob(JobType):
         from ami.ml.models import Algorithm, AlgorithmCategoryMap
         from ami.ml.schemas import AlgorithmTrainingInfo, TrainingDatasetMetadata
 
-        result = payload.get("result") or {}
-        dataset = payload.get("dataset") or {}
-        # The service echoes the dataset's metadata back as JSON, so it arrives as a dict
-        # rather than the model that wrote it. Parsed here so a malformed echo is caught at
-        # the boundary instead of further in.
+        # The service echoes the training set's own metadata, which is where the run's
+        # provenance comes from. Read leniently: a service echoing an older shape should
+        # still have its result recorded, and the only cost is a version that cannot say
+        # which set it learned from.
         metadata = None
-        if dataset.get("metadata"):
+        if dataset:
             try:
-                metadata = TrainingDatasetMetadata.parse_obj(dataset["metadata"])
+                metadata = TrainingDatasetMetadata.parse_obj(dataset)
             except pydantic.ValidationError as e:
                 job.logger.warning(f"The service returned training set metadata Antenna could not read: {e}")
+
         parent_key = (job.params or {}).get("algorithm_key")
         parent = Algorithm.objects.filter(key=parent_key).first()
         if not parent:
             job.logger.warning(f"Cannot register a new version: no algorithm with key '{parent_key}'.")
             return None
 
-        labels = result.get("labels") or []
+        labels = result.labels
         if not labels:
             job.logger.warning("The service returned no class list, so no new version was registered.")
             return None
 
-        trained_at = result.get("trained_at") or ""
+        trained_at = result.trained_at or ""
         stamp = str(trained_at).replace(":", "").replace("-", "").replace(".", "")[:15] or f"job{job.pk}"
         version = (
             Algorithm.objects.filter(name=parent.name).order_by("-version").values_list("version", flat=True).first()
@@ -1386,7 +1386,7 @@ class TrainClassifierJob(JobType):
             data=[{"label": label, "index": i} for i, label in enumerate(labels)],
             version=stamp,
             description=(
-                f"Retrained from {dataset.get('rows', len(labels))} verified crops in "
+                f"Retrained from {metadata.rows if metadata else len(labels)} verified crops in "
                 f"project '{job.project.name}' by job #{job.pk}."
             ),
         )
@@ -1396,7 +1396,7 @@ class TrainClassifierJob(JobType):
             key=f"{parent.key}-v{version}-{stamp}",
             # Where the weights are kept. Empty when the service did not upload them, in
             # which case the head exists only on that service's own disk.
-            uri=result.get("head_url") or "",
+            uri=result.head_url or "",
             version=version,
             version_name=str(trained_at) or stamp,
             task_type=parent.task_type,
@@ -1406,16 +1406,16 @@ class TrainClassifierJob(JobType):
             category_map=category_map,
             training_info=AlgorithmTrainingInfo(
                 trained_at=trained_at or None,
-                dataset_url=payload.get("dataset_url") or dataset.get("url"),
+                dataset_url=dataset_url or (metadata.url if metadata else None),
                 occurrence_set_id=metadata.occurrence_set.id if metadata and metadata.occurrence_set else None,
                 occurrence_set_name=metadata.occurrence_set.name if metadata and metadata.occurrence_set else None,
-                dataset_rows=(result.get("rows") or {}).get("kept"),
+                dataset_rows=result.rows.get("kept"),
                 dataset_classes=len(labels),
-                metrics=result.get("candidate_metrics") or {},
-                previous_metrics=result.get("incumbent_metrics") or {},
+                metrics=result.candidate_metrics,
+                previous_metrics=result.incumbent_metrics or {},
                 parent_algorithm_key=parent.key,
                 job_id=job.pk,
-                warnings=result.get("warnings") or [],
+                warnings=result.warnings,
             ),
         )
 
