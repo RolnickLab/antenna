@@ -1,9 +1,9 @@
 """Record ids stored in JSON, resolved to ``{type, id, name}`` so the UI can show and link them.
 
-A model opts in by declaring ``reference_type`` (and ``reference_name_field``, the attribute shown
-as its name; None shows ``#<id>``). A pydantic schema marks a field that holds such an id with
-``model_reference()``. ``resolve_model_references`` reads the names with one query per type, and the UI maps
-each type to a page in ``ui/src/utils/model-references.ts``.
+A model opts in by declaring ``reference_type`` (and ``reference_name_field``, the field or method
+shown as its name; None shows ``#<id>``). A pydantic schema marks a field that holds such an id, or a
+list of them, with ``model_reference()``. ``resolve_model_references`` reads the names with one query
+per type, and the UI maps each type to a page in ``ui/src/utils/model-references.ts``.
 """
 
 import collections
@@ -25,7 +25,7 @@ class ModelRef:
 
 
 def model_reference(ref_type: str, default: typing.Any = None, **field_options: typing.Any) -> typing.Any:
-    """Declare a pydantic field that holds the id of a record of ``ref_type``.
+    """Declare a pydantic field that holds the id of a record of ``ref_type``, or a list of such ids.
 
     ``field_options`` go to ``pydantic.Field``.
     """
@@ -49,6 +49,15 @@ def field_titles(schema: type[pydantic.BaseModel]) -> dict[str, str | None]:
 def is_record_id(value: typing.Any) -> bool:
     """Whether a stored value can be a primary key: an int that is not a bool."""
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def record_ids(value: typing.Any) -> list[int]:
+    """The record ids a stored value holds: one id, a list of ids, or none for anything else."""
+    if is_record_id(value):
+        return [value]
+    if isinstance(value, list) and all(is_record_id(item) for item in value):
+        return value
+    return []
 
 
 @functools.cache
@@ -82,10 +91,14 @@ def resolve_model_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[t
     resolved: dict[tuple[str, int], ModelRef] = {}
     for ref_type, ids in ids_by_type.items():
         model, name_field = reference_types()[ref_type]
+        rows = model.objects.filter(pk__in=ids)
         if name_field is None:
-            names = {pk: f"#{pk}" for pk in model.objects.filter(pk__in=ids).values_list("pk", flat=True)}
+            names = {pk: f"#{pk}" for pk in rows.values_list("pk", flat=True)}
+        elif callable(getattr(model, name_field)):
+            # A name computed in Python, such as a session's date: load the rows and call it.
+            names = {row.pk: str(getattr(row, name_field)()) for row in rows}
         else:
-            names = dict(model.objects.filter(pk__in=ids).values_list("pk", name_field))
+            names = dict(rows.values_list("pk", name_field))
         for ref_id in ids:
             resolved[(ref_type, ref_id)] = ModelRef(ref_type, ref_id, names.get(ref_id))
     return resolved

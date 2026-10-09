@@ -163,7 +163,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 "id": self.job.pk,
                 "name": self.job.name,
                 # The label is the title the size filter's config schema gives the setting.
-                "config": [{"key": "size_threshold", "label": "Size threshold", "value": 0.01, "ref": None}],
+                "config": [{"key": "size_threshold", "label": "Size threshold", "value": 0.01, "refs": []}],
             },
         )
         self.assertIsNone(result["taxon"])
@@ -257,12 +257,12 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 "key": "taxa_list_id",
                 "label": "Species list",
                 "value": taxa_list.pk,
-                "ref": {"type": "taxa_list", "id": taxa_list.pk, "name": "Kept species"},
+                "refs": [{"type": "taxa_list", "id": taxa_list.pk, "name": "Kept species"}],
             },
         )
         self.assertEqual(config["algorithm_id"]["label"], "Classifier")
         self.assertEqual(
-            config["algorithm_id"]["ref"], {"type": "algorithm", "id": classifier.pk, "name": classifier.name}
+            config["algorithm_id"]["refs"], [{"type": "algorithm", "id": classifier.pk, "name": classifier.name}]
         )
         # The top prediction before masking is the classification the masked one replaced.
         self.assertEqual(result_entry["classifications"][0]["replaced"]["id"], original.pk)

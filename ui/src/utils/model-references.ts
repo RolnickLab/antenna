@@ -21,6 +21,8 @@ const ROUTES: Record<string, (projectId: string, id: string) => string> = {
   job: (projectId, id) => APP_ROUTES.JOB_DETAILS({ projectId, jobId: id }),
   occurrence: (projectId, id) =>
     APP_ROUTES.OCCURRENCE_DETAILS({ projectId, occurrenceId: id }),
+  session: (projectId, id) =>
+    APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: id }),
   taxa_list: (projectId, id) =>
     APP_ROUTES.TAXA_LIST_DETAILS({ projectId, taxaListId: id }),
 }

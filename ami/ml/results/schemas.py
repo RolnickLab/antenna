@@ -33,6 +33,8 @@ class AlgorithmResultData(pydantic.BaseModel):
 
 class DeterminationSnapshot(AlgorithmResultData):
     # The occurrence's determination before and after the run, as taxon ids; equal when it did not move.
+    # A snapshot of the occurrence at run time: later runs change it and merging occurrences moves the
+    # result, so to evaluate a stage, read the classifications it created, not these.
     determination_before_id: int | None = None
     determination_after_id: int | None = None
 

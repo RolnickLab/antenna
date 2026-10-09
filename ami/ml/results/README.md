@@ -57,3 +57,6 @@ validates `data` against the registry, and the API publishes `data` as JSON.
   too. Keep that open: occurrence-only figures go in a subclass such as `DeterminationSnapshot`,
   never in `AlgorithmResultData`, and a result's target is a column, never a key in `data`. The plan
   is in the PR that introduced this table (#1461), under "Looking ahead".
+- **The determination before and after is a snapshot** of the occurrence when the run wrote the
+  result. Later runs change the occurrence and merging occurrences moves the result, so to evaluate
+  a stage, read the classifications it created rather than these two figures.
