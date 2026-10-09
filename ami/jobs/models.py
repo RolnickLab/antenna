@@ -1064,6 +1064,10 @@ class TrainClassifierJob(JobType):
         job.progress.add_stage("Preparing training set", cls.STAGE_PREPARE)
         job.progress.add_stage("Sending to processing service", cls.STAGE_DISPATCH)
         job.progress.add_stage("Training", cls.STAGE_TRAIN)
+        # The work goes to an external service that reports back on its own, which is what
+        # this mode means. Set here rather than in Job.setup(), which reads it off the
+        # pipeline a training job does not have.
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
