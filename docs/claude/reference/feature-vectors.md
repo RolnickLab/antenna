@@ -97,11 +97,34 @@ vectors in this table under that algorithm id. Its length and any index are then
 dimensional layouts for display are derived data that can be recomputed; store them only if a page
 needs them persistently.
 
-## Vectors for other things
+## Adding a sibling table
 
-Capture-level or taxon-level vectors should get sibling tables of the same shape (for example
-`SourceImageEmbedding`, `TaxonEmbedding`), not a polymorphic target column on this table. That
-keeps foreign keys, cascades and indexes exact.
+Capture-level or taxon-level vectors get sibling tables of the same shape (`SourceImageEmbedding`,
+`TaxonEmbedding`), not a polymorphic target column on this table. That keeps foreign keys,
+cascades and indexes exact. Only `DetectionEmbedding` exists today; the shared parts live in
+`ami/ml/models/embedding.py` so a sibling is a small change:
+
+1. Subclass `BaseEmbedding` (algorithm, job, project, key, vector, timestamp, and `save()` that
+   fills the project). Add the target foreign key with `db_index=False`, and implement the
+   `fill_project_ids(embeddings)` classmethod (how a vector finds its project from its target).
+2. Subclass `BaseEmbeddingQuerySet` with `target_field = "<target>"` and use it as the manager.
+   `store()`, `stored_length()` and `for_algorithm()` then work unchanged. The base foreign keys use
+   `related_name="%(class)ss"`; `DetectionEmbedding` overrides the three of them to keep the names
+   it had before the base existed, and a sibling does not need to.
+3. Write the Meta by hand: a unique constraint on (target, algorithm, key), a non-empty `key` check,
+   an index on (project, algorithm, key, target), an index on (algorithm, key, target) for the
+   writer's length lookup, and the partial (job, target) index. Give the indexes explicit short names
+   (the 30 character limit) like `ml_detemb_*`.
+4. The migration must repeat what `makemigrations` does not infer: create the table, then run
+   `ALTER TABLE <table> ALTER COLUMN vector SET STORAGE EXTERNAL`, as `ml/0030` does for detections.
+   Enabling pgvector is already done by `ml/0029`.
+5. Add reader and writer functions next to the detection ones, keyed by algorithm and key like
+   every other reader. The writer stays specific to its target (matching responses to targets is
+   not shared).
+
+Open question: taxa are not project-scoped, so a `TaxonEmbedding` might carry a nullable `project`
+or none at all. The base requires a project, so that table would override the field, or the base
+would need to be relaxed first. Decide this before building it.
 
 ## Nearest-neighbour indexes (HNSW)
 
