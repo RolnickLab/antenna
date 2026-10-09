@@ -20,13 +20,23 @@ and `ami/ml/embeddings/reader.py` (query functions). Introduced in #1462.
 | `job` | The job whose results stored the vector; set to null if the job is deleted. |
 
 Indexes: the unique constraint on (detection, algorithm, key), an index on
-(project, algorithm, key, detection), and an index on (algorithm, key, detection) that serves the writer's
-length lookup (the first row of a pair, ordered by detection).
+(project, algorithm, key, detection), an index on (algorithm, key, detection) that serves the writer's
+length lookup (the first row of a pair, ordered by detection), and a partial index on (job, detection)
+where a job is set, for a job's list of occurrences. The foreign keys have no single-column indexes of
+their own, because these already lead with them.
 
 Because the column has no declared length, models of different lengths share the table (for example
 a 2048-dimension classifier backbone and a 1024-dimension image-text model). Each (algorithm, key)
 keeps one length: the writer reads the length of one existing row of the pair and refuses vectors
 of another length with `EmbeddingDimensionMismatch`. No length is stored on `Algorithm`.
+
+## Which algorithm a vector is stored under
+
+A vector is stored under the algorithm the processing service names for it in the response. A
+classifier that returns its own backbone features therefore stores them under that classifier's
+algorithm row, while a dedicated extractor (for example BioCLIP, task type `embedding`) has its own
+row. To find which models have vectors in a project, use `vector_counts_by_algorithm(project_id)`
+rather than assuming an algorithm.
 
 ## The rule: one (algorithm, key) per query
 
@@ -43,7 +53,7 @@ claiming a query is cheap.
 
 | # | Need | Function | SQL shape | Index |
 |---|---|---|---|---|
-| Q1 | Vectors of one model for some detections (tracking over adjacent captures, retraining on verified detections) | `vectors_for_detections(ids, algorithm_id, key)` | `detection_id = ANY(..) AND algorithm_id = A AND key = K` | unique (detection, algorithm, key) for a few captures' worth; for thousands of ids the planner may prefer (algorithm, key, detection) or a sequential scan, measured at 12-26 ms for 5,000 ids on a 450k-row table |
+| Q1 | Vectors of one model for some detections (tracking over adjacent captures, retraining on verified detections) | `vectors_for_detections(ids, algorithm_id, key)` | `detection_id = ANY(..) AND algorithm_id = A AND key = K` | unique (detection, algorithm, key) for a few captures' worth; for thousands of ids the planner may prefer (algorithm, key, detection) or a sequential scan, measured at 17-19 ms for 5,000 ids on a 450k-row table (a sequential scan; 12 ms when forced onto (algorithm, key, detection)) |
 | Q2 | Occurrences sorted by similarity to one occurrence | `OccurrenceQuerySet.with_visual_similarity()` using `representative_embeddings()` | per occurrence, the representative detection's vector, then cosine distance | (algorithm, key, detection), probed once per occurrence; an exact scan |
 | Q3 | All of one model's vectors in a project (exports, clustering) | `project_vectors(project_id, algorithm_id, key, detection_ids=None, chunk_size=2000)` | `project_id = P AND algorithm_id = A AND key = K AND detection_id > last ORDER BY detection_id LIMIT n` | (project, algorithm, key, detection): rows come out in order, so no sort |
 | Q4 | Which models have vectors in a project, and how many | `vector_counts_by_algorithm(project_id, key=None)`, `algorithm_with_most_vectors(project)` | `GROUP BY algorithm_id, key` within a project | the same index (index-only); when one project holds most of the table the planner may scan the table instead, measured at 36 ms for 359k rows |
