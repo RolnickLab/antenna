@@ -290,6 +290,23 @@ such as `__exit__` arguments and test-loader hooks. One is a real unreachable `r
 `ami/base/serializers.py:97`. Below 80 % confidence the output is dominated by Django and DRF names
 that are used by reflection, so read those findings rather than acting on them.
 
+**New code with no caller in the branch.**
+
+```bash
+base=$(git merge-base origin/main HEAD)
+git diff "$base" -U0 -- '*.py' | grep -oE '^\+\s*(def|class) [A-Za-z_][A-Za-z0-9_]*' | awk '{print $NF}' \
+  | grep -vE '^test_|TestCase$' | sort -u \
+  | while read -r name; do [ "$(git grep -ow "$name" -- '*.py' | wc -l)" -le 1 ] && echo "$name"; done
+```
+
+Run it on a branch before calling it ready, and diff against the merge base rather than
+`origin/main`, which also shows `main`'s newer work as if the branch had reverted it. It lists the
+functions and classes the branch adds that nothing else names. On #1461 the same check found work
+done ahead for other branches (a merge helper, an unused registry accessor, two reference types)
+after six review rounds had not; each reviewed its own round's diff, and none asked whether a new
+name had a caller. Names that Django or pydantic call by reflection, such as validators, also
+appear: read them rather than deleting them.
+
 **Duplicated blocks.**
 
 ```bash

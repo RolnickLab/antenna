@@ -433,7 +433,7 @@ Several people and agent sessions add features here in parallel. Keep half an ey
 - **Comments: the rule, the one reason, and a link** (`See #NNNN` or a doc path). Short, not terse. Write them against `main`, not against round three of the PR: a shouted `NOT` is usually arguing with a version only this branch ever had.
 - **Don't let newest win.** A new feature is another note in the chord: slot it into the existing order, default off or collapsed, rather than at the top of a surface that serves several others.
 - **Is a failure being swallowed?** An `except: pass`, a silent `continue` or an empty `catch` turns a bug into "nothing happens": a delete that fails silently looks like a button that does nothing. Surface the error, or say in one line why ignoring it is safe.
-- **Measure, don't eyeball.** Before calling an area clean, run the cheap scans (largest files, duplicate blocks, dead code) rather than judging from the files you happened to open.
+- **Measure, don't eyeball.** Before calling an area clean, run the cheap scans (largest files, duplicate blocks, dead code, new code with no caller) rather than judging from the files you happened to open.
 - **Leave it cleaner than you found it,** without gold-plating: dead code and stale comments go now; understand something before deleting it; a cleanup big enough to stand alone gets its own PR. Deployment-specific values belong in `config/settings/` via `env(...)` with a default, never hard-coded.
 
 ## Definition of Done — Checklists
