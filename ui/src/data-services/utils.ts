@@ -38,6 +38,9 @@ export const getFetchUrl = ({
   if (params?.withExampleOccurrences) {
     queryParams.with_example_occurrences = String(true)
   }
+  if (params?.withPeakCounts) {
+    queryParams.with_peak_counts = String(true)
+  }
 
   const baseUrl = `${API_URL}/${collection}`
   const queryString = new URLSearchParams(queryParams).toString()

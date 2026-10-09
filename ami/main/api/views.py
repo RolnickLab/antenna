@@ -2091,11 +2091,59 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             verified_counts=verified_counts,
         )
 
-        return self.annotate_example_occurrences(
+        qs = self.annotate_example_occurrences(
             qs,
             project,
             occurrence_filters=direct_filters,
             verified_taxon_ids=set(verified_counts.keys()),
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        return self.annotate_peak_counts(
+            qs,
+            project,
+            occurrence_filters=direct_filters,
+            use_aggregation=use_aggregation,
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+
+    def annotate_peak_counts(
+        self,
+        qs: QuerySet,
+        project: Project,
+        *,
+        occurrence_filters: models.Q,
+        use_aggregation: bool,
+        apply_default_score_filter=True,
+        apply_default_taxa_filter=True,
+    ) -> QuerySet:
+        """Add the ``peak_event`` / ``peak_capture`` annotations (see
+        :meth:`TaxonQuerySet.with_peak_counts`).
+
+        Always on for a single taxon. On the list they cost two more correlated subqueries
+        per row, so they run only when the client asks (``with_peak_counts``) and never
+        under ``?collection=``, where the detections join degrades them to per-row scans.
+        When off, both are annotated NULL so the serialized shape stays stable.
+        """
+        include_peaks = self.action == "retrieve" or (
+            not use_aggregation
+            and SingleParamSerializer[bool].clean(
+                param_name="with_peak_counts",
+                field=serializers.BooleanField(required=False, default=False),
+                data=self.request.query_params,
+            )
+        )
+        if not include_peaks:
+            return qs.annotate(
+                peak_event=models.Value(None, output_field=models.JSONField()),
+                peak_capture=models.Value(None, output_field=models.JSONField()),
+            )
+        return qs.with_peak_counts(
+            project,
+            self.request,
+            occurrence_filters=occurrence_filters,
+            detection_occurrence_filters=self.get_occurrence_filters(project, accessor="occurrence"),
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
         )
