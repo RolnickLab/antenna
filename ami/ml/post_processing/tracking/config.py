@@ -7,9 +7,11 @@ import pydantic
 
 from ami.base.model_references import model_reference
 
+# The defaults were measured by simulation on sessions with ground truth; they suit captures about 20 s apart.
+# See #1469.
 COST_NOTE = (
-    "The default is a starting point that is still being tuned by experiment. "
-    "It suits captures taken about 20 seconds apart."
+    "The defaults were chosen by simulation on captures taken about 20 seconds apart. Check the results "
+    "on projects that capture less often."
 )
 
 
@@ -60,10 +62,13 @@ class TrackingConfig(pydantic.BaseModel):
         ),
     )
     iou_weight: float = pydantic.Field(
-        1.0,
+        2.0,
         title="Overlap weight",
         ge=0,
-        description=("How strongly poor overlap between two boxes raises the cost. 0 ignores overlap. " + COST_NOTE),
+        description=(
+            "How strongly poor overlap between two boxes raises the cost. 0 ignores overlap. The default of 2 "
+            "keeps apart two insects when one leaves and another lands on almost the same spot. " + COST_NOTE
+        ),
     )
     size_weight: float = pydantic.Field(
         1.0,

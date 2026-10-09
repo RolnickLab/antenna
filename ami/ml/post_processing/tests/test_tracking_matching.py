@@ -15,11 +15,11 @@ def _config(**kwargs) -> TrackingConfig:
 
 
 class TestTrackingConfig(SimpleTestCase):
-    def test_defaults_are_the_plain_sum_baseline_with_every_limit_off(self):
+    def test_defaults_weigh_overlap_double_with_every_limit_off(self):
         config = _config()
         self.assertEqual(
             (config.cost_threshold, config.iou_weight, config.size_weight, config.distance_weight),
-            (1.0, 1.0, 1.0, 1.0),
+            (1.0, 2.0, 1.0, 1.0),
         )
         for name in ("min_iou", "min_size_ratio", "max_distance", "max_capture_interval_seconds"):
             self.assertIsNone(getattr(config, name), name)
@@ -55,10 +55,10 @@ class TestTrackingConfig(SimpleTestCase):
 
 
 class TestPairCost(SimpleTestCase):
-    def test_default_cost_is_the_plain_sum_of_the_three_terms(self):
+    def test_default_cost_is_the_weighted_sum_of_the_three_terms(self):
         shifted = [150, 100, 250, 200]
-        # IoU with the +1 pixel convention: overlap 51x101, union 2*101*101 - 51*101.
-        expected = (1 - 51 * 101 / (2 * 101 * 101 - 51 * 101)) + 0.0 + 50 / DIAG
+        # IoU with the +1 pixel convention: overlap 51x101, union 2*101*101 - 51*101. Overlap counts double.
+        expected = 2 * (1 - 51 * 101 / (2 * 101 * 101 - 51 * 101)) + 0.0 + 50 / DIAG
         self.assertAlmostEqual(pair_cost(BOX, shifted, DIAG, _config()), expected)
 
     def test_identical_boxes_cost_nothing(self):
@@ -68,7 +68,7 @@ class TestPairCost(SimpleTestCase):
         shifted = [150, 100, 250, 200]
         base = pair_cost(BOX, shifted, DIAG, _config())
         no_overlap_term = pair_cost(BOX, shifted, DIAG, _config(iou_weight=0))
-        self.assertAlmostEqual(base - no_overlap_term, 1 - 51 * 101 / (2 * 101 * 101 - 51 * 101))
+        self.assertAlmostEqual(base - no_overlap_term, 2 * (1 - 51 * 101 / (2 * 101 * 101 - 51 * 101)))
         self.assertAlmostEqual(pair_cost(BOX, shifted, DIAG, _config(distance_weight=2)), base + 50 / DIAG)
         smaller = [100, 100, 150, 150]
         self.assertAlmostEqual(
