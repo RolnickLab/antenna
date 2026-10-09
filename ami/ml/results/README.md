@@ -7,8 +7,8 @@ write them today. The determination never reads them; it still comes only from i
 classifications. The occurrence history (`ami/main/api/occurrence_history/`,
 `GET /occurrences/{id}/history/`) shows each result with the classifications its run created.
 
-Processing services cannot write results: their contract (`ami/ml/schemas.py`) has no place for them
-and must not name occurrences, which Antenna creates. Classifications and feature vectors keep their
+Processing services cannot write results yet: their contract (`ami/ml/schemas.py`) has no place for
+them and must not name occurrences, which Antenna creates. Classifications and feature vectors keep their
 own tables, with the same algorithm and job provenance.
 
 ## Adding a kind
@@ -50,7 +50,10 @@ validates `data` against the registry, and the API publishes `data` as JSON.
 - **Demote only what the run replaced**, set `job` on every row it creates, and never call
   `.distinct()` on a classification queryset that includes the `scores` or `logits` arrays (#1376).
 - **Occurrences without a project** get no result and a warning; the run carries on (#1188).
-- **A result belongs to an occurrence.** Class masking and the size filter work per detection, so a
-  result keeps the figures of one detection per occurrence: the winning one for masking, the smallest
-  flagged one for the size filter. Running these methods before occurrences exist, inside the
-  pipeline, needs a detection target first.
+- **A result belongs to an occurrence, for now.** Class masking and the size filter work per
+  detection, so a result keeps the figures of one detection per occurrence: the winning one for
+  masking, the smallest flagged one for the size filter. Detections and captures are expected to
+  become targets of this table, and results to come from pipeline stages and processing services
+  too. Keep that open: occurrence-only figures go in a subclass such as `DeterminationSnapshot`,
+  never in `AlgorithmResultData`, and a result's target is a column, never a key in `data`. The plan
+  is in the PR that introduced this table (#1461), under "Looking ahead".

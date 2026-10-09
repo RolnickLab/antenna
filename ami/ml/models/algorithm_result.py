@@ -57,7 +57,10 @@ class AlgorithmResultQuerySet(BaseQuerySet):
 
 @typing.final
 class AlgorithmResult(BaseModel):
-    """What a post-processing run decided about one occurrence, with the figures only that run knew.
+    """What one run of an algorithm decided about one occurrence, with the figures only that run knew.
+
+    Occurrences are the only target today. Detections and captures are expected to become targets
+    of this same table; see ami/ml/results/README.md.
 
     The determination never reads this table. A run that changes an occurrence's taxon does so
     through the ``Classification`` rows it creates, and those rows point back here through
