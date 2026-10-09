@@ -57,14 +57,17 @@ class AlgorithmResultQuerySet(BaseQuerySet):
 
 @typing.final
 class AlgorithmResult(BaseModel):
-    """What a post-processing run decided about one occurrence, with the figures only that run knew.
+    """What one run of an algorithm decided about one occurrence, with the figures only that run knew.
+
+    Occurrences are the only target today. Detections and captures are expected to become targets
+    of this same table; see ami/ml/results/README.md.
 
     The determination never reads this table. A run that changes an occurrence's taxon does so
     through the ``Classification`` rows it creates, and those rows point back here through
     ``Classification.algorithm_result`` so the history can show a run with what it changed.
     ``data`` holds the run's own figures, validated against the model for ``kind``
     (ami/ml/results/schemas.py), and ``value`` repeats the one figure lists filter and sort on. The
-    ``extra`` object inside ``data`` is stored, shown and exported only; nothing reads it for
+    ``extra`` object inside ``data`` is stored and returned by the API only; nothing reads it for
     logic, and a value a feature needs becomes a typed field. Every run adds its own result,
     so running a method twice leaves two results on the occurrence, one per job. Write through
     ``AlgorithmResult.objects.record`` or ``record_many``. Rank roll-ups are the next kind

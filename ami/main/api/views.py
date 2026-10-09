@@ -1583,14 +1583,20 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(parameters=[project_id_doc_param], responses=OCCURRENCE_HISTORY_ENTRY_SCHEMA)
-    @action(detail=True, methods=["get"], name="history", pagination_class=None)
+    @extend_schema(
+        operation_id="occurrences_history_retrieve",
+        parameters=[project_id_doc_param],
+        filters=False,
+        responses=OCCURRENCE_HISTORY_ENTRY_SCHEMA,
+    )
+    @action(detail=True, methods=["get"], name="history", pagination_class=None, filter_backends=[])
     def history(self, request: Request, pk=None) -> Response:
         """Everything that happened to this occurrence, newest first.
 
         Merges post-processing results with the classifications they created, identifications
-        and predictions into one list. Available to members of the occurrence's project, including
+        and predictions into one list. Available to anyone who can open the occurrence, including
         for an occurrence that the project's default filters hide from lists and the detail view.
+        The list's filters do not apply: the history is for one occurrence, found by its id.
         """
         occurrence = self.get_object()
         entries = occurrence_timeline(occurrence)

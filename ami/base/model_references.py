@@ -3,7 +3,7 @@
 A model opts in by declaring ``reference_type`` (and ``reference_name_field``, the attribute shown
 as its name; None shows ``#<id>``). A pydantic schema marks a field that holds such an id with
 ``model_reference()``. ``resolve_model_references`` reads the names with one query per type, and the UI maps
-each type to a page in ``ui/src/utils/entity-references.ts``.
+each type to a page in ``ui/src/utils/model-references.ts``.
 """
 
 import collections
@@ -72,7 +72,7 @@ def unmapped_reference_types(schemas: typing.Iterable[type[pydantic.BaseModel]])
 
 
 def resolve_model_references(wanted: typing.Iterable[tuple[str, int]]) -> dict[tuple[str, int], ModelRef]:
-    """Each ``(type, id)`` as a ``Ref``, reading names with one query per type.
+    """Each ``(type, id)`` as a ``ModelRef``, reading names with one query per type.
 
     An unknown type raises KeyError: a schema declared a reference type no model declares.
     """

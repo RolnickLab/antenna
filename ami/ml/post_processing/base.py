@@ -29,7 +29,7 @@ class BasePostProcessingTask(abc.ABC):
     name: str
     config_schema: type[pydantic.BaseModel]
     # The result data models (ami/ml/results/schemas.py) of the algorithm results the task writes;
-    # empty for a task that writes none. Its settings are declared by ``config_schema``.
+    # empty for a task that writes none. Its config is declared by ``config_schema``.
     result_models: tuple[type[AlgorithmResultData], ...] = ()
 
     def __init_subclass__(cls, **kwargs):

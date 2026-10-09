@@ -20,7 +20,7 @@ class AlgorithmResultData(pydantic.BaseModel):
     # The data field the result's ``value`` repeats, for filtering and sorting; None for no value.
     value_field: ClassVar[str | None] = None
 
-    # Stored, shown and exported only, never read for logic; a value a feature needs becomes a typed field.
+    # Stored and returned by the API only, never read for logic; a value a feature needs becomes a typed field.
     extra: dict[str, Any] = {}
 
     @pydantic.validator("extra")

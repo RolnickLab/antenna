@@ -1,4 +1,4 @@
-import { EntityRefValue } from 'components/entity-ref-value/entity-ref-value'
+import { ModelRefValue } from 'components/model-ref-value/model-ref-value'
 import {
   AlgorithmResultEntry,
   getJobConfigField,
@@ -12,7 +12,7 @@ import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence
 import { FilterIcon, LucideIcon, RouteIcon, RulerIcon } from 'lucide-react'
 import { BasicTooltip, IdentificationCard } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
-import { getEntityRefLabel } from 'utils/entity-references'
+import { getModelRefLabel } from 'utils/model-references'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
@@ -45,9 +45,9 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
 
     return translate(STRING.HISTORY_MASKING_SUBTITLE, {
       algorithm: classifier
-        ? getEntityRefLabel(classifier)
+        ? getModelRefLabel(classifier)
         : entry.algorithm?.name ?? translate(STRING.VALUE_NOT_AVAILABLE),
-      list: getEntityRefLabel(refFor('taxa_list_id')),
+      list: getModelRefLabel(refFor('taxa_list_id')),
     })
   }
 
@@ -271,7 +271,7 @@ export const AlgorithmResult = ({
     stats.push({
       label,
       value: ref ? (
-        <EntityRefValue projectId={projectId as string} reference={ref} />
+        <ModelRefValue projectId={projectId as string} reference={ref} />
       ) : (
         formatConfigValue(value)
       ),
@@ -281,7 +281,7 @@ export const AlgorithmResult = ({
     stats.push({
       label: translate(STRING.FIELD_LABEL_ALGORITHM),
       value: (
-        <EntityRefValue
+        <ModelRefValue
           projectId={projectId as string}
           reference={{
             type: 'algorithm',
@@ -296,7 +296,7 @@ export const AlgorithmResult = ({
     stats.push({
       label: translate(STRING.FIELD_LABEL_JOB),
       value: (
-        <EntityRefValue
+        <ModelRefValue
           projectId={projectId as string}
           reference={{ type: 'job', id: entry.job.id, name: entry.job.name }}
         />
