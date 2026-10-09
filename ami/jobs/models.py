@@ -444,6 +444,22 @@ class JobType:
     name: str
     key: str
 
+    # What a job of this type cannot run without. The API refuses to create one that is
+    # missing any of these, so a gap is a 400 when the job is made rather than a failure
+    # minutes later when it runs. ``required_params`` are keys inside ``Job.params``;
+    # ``required_fields`` are fields on the job itself.
+    required_fields: tuple[str, ...] = ()
+    required_params: tuple[str, ...] = ()
+
+    # Whether a person can start one from the UI. The rest are created by the platform:
+    # a data sync, an export, a regroup. Nothing should offer those as a choice.
+    user_creatable: bool = False
+
+    # How long a job of this type may go untouched before the stale-job check treats it as
+    # dead. A type that hands work to an external service and waits to be called back is
+    # silent on purpose, so silence is not evidence that it died; those override this.
+    stalled_after_minutes: int = 10
+
     # @TODO Consider adding custom vocabulary for job types to be used in the UI
     # verb: str = "Sync"
     # present_participle: str = "syncing"
@@ -460,6 +476,10 @@ class JobType:
 class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
+    # The one type a person starts by hand today. A pipeline is not declared required here:
+    # single-capture runs created from a session page carry one, but the API has always
+    # accepted a job without it and failing it at creation would change that.
+    user_creatable = True
 
     @classmethod
     def run(cls, job: "Job"):

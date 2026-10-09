@@ -7,7 +7,7 @@ from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
-from .schemas import PipelineConfigResponse
+from .schemas import AlgorithmTrainingConfig, AlgorithmTrainingInfo, PipelineConfigResponse
 
 
 class AlgorithmCategoryMapSerializer(DefaultSerializer):
@@ -30,6 +30,10 @@ MinimalCategoryMapNestedSerializer = MinimalNestedModelSerializer.create_for_mod
 
 class AlgorithmSerializer(DefaultSerializer):
     category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
+    # Pydantic-backed model fields have to be declared, the way the job serializers do.
+    # A bare name in Meta.fields raises ImproperlyConfigured at import time.
+    training_config = SchemaField(schema=AlgorithmTrainingConfig, required=False)
+    training_info = SchemaField(schema=AlgorithmTrainingInfo, read_only=True)
 
     class Meta:
         model = Algorithm
@@ -43,6 +47,9 @@ class AlgorithmSerializer(DefaultSerializer):
             "version",
             "version_name",
             "task_type",
+            "trainable",
+            "training_config",
+            "training_info",
             "category_map",
             "category_count",
             "created_at",
@@ -168,3 +175,4 @@ class ProcessingServiceSerializer(DefaultSerializer):
 class PipelineRegistrationSerializer(serializers.Serializer):
     processing_service_name = serializers.CharField()
     pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])
+
