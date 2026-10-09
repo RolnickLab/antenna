@@ -8,7 +8,8 @@ import zlib
 import numpy as np
 from django.db import connection, transaction
 
-from ami.main.models import DEFAULT_EMBEDDING_KEY, Detection
+from ami.main.models import Detection
+from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import DetectionEmbedding, as_half_precision

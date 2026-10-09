@@ -9,7 +9,8 @@ from django.db import models
 from django.utils import timezone
 
 from ami.base.models import BaseModel, BaseQuerySet
-from ami.main.models import DEFAULT_EMBEDDING_KEY, Detection
+from ami.main.models import Detection
+from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 
 # A 2048-d vector is roughly 20 KB of SQL text (estimate), so this keeps each INSERT to a few MB.
 EMBEDDING_BATCH_SIZE = 200

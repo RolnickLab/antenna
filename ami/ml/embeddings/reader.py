@@ -13,7 +13,8 @@ from collections.abc import Iterable, Iterator
 import numpy as np
 from django.db.models import Count, Exists, OuterRef, QuerySet
 
-from ami.main.models import DEFAULT_EMBEDDING_KEY, Detection
+from ami.main.models import Detection
+from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
 
 

@@ -3357,9 +3357,6 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-DEFAULT_EMBEDDING_KEY = "embedding"
-
-
 class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
         """
