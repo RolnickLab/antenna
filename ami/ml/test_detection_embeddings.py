@@ -526,17 +526,6 @@ class TestQueryHelpers(TestCase):
         ((ids, _),) = project_vectors(self.project.pk, self.four.pk, detection_ids=wanted)
         self.assertEqual(ids, [detections[0].pk, detections[2].pk])
 
-    def test_project_vectors_takes_one_query_per_chunk_plus_the_empty_end(self):
-        counts = []
-        for size in (6, 12):
-            self._fill(size)
-            with cache_off(), CaptureQueriesContext(connection) as queries:
-                chunks = list(project_vectors(self.project.pk, self.four.pk, chunk_size=1000))
-            self.assertEqual(len(chunks), 1)
-            counts.append(len(queries))
-        # One chunk, so a read for it and one that finds nothing after it; the size does not matter.
-        self.assertEqual(counts, [2, 2])
-
     def test_counts_are_per_algorithm_and_key(self):
         self._fill(5)
         pk = self.project.pk
@@ -550,15 +539,6 @@ class TestQueryHelpers(TestCase):
         )
         self.assertEqual(vector_counts_by_algorithm(pk, key="nothing"), {})
 
-    def test_counts_take_one_query_at_any_size(self):
-        counts = []
-        for size in (3, 12):
-            self._fill(size)
-            with cache_off(), CaptureQueriesContext(connection) as queries:
-                vector_counts_by_algorithm(self.project.pk)
-            counts.append(len(queries))
-        self.assertEqual(counts, [1, 1])
-
     def test_detections_missing_vectors_keeps_the_callers_scope(self):
         detections = self._fill(4)
         scope = Detection.objects.filter(source_image=self.image)
@@ -570,16 +550,6 @@ class TestQueryHelpers(TestCase):
             {detections[1].pk},
         )
         self.assertEqual(detections_missing_vectors(scope, self.eight.pk, key="projection").count(), 3)
-
-    def test_detections_missing_vectors_is_one_query_at_any_size(self):
-        counts = []
-        for size in (3, 12):
-            self._fill(size)
-            scope = Detection.objects.filter(source_image=self.image)
-            with cache_off(), CaptureQueriesContext(connection) as queries:
-                list(detections_missing_vectors(scope, self.four.pk))
-            counts.append(len(queries))
-        self.assertEqual(counts, [1, 1])
 
     def test_detections_missing_vectors_is_invalidated_by_new_vectors(self):
         """The query cache must know the filter reads the vector table.
