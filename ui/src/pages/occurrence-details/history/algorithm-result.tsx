@@ -92,7 +92,7 @@ const TaxaNamed = ({
   projectId: string
   taxa: TrackingTaxonLabels[]
 }) => (
-  <ul className="space-y-1">
+  <ul className="flex flex-col gap-1">
     {taxa.map((taxon) => (
       <li key={taxon.taxon_id}>
         <ModelRefValue
