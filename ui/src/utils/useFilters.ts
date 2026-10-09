@@ -46,6 +46,13 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     },
   },
   {
+    label: translate(STRING.FIELD_LABEL_OCCURRENCE_SET),
+    field: 'occurrence_set',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_OCCURRENCE_SET),
+    },
+  },
+  {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
     field: 'collection', // This is for viewing occurrences by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
     tooltip: {
