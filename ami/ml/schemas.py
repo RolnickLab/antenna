@@ -473,6 +473,64 @@ class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
 
 
+class TrainingRequest(pydantic.BaseModel):
+    """
+    What Antenna asks a processing service to do, mirroring the service's own TrainRequest.
+
+    Declared rather than assembled as a dict so the two sides of the contract are written
+    down in one place, the way the pipeline request and response already are.
+    """
+
+    dataset_url: str = pydantic.Field(description="Where the service downloads the training set from.")
+    algorithm_key: str = pydantic.Field(description="The head to retrain. Its current weights are the baseline.")
+    job_id: int
+    name: str
+
+    # The settings the training set was built under, plus the ones the service fits with.
+    min_per_species: int
+    min_improvement: float
+    head_type: str
+    epochs: int
+    learning_rate: float
+    weight_decay: float
+
+    # Where the service reports back. The result callback is the only way a run that
+    # outlasts its request can finish, so it is always sent; the other two are optional for
+    # the service and ignored by one that does not support them.
+    callback_url: str
+    callback_token: str
+    head_upload_url: str | None = None
+    progress_url: str | None = None
+
+
+class TrainingResult(pydantic.BaseModel):
+    """
+    What a processing service reports when a run finishes, mirroring its TrainResponse.
+
+    Extra fields are kept: a newer service may report more than this one knows about, and
+    dropping it silently would lose the only record of what a run did.
+    """
+
+    promote: bool = False
+    reason: str = ""
+    warnings: list[str] = pydantic.Field(default_factory=list)
+    labels: list[str] = pydantic.Field(default_factory=list, description="The new head's classes, in order.")
+    rows: dict = pydantic.Field(default_factory=dict, description="How many rows were used, kept and dropped.")
+    counts: dict = pydantic.Field(default_factory=dict)
+    dropped_species: list[str] = pydantic.Field(default_factory=list)
+    classes_restored_from_current_head: int = 0
+    candidate_metrics: dict = pydantic.Field(default_factory=dict, description="The new head, on the held-out rows.")
+    # Null when there was no current head to score, which a service reports rather than
+    # leaving out, so the field has to accept it.
+    incumbent_metrics: dict | None = pydantic.Field(default=None, description="The current head, on the same rows.")
+    saved: dict[str, str] | None = None
+    head_url: str | None = pydantic.Field(default=None, description="Where the uploaded head landed, if it was sent.")
+    trained_at: str | None = None
+
+    class Config:
+        extra = "allow"
+
+
 class AlgorithmTrainingInfo(pydantic.BaseModel):
     """
     What actually happened when this version was trained. Written by the service, read-only.
