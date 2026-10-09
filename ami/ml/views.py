@@ -11,9 +11,9 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ami.base.permissions import ProjectPipelineConfigPermission
-from ami.base.views import ProjectMixin
-from ami.main.api.schemas import project_id_doc_param
+from ami.base.permissions import IsActiveStaffOrPublicManagerOrReadOnly, ProjectPipelineConfigPermission
+from ami.base.views import ProjectMixin, get_active_project
+from ami.main.api.schemas import include_public_doc_param, project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
@@ -168,16 +168,30 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
+    permission_classes = [IsActiveStaffOrPublicManagerOrReadOnly]
     require_project = True
+
+    def get_active_project(self) -> Project | None:
+        """
+        project_id is optional for status/register_pipelines — the frontend calls both
+        without one — but stays required for every other action, as declared above.
+        """
+        if self.action in ("status", "register_pipelines"):
+            return get_active_project(request=self.request, kwargs=self.kwargs, required=False)
+        return super().get_active_project()
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
         project = self.get_active_project()
-        if project:
-            qs = qs.filter(projects=project)
-        return qs
+        if not project:
+            return qs
+        # include_public governs the list action's default scope, not whether a
+        # specific row is reachable: a detail/update/delete/status/register_pipelines
+        # on a public service must still resolve it even under ?include_public=false.
+        include_public = self.get_include_public() if self.action == "list" else True
+        return qs.for_project(project, include_public=include_public)
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param, include_public_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -214,13 +228,13 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         """
         Test the connection to the processing service.
         """
-        processing_service = ProcessingService.objects.get(pk=pk)
+        processing_service = self.get_object()
         response = processing_service.get_status()
         return Response(response.dict())
 
     @action(detail=True, methods=["post"])
     def register_pipelines(self, request: Request, pk=None) -> Response:
-        processing_service = ProcessingService.objects.get(pk=pk)
+        processing_service = self.get_object()
         response = processing_service.create_pipelines()
         processing_service.save()
         return Response(response.dict())

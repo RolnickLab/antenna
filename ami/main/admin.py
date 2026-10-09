@@ -736,7 +736,7 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
 class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
     """Admin panel example for ``TaxaList`` model."""
 
-    list_display = ("name", "taxa_count", "created_at", "updated_at")
+    list_display = ("name", "is_public", "taxa_count", "created_at", "updated_at")
 
     def taxa_count(self, obj) -> int:
         return obj.taxa.count()
@@ -746,7 +746,7 @@ class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
         "projects",
     )
 
-    list_filter = ("projects",)
+    list_filter = ("is_public", "projects")
 
 
 @admin.register(Device)

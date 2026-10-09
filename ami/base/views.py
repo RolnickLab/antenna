@@ -94,3 +94,17 @@ class ProjectMixin:
             raise Http404("Project not found.")
 
         return project
+
+    def get_include_public(self) -> bool:
+        """
+        The ?include_public query param: whether to include public rows alongside
+        a model's own project-scoped ones. Defaults to true; an invalid value
+        raises ValidationError (400) via SingleParamSerializer.
+        """
+        from ami.base.serializers import SingleParamSerializer
+
+        return SingleParamSerializer[bool].clean(
+            param_name="include_public",
+            field=serializers.BooleanField(required=False, default=True),
+            data=self.request.query_params,
+        )

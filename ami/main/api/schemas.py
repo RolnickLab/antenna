@@ -13,3 +13,11 @@ limit_doc_param = OpenApiParameter(
     required=False,
     type=int,
 )
+
+include_public_doc_param = OpenApiParameter(
+    name="include_public",
+    description="Include rows that are public (available to every project), not just the ones "
+    "belonging to this project. Defaults to true.",
+    required=False,
+    type=bool,
+)

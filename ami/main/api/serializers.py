@@ -742,6 +742,7 @@ class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
     taxa_count = serializers.SerializerMethodField()
     projects = serializers.SerializerMethodField()
+    is_public = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = TaxaList
@@ -752,6 +753,7 @@ class TaxaListSerializer(DefaultSerializer):
             "taxa",
             "taxa_count",
             "projects",
+            "is_public",
             "created_at",
             "updated_at",
         ]
@@ -797,11 +799,19 @@ class TaxaListSerializer(DefaultSerializer):
 
     def get_projects(self, obj):
         """
-        Return list of project IDs this taxa list belongs to, sorted for a
-        deterministic response. Reads the `projects` prefetched by
+        Return the ids of this list's linked projects that are visible to the
+        requester, sorted for a deterministic response. A public list can be linked
+        to a draft project it's otherwise not visible in; without this filter, an
+        outsider retrieving the public list would learn that draft project's id even
+        though they can't see the project itself. Reads the `projects` prefetched by
         TaxaListViewSet.get_queryset instead of querying per row.
         """
-        return sorted(project.pk for project in obj.projects.all())
+        request = self.context["request"]
+        if not hasattr(self, "_visible_project_ids"):
+            self._visible_project_ids = set(
+                Project.objects.visible_for_user(request.user).values_list("id", flat=True)
+            )
+        return sorted(project.pk for project in obj.projects.all() if project.pk in self._visible_project_ids)
 
 
 class TaxaListTaxonInputSerializer(serializers.Serializer):
