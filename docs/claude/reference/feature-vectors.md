@@ -149,3 +149,6 @@ warning. Keep full precision somewhere else only where that difference matters, 
 Vectors are deleted with their detection or algorithm. Deleting a job keeps its vectors (the job
 reference becomes null). Saving identical results twice changes nothing; a new vector for the same
 (detection, algorithm, key) replaces the old one in place.
+The replacing job is recorded on the row, so a job that changed a vector is found by the
+"created or updated by job" filter. A vector that is identical on a re-run is not written, and keeps the
+job that first stored it.

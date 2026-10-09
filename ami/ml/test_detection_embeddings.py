@@ -182,8 +182,9 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
 
     def test_each_row_records_the_job_that_saved_it_and_outlives_the_job(self):
         image = self._image()
-        first, second = (
-            Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline) for n in (1, 2)
+        first, second, third = (
+            Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline)
+            for n in (1, 2, 3)
         )
         self._save(self._moth(image, _embedding_payload(self.LOW)), job_id=first.pk)
         self._save(self._moth(image, _embedding_payload(self.HIGH)), job_id=second.pk)
@@ -191,6 +192,10 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         detection = Detection.objects.get(source_image=image)
         embedding = DetectionEmbedding.objects.get(detection=detection)
         self.assertEqual(embedding.job_id, second.pk, "A replaced vector records the job that replaced it")
+
+        self._save(self._moth(image, _embedding_payload(self.HIGH)), job_id=third.pk)
+        embedding.refresh_from_db()
+        self.assertEqual(embedding.job_id, second.pk, "An unchanged vector keeps the job that stored it")
 
         second.delete()
         embedding.refresh_from_db()

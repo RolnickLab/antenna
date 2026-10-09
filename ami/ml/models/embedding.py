@@ -119,6 +119,7 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
                 to_write,
                 batch_size=EMBEDDING_BATCH_SIZE,
                 update_conflicts=True,
+                # A changed vector takes the new job, so "updated by job" finds it; unchanged ones are not written.
                 update_fields=["vector", "job", "timestamp", "updated_at"],
                 unique_fields=[self.target_field, "algorithm", "key"],
             )
