@@ -98,6 +98,7 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
             return 0, 0
         target_id = f"{self.target_field}_id"
         self.model.fill_project_ids(embeddings)
+        # Three __in filters select a cross product of ids, algorithms and keys, but it is bounded by the batch.
         stored = {
             (target, algorithm_id, key): vector
             for target, algorithm_id, key, vector in self.filter(
