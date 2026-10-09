@@ -386,9 +386,8 @@ CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL or "rpc://"
 # full ML result JSON as args. Measured on demo (298 keys, 2026-03-26):
 #   Median: 5 KB, Avg: 191 KB, Max: 2.1 MB per key
 #   Distribution: 29 <1KB, 195 1-10KB, 52 100KB-1MB, 22 >1MB
-# With thousands of tasks per job, this adds significant memory pressure.
-# TODO: consider disabling this or setting ignore_result=True on bulk tasks
-# like process_nats_pipeline_result to reduce result backend load. See #1189.
+# With thousands of tasks per job, this adds significant memory pressure, so
+# process_nats_pipeline_result sets ignore_result=True. See #1189.
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
 # https://github.com/celery/celery/pull/6122
