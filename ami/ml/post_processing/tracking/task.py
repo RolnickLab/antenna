@@ -11,7 +11,6 @@ import time
 import typing
 from collections.abc import Iterator, Sequence
 
-from cachalot.api import cachalot_disabled
 from django.db import connection, transaction
 from django.db.models import Count, Exists, F, OuterRef
 
@@ -24,8 +23,8 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     update_calculated_fields_for_sessions_and_stations,
-    update_occurrence_determination,
 )
+from ami.main.models_future.occurrence_merges import merge_occurrences, refresh_determinations
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -43,8 +42,6 @@ if typing.TYPE_CHECKING:
 # Progress is saved after this many matched transitions, or after this many seconds, whichever comes first.
 PROGRESS_EVERY_TRANSITIONS = 25
 PROGRESS_EVERY_SECONDS = 5.0
-# Rows per statement when occurrence determinations are written in bulk.
-WRITE_BATCH_SIZE = 1000
 
 Link = tuple[int, int, float]
 
@@ -290,29 +287,6 @@ def _set_detection_column(column: str, values: dict[int, int]) -> None:
         )
 
 
-def _withdraw_duplicate_identifications(occurrence_ids: set[int]) -> list[int]:
-    """Leave each user one active identification per occurrence, the newest, as saving an identification does.
-
-    Identifications moved by a merge skip ``Identification.save``, so a user who identified two of the
-    merged occurrences would otherwise hold two active identifications on the one that is kept.
-    Returns the ids withdrawn.
-    """
-    seen: set[tuple[int, int]] = set()
-    withdraw: list[int] = []
-    for pk, occurrence_id, user_id in (
-        Identification.objects.filter(occurrence_id__in=occurrence_ids, withdrawn=False, user__isnull=False)
-        .order_by("occurrence_id", "user_id", "-created_at", "-pk")
-        .values_list("pk", "occurrence_id", "user_id")
-    ):
-        if (occurrence_id, user_id) in seen:
-            withdraw.append(pk)
-        else:
-            seen.add((occurrence_id, user_id))
-    if withdraw:
-        Identification.objects.filter(pk__in=withdraw).update(withdrawn=True)
-    return withdraw
-
-
 def record_tracking_results(
     groups: Sequence[MergeGroup],
     keepers: dict[int, Occurrence],
@@ -421,50 +395,12 @@ def write_session_plan(
     keepers = Occurrence.objects.select_related("determination").in_bulk(list(keeper_ids))
     determination_before = {pk: keeper.determination_id for pk, keeper in keepers.items()}
 
-    merged: dict[int, list[int]] = collections.defaultdict(list)
-    for pk, keeper_id in sorted(emptied.items()):
-        merged[keeper_id].append(pk)
-
-    # Identifications and results of the emptied occurrences move onto their keepers before the delete,
-    # which would otherwise cascade to them.
-    moved_identifications: dict[int, list[tuple[int, int]]] = collections.defaultdict(list)
-    for pk, occurrence_id in Identification.objects.filter(occurrence_id__in=list(emptied)).values_list(
-        "pk", "occurrence_id"
-    ):
-        moved_identifications[emptied[occurrence_id]].append((pk, occurrence_id))
-    for keeper_id, moved in moved_identifications.items():
-        Identification.objects.filter(pk__in=[pk for pk, _ in moved]).update(occurrence_id=keeper_id)
-    withdrawn: dict[int, list[int]] = collections.defaultdict(list)
-    for pk, occurrence_id in Identification.objects.filter(
-        pk__in=_withdraw_duplicate_identifications(set(moved_identifications))
-    ).values_list("pk", "occurrence_id"):
-        withdrawn[occurrence_id].append(pk)
-
-    # Every keeper and emptied occurrence is in the session being tracked, so all share one project.
-    with_results = set(
-        AlgorithmResult.objects.filter(occurrence_id__in=list(emptied))
-        .values_list("occurrence_id", flat=True)
-        .distinct()
-    )
-    for keeper_id, absorbed in merged.items():
-        if with_results.intersection(absorbed):
-            AlgorithmResult.objects.filter(occurrence_id__in=absorbed).update(occurrence_id=keeper_id)
-    if emptied:
-        Occurrence.objects.filter(pk__in=list(emptied)).delete()
-
-    # The transaction is about to change these tables, so caching its reads only costs a cache key per query.
-    # Writes still invalidate the cache. Entered by hand because the context manager does not restore on error.
-    uncached = cachalot_disabled()
-    uncached.__enter__()
-    try:
-        changed = [
-            keeper
-            for keeper in keepers.values()
-            if update_occurrence_determination(keeper, current_determination=keeper.determination, save=False)
-        ]
-    finally:
-        uncached.__exit__(None, None, None)
-    Occurrence.objects.bulk_update(changed, ["determination", "determination_score"], batch_size=WRITE_BATCH_SIZE)
+    # The emptied occurrences fold into their keepers. Determinations are refreshed below for every keeper,
+    # including those that only gained detections.
+    merge = merge_occurrences(emptied, recompute_determinations=False)
+    refresh_determinations(keepers.values())
+    merged, moved_identifications = merge.absorbed, merge.moved_identifications
+    withdrawn = merge.withdrawn_identification_ids
 
     counters["identifications_moved"] = sum(len(moved) for moved in moved_identifications.values())
     counters["identifications_withdrawn"] = sum(len(ids) for ids in withdrawn.values())
