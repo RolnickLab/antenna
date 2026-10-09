@@ -95,7 +95,7 @@ const TaxaNamed = ({
   <ul className="space-y-1">
     {taxa.map((taxon) => (
       <li key={taxon.taxon_id}>
-        <EntityRefValue
+        <ModelRefValue
           projectId={projectId}
           reference={{ type: 'taxon', id: taxon.taxon_id, name: taxon.name }}
         />{' '}
