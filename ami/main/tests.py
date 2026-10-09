@@ -8690,3 +8690,143 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
         html = self._get_html("/api/v2/identifications/")
         self._assert_number_input(html, "occurrence")
         self._assert_number_input(html, "taxon")
+
+
+class TestOccurrenceSize(APITestCase):
+    """
+    Covers stored occurrence sizes and the ``size_*`` occurrence filters: the size is the median
+    longest box side over an occurrence's detections, relative to the capture's longest side, and
+    in mm only where the capture matches the station's calibrated field of view.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from ami.main.models import Taxon
+        from ami.main.models_future.occurrence_size import update_occurrence_sizes
+
+        cls.project = Project.objects.create(name="Occurrence Size Project")
+        cls.taxon = Taxon.objects.create(name="Occurrence Size Taxon")
+        cls.deployment = Deployment.objects.create(
+            project=cls.project, name="calibrated", frame_long_side_mm=400.0, frame_short_side_mm=300.0
+        )
+        cls.landscape = cls._image(4000, 3000)
+        cls.portrait = cls._image(3000, 4000)
+        cls.widescreen = cls._image(4096, 2160)  # Different crop mode: aspect does not match calibration
+        cls.no_dims = cls._image(None, None)
+
+        # Long sides 0.1, 0.075 and 0.2 of the frame: median 0.1, i.e. 40 mm on a 400 mm frame.
+        cls.occ_median = cls._occurrence(
+            (cls.landscape, [0, 0, 400, 100]), (cls.landscape, [0, 0, 200, 300]), (cls.landscape, [0, 0, 800, 10])
+        )
+        cls.occ_portrait = cls._occurrence((cls.portrait, [0, 0, 100, 400]))
+        cls.occ_widescreen = cls._occurrence((cls.widescreen, [0, 0, 1024, 100]))
+        cls.occ_no_dims = cls._occurrence((cls.no_dims, [0, 0, 100, 100]))
+        cls.occ_bad_box = cls._occurrence((cls.landscape, [0, 0, 5000, 100]), (cls.landscape, None))
+        update_occurrence_sizes(Occurrence.objects.filter(project=cls.project).values_list("pk", flat=True))
+
+    @classmethod
+    def _image(cls, width, height) -> SourceImage:
+        return SourceImage.objects.create(
+            deployment=cls.deployment,
+            project=cls.project,
+            path=f"size-{width}x{height}.jpg",
+            width=width,
+            height=height,
+        )
+
+    @classmethod
+    def _occurrence(cls, *detections) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=cls.project, deployment=cls.deployment, determination=cls.taxon, determination_score=0.9
+        )
+        for image, bbox in detections:
+            Detection.objects.create(source_image=image, bbox=bbox, occurrence=occ)
+        return occ
+
+    def _size(self, occ):
+        occ.refresh_from_db()
+        return occ.relative_length, occ.length_mm
+
+    def _list(self, query: str):
+        return self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&limit=50&{query}")
+
+    def test_size_is_the_median_longest_side(self):
+        relative, mm = self._size(self.occ_median)
+        self.assertAlmostEqual(relative, 0.1)
+        self.assertAlmostEqual(mm, 40.0)
+
+    def test_portrait_capture_uses_its_longest_side(self):
+        relative, mm = self._size(self.occ_portrait)
+        self.assertAlmostEqual(relative, 0.1)
+        self.assertAlmostEqual(mm, 40.0)
+
+    def test_capture_with_mismatched_aspect_has_no_mm(self):
+        relative, mm = self._size(self.occ_widescreen)
+        self.assertAlmostEqual(relative, 0.25)
+        self.assertIsNone(mm)
+
+    def test_unusable_boxes_and_missing_dimensions_leave_size_empty(self):
+        self.assertEqual(self._size(self.occ_no_dims), (None, None))
+        self.assertEqual(self._size(self.occ_bad_box), (None, None))
+
+    def test_changing_calibration_queues_recalculation(self):
+        import ami.tasks
+
+        with mock.patch.object(ami.tasks.update_deployment_occurrence_sizes, "delay") as delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                self.deployment.frame_long_side_mm = 800.0
+                self.deployment.frame_short_side_mm = 600.0
+                self.deployment.save()
+            delay.assert_called_once_with(self.deployment.pk)
+
+            with self.captureOnCommitCallbacks(execute=True):
+                self.deployment.name = "renamed"
+                self.deployment.save()
+            delay.assert_called_once()  # An unrelated edit does not recalculate
+
+        ami.tasks.update_deployment_occurrence_sizes(self.deployment.pk)
+        self.assertAlmostEqual(self._size(self.occ_median)[1], 80.0)
+
+    def test_relative_size_filter(self):
+        response = self._list("size_min=0.09&size_max=0.2")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({row["id"] for row in response.json()["results"]}, {self.occ_median.pk, self.occ_portrait.pk})
+
+    def test_mm_filter_leaves_out_uncalibrated_occurrences(self):
+        response = self._list("size_min_mm=1")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({row["id"] for row in response.json()["results"]}, {self.occ_median.pk, self.occ_portrait.pk})
+        self.assertEqual(response.json()["count"], 2)
+
+    def test_invalid_size_params_are_bad_requests(self):
+        for query in ("size_min=abc", "size_max=2", "size_min_mm=-1"):
+            with self.subTest(query=query):
+                self.assertEqual(self._list(query).status_code, 400)
+
+    def test_sort_by_size_puts_unknown_sizes_last(self):
+        response = self._list("ordering=-relative_length")
+        self.assertEqual(response.status_code, 200)
+        ids = [row["id"] for row in response.json()["results"]]
+        self.assertEqual(ids[0], self.occ_widescreen.pk)
+        self.assertEqual(set(ids[1:3]), {self.occ_median.pk, self.occ_portrait.pk})
+        self.assertEqual(set(ids[3:]), {self.occ_no_dims.pk, self.occ_bad_box.pk})
+        self.assertIn("relative_length", response.json()["results"][0])
+        self.assertIn("length_mm", response.json()["results"][0])
+
+    def test_project_reports_whether_any_station_is_calibrated(self):
+        url = f"/api/v2/projects/{self.project.pk}/"
+        self.assertTrue(self.client.get(url).json()["has_calibrated_stations"])
+        Deployment.objects.filter(project=self.project).update(frame_long_side_mm=None, frame_short_side_mm=None)
+        self.assertFalse(self.client.get(url).json()["has_calibrated_stations"])
+
+    def test_calibration_needs_both_sides_and_short_not_longer(self):
+        superuser = User.objects.create_superuser(email="size-admin@insectai.org", password="secret")
+        self.client.force_authenticate(superuser)
+        url = f"/api/v2/deployments/{self.deployment.pk}/"
+        response = self.client.patch(url, {"frame_long_side_mm": None}, format="json")
+        self.assertEqual(response.status_code, 400)
+        response = self.client.patch(url, {"frame_long_side_mm": 200, "frame_short_side_mm": 300}, format="json")
+        self.assertEqual(response.status_code, 400)
+        response = self.client.patch(url, {"frame_long_side_mm": 300, "frame_short_side_mm": 200}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["frame_long_side_mm"], 300)

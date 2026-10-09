@@ -12,6 +12,7 @@ import { ImageFilter } from './filters/image-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { SessionFilter } from './filters/session-filter'
 import { SiteFilter } from './filters/site-filter'
+import { MinSizeMmFilter, MinSizeRelativeFilter } from './filters/size-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
 import { TagFilter } from './filters/tag-filter'
@@ -45,6 +46,8 @@ const ComponentMap: {
   not_tag_id: TagFilter,
   not_taxa_list_id: TaxaListFilter,
   pipeline: PipelineFilter,
+  size_min: MinSizeRelativeFilter,
+  size_min_mm: MinSizeMmFilter,
   source_image_collection: CaptureSetFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,

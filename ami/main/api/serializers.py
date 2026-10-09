@@ -396,6 +396,9 @@ class ProjectSerializer(DefaultSerializer):
     owner = UserNestedSerializer(read_only=True)
     settings = ProjectSettingsSerializer(source="*", required=False)
     is_member = serializers.SerializerMethodField()
+    has_calibrated_stations = serializers.SerializerMethodField(
+        help_text="Whether any station has a calibrated camera view, so occurrence sizes can be shown in mm."
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -407,6 +410,9 @@ class ProjectSerializer(DefaultSerializer):
         if obj.feature_flags:
             return obj.feature_flags.dict()
         return {}
+
+    def get_has_calibrated_stations(self, obj) -> bool:
+        return obj.deployments.filter(frame_long_side_mm__isnull=False).exists()
 
     def get_is_member(self, obj):
         """Check if the current user is a member of this project."""
@@ -435,6 +441,7 @@ class ProjectSerializer(DefaultSerializer):
             "feature_flags",
             "settings",
             "is_member",  # is the current user a member of this project
+            "has_calibrated_stations",
         ]
 
 
@@ -570,11 +577,30 @@ class DeploymentSerializer(DeploymentListSerializer):
             "data_source_last_checked",
             "data_source_subdir",
             "data_source_regex",
+            "frame_long_side_mm",
+            "frame_short_side_mm",
             "description",
             "example_captures",
             "manually_uploaded_captures",
             # "capture_images",
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        long_side = attrs.get("frame_long_side_mm", getattr(self.instance, "frame_long_side_mm", None))
+        short_side = attrs.get("frame_short_side_mm", getattr(self.instance, "frame_short_side_mm", None))
+        if (long_side is None) != (short_side is None):
+            raise serializers.ValidationError(
+                {"frame_short_side_mm": "Enter both sides of the camera's view, or neither."}
+            )
+        if long_side is not None and short_side is not None:
+            if long_side <= 0 or short_side <= 0:
+                raise serializers.ValidationError({"frame_long_side_mm": "Sides must be greater than zero."})
+            if short_side > long_side:
+                raise serializers.ValidationError(
+                    {"frame_short_side_mm": "The short side cannot be longer than the long side."}
+                )
+        return attrs
 
     def get_data_source(self, obj):
         """
@@ -1583,6 +1609,8 @@ class OccurrenceListSerializer(DefaultSerializer):
             "duration_label",
             "determination",
             "detections_count",
+            "relative_length",
+            "length_mm",
             "detection_images",
             "determination_score",
             "determination_details",

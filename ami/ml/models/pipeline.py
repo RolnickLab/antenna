@@ -38,6 +38,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.main.models_future.occurrence_size import update_occurrence_sizes
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
@@ -924,6 +925,8 @@ def create_and_update_occurrences_for_detections(
     :return: The Occurrence object
     """
 
+    all_detections = detections
+
     # Group detections by source image id so we don't create duplicate occurrences
     detections_by_source_image = collections.defaultdict(list)
     for detection in detections:
@@ -973,6 +976,8 @@ def create_and_update_occurrences_for_detections(
         )
 
         SourceImage.objects.get(pk=source_image_id).save()
+
+    update_occurrence_sizes(detection.occurrence_id for detection in all_detections)
 
 
 @dataclasses.dataclass

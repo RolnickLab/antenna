@@ -672,6 +672,18 @@ class TestPipeline(TestCase):
 
         # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
 
+    def test_save_results_stores_occurrence_sizes(self):
+        """Occurrences created from pipeline results get a stored size, so the size filters match them."""
+        for image in self.test_images:
+            image.width, image.height = 200, 100
+            image.save()
+        save_results(self.fake_pipeline_results(self.test_images, self.pipeline))
+
+        occurrences = Occurrence.objects.filter(detections__source_image__in=self.test_images).distinct()
+        self.assertTrue(occurrences.exists())
+        # The fake detector returns 1 x 1 px boxes: 1 / 200 of the capture's long side.
+        self.assertEqual(set(occurrences.values_list("relative_length", flat=True)), {0.005})
+
     def test_save_results_records_the_job_on_the_rows_it_creates(self):
         from ami.jobs.models import Job
 

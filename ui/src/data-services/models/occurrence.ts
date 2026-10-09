@@ -138,6 +138,28 @@ export class Occurrence {
     return this._occurrence.detections_count
   }
 
+  get lengthMm(): number | undefined {
+    return this._occurrence.length_mm ?? undefined
+  }
+
+  get relativeLength(): number | undefined {
+    return this._occurrence.relative_length ?? undefined
+  }
+
+  get sizeLabel(): string | undefined {
+    if (this.lengthMm !== undefined) {
+      return translate(STRING.VALUE_SIZE_MM, {
+        value: Math.round(this.lengthMm),
+      })
+    }
+    if (this.relativeLength !== undefined) {
+      return translate(STRING.VALUE_SIZE_RELATIVE, {
+        value: (this.relativeLength * 100).toFixed(1),
+      })
+    }
+    return undefined
+  }
+
   get sessionId(): string | undefined {
     if (!this._occurrence.event) {
       return undefined
