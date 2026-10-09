@@ -86,6 +86,7 @@ export enum STRING {
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
   FIELD_LABEL_CAPTURE_SET,
+  FIELD_LABEL_OCCURRENCE_SET,
   FIELD_LABEL_CAPTURE,
   FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_CAPTURES,
@@ -133,6 +134,8 @@ export enum STRING {
   FIELD_LABEL_LOGS,
   FIELD_LABEL_LONGITUDE,
   FIELD_LABEL_MOST_RECENT,
+  CREATE_OCCURRENCE_SET,
+  CREATE_SET,
   FIELD_LABEL_NAME,
   FIELD_LABEL_NEW_PASSWORD,
   FIELD_LABEL_NUM_PIPELINES_REGISTERED,
@@ -192,6 +195,7 @@ export enum STRING {
   MESSAGE_CHANGE_PASSWORD,
   MESSAGE_CONFIGURE_LOCATION,
   MESSAGE_COULD_NOT_SAVE,
+  MESSAGE_OCCURRENCE_SET_IS_FIXED,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DEFAULT_FILTERS,
   MESSAGE_DEFAULT_PIPELINE,
@@ -278,6 +282,7 @@ export enum STRING {
   /* TOOLTIPS */
   TOOLTIP_ALGORITHM,
   TOOLTIP_CAPTURE_SET,
+  TOOLTIP_OCCURRENCE_SET,
   TOOLTIP_JOB_FILTER,
   TOOLTIP_CAPTURE,
   TOOLTIP_DEPLOYMENT,
@@ -453,6 +458,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
   [STRING.FIELD_LABEL_CAPTURE_SET]: 'Capture set',
+  [STRING.FIELD_LABEL_OCCURRENCE_SET]: 'Occurrence set',
   [STRING.FIELD_LABEL_CAPTURE]: 'Capture',
   [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
@@ -500,6 +506,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_LOGS]: 'Logs',
   [STRING.FIELD_LABEL_LONGITUDE]: 'Longitude',
   [STRING.FIELD_LABEL_MOST_RECENT]: 'Most recent',
+  [STRING.CREATE_OCCURRENCE_SET]: 'Create occurrence set',
+  [STRING.CREATE_SET]: 'Create set',
+  [STRING.MESSAGE_OCCURRENCE_SET_IS_FIXED]:
+    'Saves the {{count}} selected occurrence(s) as a set. Its contents do not change afterwards.',
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
   [STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED]: 'Pipelines registered',
@@ -697,6 +707,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* TOOLTIPS */
   [STRING.TOOLTIP_ALGORITHM]:
     'An algorithm is used in a pipeline for processing captures.',
+  [STRING.TOOLTIP_OCCURRENCE_SET]:
+    'A fixed list of occurrences, saved so the same ones can be looked at again. Its contents do not change after it is created.',
   [STRING.TOOLTIP_CAPTURE_SET]:
     'A capture set is a group of captures. A capture set contains all or some captures in a project. Capture sets are useful when specifying what captures to process.',
   [STRING.TOOLTIP_JOB_FILTER]:

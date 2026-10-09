@@ -198,6 +198,35 @@ class ProjectPipelineConfigPermission(ObjectPermission):
         return super().has_permission(request, view)
 
 
+class OccurrenceSetPermission(ObjectPermission):
+    """
+    Permission for the occurrence-set route, where list and create have no object yet.
+
+    Listing follows the project: anyone who may see the project may see which sets it has,
+    since only a set's name and size are exposed. Creating one is gated on the project's
+    ``create_occurrenceset`` permission. Everything else falls through to the object check,
+    which refuses a global set because it has no project to check against.
+    """
+
+    def has_permission(self, request, view):
+        from ami.main.models import Project
+
+        if view.action == "list":
+            # The project id is required for this action, so reaching here means it was
+            # given and the caller may see it.
+            return view.get_active_project() is not None
+
+        if view.action == "create":
+            # Read from the payload rather than the query string: the set names the project
+            # it will belong to, and that is the project whose permission must allow it.
+            project = Project.objects.filter(pk=request.data.get("project_id")).first()
+            if not project:
+                return False
+            return request.user.has_perm(Project.Permissions.CREATE_OCCURRENCE_SET, project)
+
+        return super().has_permission(request, view)
+
+
 class UserMembershipPermission(ObjectPermission):
     """
     Custom permission for UserProjectMembershipViewSet.

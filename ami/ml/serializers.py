@@ -176,3 +176,21 @@ class PipelineRegistrationSerializer(serializers.Serializer):
     processing_service_name = serializers.CharField()
     pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])
 
+
+class TrainingDataRowSerializer(serializers.Serializer):
+    """
+    One verified crop: its human label and the embedding to train on.
+
+    Not a ModelSerializer — the useful fields live on the related occurrence and on the
+    pgvector column, and the split is computed, so building the dict directly is clearer.
+    """
+
+    def to_representation(self, instance):
+        from ami.ml import training
+
+        return training.row_as_dict(
+            instance,
+            salt=self.context.get("split_salt", training.DEFAULT_SPLIT_SALT),
+            test_fraction=self.context.get("test_fraction", training.DEFAULT_TEST_FRACTION),
+            include_features=self.context.get("include_features", True),
+        )

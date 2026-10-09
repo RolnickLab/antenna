@@ -429,6 +429,19 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
 
+    default_taxa_list = models.ForeignKey(
+        "TaxaList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_projects",
+        help_text=(
+            "The species this project expects to see. Used as the class list when retraining "
+            "a classifier head, so the head covers the region rather than only the species "
+            "someone happened to verify."
+        ),
+    )
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
@@ -454,6 +467,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
+        RUN_TRAIN_CLASSIFIER_JOB = "run_train_classifier_job"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -462,6 +476,11 @@ class Project(ProjectSettingsMixin, BaseModel):
         UPDATE_DEPLOYMENT = "update_deployment"
         SYNC_DEPLOYMENT = "sync_deployment"
         REGROUP_SESSIONS_DEPLOYMENT = "regroup_sessions_deployment"
+
+        # Occurrence set permissions
+        CREATE_OCCURRENCE_SET = "create_occurrenceset"
+        UPDATE_OCCURRENCE_SET = "update_occurrenceset"
+        DELETE_OCCURRENCE_SET = "delete_occurrenceset"
 
         # Collection permissions
         CREATE_COLLECTION = "create_sourceimagecollection"
@@ -537,6 +556,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
             ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
+            ("run_train_classifier_job", "Can run/retry/cancel Train Classifier jobs"),
             ("delete_job", "Can delete a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
@@ -545,6 +565,9 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("sync_deployment", "Can sync images to a deployment"),
             ("regroup_sessions_deployment", "Can regroup deployment captures into sessions"),
             # Collection permissions
+            ("create_occurrenceset", "Can create an occurrence set"),
+            ("update_occurrenceset", "Can rename or describe an occurrence set"),
+            ("delete_occurrenceset", "Can delete an occurrence set"),
             ("create_sourceimagecollection", "Can create a collection"),
             ("update_sourceimagecollection", "Can update a collection"),
             ("delete_sourceimagecollection", "Can delete a collection"),
@@ -4945,6 +4968,74 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "detections_only",
     "common_combined",  # Deprecated
 ]
+
+
+class OccurrenceSetQuerySet(BaseQuerySet):
+    def for_project(self, project) -> models.QuerySet:
+        """Sets this project can use: its own, plus any that belong to no project."""
+        return self.filter(models.Q(projects=project) | models.Q(projects__isnull=True)).distinct()
+
+    def visible_for_user(self, user) -> models.QuerySet:
+        """
+        Global sets stay visible; project sets follow their project.
+
+        The inherited filter keeps a row only if it reaches a non-draft project, which a
+        set belonging to no project never does. Without this a global set is hidden from
+        everyone but a superuser, which is the opposite of what global means. Only a set's
+        name and size are exposed, never the occurrences inside it.
+        """
+        visible = super().visible_for_user(user)
+        return self.filter(models.Q(pk__in=visible.values("pk")) | models.Q(projects__isnull=True)).distinct()
+
+
+@final
+class OccurrenceSet(BaseModel):
+    """
+    A fixed list of occurrences, kept so the same ones can be used again later.
+
+    Membership is stored rather than described by a filter, because a filter answers
+    differently as data arrives. Anything that compares results over time needs the list to
+    stand still: scoring two classifiers is only meaningful if both saw the same
+    occurrences.
+
+    A set with no projects is global, which is how one set is shared across the platform;
+    that follows how TaxaList already treats a list with no project.
+    """
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    occurrences = models.ManyToManyField("main.Occurrence", related_name="evaluation_sets", blank=True)
+    projects = models.ManyToManyField(
+        "main.Project",
+        related_name="occurrence_sets",
+        blank=True,
+        help_text="Projects this set belongs to. A set with none is available everywhere.",
+    )
+
+    objects = OccurrenceSetQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.occurrences.count()} occurrences)"
+
+    @property
+    def is_global(self) -> bool:
+        return not self.projects.exists()
+
+    def get_project(self):
+        """
+        The project whose permissions govern this set.
+
+        BaseModel returns None for a many-to-many project relation, and
+        ``check_permission`` refuses every action without a project, so a global set cannot
+        be renamed or deleted through the API at all. That is the behaviour we want: a set
+        shared across projects changing under one of them would quietly change what every
+        other project's stored scores were measured on. Global sets stay a deliberate,
+        out-of-band act.
+        """
+        return self.projects.first()
 
 
 class SourceImageCollectionQuerySet(BaseQuerySet):

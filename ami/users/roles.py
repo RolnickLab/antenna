@@ -146,6 +146,9 @@ class MLDataManager(Role):
         Project.Permissions.SYNC_DEPLOYMENT,
         Project.Permissions.RUN_REGROUP_EVENTS_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
+        # Retraining a head is ML data work, so it sits with the other run_*_job
+        # permissions this role already holds.
+        Project.Permissions.RUN_TRAIN_CLASSIFIER_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
         Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
@@ -154,6 +157,11 @@ class MLDataManager(Role):
         Project.Permissions.UPDATE_COLLECTION,
         Project.Permissions.DELETE_COLLECTION,
         Project.Permissions.POPULATE_COLLECTION,
+        # Whoever curates the data a model is measured on is the same person who manages
+        # the data it learns from, so this sits with the collection permissions.
+        Project.Permissions.CREATE_OCCURRENCE_SET,
+        Project.Permissions.UPDATE_OCCURRENCE_SET,
+        Project.Permissions.DELETE_OCCURRENCE_SET,
     }
 
 

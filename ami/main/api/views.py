@@ -29,7 +29,12 @@ from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, Threshold
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
+from ami.base.permissions import (
+    IsActiveStaffOrReadOnly,
+    IsProjectMemberOrReadOnly,
+    ObjectPermission,
+    OccurrenceSetPermission,
+)
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
@@ -50,6 +55,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectQuerySet,
@@ -85,6 +91,7 @@ from .serializers import (
     ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
+    OccurrenceSetSerializer,
     PageListSerializer,
     PageSerializer,
     ProjectListSerializer,
@@ -954,6 +961,74 @@ class ChoicesPagination(LimitOffsetPaginationWithPermissions):
     max_limit = 100
 
 
+class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
+    """
+    Fixed lists of occurrences, so the same data can be used again later.
+
+    Membership is decided when a set is created and cannot be changed afterwards: there is
+    no endpoint to add or remove an occurrence. Anything that compares results over time
+    depends on the list standing still, and a set that grows quietly makes every number
+    recorded against it mean something different.
+
+    A set belonging to no project is global and is offered to every project, but it cannot
+    be edited here, because it has no single project whose permissions would govern it.
+    """
+
+    queryset = OccurrenceSet.objects.all()
+    serializer_class = OccurrenceSetSerializer
+    permission_classes = [OccurrenceSetPermission]
+    # No put: a full replace would include the occurrences.
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    ordering_fields = ["name", "created_at", "updated_at"]
+    search_fields = ["name"]
+    ordering = ["name"]
+    # Listing without a project would answer with every set on the platform, so it is
+    # required there. A detail route names one set, which carries its own project, and the
+    # create payload names the project it belongs to.
+    require_project = False
+    require_project_for_list = True
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create without the base class's unsaved-instance permission check.
+
+        ``DefaultViewSet.create`` builds ``Model(**validated_data)`` to check object
+        permissions before saving. A set's project and its occurrences arrive as payload
+        fields rather than columns, so that instance cannot be built. The same check runs
+        earlier instead, in ``OccurrenceSetPermission``, against the project the payload
+        names.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=OccurrenceSetSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """
+        Choices for the occurrence-set filter and pickers.
+
+        Follows SourceImageCollectionViewSet.choices: most recently updated first and
+        enough of them that a dropdown never has to page.
+        """
+        self.ordering_fields = ["id", "created_at", "updated_at", "name"]
+        queryset = self.filter_queryset(self.get_queryset())
+        paginator = ChoicesPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = self.get_serializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    def get_queryset(self) -> QuerySet["OccurrenceSet"]:
+        qs = super().get_queryset().annotate(annotated_occurrences_count=models.Count("occurrences"))
+        project = self.get_active_project()
+        if project is not None:
+            # A set with no project is global, so it is offered everywhere.
+            return qs.for_project(project)
+        return qs.visible_for_user(self.request.user)
+
+
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for viewing capture sets or samples of captures.
@@ -1496,6 +1571,9 @@ class OccurrenceFilterSet(FilterSet):
     """
 
     detections__source_image = RelatedIdFilter()
+    # Named for what it means to a reader rather than for the reverse accessor, which is
+    # called evaluation_sets because scoring was the first thing to use one.
+    occurrence_set = RelatedIdFilter(field_name="evaluation_sets")
 
     class Meta:
         model = Occurrence
