@@ -7,6 +7,7 @@ from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.query import QuerySet
+from django.http import Http404
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -14,6 +15,8 @@ from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
+from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from ami.base.filters import RelatedIdFilter
@@ -28,6 +31,9 @@ from ami.jobs.serializers import (
     MLJobResultsResponseSerializer,
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
+    TrainingProgressRequestSerializer,
+    TrainingResultRequestSerializer,
+    TrainingResultResponseSerializer,
 )
 from ami.jobs.tasks import (
     HEARTBEAT_THROTTLE_SECONDS,
@@ -591,3 +597,156 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 },
                 status=503,
             )
+
+    def _job_for_callback(self, pk, request) -> Job:
+        """
+        The job a processing service is reporting about, if its token proves it may.
+
+        get_object() applies project visibility, which an unauthenticated service fails,
+        so the job is looked up directly and the signed token is what authorises the call.
+        """
+        from ami.ml.training import verify_callback_token
+
+        job = Job.objects.filter(pk=pk).first()
+        if not job:
+            raise Http404("Job not found.")
+
+        token = request.headers.get("Authorization", "").removeprefix("Token ").strip()
+        if not verify_callback_token(token, job):
+            raise PermissionDenied("Invalid or expired training callback token.")
+        return job
+
+    @extend_schema(
+        request=TrainingResultRequestSerializer,
+        responses={200: TrainingResultResponseSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="training-result",
+        name="training-result",
+        # A processing service has no Antenna account. It proves itself with the signed
+        # token Antenna issued when it dispatched the job, checked below.
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+    )
+    def training_result(self, request, pk=None):
+        """
+        Receive the outcome of a retraining run from a processing service.
+
+        Training outlasts the request that started it, so this is the one way a result
+        comes back. A service that also answers its caller inline is acknowledged and that
+        body ignored, so there is a single shape to read.
+        """
+        from ami.jobs.models import TrainClassifierJob
+
+        job = self._job_for_callback(pk, request)
+
+        if job.job_type_key != TrainClassifierJob.key:
+            raise ValidationError(f"Job #{job.pk} is not a training job.")
+
+        if job.status in JobState.final_states():
+            # A retry of a callback that already landed. The first answer stands.
+            logger.info("Ignoring a training result for job %s, which already finished", job.pk)
+            return Response({"status": "already recorded", "job_id": job.pk, "algorithm": None})
+
+        serializer = TrainingResultRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_version = TrainClassifierJob.record_result(
+            job=job,
+            result=serializer.validated_data["result"],
+            dataset=serializer.validated_data["dataset"],
+            dataset_url=serializer.validated_data["dataset_url"],
+        )
+        logger.info("Recorded a training result for job %s", job.pk)
+        return Response(
+            {
+                "status": "recorded",
+                "job_id": job.pk,
+                "algorithm": new_version.key if new_version else None,
+            }
+        )
+
+    @extend_schema(exclude=True)
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="training-progress",
+        name="training-progress",
+        # Same token as the result callback: a processing service has no Antenna account.
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+    )
+    def training_progress(self, request, pk=None):
+        """
+        Receive how far through its epochs a retraining run is.
+
+        Training is the long stage of the job and the service says nothing while it fits, so
+        this is what moves the progress bar in between.
+        """
+        from ami.jobs.models import TrainClassifierJob
+
+        job = self._job_for_callback(pk, request)
+
+        if job.job_type_key != TrainClassifierJob.key:
+            raise ValidationError(f"Job #{job.pk} is not a training job.")
+
+        if job.status in JobState.final_states():
+            # A ping overtaken by the result. The job is done; its stages say so.
+            return Response({"status": "finished"})
+
+        serializer = TrainingProgressRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        TrainClassifierJob.record_progress(
+            job=job,
+            epoch=serializer.validated_data["epoch"],
+            total_epochs=serializer.validated_data["total_epochs"],
+        )
+        return Response({"status": "recorded"})
+
+    @extend_schema(exclude=True)
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="training-head",
+        name="training-head",
+        # Same token as the result callback: a processing service has no Antenna account.
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+        parser_classes=[MultiPartParser],
+    )
+    def training_head(self, request, pk=None):
+        """
+        Receive the head a retraining run produced, so Antenna keeps a copy of the weights.
+
+        Without this the head exists only on the service's disk, under a cache directory,
+        and Antenna records that a version exists without being able to say where it is.
+        """
+        from ami.jobs.models import TrainClassifierJob
+        from ami.ml.training import HeadTooLarge, store_head
+
+        job = self._job_for_callback(pk, request)
+
+        if job.job_type_key != TrainClassifierJob.key:
+            raise ValidationError(f"Job #{job.pk} is not a training job.")
+
+        if job.status in JobState.final_states():
+            # The token stays valid for 24 hours and the head is stored at a path fixed by
+            # the job, so without this the weights a registered version points at could be
+            # replaced for a day after the run ended. A service uploads before it reports
+            # its result, so a run that is still going is unaffected.
+            raise ValidationError(f"Job #{job.pk} has already finished; its head can no longer be replaced.")
+
+        if not request.FILES:
+            raise ValidationError("No head files were uploaded.")
+
+        algorithm_key = (job.params or {}).get("algorithm_key") or "head"
+        try:
+            stored = store_head(algorithm_key=algorithm_key, job_id=job.pk, files=request.FILES)
+        except HeadTooLarge as e:
+            raise ValidationError(str(e))
+
+        job.logger.info(f"Stored the retrained head: {', '.join(item['path'] for item in stored.values())}")
+        return Response({"files": stored})

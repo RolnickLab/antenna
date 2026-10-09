@@ -11,7 +11,7 @@ from ami.main.api.serializers import (
 )
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
+from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo, TrainingResult
 from ami.ml.serializers import PipelineNestedSerializer
 
 from .models import (
@@ -290,6 +290,41 @@ class MLJobResultsRequestSerializer(serializers.Serializer):
 
     results = SchemaField(schema=list[PipelineTaskResult])
     client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
+
+
+class TrainingResultRequestSerializer(serializers.Serializer):
+    """POST /jobs/{id}/training-result/ — the body a processing service posts when a run finishes.
+
+    The counterpart of MLJobResultsRequestSerializer for a retraining job: one result for
+    one job, rather than a list of per-item results.
+
+    ``result`` is validated, since it is what the new algorithm version is built from.
+    ``dataset`` is the metadata the service echoes back from the training set file and is
+    taken as it comes: a service that echoes an older shape should still have its result
+    recorded, and the cost is a version that cannot say which occurrence set it learned
+    from. It is parsed, leniently, where it is read.
+    """
+
+    result = SchemaField(schema=TrainingResult)
+    dataset = serializers.JSONField(required=False, allow_null=True, default=None)
+    dataset_url = serializers.CharField(required=False, allow_null=True, default=None)
+    job_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    algorithm_key = serializers.CharField(required=False, allow_null=True, default=None)
+
+
+class TrainingResultResponseSerializer(serializers.Serializer):
+    """POST /jobs/{id}/training-result/ — acknowledgment returned to the processing service."""
+
+    status = serializers.CharField()
+    job_id = serializers.IntegerField()
+    algorithm = serializers.CharField(allow_null=True, help_text="Key of the version registered, if one was.")
+
+
+class TrainingProgressRequestSerializer(serializers.Serializer):
+    """POST /jobs/{id}/training-progress/ — how far through its epochs a run has got."""
+
+    epoch = serializers.IntegerField(min_value=0)
+    total_epochs = serializers.IntegerField(required=False, allow_null=True, default=None, min_value=1)
 
 
 class MLJobResultsResponseSerializer(serializers.Serializer):
