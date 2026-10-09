@@ -3,7 +3,7 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
 /** Another record the API mentions. `name` is null when the record no longer exists. */
-export interface EntityRef {
+export interface ServerModelRef {
   type: string
   id: number
   name: string | null
@@ -26,11 +26,11 @@ const ROUTES: Record<string, (projectId: string, id: string) => string> = {
 }
 
 /** Where a reference links to, or undefined when the record is gone or has no page. */
-export const linkFor = (ref: EntityRef, projectId: string) =>
+export const linkFor = (ref: ServerModelRef, projectId: string) =>
   ref.name === null ? undefined : ROUTES[ref.type]?.(projectId, `${ref.id}`)
 
 /** A reference's name, its id when the record was deleted, or "not available" when there is none. */
-export const getEntityRefLabel = (reference?: EntityRef) => {
+export const getModelRefLabel = (reference?: ServerModelRef) => {
   if (!reference) {
     return translate(STRING.VALUE_NOT_AVAILABLE)
   }

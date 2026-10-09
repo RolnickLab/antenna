@@ -24,7 +24,7 @@ own tables, with the same algorithm and job provenance.
    `title`, and declare fields that hold a record id with `model_reference("capture_set", ...)`
    (`ami/base/model_references.py`); `ami/jobs/job_config.py` labels and links them. A new reference type
    is declared on its model (`reference_type`, `reference_name_field`) and routed in
-   `ui/src/utils/entity-references.ts`.
+   `ui/src/utils/model-references.ts`.
 3. **Writing**: use `AlgorithmResultWriter` (`writer.py`) as `class_masking.py` and
    `small_size_filter.py` do. Per batch, inside one transaction: `note()` each changed detection's
    figures, `start_batch()` before inserting classifications (it points them at their result), then
