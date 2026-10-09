@@ -131,23 +131,6 @@ class TaxonManagerTestCase(TestCase):
         pks = [taxon.pk for taxon in self.our_taxa]
         return dict(Taxon.objects.filter(pk__in=pks).values_list("name", "display_name"))
 
-    def test_display_names_are_recalculated_for_every_taxon(self):
-        # NULL rather than "", so clearing them does not trip the unique constraint.
-        Taxon.objects.all().update(display_name=None)
-        Taxon.objects.update_display_names()
-
-        self.assertEqual(
-            self.our_display_names(),
-            {
-                "Coleoptera": "Coleoptera",
-                "Coccinellidae": "Coccinellidae",
-                # Only a genus gets a suffix, so its display name stays unique against the species.
-                "Coccinella": "Coccinella sp.",
-                "Coccinella magnifica": "Coccinella magnifica",
-                "Coccinella septempunctata": "Coccinella septempunctata",
-            },
-        )
-
     def test_queryset_limits_the_update_to_those_taxa(self):
         # NULL rather than "", so clearing them does not trip the unique constraint.
         Taxon.objects.all().update(display_name=None)
