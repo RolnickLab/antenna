@@ -1,3 +1,4 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaListDetails } from 'data-services/hooks/taxa-lists/useTaxaListDetails'
@@ -15,6 +16,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
@@ -27,7 +29,10 @@ export const TaxaListDetails = () => {
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { taxaList } = useTaxaListDetails(id as string, projectId as string)
+  // A route id that isn't a positive integer can't be a taxa list pk (see
+  // isDetailRouteId), so skip the fetch and show not-found instead.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { taxaList } = useTaxaListDetails(validId, projectId as string)
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -35,7 +40,7 @@ export const TaxaListDetails = () => {
     filters: [
       { field: 'include_unobserved', value: 'true' },
       { field: 'include_descendants', value: 'false' },
-      { field: 'taxa_list_id', value: id },
+      { field: 'taxa_list_id', value: validId },
     ],
   })
 
@@ -55,6 +60,12 @@ export const TaxaListDetails = () => {
     projectId: projectId as string,
     taxaListId: id as string,
   })
+
+  if (id && !validId) {
+    return (
+      <ErrorState error={{ message: translate(STRING.MESSAGE_NOT_FOUND) }} />
+    )
+  }
 
   return (
     <>
@@ -106,7 +117,16 @@ const SpeciesDetailsDialog = ({
   const navigate = useNavigate()
   const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
   const { projectId } = useParams()
-  const { species, isLoading, error } = useSpeciesDetails(taxonId, projectId)
+  // A route id that isn't a positive integer can't be a taxon pk (see
+  // isDetailRouteId), so skip the fetch and show not-found instead.
+  const validTaxonId = isDetailRouteId(taxonId) ? taxonId : undefined
+  const { species, isLoading, error } = useSpeciesDetails(
+    validTaxonId,
+    projectId
+  )
+  const notFoundError = validTaxonId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   return (
     <Dialog.Root
@@ -129,7 +149,7 @@ const SpeciesDetailsDialog = ({
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        error={error}
+        error={error ?? notFoundError}
         isLoading={isLoading}
       >
         {species ? (

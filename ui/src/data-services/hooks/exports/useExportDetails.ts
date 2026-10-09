@@ -6,7 +6,7 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerExport) => new Export(record)
 
 export const useExportDetails = (
-  id: string
+  id: string | undefined
 ): {
   exportDetails?: Export
   isLoading: boolean
@@ -14,6 +14,7 @@ export const useExportDetails = (
   error?: unknown
 } => {
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<Export>({
+    enabled: !!id,
     queryKey: [API_ROUTES.EXPORTS, id],
     url: `${API_URL}/${API_ROUTES.EXPORTS}/${id}/`,
     refetchInterval: REFETCH_INTERVAL,

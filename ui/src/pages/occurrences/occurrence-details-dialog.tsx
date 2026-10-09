@@ -7,6 +7,7 @@ import {
 import { useContext, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import { useSelectedView } from 'utils/useSelectedView'
 import { OccurrenceNavigation } from './occurrence-navigation'
@@ -34,7 +35,13 @@ export const OccurrenceDetailsDialog = ({
   const { state } = useLocation()
   const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  // An id that isn't a positive integer can't be an occurrence pk (see
+  // isDetailRouteId), so skip the fetch and show not-found instead.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { occurrence, isLoading, error } = useOccurrenceDetails(validId)
+  const notFoundError = validId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   useEffect(() => {
     // If a default tab is set from router state, set this as active
@@ -65,7 +72,7 @@ export const OccurrenceDetailsDialog = ({
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        error={error}
+        error={error ?? notFoundError}
         isLoading={isLoading}
       >
         {occurrence ? (

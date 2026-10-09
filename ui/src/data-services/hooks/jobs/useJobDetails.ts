@@ -7,7 +7,7 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerJob) => new JobDetails(record)
 
 export const useJobDetails = (
-  id: string,
+  id: string | undefined,
   enabled?: boolean
 ): {
   job?: JobDetails
@@ -17,7 +17,7 @@ export const useJobDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerJobDetails>({
-      enabled,
+      enabled: enabled ?? !!id,
       queryKey: [API_ROUTES.JOBS, id],
       refetchInterval: REFETCH_INTERVAL,
       url: `${API_URL}/${API_ROUTES.JOBS}/${id}/`,

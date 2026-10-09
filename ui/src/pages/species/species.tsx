@@ -26,6 +26,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useCarryOverFilters, useFilters } from 'utils/useFilters'
@@ -283,7 +284,14 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
   const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { species, isLoading, error } = useSpeciesDetails(id, projectId)
+  // A route id that isn't a positive integer can't be a taxon pk (see isDetailRouteId),
+  // so skip the fetch and go straight to the not-found state instead of hitting a
+  // same-named sibling endpoint (e.g. taxa/lists/) that returns an unrelated 200.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { species, isLoading, error } = useSpeciesDetails(validId, projectId)
+  const notFoundError = validId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   useEffect(() => {
     setDetailBreadcrumb(species ? { title: species.name } : undefined)
@@ -311,7 +319,7 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        error={error}
+        error={error ?? notFoundError}
         isLoading={isLoading}
       >
         {species ? (
