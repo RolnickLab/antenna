@@ -8,6 +8,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { AlgorithmEvaluations } from './algorithm-evaluations'
 import styles from './styles.module.scss'
 
 export const AlgorithmDetailsDialog = ({ id }: { id: string }) => {
@@ -91,6 +92,13 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
         />
       </FormRow>
     </FormSection>
+    {algorithm.evaluations.length > 0 && (
+      <FormSection title={translate(STRING.EVALUATION)}>
+        <div className={styles.tableContainer}>
+          <AlgorithmEvaluations algorithm={algorithm} />
+        </div>
+      </FormSection>
+    )}
     {algorithm.uri || algorithm.categoryMapURI ? (
       <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
         <div className="flex flex-col items-start gap-3">
