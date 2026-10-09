@@ -1516,6 +1516,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = OccurrenceSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
     filterset_class = OccurrenceFilterSet
+    self_applied_orderings = VISUAL_SIMILARITY_ORDERINGS
     ordering_fields = [
         "created_at",
         "updated_at",

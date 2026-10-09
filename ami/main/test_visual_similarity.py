@@ -6,12 +6,15 @@ compared at a time, bad parameters are refused with 400, and the sort adds a fix
 of queries however many rows a page has. See #1462.
 """
 
+from unittest import mock
+
 from cachalot.api import cachalot_disabled
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from ami.main.api.views import OccurrenceViewSet
 from ami.main.models import Occurrence, Project
 from ami.ml.models import Algorithm, DetectionEmbedding
 from ami.tests.fixtures.main import (
@@ -192,6 +195,18 @@ class TestVisualSimilarityPermissions(VisualSimilarityFixture):
         self.client.force_authenticate(user=self.member)
         self.assertEqual(self._list("")[1], 5)
         self._assert_matches_plain_list()
+
+
+class TestSimilarityOrderSurvivesAViewDefault(VisualSimilarityFixture):
+    """A default ordering on the viewset must not replace the similarity order: the ordering filter
+    drops values that are not in ``ordering_fields`` and applies the view default instead."""
+
+    def test_the_similarity_order_wins_over_a_default_ordering(self):
+        with mock.patch.object(OccurrenceViewSet, "ordering", ["-created_at"], create=True):
+            ids = self._ids(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+            reverse = self._ids(f"ordering=-visual_similarity&similar_to={self.seed.pk}")
+        self.assertEqual(ids[:3], [self.seed.pk, self.near.pk, self.far.pk])
+        self.assertEqual(reverse[:3], [self.far.pk, self.near.pk, self.seed.pk])
 
 
 class TestOccurrenceDetailEmbeddingAlgorithms(VisualSimilarityFixture):
