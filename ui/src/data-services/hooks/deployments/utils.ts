@@ -1,4 +1,5 @@
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
+import { parseMetadata } from 'utils/fieldProcessors'
 
 export const convertToFormData = (fieldValues: DeploymentFieldValues) => {
   const data = new FormData()
@@ -19,6 +20,14 @@ export const convertToFormData = (fieldValues: DeploymentFieldValues) => {
       data.append(key, value === null ? '' : `${value}`)
     }
   })
+
+  if (fieldValues.metadata !== undefined) {
+    // The API stores metadata as a JSON object, but a multipart request can
+    // only carry text, so it travels as JSON and Django REST Framework parses
+    // it back into an object. An empty field becomes an empty object, which is
+    // how the API represents a station with no metadata.
+    data.append('metadata', JSON.stringify(parseMetadata(fieldValues.metadata)))
+  }
 
   if (fieldValues.projectId) {
     data.append('project_id', fieldValues.projectId)

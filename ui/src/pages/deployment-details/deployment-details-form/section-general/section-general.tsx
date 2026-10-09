@@ -1,5 +1,6 @@
 import { FormController } from 'components/form/form-controller'
 import { FormField } from 'components/form/form-field'
+import { MetadataField } from 'components/form/metadata-field'
 import {
   FormActions,
   FormRow,
@@ -25,11 +26,12 @@ import { Section } from '../types'
 
 type SectionGeneralFieldValues = Pick<
   DeploymentFieldValues,
-  'name' | 'description' | 'siteId' | 'deviceId' | 'image'
+  'name' | 'description' | 'siteId' | 'deviceId' | 'image' | 'metadata'
 >
 
 const DEFAULT_VALUES: SectionGeneralFieldValues = {
   description: '',
+  metadata: '',
   name: '',
 }
 
@@ -139,6 +141,7 @@ export const SectionGeneral = ({
             )}
           />
         </FormRow>
+        <MetadataField name="metadata" control={control} config={config} />
       </FormSection>
       <FormActions>
         <Button onClick={onNext} size="small" type="button" variant="success">
