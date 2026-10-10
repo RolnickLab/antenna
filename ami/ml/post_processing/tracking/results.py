@@ -49,8 +49,9 @@ class TrackingResultData(DeterminationSnapshot):
     score_min: float | None = None
     score_mean: float | None = None
     score_max: float | None = None
-    # The matching cost of each link this run made in the chain, rounded to 4 places, in chain order.
-    link_costs: list[float] = []
+    # One entry per detection in ``detection_ids``: the matching cost, rounded to 4 places, of the link this
+    # run made from it, or None when its link is older or it is the last. See #1412 for the planned shape.
+    link_costs: list[float | None] = []
     # Occurrences the run folded into this one. They are deleted, so these are plain ids, not references.
     merged_occurrence_ids: list[int] = []
     # The grouping before the run, so a reset can restore it: the occurrence's detections in capture order,

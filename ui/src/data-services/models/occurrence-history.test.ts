@@ -115,7 +115,7 @@ const tracking: ServerOccurrenceHistoryEntry = {
     distinct_taxa: 1,
     extra: {},
     label_agreement: null,
-    link_costs: [0.12, 0.2],
+    link_costs: [0.12, 0.2, null],
     merged_occurrence_ids: [11, 12],
     motion: 0.0071,
     path_length: 0.0141,

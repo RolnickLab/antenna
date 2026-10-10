@@ -20,8 +20,9 @@ class MergeGroup:
     # The occurrence the group keeps: the first identified one in capture order, else the first one, else
     # None to create one. Keeping the identified occurrence keeps the id people may have linked to.
     keeper_id: int | None
-    # The cost of each link this run made inside the group, in capture order of the earlier detection.
-    link_costs: list[float]
+    # One entry per detection, in the order of ``detection_ids``: the cost of the link this run made from
+    # it, or None when its link is older, was refused, or it is the last. See #1412 for the planned shape.
+    link_costs: list[float | None]
 
     @property
     def absorbed_ids(self) -> list[int]:
@@ -113,7 +114,8 @@ def merge_groups(
             next((pk for pk in previous if pk is not None), None),
         )
         costs = [
-            round(new_link_costs[pk], 4) for pk in detection_ids if pk in new_link_costs and pk not in refused_set
+            round(new_link_costs[pk], 4) if pk in new_link_costs and pk not in refused_set else None
+            for pk in detection_ids
         ]
         groups.append(MergeGroup(detection_ids, previous, keeper_id, costs))
     return MergePlan(groups, refused)

@@ -380,7 +380,7 @@ class TestTrackingResults(_TrackingCase):
             self.assertEqual(result.data["size_change"], 1.0)
             self.assertEqual(result.data["distinct_taxa"], 1)
             self.assertEqual(result.data["label_agreement"], 1.0)
-            self.assertEqual(len(result.data["link_costs"]), 2)
+            self.assertEqual(len(result.data["link_costs"]), len(result.data["detection_ids"]))
             self.assertEqual(result.data["determination_after_id"], self.taxa[0].pk)
             self.assertEqual(len(result.data["merged_occurrence_ids"]), 2)
         job.refresh_from_db()
@@ -482,9 +482,33 @@ class TestTrackingResults(_TrackingCase):
         self.run_task(captures[0].event)
 
         costs = AlgorithmResult.objects.get(kind="tracking").data["link_costs"]
-        self.assertEqual(len(costs), 2)
-        self.assertTrue(all(isinstance(cost, float) and cost > 0 for cost in costs))
+        self.assertEqual(len(costs), 3)
+        self.assertTrue(all(isinstance(cost, float) and cost > 0 for cost in costs[:2]))
         self.assertLess(costs[0], costs[1])
+        # The last detection has no link leaving it.
+        self.assertIsNone(costs[2])
+
+    def test_a_run_that_extends_an_earlier_chain_records_only_its_own_link_costs(self):
+        """An earlier run's link has no cost in the new result, so each cost still pairs with its detection."""
+        captures = create_session(self.deployment, [[BOX], [BOX], None], self.taxa[0])
+        event = captures[0].event
+        self.run_task(event)
+        add_detection(captures[2], BOX, self.taxa[0])
+
+        self.run_task(event, require_fresh_event=False)
+
+        latest = AlgorithmResult.objects.filter(kind="tracking").order_by("-pk").first()
+        assert latest is not None
+        self.assertEqual(
+            latest.data["detection_ids"],
+            list(
+                Detection.objects.filter(source_image__event=event).order_by("timestamp").values_list("pk", flat=True)
+            ),
+        )
+        costs = latest.data["link_costs"]
+        self.assertIsNone(costs[0])
+        self.assertIsInstance(costs[1], float)
+        self.assertIsNone(costs[2])
 
     def test_results_of_merged_occurrences_move_onto_the_keeper(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])

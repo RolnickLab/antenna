@@ -14,7 +14,7 @@ class TestMergeGroups(TestCase):
         self.assertEqual((group.detection_ids, group.keeper_id), ([1, 2, 3], 10))
         self.assertEqual(group.previous_occurrence_ids, [10, 20, 30])
         self.assertEqual(group.absorbed_ids, [20, 30])
-        self.assertEqual(group.link_costs, [0.1, 0.2])
+        self.assertEqual(group.link_costs, [0.1, 0.2, None])
 
     def test_a_group_already_held_by_one_occurrence_is_left_out(self):
         self.assertEqual(merge_groups([1, 2], {1: 10, 2: 10}, {1: 2}, {}).groups, [])
@@ -35,6 +35,16 @@ class TestMergeGroups(TestCase):
         groups = merge_groups([5, 1], {5: 50, 1: 10}, {5: 1}, {5: 0.1}).groups
 
         self.assertEqual(groups[0].keeper_id, 50)
+
+    def test_link_costs_line_up_with_the_detections_and_leave_earlier_links_blank(self):
+        """Each detection's entry is the cost of the link this run made from it, so the list pairs by position.
+
+        Detection 1 was linked to 2 by an earlier run and 3 shares 2's occurrence, so only 2 -> 4 is new.
+        """
+        groups = merge_groups([1, 2, 3, 4], {1: 10, 2: 10, 3: 10, 4: 40}, {1: 2, 2: 4}, {2: 0.25}).groups
+
+        self.assertEqual(groups[0].detection_ids, [1, 2, 3, 4])
+        self.assertEqual(groups[0].link_costs, [None, 0.25, None, None])
 
     def test_a_link_to_a_detection_outside_the_plan_is_ignored(self):
         self.assertEqual(merge_groups([1], {1: 10}, {1: 99}, {}).groups, [])
@@ -72,7 +82,7 @@ class TestMergeGroupsWithIdentifications(TestCase):
         plan = merge_groups([1, 2, 3], {1: 10, 2: 20, 3: 30}, {1: 2, 2: 3}, {1: 0.1, 2: 0.2}, {10: {7}, 30: {8}})
 
         self.assertEqual([(g.detection_ids, g.keeper_id) for g in plan.groups], [([1, 2], 10)])
-        self.assertEqual(plan.groups[0].link_costs, [0.1])
+        self.assertEqual(plan.groups[0].link_costs, [0.1, None])
         self.assertEqual(plan.refused_links, [2])
 
     def test_an_earlier_link_between_disagreeing_occurrences_is_not_followed(self):

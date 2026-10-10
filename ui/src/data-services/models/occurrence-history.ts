@@ -105,8 +105,8 @@ export interface TrackingResultData extends ServerDeterminationSnapshot {
   score_min?: number | null
   score_mean?: number | null
   score_max?: number | null
-  /** The matching cost of each link the run made, in chain order. */
-  link_costs: number[]
+  /** One entry per detection in detection_ids: the cost of the link the run made from it, or null. */
+  link_costs: (number | null)[]
   /** Occurrences the run folded into this one; they no longer exist. */
   merged_occurrence_ids: number[]
   /** The mean distance per step between detection centres as a fraction of the image diagonal. */
