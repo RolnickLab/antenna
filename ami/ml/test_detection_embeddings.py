@@ -37,6 +37,7 @@ from ami.tests.fixtures.main import (
     setup_test_project,
 )
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
+from ami.users.models import User
 
 DETECTOR = ALGORITHM_CHOICES["random-detector"]
 BINARY = ALGORITHM_CHOICES["random-binary-classifier"]  # labels: "Moth", "Not a moth"
@@ -665,3 +666,58 @@ class TestEmbeddingsInOccurrenceApi(APITestCase):
     def test_the_list_view_does_not_carry_the_field(self):
         response = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
         self.assertNotIn("embedding_algorithms", response.json()["results"][0])
+
+
+class TestEmbeddingAdmin(TestCase):
+    """The admin lists vectors without loading them and cannot change them."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        image = SourceImage.objects.create(path="admin.jpg", deployment=cls.deployment, project=cls.project)
+        cls.algorithm = Algorithm.objects.create(name="Admin backbone", key="admin-backbone", task_type="embedding")
+        cls.detections = [
+            Detection.objects.create(source_image=image, bbox=[float(i), 0.0, float(i) + 10.0, 10.0]) for i in range(6)
+        ]
+        cls.superuser = User.objects.create_superuser(email="vector-admin@insectai.org", password="secret")
+
+    def _store(self, count: int) -> None:
+        DetectionEmbedding.objects.all().delete()
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(detection=detection, algorithm=self.algorithm, vector=[0.5] * 4)
+                for detection in self.detections[:count]
+            ]
+        )
+
+    def _changelist(self):
+        self.client.force_login(self.superuser)
+        with cache_off(), CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/admin/ml/detectionembedding/")
+        self.assertEqual(response.status_code, 200)
+        return response, queries.captured_queries
+
+    def test_the_changelist_takes_the_same_queries_for_any_number_of_rows_and_never_selects_the_vector(self):
+        self._store(2)
+        response, two = self._changelist()
+        self.assertContains(response, "Admin backbone")
+        self._store(6)
+        _, six = self._changelist()
+        self.assertEqual(len(two), len(six))
+        for query in six:
+            # The vector's length is computed in SQL; the column itself is never read.
+            sql = query["sql"].replace('vector_dims("ml_detectionembedding"."vector")', "")
+            self.assertNotIn('"ml_detectionembedding"."vector"', sql)
+
+    def test_the_admin_cannot_add_change_or_delete_vectors_and_shows_only_the_length(self):
+        self._store(1)
+        embedding = DetectionEmbedding.objects.get()
+        self.client.force_login(self.superuser)
+        self.assertEqual(self.client.get("/admin/ml/detectionembedding/add/").status_code, 403)
+        self.assertEqual(self.client.post(f"/admin/ml/detectionembedding/{embedding.pk}/delete/").status_code, 403)
+        response = self.client.get(f"/admin/ml/detectionembedding/{embedding.pk}/change/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "0.5, 0.5")
+        self.assertContains(response, "Vector length")
+        self.assertEqual(self.client.post(f"/admin/ml/detectionembedding/{embedding.pk}/change/", {}).status_code, 403)
