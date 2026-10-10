@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
-from django.db import models
+from django.db import connection, models, transaction
 from django.db.models import OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -38,6 +38,7 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.ml.embeddings.reader import algorithm_with_most_vectors, representative_embeddings
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.fields import url_boolean_param
@@ -177,6 +178,27 @@ class TaxonPagination(LimitOffsetPaginationWithPermissions):
         # the page. Strip annotations (and ordering) before counting to keep the COUNT
         # cheap. See docs/claude/reference/hierarchical-rollup-query-performance.md.
         return super().get_count(queryset.order_by().values("pk"))
+
+
+class OccurrencePagination(LimitOffsetPaginationWithPermissions):
+    def get_count(self, queryset):
+        # A similarity-sorted list annotates the cosine distance as a correlated subquery. The
+        # count does not need it, and left in, it would be evaluated for every occurrence a
+        # second time. Other orderings count the queryset as they always have.
+        if "visual_similarity" not in queryset.query.annotations:
+            return super().get_count(queryset)
+        count = super().get_count(queryset.order_by().values("pk"))
+        # Counted before the page is fetched, so a refused list computes no distances.
+        if count > settings.SIMILARITY_SORT_MAX_OCCURRENCES:
+            raise api_exceptions.ValidationError(
+                {
+                    "ordering": (
+                        f"Sorting by visual similarity is limited to {settings.SIMILARITY_SORT_MAX_OCCURRENCES:,} "
+                        f"occurrences and this list has {count:,}. Narrow the filters and try again."
+                    )
+                }
+            )
+        return count
 
 
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
@@ -1490,6 +1512,9 @@ class OccurrenceFilterSet(FilterSet):
         fields = list(OCCURRENCE_FILTERSET_FIELDS)
 
 
+VISUAL_SIMILARITY_ORDERINGS = ("visual_similarity", "-visual_similarity")
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1497,10 +1522,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Occurrence.objects.all()
+    pagination_class = OccurrencePagination
 
     serializer_class = OccurrenceSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
     filterset_class = OccurrenceFilterSet
+    self_applied_orderings = VISUAL_SIMILARITY_ORDERINGS
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -1543,17 +1570,94 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.apply_default_filters(project, self.request)  # type: ignore
+        ordering = self.request.query_params.get("ordering")
+        by_similarity = ordering in VISUAL_SIMILARITY_ORDERINGS
+        seed_id = (
+            SingleParamSerializer[int].clean(
+                "similar_to", serializers.IntegerField(required=True, min_value=1), self.request.query_params
+            )
+            if by_similarity
+            else None
+        )
+        # The occurrence being compared against stays in its own list even if the defaults hide it.
+        qs = qs.apply_default_filters(project, self.request, keep_pk=seed_id)  # type: ignore
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
         else:
             qs = qs.with_detail_prefetches()  # type: ignore
 
+        if by_similarity:
+            qs = self._order_by_visual_similarity(qs, project, seed_id, descending=ordering.startswith("-"))
+
         return qs
+
+    def _order_by_visual_similarity(
+        self, qs: QuerySet["Occurrence"], project: Project | None, seed_id: int, descending: bool
+    ):
+        """Sort by cosine distance from a seed occurrence's feature vector, most similar first.
+
+        One algorithm's vectors only (``similarity_algorithm``, or the one with the most vectors
+        in the project): distances between algorithms are meaningless. The seed occurrence is the
+        ``seed_id`` (the required ``similar_to``). Occurrences without a vector sort last, in both directions.
+        Not an ``ordering_fields`` entry, so the ordering filter leaves this ordering alone.
+        """
+        if project is None:
+            raise api_exceptions.ValidationError({"ordering": "Sorting by visual similarity requires a project_id."})
+        if not Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists():
+            return qs  # Already empty for this user, and the seed must not say more than that.
+        params = self.request.query_params
+        algorithm_id = SingleParamSerializer[int].clean(
+            "similarity_algorithm", serializers.IntegerField(required=False, min_value=1), params
+        )
+        if algorithm_id is None:
+            algorithm_id = algorithm_with_most_vectors(project)
+            if algorithm_id is None:
+                raise api_exceptions.ValidationError(
+                    {"ordering": "No feature vectors have been stored for this project yet."}
+                )
+        visible = Occurrence.objects.visible_for_user(self.request.user).valid().filter(project=project)
+        if not visible.filter(pk=seed_id).exists():
+            raise api_exceptions.ValidationError({"similar_to": f"Occurrence #{seed_id} is not in this project."})
+        seed_vector = representative_embeddings(seed_id, algorithm_id).values_list("vector", flat=True).first()
+        if seed_vector is None:
+            raise api_exceptions.ValidationError(
+                {"similar_to": f"Occurrence #{seed_id} has no feature vector from algorithm #{algorithm_id}."}
+            )
+        distance = models.F("visual_similarity")
+        return qs.with_visual_similarity(seed_vector, algorithm_id).order_by(  # type: ignore[attr-defined]
+            distance.desc(nulls_last=True) if descending else distance.asc(nulls_last=True), "-pk"
+        )
 
     @extend_schema(
         parameters=[
             project_id_doc_param,
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Besides the usual fields, `visual_similarity` (or `-visual_similarity`) sorts by cosine "
+                    "distance from a seed occurrence's feature vector, most similar first; occurrences without "
+                    "a vector come last."
+                ),
+                required=False,
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                name="similar_to",
+                description=(
+                    "Required with `ordering=visual_similarity`: the id of the occurrence to compare against."
+                ),
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="similarity_algorithm",
+                description=(
+                    "With `ordering=visual_similarity`: the id of the algorithm whose feature vectors to compare. "
+                    "Defaults to the algorithm with the most vectors in the project."
+                ),
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
             OpenApiParameter(
                 name="classification_threshold",
                 description="Filter occurrences by minimum determination score.",
@@ -1582,7 +1686,14 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        if request.query_params.get("ordering") not in VISUAL_SIMILARITY_ORDERINGS:
+            return super().list(request, *args, **kwargs)
+        # PostgreSQL's JIT compilation took most of a first similarity page when measured, and
+        # the query is too short to benefit. SET LOCAL ends with the transaction (the request's),
+        # so other requests keep the server's setting.
+        with transaction.atomic(savepoint=False), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL jit = off")
+            return super().list(request, *args, **kwargs)
 
     @extend_schema(
         operation_id="occurrences_history_retrieve",

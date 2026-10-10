@@ -77,7 +77,10 @@ export const Table = <T extends { id: string }>({
     }
 
     if (column.sortField !== sortSettings?.field) {
-      onSortSettingsChange?.({ field: column.sortField, order: 'desc' })
+      onSortSettingsChange?.({
+        field: column.sortField,
+        order: column.defaultSortOrder ?? 'desc',
+      })
     } else {
       onSortSettingsChange?.({
         field: column.sortField,

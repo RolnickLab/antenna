@@ -12,6 +12,8 @@ import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import pgvector
+import pgvector.django
 import PIL.Image
 import pydantic
 from django.apps import apps
@@ -50,6 +52,7 @@ from ami.main.models_future.storage import (  # noqa: F401
     delete_source_image,
     upload_to_with_deployment,
 )
+from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -3377,6 +3380,25 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
+    def with_visual_similarity(self, seed_vector, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
+        """Annotate ``visual_similarity``: the cosine distance from ``seed_vector`` to each occurrence's vector.
+
+        The occurrence's vector is its representative detection's (see
+        ``representative_embeddings``), from one algorithm only: distances between vectors of
+        different algorithms are meaningless. NULL for an occurrence without such a vector, so an
+        ascending ``nulls_last`` ordering puts the most similar first and vector-less ones last.
+        The distance is computed inside the subquery, so the aggregate annotations' GROUP BY
+        evaluates it once per occurrence rather than once per joined detection.
+        """
+        from ami.ml.embeddings.reader import representative_embeddings
+
+        nearest = (
+            representative_embeddings(OuterRef("pk"), algorithm_id, key)
+            .annotate(distance=pgvector.django.CosineDistance("vector", seed_vector))
+            .values("distance")[:1]
+        )
+        return self.annotate(visual_similarity=models.Subquery(nearest))
+
     def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
         """Subquery matching occurrences with any result from the given algorithms: a detection
         made by one (detectors), a classification from one (classifiers and post-processing
@@ -3607,7 +3629,9 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         return qs
 
-    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+    def apply_default_filters(
+        self, project: Project | None = None, request: Request | None = None, keep_pk: int | None = None
+    ):
         """
         Apply all default filters to occurrences based on project settings.
 
@@ -3617,6 +3641,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         Args:
             project: The project whose default filters should be applied
             request: The request object (optional, used to check for apply_defaults=false)
+            keep_pk: An occurrence that stays in the result even when the defaults would hide it
+                (the seed of a similarity sort). Other filters still apply to it.
 
         Returns:
             Filtered queryset with both score and taxa filters applied
@@ -3637,6 +3663,8 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         # Use build_occurrence_default_filters_q to get the combined filter and apply it
         filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+        if keep_pk is not None and filter_q:  # An empty Q would turn the "or" into a filter on the pk alone.
+            filter_q |= Q(pk=keep_pk)
         return self.filter(filter_q)
 
 
