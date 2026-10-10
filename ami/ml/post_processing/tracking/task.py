@@ -13,6 +13,7 @@ from collections.abc import Iterator, Sequence
 
 from django.db import connection, transaction
 from django.db.models import Count, Exists, F, OuterRef
+from django.utils import timezone
 
 from ami.main.models import (
     Classification,
@@ -157,15 +158,18 @@ def plan_session_links(
 ) -> SessionPlan:
     """Match one session's processed captures and work out the merges, writing nothing and holding no lock.
 
-    Raises ``SkipSession`` when the session has fewer than two processed captures, or when no detector
-    was chosen and its detections come from more than one. Two detectors find the same insect twice,
-    and their boxes would be linked into parallel chains. ``progress_cb`` receives the share of
+    Raises ``SkipSession`` when the session has fewer than two processed captures or no detections, or
+    when no detector was chosen and its detections come from more than one. Two detectors find the same
+    insect twice, and their boxes would be linked into parallel chains. ``progress_cb`` receives the share of
     transitions matched after each one.
     """
     source_images = processed_captures(event)
     if len(source_images) < 2:
         raise SkipSession("it has fewer than two processed captures")
     detections = session_detections(source_images, config.detection_algorithm_id)
+    if not detections:
+        chosen = " from the chosen detector" if config.detection_algorithm_id is not None else ""
+        raise SkipSession(f"its processed captures have no detections{chosen}")
     detectors = {d.detection_algorithm_id for d in detections}
     if config.detection_algorithm_id is None and len(detectors) > 1:
         logger.warning(f"Session {event.pk} has detections from more than one detector: {sorted(detectors, key=str)}.")
@@ -318,6 +322,7 @@ def record_tracking_results(
     moved_identifications: dict[int, list[tuple[int, int]]],
     withdrawn: dict[int, list[int]],
     determination_before: dict[int, int | None],
+    moved_results: dict[int, list[tuple[int, int]]] | None = None,
 ) -> int:
     """Write one tracking result per group of two or more detections, or that absorbed an occurrence.
 
@@ -326,8 +331,10 @@ def record_tracking_results(
     first, then the highest score), so the taxa and agreement describe what the determination was made from.
     Each result also records the occurrence every detection was in before the run, and the
     identifications moved or withdrawn, so a reset can put the earlier grouping back. A retried job that
-    already wrote a result for the occurrence folds this one into it, keeping one result per occurrence
-    per job and the grouping from before its first attempt. Returns the number of results written.
+    already wrote results for the occurrence, its own or ones a merge just moved onto it, folds them and
+    this one into a single result and deletes the rest, keeping one result per occurrence per job and the
+    grouping from before its first attempt. ``moved_results`` is the merge's record of moved results, so
+    the result the occurrence held before the merge is the one kept. Returns the number of results written.
     """
     recorded = [(g, keepers[g.keeper_id]) for g in groups if len(g.detection_ids) > 1 or merged.get(g.keeper_id)]
     if not recorded:
@@ -342,8 +349,12 @@ def record_tracking_results(
     }
 
     images = {image.pk: image for image in plan.source_images}
-    earlier = _results_of_this_job(job, algorithm, [keeper.pk for _, keeper in recorded])
+    moved = {pk for rows in (moved_results or {}).values() for pk, _ in rows}
+    earlier = _results_of_this_job(job, algorithm, [keeper.pk for _, keeper in recorded], moved)
     results = []
+    folded: list[AlgorithmResult] = []
+    superseded: list[int] = []
+    now = timezone.now()
     for group, keeper in recorded:
         detections = [plan.detections[pk] for pk in group.detection_ids]
         figures = occurrence_figures(
@@ -365,46 +376,75 @@ def record_tracking_results(
             "withdrawn_identification_ids": withdrawn.get(keeper.pk, []),
         }
         if keeper.pk in earlier:
-            result = earlier[keeper.pk]
-            result.data = _fold_into_earlier_attempt(result.data, data)
+            result, *others = earlier[keeper.pk]
+            result.data = _fold_into_earlier_attempts(
+                [result.data, *(other.data for other in others)], data, own_first=result.pk not in moved
+            )
             result.fill_from_data()
+            # bulk_update skips auto_now fields.
+            result.updated_at = now
+            folded.append(result)
+            superseded.extend(other.pk for other in others)
         else:
             results.append(
                 AlgorithmResult(
                     occurrence=keeper, algorithm=algorithm, job=job, kind=TrackingResultData.kind, data=data
                 )
             )
-    if earlier:
-        AlgorithmResult.objects.bulk_update(list(earlier.values()), ["data", "value"])
-    return len(AlgorithmResult.objects.record_many(results)) + len(earlier)
+    if folded:
+        AlgorithmResult.objects.bulk_update(folded, ["data", "value", "updated_at"])
+    if superseded:
+        # Tracking creates no classifications, so nothing points at these; their contents are in `folded`.
+        AlgorithmResult.objects.filter(pk__in=superseded).delete()
+    return len(AlgorithmResult.objects.record_many(results)) + len(folded)
 
 
 def _results_of_this_job(
-    job: "Job | None", algorithm: Algorithm, occurrence_ids: list[int]
-) -> dict[int, AlgorithmResult]:
-    """The latest tracking result an earlier attempt of this job wrote for each of these occurrences."""
+    job: "Job | None",
+    algorithm: Algorithm,
+    occurrence_ids: list[int],
+    moved: set[int],
+) -> dict[int, list[AlgorithmResult]]:
+    """The tracking results earlier attempts of this job left on each of these occurrences, oldest first.
+
+    A result the occurrence held before this run's merge comes before those the merge moved onto it, whose
+    ids are in ``moved``.
+    """
     if job is None:
         return {}
-    found: dict[int, AlgorithmResult] = {}
+    found: dict[int, list[AlgorithmResult]] = collections.defaultdict(list)
     for result in AlgorithmResult.objects.filter(
         job=job, algorithm=algorithm, kind=TrackingResultData.kind, occurrence_id__in=occurrence_ids
     ).order_by("timestamp", "pk"):
-        found[result.occurrence_id] = result
-    return found
+        found[result.occurrence_id].append(result)
+    for results in found.values():
+        results.sort(key=lambda result: result.pk in moved)
+    return dict(found)
 
 
-def _fold_into_earlier_attempt(earlier: dict, new: dict) -> dict:
+def _fold_into_earlier_attempts(earlier: list[dict], new: dict, own_first: bool) -> dict:
     """One record for the job: the figures of the latest attempt and the grouping from before the first.
 
-    A detection the earlier attempt recorded keeps the occurrence it was in then, and its link cost unless
-    this attempt linked it; merges and moved or withdrawn identifications of both attempts are kept.
+    ``earlier`` holds the data of the results earlier attempts left on the occurrence, the one it held
+    before this run's merge first. When ``own_first``, that one gives the determination before; otherwise
+    every earlier result came from a merged occurrence and this attempt's figure stands. A detection an earlier attempt
+    recorded keeps the occurrence it was in then, and its link cost unless this attempt linked it; merges
+    and moved or withdrawn identifications of every attempt are kept.
     """
-    previous = dict(zip(earlier.get("detection_ids", []), earlier.get("previous_occurrence_ids", [])))
-    costs = dict(zip(earlier.get("detection_ids", []), earlier.get("link_costs", [])))
+    previous: dict[int, int | None] = {}
+    costs: dict[int, float | None] = {}
+    for data in earlier:
+        for pk, before in zip(data.get("detection_ids", []), data.get("previous_occurrence_ids", [])):
+            previous.setdefault(pk, before)
+        for pk, cost in zip(data.get("detection_ids", []), data.get("link_costs", [])):
+            if costs.get(pk) is None:
+                costs[pk] = cost
     detection_ids = new["detection_ids"]
     return {
         **new,
-        "determination_before_id": earlier.get("determination_before_id"),
+        "determination_before_id": (
+            earlier[0].get("determination_before_id") if own_first else new["determination_before_id"]
+        ),
         "previous_occurrence_ids": [
             previous.get(pk, before) for pk, before in zip(detection_ids, new["previous_occurrence_ids"])
         ],
@@ -412,7 +452,7 @@ def _fold_into_earlier_attempt(earlier: dict, new: dict) -> dict:
             cost if cost is not None else costs.get(pk) for pk, cost in zip(detection_ids, new["link_costs"])
         ],
         **{
-            key: earlier.get(key, []) + new[key]
+            key: [item for data in earlier for item in data.get(key, [])] + new[key]
             for key in ("merged_occurrence_ids", "moved_identifications", "withdrawn_identification_ids")
         },
     }
@@ -447,15 +487,14 @@ def write_session_plan(
     for group, occurrence in zip(to_create, created):
         group.keeper_id = occurrence.pk
 
-    _set_detection_column(
-        "occurrence_id",
-        {
-            pk: group.keeper_id
-            for group in plan.groups
-            for pk, previous in zip(group.detection_ids, group.previous_occurrence_ids)
-            if previous != group.keeper_id
-        },
-    )
+    moved_detections = {
+        pk: group.keeper_id
+        for group in plan.groups
+        for pk, previous in zip(group.detection_ids, group.previous_occurrence_ids)
+        if previous != group.keeper_id
+    }
+    _set_detection_column("occurrence_id", moved_detections)
+    regrouped = set(moved_detections.values())
 
     keeper_ids = {group.keeper_id for group in plan.groups}
     keepers = Occurrence.objects.select_related("determination").in_bulk(list(keeper_ids))
@@ -467,12 +506,23 @@ def write_session_plan(
     refresh_determinations(keepers.values())
     merged, moved_identifications = merge.absorbed, merge.moved_identifications
     withdrawn = merge.withdrawn_identification_ids
+    # Keepers that gained detections without absorbing an occurrence; merge_occurrences stamps the others.
+    Occurrence.objects.filter(pk__in=sorted(regrouped - set(merged))).update(updated_at=timezone.now())
 
     counters["identifications_moved"] = sum(len(moved) for moved in moved_identifications.values())
     counters["identifications_withdrawn"] = sum(len(ids) for ids in withdrawn.values())
     counters["results_recorded"] = (
         record_tracking_results(
-            plan.groups, keepers, plan, record_as, job, merged, moved_identifications, withdrawn, determination_before
+            plan.groups,
+            keepers,
+            plan,
+            record_as,
+            job,
+            merged,
+            moved_identifications,
+            withdrawn,
+            determination_before,
+            merge.moved_results,
         )
         if record_as is not None
         else 0

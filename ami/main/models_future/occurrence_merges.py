@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from cachalot.api import cachalot_disabled
 from django.apps import apps
 from django.db import connection, models, transaction
+from django.utils import timezone
 
 from ami.main.models import Identification, Occurrence, update_occurrence_determination
 
@@ -77,6 +78,7 @@ def merge_occurrences(absorbed_into: Mapping[int, int], *, recompute_determinati
             if rule is MergeRule.MOVE_AND_WITHDRAW_DUPLICATES and moved:
                 merge.withdrawn_identification_ids = withdraw_duplicate_identifications(set(moved))
         Occurrence.objects.filter(pk__in=sorted(absorbed_into)).delete()
+        Occurrence.objects.filter(pk__in=sorted(merge.absorbed)).update(updated_at=timezone.now())
         if recompute_determinations:
             refresh_determinations(
                 Occurrence.objects.select_related("determination").filter(pk__in=sorted(merge.absorbed))

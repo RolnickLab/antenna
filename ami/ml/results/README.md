@@ -42,7 +42,8 @@ validates `data` against the registry, and the API publishes `data` as JSON.
 ## Rules
 
 - **Results are only added.** Each run adds one result per occurrence it touches; running a method
-  twice leaves two. A retried job reuses its own results. A list that needs an algorithm's latest
+  twice leaves two. A retried job folds into its own results, including one that a merge moved onto
+  the kept occurrence, so it leaves one per occurrence. A list that needs an algorithm's latest
   value takes the latest by timestamp.
 - **A run gets its own `Algorithm` only when it changes what can be output.** Class masking makes one
   per source classifier and species list, because the list changes which species can be named. The

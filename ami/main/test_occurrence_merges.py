@@ -72,6 +72,15 @@ class TestMergeOccurrences(_MergeCase):
         self.assertEqual(merge.moved_results, {kept.pk: [(moved_result.pk, absorbed.pk)]})
         self.assertEqual(merge.withdrawn_identification_ids, {})
 
+    def test_the_kept_occurrence_is_stamped_as_updated(self):
+        kept, absorbed = self._occurrence(), self._occurrence()
+        stamped = kept.updated_at
+
+        merge_occurrences({absorbed.pk: kept.pk})
+
+        kept.refresh_from_db()
+        self.assertGreater(kept.updated_at, stamped)
+
     def test_the_determination_follows_the_moved_identification(self):
         kept, absorbed = self._occurrence(), self._occurrence()
         Identification.objects.create(occurrence=absorbed, user=self.user, taxon=self.other_taxon)

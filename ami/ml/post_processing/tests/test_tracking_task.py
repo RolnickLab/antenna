@@ -129,6 +129,19 @@ class TestTrackingRun(_TrackingCase):
         self.assertEqual(params["Sessions skipped"], 1)
         self.assertIn("fewer than two processed captures", params["Result"])
 
+    def test_a_session_whose_captures_have_no_detections_is_skipped_with_a_reason(self):
+        captures = create_session(self.deployment, [[], []], self.taxa[0])
+        job = Job.objects.create(name="t", project=self.project, job_type_key="post_processing")
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+
+        self.run_task(captures[0].event, job=job)
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertEqual((params["Sessions tracked"], params["Sessions skipped"]), (0, 1))
+        self.assertIn("have no detections", params["Result"])
+
 
 class TestGuards(_TrackingCase):
     def test_a_session_that_was_already_tracked_is_skipped_unless_the_guard_is_off(self):
@@ -546,6 +559,34 @@ class TestTrackingResults(_TrackingCase):
         costs = result.data["link_costs"]
         self.assertEqual([cost is None for cost in costs], [False, False, True])
         self.assertEqual(costs[0], first.data["link_costs"][0])
+
+    def test_a_retry_that_joins_two_chains_leaves_one_result_of_the_job(self):
+        """A retry that merges an occurrence holding its own result from the job folds that result in.
+
+        The merge moves the absorbed occurrence's result onto the keeper, so without the fold the keeper
+        would hold two results of one job. The kept result covers both chains, starts from the grouping
+        before the first attempt, and has its ``updated_at`` stamped.
+        """
+        shifted = [120, 100, 220, 200]
+        captures = create_session(self.deployment, [[BOX], [BOX], [shifted], [shifted]], self.taxa[0])
+        event = captures[0].event
+        before = list(Detection.objects.filter(source_image__event=event).order_by("timestamp"))
+        job = self.make_job()
+        self.run_task(event, job=job, cost_threshold=0.05)
+        first_results = list(AlgorithmResult.objects.filter(kind="tracking", job=job).order_by("pk"))
+        self.assertEqual(len(first_results), 2)
+
+        self.run_task(event, job=job, cost_threshold=1.3, require_fresh_event=False)
+
+        self.assertEqual(Occurrence.objects.filter(event=event).count(), 1)
+        result = AlgorithmResult.objects.get(kind="tracking", job=job)
+        self.assertEqual(result.pk, first_results[0].pk)
+        self.assertEqual(result.occurrence_id, Occurrence.objects.get(event=event).pk)
+        self.assertEqual(result.data["detection_ids"], [d.pk for d in before])
+        self.assertEqual(result.data["previous_occurrence_ids"], [d.occurrence_id for d in before])
+        self.assertEqual(sorted(result.data["merged_occurrence_ids"]), sorted(d.occurrence_id for d in before[1:]))
+        self.assertEqual([cost is None for cost in result.data["link_costs"]], [False, False, False, True])
+        self.assertGreater(result.updated_at, result.created_at)
 
     def test_results_of_merged_occurrences_move_onto_the_keeper(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
