@@ -28,8 +28,16 @@ export const columns = ({
 }): TableColumn<Occurrence>[] => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
+    name: translate(
+      canSortBySimilarity
+        ? STRING.FIELD_LABEL_SIMILARITY
+        : STRING.FIELD_LABEL_SNAPSHOTS
+    ),
     sortField: canSortBySimilarity ? 'visual_similarity' : undefined,
+    defaultSortOrder: 'asc',
+    tooltip: canSortBySimilarity
+      ? translate(STRING.TOOLTIP_SIMILAR_TO)
+      : undefined,
     styles: {
       textAlign: TextAlign.Center,
     },
