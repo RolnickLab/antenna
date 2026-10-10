@@ -209,3 +209,27 @@ class TestSimilarityOrderSurvivesAViewDefault(VisualSimilarityFixture):
             reverse = self._ids(f"ordering=-visual_similarity&similar_to={self.seed.pk}")
         self.assertEqual(ids[:3], [self.seed.pk, self.near.pk, self.far.pk])
         self.assertEqual(reverse[:3], [self.far.pk, self.near.pk, self.seed.pk])
+
+
+class TestVisualSimilarityPageCount(VisualSimilarityFixture):
+    def _queries(self, query: str) -> list[str]:
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f"{self.url}&{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return [q["sql"] for q in ctx.captured_queries]
+
+    def test_the_page_count_does_not_compute_the_distance(self):
+        """The count of a sorted list needs no distances; carrying the per-occurrence cosine
+        subquery into it would compute every distance a second time."""
+        with cachalot_disabled():
+            queries = self._queries(f"ordering=visual_similarity&similar_to={self.seed.pk}&limit=2")
+        counts = [sql for sql in queries if sql.startswith("SELECT COUNT(")]
+        self.assertTrue(counts, "no COUNT query was captured")
+        for sql in counts:
+            self.assertNotIn("<=>", sql)
+        self.assertTrue(any("<=>" in sql for sql in queries), "the page query should compute the distance")
+
+    def test_the_count_matches_the_plain_list(self):
+        response = self.client.get(f"{self.url}&ordering=visual_similarity&similar_to={self.seed.pk}&limit=2")
+        self.assertEqual(response.json()["count"], 5)
+        self.assertEqual(len(response.json()["results"]), 2)

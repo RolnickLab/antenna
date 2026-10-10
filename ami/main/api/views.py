@@ -180,6 +180,16 @@ class TaxonPagination(LimitOffsetPaginationWithPermissions):
         return super().get_count(queryset.order_by().values("pk"))
 
 
+class OccurrencePagination(LimitOffsetPaginationWithPermissions):
+    def get_count(self, queryset):
+        # A similarity-sorted list annotates the cosine distance as a correlated subquery. The
+        # count does not need it, and left in, it would be evaluated for every occurrence a
+        # second time. Other orderings count the queryset as they always have.
+        if "visual_similarity" not in queryset.query.annotations:
+            return super().get_count(queryset)
+        return super().get_count(queryset.order_by().values("pk"))
+
+
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows projects to be viewed or edited.
@@ -1501,6 +1511,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Occurrence.objects.all()
+    pagination_class = OccurrencePagination
 
     serializer_class = OccurrenceSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
