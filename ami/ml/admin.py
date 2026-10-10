@@ -141,7 +141,7 @@ class DetectionEmbeddingAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).defer("vector").annotate(vector_length=VectorDims("vector"))
 
-    @admin.display(description="Vector length", ordering="vector_length")
+    @admin.display(description="Vector length")
     def vector_length(self, obj: DetectionEmbedding) -> int:
         return obj.vector_length  # type: ignore[attr-defined] # Annotated in get_queryset
 

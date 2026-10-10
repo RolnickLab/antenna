@@ -734,3 +734,9 @@ class TestEmbeddingAdmin(TestCase):
         self.assertNotContains(response, "0.5, 0.5")
         self.assertContains(response, "Vector length")
         self.assertEqual(self.client.post(f"/admin/ml/detectionembedding/{embedding.pk}/change/", {}).status_code, 403)
+
+    def test_the_length_column_is_not_sortable(self):
+        """Sorting by the length would read every vector of the table."""
+        from ami.ml.admin import DetectionEmbeddingAdmin
+
+        self.assertFalse(hasattr(DetectionEmbeddingAdmin.vector_length, "admin_order_field"))
