@@ -1570,24 +1570,35 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.apply_default_filters(project, self.request)  # type: ignore
+        ordering = self.request.query_params.get("ordering")
+        by_similarity = ordering in VISUAL_SIMILARITY_ORDERINGS
+        seed_id = (
+            SingleParamSerializer[int].clean(
+                "similar_to", serializers.IntegerField(required=True, min_value=1), self.request.query_params
+            )
+            if by_similarity
+            else None
+        )
+        # The occurrence being compared against stays in its own list even if the defaults hide it.
+        qs = qs.apply_default_filters(project, self.request, keep_pk=seed_id)  # type: ignore
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
         else:
             qs = qs.with_detail_prefetches()  # type: ignore
 
-        ordering = self.request.query_params.get("ordering")
-        if ordering in VISUAL_SIMILARITY_ORDERINGS:
-            qs = self._order_by_visual_similarity(qs, project, descending=ordering.startswith("-"))
+        if by_similarity:
+            qs = self._order_by_visual_similarity(qs, project, seed_id, descending=ordering.startswith("-"))
 
         return qs
 
-    def _order_by_visual_similarity(self, qs: QuerySet["Occurrence"], project: Project | None, descending: bool):
+    def _order_by_visual_similarity(
+        self, qs: QuerySet["Occurrence"], project: Project | None, seed_id: int, descending: bool
+    ):
         """Sort by cosine distance from a seed occurrence's feature vector, most similar first.
 
         One algorithm's vectors only (``similarity_algorithm``, or the one with the most vectors
         in the project): distances between algorithms are meaningless. The seed occurrence is the
-        required ``similar_to``. Occurrences without a vector sort last, in both directions.
+        ``seed_id`` (the required ``similar_to``). Occurrences without a vector sort last, in both directions.
         Not an ``ordering_fields`` entry, so the ordering filter leaves this ordering alone.
         """
         if project is None:
@@ -1595,9 +1606,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         if not Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists():
             return qs  # Already empty for this user, and the seed must not say more than that.
         params = self.request.query_params
-        seed_id = SingleParamSerializer[int].clean(
-            "similar_to", serializers.IntegerField(required=True, min_value=1), params
-        )
         algorithm_id = SingleParamSerializer[int].clean(
             "similarity_algorithm", serializers.IntegerField(required=False, min_value=1), params
         )

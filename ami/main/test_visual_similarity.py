@@ -103,13 +103,26 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
         self.assertEqual(ids[:2], [self.seed.pk, self.other_only.pk])
         self.assertEqual(set(ids[2:]), {self.near.pk, self.far.pk, self.no_vector.pk})
 
-    def test_the_sort_goes_through_the_default_filters(self):
+    def test_the_sort_goes_through_the_default_filters_but_keeps_the_seed(self):
+        """The occurrence being compared against stays in its own list when the project's default
+        score threshold would hide it; everything else the defaults hide stays hidden."""
         self.project.default_filters_score_threshold = 0.95
         self.project.save()
-        self.assertEqual(self._ids(f"ordering=visual_similarity&similar_to={self.seed.pk}"), [])
-        self.assertEqual(
-            len(self._ids(f"ordering=visual_similarity&similar_to={self.seed.pk}&apply_defaults=false")), 5
-        )
+        seed = f"ordering=visual_similarity&similar_to={self.seed.pk}"
+        self.assertEqual(self._ids(seed), [self.seed.pk])
+        self.assertEqual(len(self._ids(f"{seed}&apply_defaults=false")), 5)
+
+    def test_the_seed_is_kept_when_a_default_taxa_filter_hides_it(self):
+        """The default taxa filter hides the seed's taxon; a filter the user chose still applies to it."""
+        self.project.default_filters_include_taxa.set([])
+        self.project.default_filters_exclude_taxa.set([self.seed.determination])
+        self.assertNotIn(self.seed.pk, self._ids(""))
+        seed = f"ordering=visual_similarity&similar_to={self.seed.pk}"
+        ids = self._ids(seed)
+        self.assertEqual(ids[0], self.seed.pk)
+        # A filter the user chose still removes the seed: only the defaults are bypassed.
+        other_image = self.far.detections.get().source_image_id
+        self.assertNotIn(self.seed.pk, self._ids(f"{seed}&detections__source_image={other_image}"))
 
     def test_bad_parameters_return_400(self):
         other_project, other_deployment = setup_test_project(reuse=False)

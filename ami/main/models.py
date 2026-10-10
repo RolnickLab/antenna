@@ -3629,7 +3629,9 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         return qs
 
-    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+    def apply_default_filters(
+        self, project: Project | None = None, request: Request | None = None, keep_pk: int | None = None
+    ):
         """
         Apply all default filters to occurrences based on project settings.
 
@@ -3639,6 +3641,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         Args:
             project: The project whose default filters should be applied
             request: The request object (optional, used to check for apply_defaults=false)
+            keep_pk: An occurrence that stays in the result even when the defaults would hide it
+                (the seed of a similarity sort). Other filters still apply to it.
 
         Returns:
             Filtered queryset with both score and taxa filters applied
@@ -3659,6 +3663,8 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         # Use build_occurrence_default_filters_q to get the combined filter and apply it
         filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+        if keep_pk is not None and filter_q:  # An empty Q would turn the "or" into a filter on the pk alone.
+            filter_q |= Q(pk=keep_pk)
         return self.filter(filter_q)
 
 
