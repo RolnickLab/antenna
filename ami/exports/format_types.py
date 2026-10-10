@@ -29,6 +29,10 @@ def get_export_serializer():
         def get_permissions(self, instance_data):
             return instance_data
 
+        class Meta(OccurrenceSerializer.Meta):
+            # embedding_algorithms costs a query per occurrence and is not part of the export.
+            fields = [field for field in OccurrenceSerializer.Meta.fields if field != "embedding_algorithms"]
+
         def to_representation(self, instance):
             return serializers.HyperlinkedModelSerializer.to_representation(self, instance)
 
