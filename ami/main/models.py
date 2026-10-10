@@ -3380,12 +3380,6 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
-    def with_vectors(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
-        """Occurrences with at least one detection that has a feature vector from the algorithm."""
-        from ami.ml.embeddings.reader import representative_embeddings
-
-        return self.filter(Exists(representative_embeddings(OuterRef("pk"), algorithm_id, key).order_by()))
-
     def with_visual_similarity(self, seed_vector, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
         """Annotate ``visual_similarity``: the cosine distance from ``seed_vector`` to each occurrence's vector.
 

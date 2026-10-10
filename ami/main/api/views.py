@@ -1564,9 +1564,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         """Sort by cosine distance from a seed occurrence's feature vector, most similar first.
 
         One algorithm's vectors only (``similarity_algorithm``, or the one with the most vectors
-        in the project): distances between algorithms are meaningless. The seed is
-        ``similar_to``, or the most recently updated occurrence with such a vector that the
-        default filters show. Occurrences without a vector sort last, in both directions.
+        in the project): distances between algorithms are meaningless. The seed occurrence is the
+        required ``similar_to``. Occurrences without a vector sort last, in both directions.
         Not an ``ordering_fields`` entry, so the ordering filter leaves this ordering alone.
         """
         if project is None:
@@ -1574,6 +1573,9 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         if not Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists():
             return qs  # Already empty for this user, and the seed must not say more than that.
         params = self.request.query_params
+        seed_id = SingleParamSerializer[int].clean(
+            "similar_to", serializers.IntegerField(required=True, min_value=1), params
+        )
         algorithm_id = SingleParamSerializer[int].clean(
             "similarity_algorithm", serializers.IntegerField(required=False, min_value=1), params
         )
@@ -1584,22 +1586,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                     {"ordering": "No feature vectors have been stored for this project yet."}
                 )
         visible = Occurrence.objects.visible_for_user(self.request.user).valid().filter(project=project)
-        seed_id = SingleParamSerializer[int].clean(
-            "similar_to", serializers.IntegerField(required=False, min_value=1), params
-        )
-        if seed_id is None:
-            seed_id = (
-                visible.apply_default_filters(project, self.request)
-                .with_vectors(algorithm_id)
-                .order_by("-updated_at")
-                .values_list("pk", flat=True)
-                .first()
-            )
-            if seed_id is None:
-                raise api_exceptions.ValidationError(
-                    {"ordering": f"No occurrence in this project has a feature vector from algorithm #{algorithm_id}."}
-                )
-        elif not visible.filter(pk=seed_id).exists():
+        if not visible.filter(pk=seed_id).exists():
             raise api_exceptions.ValidationError({"similar_to": f"Occurrence #{seed_id} is not in this project."})
         seed_vector = representative_embeddings(seed_id, algorithm_id).values_list("vector", flat=True).first()
         if seed_vector is None:
@@ -1627,8 +1614,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="similar_to",
                 description=(
-                    "With `ordering=visual_similarity`: the id of the occurrence to compare against. Defaults to "
-                    "the most recently updated occurrence that has a feature vector."
+                    "Required with `ordering=visual_similarity`: the id of the occurrence to compare against."
                 ),
                 required=False,
                 type=OpenApiTypes.INT,

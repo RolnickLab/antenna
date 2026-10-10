@@ -83,14 +83,14 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
         self.assertEqual(ids[:3], [self.far.pk, self.near.pk, self.seed.pk])
         self.assertEqual(set(ids[3:]), {self.other_only.pk, self.no_vector.pk})
 
-    def test_the_default_seed_is_the_most_recently_updated_occurrence_with_a_vector(self):
-        """The default list is ordered by -updated_at, so the seed is its top row that has a vector."""
-        self.far.save()  # Bumps updated_at.
-        ids = self._ids("ordering=visual_similarity")
-        self.assertEqual(ids[:3], [self.far.pk, self.near.pk, self.seed.pk])
-
-        self.no_vector.save()  # The newest occurrence has no vector, so it is skipped as a seed.
-        self.assertEqual(self._ids("ordering=visual_similarity")[0], self.far.pk)
+    def test_a_seed_is_required(self):
+        """Without ``similar_to`` there is nothing to compare against, so the request is refused
+        rather than guessing a seed."""
+        for query in ["ordering=visual_similarity", "ordering=-visual_similarity"]:
+            with self.subTest(query=query):
+                response = self.client.get(f"{self.url}&{query}")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+                self.assertIn("similar_to", response.json())
 
     def test_only_one_algorithms_vectors_are_compared(self):
         """By default the algorithm with the most vectors; ``similarity_algorithm`` picks another.
@@ -106,7 +106,9 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
         self.project.default_filters_score_threshold = 0.95
         self.project.save()
         self.assertEqual(self._ids(f"ordering=visual_similarity&similar_to={self.seed.pk}"), [])
-        self.assertEqual(len(self._ids("ordering=visual_similarity&apply_defaults=false")), 5)
+        self.assertEqual(
+            len(self._ids(f"ordering=visual_similarity&similar_to={self.seed.pk}&apply_defaults=false")), 5
+        )
 
     def test_bad_parameters_return_400(self):
         other_project, other_deployment = setup_test_project(reuse=False)
@@ -117,10 +119,11 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
 
         for query, key in [
             ("ordering=visual_similarity&similar_to=abc", "similar_to"),
+            ("ordering=visual_similarity", "similar_to"),
             ("ordering=visual_similarity&similar_to=0", "similar_to"),
             (f"ordering=visual_similarity&similar_to={foreign.pk}", "similar_to"),
             (f"ordering=visual_similarity&similar_to={self.no_vector.pk}", "similar_to"),
-            ("ordering=visual_similarity&similarity_algorithm=abc", "similarity_algorithm"),
+            (f"ordering=visual_similarity&similar_to={self.seed.pk}&similarity_algorithm=abc", "similarity_algorithm"),
             (f"ordering=visual_similarity&similar_to={self.seed.pk}&similarity_algorithm=999999", "similar_to"),
         ]:
             with self.subTest(query=query):
@@ -130,7 +133,7 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
 
     def test_a_project_without_vectors_says_so(self):
         DetectionEmbedding.objects.all().delete()
-        response = self.client.get(f"{self.url}&ordering=visual_similarity")
+        response = self.client.get(f"{self.url}&ordering=visual_similarity&similar_to={self.seed.pk}")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("No feature vectors", str(response.json()["ordering"]))
 
@@ -143,16 +146,15 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             return len(ctx.captured_queries)
 
-        similarity = "ordering=visual_similarity"
+        similarity = f"ordering=visual_similarity&similar_to={self.seed.pk}"
         # The query cache would serve repeated lookups from the first call, so it is off while
         # counting; the assertions stay outside the block so a failure cannot leave it off.
         with cachalot_disabled():
             overhead_small = count(f"{similarity}&limit=2") - count("limit=2")
             overhead_large = count(f"{similarity}&limit=5") - count("limit=5")
         self.assertEqual(overhead_small, overhead_large)
-        # Project visibility, the algorithm with the most vectors, the default filters' two taxa
-        # lists for the default seed, the seed itself, and its vector.
-        self.assertLessEqual(overhead_large, 6)
+        # Project visibility, the algorithm with the most vectors, the seed's visibility, and its vector.
+        self.assertLessEqual(overhead_large, 4)
 
 
 class TestVisualSimilarityPermissions(VisualSimilarityFixture):
