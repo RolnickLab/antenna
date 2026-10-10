@@ -269,6 +269,12 @@ export const AlgorithmResult = ({
       value: new Set(entry.classifications.map((c) => c.detection_id)).size,
     })
   }
+  if (entry.results_merged_in) {
+    stats.push({
+      label: translate(STRING.HISTORY_RESULTS_MERGED_IN),
+      value: entry.results_merged_in,
+    })
+  }
   getJobConfigFields(entry.job, occurrence.sessionId).forEach(
     ({ label, value, refs }) => {
       stats.push({

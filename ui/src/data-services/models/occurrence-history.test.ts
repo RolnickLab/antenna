@@ -100,6 +100,7 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   job: JOB,
   kind: 'class_masking',
   score: null,
+  results_merged_in: 0,
   type: 'algorithm_result',
   value: 0.38,
 }
@@ -126,6 +127,7 @@ const tracking: ServerOccurrenceHistoryEntry = {
   id: 6,
   kind: 'tracking',
   score: null,
+  results_merged_in: 0,
   type: 'algorithm_result',
   value: 0.0071,
 }

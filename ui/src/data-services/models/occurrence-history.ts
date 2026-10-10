@@ -153,6 +153,8 @@ interface ServerResultEntry<Kind extends string, Data>
   determination_after: ServerHistoryTaxon | null
   determination_before: ServerHistoryTaxon | null
   kind: Kind
+  /** Other results of the same run, brought here by merging occurrences; `classifications` covers them all. */
+  results_merged_in: number
   type: 'algorithm_result'
   /** The kind's headline figure, for sorting and filtering; not a confidence. */
   value: number | null

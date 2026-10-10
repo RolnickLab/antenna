@@ -341,6 +341,7 @@ export enum STRING {
   HISTORY_MASKING_SUBTITLE,
   HISTORY_ORIGINAL_PREDICTION,
   HISTORY_LOAD_ERROR,
+  HISTORY_RESULTS_MERGED_IN,
   HISTORY_SIZE_FILTER,
   HISTORY_TRACKING,
   HISTORY_TRACKING_LABEL_AGREEMENT,
@@ -822,6 +823,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.HISTORY_ORIGINAL_PREDICTION]: 'Original top prediction',
   [STRING.HISTORY_LOAD_ERROR]:
     'Could not load the full history. Showing identifications and predictions only.',
+  [STRING.HISTORY_RESULTS_MERGED_IN]:
+    'Results of this run from merged occurrences',
   [STRING.HISTORY_SIZE_FILTER]: 'Size filter',
   [STRING.HISTORY_TRACKING]: 'Occurrence tracking',
   [STRING.HISTORY_TRACKING_LABEL_AGREEMENT]: 'Label agreement',
