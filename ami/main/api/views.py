@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
-from django.db import models
+from django.db import connection, models, transaction
 from django.db.models import OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -1667,7 +1667,14 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        if request.query_params.get("ordering") not in VISUAL_SIMILARITY_ORDERINGS:
+            return super().list(request, *args, **kwargs)
+        # PostgreSQL's JIT compilation took most of a first similarity page when measured, and
+        # the query is too short to benefit. SET LOCAL ends with the transaction (the request's),
+        # so other requests keep the server's setting.
+        with transaction.atomic(savepoint=False), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL jit = off")
+            return super().list(request, *args, **kwargs)
 
     @extend_schema(
         operation_id="occurrences_history_retrieve",

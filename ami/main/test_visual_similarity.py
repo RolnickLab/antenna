@@ -153,8 +153,9 @@ class TestVisualSimilarityOrdering(VisualSimilarityFixture):
             overhead_small = count(f"{similarity}&limit=2") - count("limit=2")
             overhead_large = count(f"{similarity}&limit=5") - count("limit=5")
         self.assertEqual(overhead_small, overhead_large)
-        # Project visibility, the algorithm with the most vectors, the seed's visibility, and its vector.
-        self.assertLessEqual(overhead_large, 4)
+        # Turning JIT off, project visibility, the algorithm with the most vectors, the seed's
+        # visibility, and its vector.
+        self.assertLessEqual(overhead_large, 5)
 
 
 class TestVisualSimilarityPermissions(VisualSimilarityFixture):
@@ -233,3 +234,31 @@ class TestVisualSimilarityPageCount(VisualSimilarityFixture):
         response = self.client.get(f"{self.url}&ordering=visual_similarity&similar_to={self.seed.pk}&limit=2")
         self.assertEqual(response.json()["count"], 5)
         self.assertEqual(len(response.json()["results"]), 2)
+
+
+class TestVisualSimilarityDisablesJit(VisualSimilarityFixture):
+    """PostgreSQL's JIT compiler costs more than the similarity query it would speed up, so the
+    sort turns it off for its own transaction only."""
+
+    def _statements(self, query: str) -> list[str]:
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f"{self.url}&{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return [q["sql"] for q in ctx.captured_queries]
+
+    def test_jit_is_turned_off_for_the_similarity_sort_only(self):
+        with cachalot_disabled():
+            sorted_ = self._statements(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+            reversed_ = self._statements(f"ordering=-visual_similarity&similar_to={self.seed.pk}")
+            plain = self._statements("ordering=-created_at")
+            unordered = self._statements("")
+        self.assertEqual(sorted_.count("SET LOCAL jit = off"), 1)
+        self.assertEqual(reversed_.count("SET LOCAL jit = off"), 1)
+        self.assertNotIn("SET LOCAL jit = off", plain)
+        self.assertNotIn("SET LOCAL jit = off", unordered)
+
+    def test_jit_is_off_before_the_distances_are_computed(self):
+        with cachalot_disabled():
+            statements = self._statements(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+        first_distance = next(i for i, sql in enumerate(statements) if "<=>" in sql)
+        self.assertLess(statements.index("SET LOCAL jit = off"), first_distance)
