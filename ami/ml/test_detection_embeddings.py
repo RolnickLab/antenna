@@ -667,6 +667,19 @@ class TestEmbeddingsInOccurrenceApi(APITestCase):
         response = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
         self.assertNotIn("embedding_algorithms", response.json()["results"][0])
 
+    def test_the_algorithm_filter_finds_occurrences_by_their_vectors_and_excludes_them(self):
+        self.assertEqual(self._list_ids(f"algorithm={self.backbone.pk}"), {self.both.pk})
+        self.assertEqual(self._list_ids(f"algorithm={self.other.pk}"), {self.both.pk, self.one.pk})
+        self.assertEqual(self._list_ids(f"not_algorithm={self.other.pk}"), {self.none.pk})
+
+    def test_the_filter_sees_a_vector_stored_after_a_cached_answer(self):
+        """The query cache must know the filter reads the vector table, including under exclude()."""
+        self.assertEqual(self._list_ids(f"not_algorithm={self.backbone.pk}"), {self.one.pk, self.none.pk})
+        DetectionEmbedding.objects.store(
+            [DetectionEmbedding(detection=self.none.detections.get(), algorithm=self.backbone, vector=[1.0, 1.0])]
+        )
+        self.assertEqual(self._list_ids(f"not_algorithm={self.backbone.pk}"), {self.one.pk})
+
 
 class TestEmbeddingAdmin(TestCase):
     """The admin lists vectors without loading them and cannot change them."""

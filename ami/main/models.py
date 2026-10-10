@@ -3377,23 +3377,29 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
-    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
-        """Subquery matching occurrences with any result from the given algorithms —
-        a detection made by one (detectors) or a classification from one (classifiers
-        and post-processing algorithms such as class masking or a size filter)."""
+    def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
+        """Subquery matching occurrences with any result from the given algorithms: a detection
+        made by one (detectors), a classification from one (classifiers and post-processing
+        algorithms such as class masking or a size filter), or a feature vector from one
+        (embedding-only models)."""
+        from ami.ml.models import DetectionEmbedding
+
         return Exists(
             Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
                 models.Q(detection_algorithm__in=algorithm_ids)
                 | models.Q(classifications__algorithm__in=algorithm_ids)
             )
+        ) | Exists(
+            DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), algorithm_id__in=algorithm_ids)
         )
 
     def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with at least one result from the given algorithms.
 
-        Matches detectors through Detection.detection_algorithm and classifiers or
-        post-processing algorithms through their classifications, so every algorithm
-        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
+        Matches detectors through Detection.detection_algorithm, classifiers or
+        post-processing algorithms through their classifications, and embedding models
+        through their feature vectors, so every algorithm listed by
+        ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
         form returns each occurrence once; a join through
         ``detections__classifications`` returns one row per matching result, which
         inflates pagination counts and duplicates rows across pages.
