@@ -1291,9 +1291,10 @@ class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
     Filter occurrences by any algorithm that produced a result on them.
 
     Matches an occurrence when one of its detections was made by the given
-    algorithm (detectors) or one of its classifications came from it
-    (classifiers and post-processing algorithms), so every algorithm listed
-    by ``Algorithm.objects.used_in_project()`` can be filtered here.
+    algorithm (detectors), one of its classifications came from it (classifiers
+    and post-processing algorithms), or one of its feature vectors did
+    (embedding-only models), so every algorithm listed by
+    ``Algorithm.objects.used_in_project()`` can be filtered here.
 
     Accepts a list of algorithm ids to filter by (``algorithm``) or exclude
     by (``not_algorithm``). Both are supported and may be combined.

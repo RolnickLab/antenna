@@ -7411,8 +7411,8 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
 
 class TestOccurrenceJobFilter(APITestCase):
     """
-    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification
-    or an algorithm result written by the given job. Each occurrence must appear once, however
+    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification, an
+    algorithm result or a feature vector written by the given job. Each occurrence must appear once, however
     many of its rows the job wrote, and a malformed id must be a 400, not a 500.
     """
 
@@ -7507,6 +7507,37 @@ class TestOccurrenceJobFilter(APITestCase):
         response = self._list("abc")
         self.assertEqual(response.status_code, 400)
         self.assertIn("job", response.json())
+
+    def test_vector_only_link_to_a_job_matches(self):
+        """A job that only stored feature vectors still finds its occurrences, and a vector from
+        another job does not match."""
+        from ami.ml.models import DetectionEmbedding
+
+        vector_job = Job.objects.create(project=self.project, name="Vector job")
+        # Detection and classification come from another job; only the vector links to vector_job.
+        only_vector = self._make_occurrence([(self.other_job, [self.other_job])])
+        other_vector = self._make_occurrence([(self.other_job, [self.other_job])])
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(
+                    detection=only_vector.detections.get(), algorithm=self.algorithm, vector=[0.5] * 4, job=vector_job
+                ),
+                DetectionEmbedding(
+                    detection=other_vector.detections.get(),
+                    algorithm=self.algorithm,
+                    vector=[0.5] * 4,
+                    job=self.other_job,
+                ),
+            ]
+        )
+        ids = {row["id"] for row in self._list(vector_job.pk).json()["results"]}
+        self.assertEqual(ids, {only_vector.pk})
+        queryset_ids = set(
+            Occurrence.objects.filter(project=self.project)
+            .created_or_updated_by_job(vector_job.pk)
+            .values_list("pk", flat=True)
+        )
+        self.assertEqual(queryset_ids, {only_vector.pk})
 
     def test_filter_stays_inside_the_occurrence_query(self):
         """The filter adds no queries of its own: one statement for the rows and one for the count,

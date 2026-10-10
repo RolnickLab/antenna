@@ -38,6 +38,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.ml.embeddings.writer import create_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
@@ -1082,6 +1083,16 @@ def save_results(
     # New rows record the job that wrote them; rows that already existed keep theirs.
     detections = create_detections(
         detections=results.detections,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+        job_id=job.pk if job else None,
+    )
+
+    # Before classifications, so an unregistered embedding algorithm stops the batch at the
+    # same point an unregistered classification algorithm does.
+    create_detection_embeddings(
+        detections=detections,
+        detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
         job_id=job.pk if job else None,

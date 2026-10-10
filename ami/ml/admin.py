@@ -4,6 +4,7 @@ from ami.main.admin import AdminBase, ProjectPipelineConfigInline
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.algorithm_result import AlgorithmResult
+from .models.embedding import DetectionEmbedding, VectorDims
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
 
@@ -122,3 +123,33 @@ class AlgorithmCategoryMapAdmin(AdminBase):
 
     def num_labels(self, obj):
         return len(obj.labels) if obj.labels else 0
+
+
+@admin.register(DetectionEmbedding)
+class DetectionEmbeddingAdmin(admin.ModelAdmin):
+    """Read-only view of stored feature vectors: the vector is never loaded, only its length."""
+
+    list_display = ["id", "detection_id", "algorithm", "key", "vector_length", "job", "project", "timestamp"]
+    list_select_related = ["algorithm", "job", "project"]
+    list_filter = ["algorithm"]
+    raw_id_fields = ["detection"]
+    fields = ("detection", "algorithm", "key", "vector_length", "job", "project", "timestamp")
+    readonly_fields = fields
+    ordering = ["-id"]
+    show_full_result_count = False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).defer("vector").annotate(vector_length=VectorDims("vector"))
+
+    @admin.display(description="Vector length")
+    def vector_length(self, obj: DetectionEmbedding) -> int:
+        return obj.vector_length  # type: ignore[attr-defined] # Annotated in get_queryset
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
