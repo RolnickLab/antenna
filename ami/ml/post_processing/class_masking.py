@@ -8,9 +8,12 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
+from ami.base.model_references import model_reference
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.results.schemas import DeterminationSnapshot
+from ami.ml.results.writer import AlgorithmResultWriter
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -23,16 +26,16 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
+    source_image_collection_id: int | None = model_reference("capture_set", None, title="Capture set")
+    occurrence_id: int | None = model_reference("occurrence", None, title="Occurrence")
     # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int
+    taxa_list_id: int = model_reference("taxa_list", ..., title="Species list")
     # The source classifier whose terminal classifications are re-scored.
-    algorithm_id: int
+    algorithm_id: int = model_reference("algorithm", ..., title="Classifier")
     # When True (default), renormalise the kept classes' scores to sum to 1 after
     # masking. When False, the kept classes retain their original absolute scores and
     # the excluded classes are zeroed; the chosen species is identical either way.
-    reweight: bool = True
+    reweight: bool = pydantic.Field(True, title="Re-weighted scores")
 
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
@@ -43,6 +46,18 @@ class ClassMaskingConfig(pydantic.BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+class ClassMaskingResultData(DeterminationSnapshot):
+    """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
+
+    kind: typing.ClassVar[str] = "class_masking"
+    value_field: typing.ClassVar[str | None] = "excluded_probability"
+
+    # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
+    excluded_probability: float
+    # Where the class that wins after masking ranked before it; 1 means it was already the top.
+    new_winner_original_rank: int | None = None
 
 
 def make_classifications_filtered_by_taxa_list(
@@ -80,6 +95,12 @@ def make_classifications_filtered_by_taxa_list(
     changed (not just any occurrence touched), matching the size-filter convention.
 
     New classifications record ``job`` as the run that wrote them.
+
+    Every occurrence with a re-scored classification gets one algorithm result, written in
+    the same transaction as the batch that changes it, and its new classifications point at
+    that result (see ``AlgorithmResultWriter``). The result records the probability the list excluded
+    for the occurrence's winning detection; the original top prediction is the classification
+    the winning one replaced (``applied_to``).
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
@@ -123,6 +144,12 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
+    results = AlgorithmResultWriter(
+        kind=ClassMaskingResultData.kind,
+        algorithm=new_algorithm,
+        job=job,
+        timestamp=timestamp,
+    )
 
     # Sizing the scope and expanding the category map both take time on a large
     # classifier, so report before touching a row.
@@ -198,6 +225,16 @@ def make_classifications_filtered_by_taxa_list(
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
                     occurrences_to_update.add(detection.occurrence)
+                    # The occurrence's result carries the figures of its winning detection:
+                    # the one whose masked classification scores highest (see AlgorithmResultWriter).
+                    results.note(
+                        detection.occurrence,
+                        {
+                            "excluded_probability": float(1.0 - kept_sum),
+                            "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                        },
+                        rank=score,
+                    )
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
@@ -206,6 +243,7 @@ def make_classifications_filtered_by_taxa_list(
             with transaction.atomic():
                 if classifications_to_demote:
                     Classification.objects.bulk_update(classifications_to_demote, ["terminal", "updated_at"])
+                results.start_batch(occurrences_to_update, classifications_to_add)
                 if classifications_to_add:
                     Classification.objects.bulk_create(classifications_to_add)
                 # Count an occurrence only when saving its new terminal classification
@@ -217,6 +255,7 @@ def make_classifications_filtered_by_taxa_list(
                     occurrence.save(update_determination=True)
                     if occurrence.pk is not None and occurrence.determination_id != prev:
                         changed_occurrence_ids.add(occurrence.pk)
+                results.finish_batch(occurrences_to_update)
 
             classifications_to_demote.clear()
             classifications_to_add.clear()
@@ -246,6 +285,7 @@ class ClassMaskingTask(BasePostProcessingTask):
     key = "class_masking"
     name = "Class masking"
     config_schema = ClassMaskingConfig
+    result_models = (ClassMaskingResultData,)
 
     def _get_or_create_masking_algorithm(
         self, source_algorithm: Algorithm, taxa_list: TaxaList, *, reweight: bool

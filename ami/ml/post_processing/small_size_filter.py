@@ -1,9 +1,15 @@
+import typing
+
 import pydantic
-from django.db.models import QuerySet
+from django.db import transaction
+from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
+from ami.base.model_references import model_reference
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.results.schemas import DeterminationSnapshot
+from ami.ml.results.writer import AlgorithmResultWriter
 from ami.ml.schemas import BoundingBox
 
 
@@ -12,9 +18,9 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
     # set is the bulk path; a single occurrence is the spot/dev path (fast feedback
     # while tuning a filter). This discriminated-scope shape is the pattern other
     # post-processing tasks copy when they gain per-occurrence / per-event triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
-    size_threshold: float = 0.0008
+    source_image_collection_id: int | None = model_reference("capture_set", None, title="Capture set")
+    occurrence_id: int | None = model_reference("occurrence", None, title="Occurrence")
+    size_threshold: float = pydantic.Field(0.0008, title="Size threshold")
 
     @pydantic.validator("size_threshold")
     def _threshold_in_unit_interval(cls, v: float) -> float:
@@ -33,10 +39,21 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
         extra = "forbid"
 
 
+class SizeFilterResultData(DeterminationSnapshot):
+    """Figures from the occurrence's smallest filtered detection."""
+
+    kind: typing.ClassVar[str] = "size_filter"
+    value_field: typing.ClassVar[str | None] = "relative_size"
+
+    # The detection's box area as a fraction of its image.
+    relative_size: float
+
+
 class SmallSizeFilterTask(BasePostProcessingTask):
     key = "small_size_filter"
     name = "Small size filter"
     config_schema = SmallSizeFilterConfig
+    result_models = (SizeFilterResultData,)
 
     def _scoped_detections(self, config: SmallSizeFilterConfig) -> tuple[QuerySet[Detection], str]:
         """Resolve the detections to examine from whichever scope the config carries.
@@ -78,6 +95,11 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         self.logger.info(f"=== Starting {self.name} ===")
 
         detections, scope_desc = self._scoped_detections(config)
+        # A detection this filter already flagged keeps its flag. Flagging it again would only add an
+        # identical classification, and a retried job would repeat its own work.
+        detections = detections.exclude(
+            Exists(Classification.objects.filter(detection=OuterRef("pk"), algorithm=self.algorithm))
+        )
         total = detections.count()
         self.logger.info(f"Found {total} detections in {scope_desc}")
 
@@ -90,8 +112,61 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         updated_occurrence_ids: set[int] = set()
         modified_occurrences = 0
         checked = 0
+        # One algorithm result per flagged occurrence, written with the batch that flags it.
+        results = AlgorithmResultWriter(
+            kind=SizeFilterResultData.kind,
+            algorithm=self.algorithm,
+            job=self.job,
+        )
 
+        def flush(i: int) -> None:
+            """Write the rows gathered so far, in one transaction, and report progress as of detection ``i``."""
+            nonlocal checked, modified_detections, modified_occurrences
+            checked = i
+            modified_detections += len(detections_to_update)
+
+            with transaction.atomic():
+                results.start_batch(occcurrences_to_update, classifications_to_create)
+                self.logger.info(f"Creating {len(classifications_to_create)} new classifications")
+                Classification.objects.bulk_create(classifications_to_create)
+                classifications_to_create.clear()
+
+                self.logger.info(f"Marking {len(detections_to_update)} detections as {not_identifiable_taxon.name}")
+                for det in detections_to_update:
+                    det.updated_at = timezone.now()
+                Detection.objects.bulk_update(detections_to_update, ["updated_at"])
+                detections_to_update.clear()
+
+                self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
+                for occ in occcurrences_to_update:
+                    # Count an occurrence only when flagging its detection actually
+                    # changes the determination. Re-saving recomputes it in place, so
+                    # an occurrence pinned to a human identification keeps its taxon
+                    # and must not inflate the metric.
+                    prev_determination_id = occ.determination_id
+                    occ.save(update_determination=True)
+                    if occ.pk is not None and occ.determination_id != prev_determination_id:
+                        updated_occurrence_ids.add(occ.pk)
+                results.finish_batch(occcurrences_to_update)
+            modified_occurrences = len(updated_occurrence_ids)
+            occcurrences_to_update.clear()
+
+            progress = i / total if total > 0 else 1.0
+            self.update_progress(progress)
+            self.report_stage_metrics(
+                {
+                    "detections_checked": checked,
+                    "detections_flagged": modified_detections,
+                    "occurrences_updated": modified_occurrences,
+                }
+            )
+
+        i = 0
         for i, det in enumerate(detections.iterator(), start=1):
+            # Write each full batch of 100 before the next begins. The flush sits ahead of the
+            # skip checks below so a skipped detection never swallows the batch before it.
+            if i > 1 and (i - 1) % 100 == 0:
+                flush(i - 1)
             bbox = det.get_bbox()
             if not bbox:
                 self.logger.debug(f"Detection {det.pk}: no bbox, skipping")
@@ -132,45 +207,10 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 detections_to_update.add(det)
                 if det.occurrence is not None:
                     occcurrences_to_update.add(det.occurrence)
+                    # The occurrence's result carries the size of its smallest flagged detection.
+                    results.note(det.occurrence, {"relative_size": rel_area}, rank=-rel_area)
                 self.logger.debug(f"Marking detection {det.pk} as {not_identifiable_taxon.name}")
 
-            # Update progress every 100 detections
-            if i % 100 == 0 or i == total:
-                checked = i
-                modified_detections += len(detections_to_update)
-
-                # with transaction.atomic():
-                self.logger.info(f"Creating {len(classifications_to_create)} new classifications")
-                Classification.objects.bulk_create(classifications_to_create)
-                classifications_to_create.clear()
-
-                self.logger.info(f"Marking {len(detections_to_update)} detections as {not_identifiable_taxon.name}")
-                for det in detections_to_update:
-                    det.updated_at = timezone.now()
-                Detection.objects.bulk_update(detections_to_update, ["updated_at"])
-                detections_to_update.clear()
-
-                self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
-                for occ in occcurrences_to_update:
-                    # Count an occurrence only when flagging its detection actually
-                    # changes the determination. Re-saving recomputes it in place, so
-                    # an occurrence pinned to a human identification keeps its taxon
-                    # and must not inflate the metric.
-                    prev_determination_id = occ.determination_id
-                    occ.save(update_determination=True)
-                    if occ.pk is not None and occ.determination_id != prev_determination_id:
-                        updated_occurrence_ids.add(occ.pk)
-                modified_occurrences = len(updated_occurrence_ids)
-                occcurrences_to_update.clear()
-
-                progress = i / total if total > 0 else 1.0
-                self.update_progress(progress)
-                self.report_stage_metrics(
-                    {
-                        "detections_checked": checked,
-                        "detections_flagged": modified_detections,
-                        "occurrences_updated": modified_occurrences,
-                    }
-                )
+        flush(i)
 
         self.logger.info(f"=== Completed {self.name}: {modified_detections} of {total} detections modified ===")

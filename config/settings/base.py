@@ -554,6 +554,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # Names for the single-value enums that tag each occurrence history entry (see
+    # OCCURRENCE_HISTORY_ENTRY_SCHEMA); without them drf-spectacular falls back to hashed names.
+    "ENUM_NAME_OVERRIDES": {
+        "AlgorithmResultEntryTypeEnum": ["algorithm_result"],
+        "IdentificationEntryTypeEnum": ["identification"],
+        "PredictionEntryTypeEnum": ["prediction"],
+    },
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
