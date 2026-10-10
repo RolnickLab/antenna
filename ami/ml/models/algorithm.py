@@ -174,8 +174,8 @@ class AlgorithmQuerySet(BaseQuerySet):
         project column — project is reachable only through source_image. Both sides scan, so
         the call costs roughly
         0.1-0.6 s cold regardless of project size, growing with total table size.
-        The vector lookup is index-only: DetectionEmbedding carries a project column and the
-        index on (project, algorithm, key, detection) leads with it.
+        The vector lookup reads one project's range of the (project, algorithm, key, detection)
+        index; not measured.
         Executes the three lookups immediately rather than lazily; the id lists are tiny
         (one row per algorithm) and sorted so the SQL string, and therefore cachalot's
         cache key, is stable. Making this index-fast requires a denormalised project

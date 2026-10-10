@@ -97,7 +97,7 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
         if not embeddings:
             return 0, 0
         target_id = f"{self.target_field}_id"
-        self.model.fill_project_ids(embeddings)
+        typing.cast(type["BaseEmbedding"], self.model).fill_project_ids(embeddings)
         # Three __in filters select a cross product of ids, algorithms and keys, but it is bounded by the batch.
         stored = {
             (target, algorithm_id, key): vector
@@ -179,7 +179,8 @@ class DetectionEmbedding(BaseEmbedding):
     """
 
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
-    # Related names that predate the shared base keep their original spelling.
+    # DetectionEmbedding declares its own related names (detection_embeddings, embeddings); new sibling
+    # tables use the base's %(class)ss names.
     algorithm = models.ForeignKey(
         "ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
     )

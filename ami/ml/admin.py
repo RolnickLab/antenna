@@ -133,7 +133,7 @@ class DetectionEmbeddingAdmin(admin.ModelAdmin):
     list_select_related = ["algorithm", "job", "project"]
     list_filter = ["algorithm"]
     raw_id_fields = ["detection"]
-    fields = ["detection", "algorithm", "key", "vector_length", "job", "project", "timestamp"]
+    fields = ("detection", "algorithm", "key", "vector_length", "job", "project", "timestamp")
     readonly_fields = fields
     ordering = ["-id"]
     show_full_result_count = False

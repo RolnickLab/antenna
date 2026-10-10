@@ -59,6 +59,9 @@ claiming a query is cheap.
 | Q4 | Which models have vectors in a project, and how many | `vector_counts_by_algorithm(project_id, key=None)` | `GROUP BY algorithm_id, key` within a project | the same index (index-only); when one project holds most of the table the planner may scan the table instead, measured at 36 ms for 359k rows |
 | Q5 | Detections that still lack a vector from a model | `detections_missing_vectors(detections, algorithm_id, key)` | `NOT EXISTS` on (detection, algorithm, key) added to the caller's queryset | (algorithm, key, detection), index-only |
 | Q6 | Nearest neighbours of one vector, when exact scans are too slow | not shipped | `ORDER BY vector::halfvec(D) <=> seed` within one (algorithm, key) | a partial HNSW index per (algorithm, key), see below |
+| Q7 | Which algorithms stored vectors in a project (choices for the occurrence algorithm filter) | `Algorithm.objects.used_in_project(project)` | `SELECT DISTINCT algorithm_id WHERE project_id = P`, next to its detection and classification lookups | reads one project's range of (project, algorithm, key, detection); not measured |
+| Q8 | Which algorithms have a vector for one occurrence (`embedding_algorithms` on the occurrence detail) | `OccurrenceSerializer.get_embedding_algorithms` | `EXISTS` per algorithm on the occurrence's detections, one query | (algorithm, key, detection) probed through the detection's occurrence; not measured |
+| Q9 | Occurrences with a vector from given algorithms (the `algorithm` and `not_algorithm` filters) | `OccurrenceQuerySet.processed_by_algorithm()` | a third `EXISTS` ORed with the detection and classification ones, per occurrence | (algorithm, key, detection); not measured |
 
 `project_vectors` pages with `detection_id > last` rather than `OFFSET`, so every page costs the
 same and memory stays at one chunk. Callers keep their own scope by passing `detection_ids` or by
@@ -109,8 +112,8 @@ cascades and indexes exact. Only `DetectionEmbedding` exists today; the shared p
    `fill_project_ids(embeddings)` classmethod (how a vector finds its project from its target).
 2. Subclass `BaseEmbeddingQuerySet` with `target_field = "<target>"` and use it as the manager.
    `store()`, `stored_length()` and `for_algorithm()` then work unchanged. The base foreign keys use
-   `related_name="%(class)ss"`; `DetectionEmbedding` overrides the three of them to keep the names
-   it had before the base existed, and a sibling does not need to.
+   `related_name="%(class)ss"`. `DetectionEmbedding` declares its own related names
+   (`detection_embeddings`, `embeddings`); new sibling tables use the base's `%(class)ss` names.
 3. Write the Meta by hand: a unique constraint on (target, algorithm, key), a non-empty `key` check,
    an index on (project, algorithm, key, target), an index on (algorithm, key, target) for the
    writer's length lookup, and the partial (job, target) index. Give the indexes explicit short names

@@ -76,9 +76,9 @@ def project_vectors(
 def vector_counts_by_algorithm(project_id: int, key: str | None = None) -> dict[tuple[int, str], int]:
     """How many vectors each (algorithm id, key) has in a project, in one grouped query.
 
-    Serves "which models have vectors here" (the algorithm filter and a default model for
-    anything that compares vectors). It reads only the index on (project, algorithm, key). ``key`` limits the
-    result to one output name; the result is keyed by pair so nothing is merged across models.
+    Serves "which models have vectors here", for callers that must choose a model to compare. It reads
+    only the (project, algorithm, key, detection) index. ``key`` limits the result to one output name; the
+    result is keyed by pair so nothing is merged across models.
     """
     rows = DetectionEmbedding.objects.filter(project_id=project_id)
     if key is not None:
