@@ -7,6 +7,8 @@ from django.contrib import admin as django_admin
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from ami.base.model_references import ModelRef
+from ami.jobs.job_config import job_config_fields
 from ami.jobs.models import Job
 from ami.main.models import Project, SourceImageCollection
 from ami.ml.post_processing.tracking import TrackingConfig
@@ -99,6 +101,16 @@ class TestEventAdminTrackingAction(_TrackingAdminCase):
             self.assertFalse(config["require_fresh_event"])
         self.assertEqual(jobs[self.project.pk].params["config"]["event_ids"], [self.event.pk])
         self.assertEqual(jobs[other_project.pk].params["config"]["event_ids"], [other_event.pk])
+
+    def test_the_jobs_sessions_are_named_as_records(self):
+        """The job's config names its sessions as references, so the history can link them."""
+        self._post(self._knobs())
+        job = Job.objects.get(job_type_key="post_processing")
+
+        sessions = next(field for field in job_config_fields([job])[job.pk] if field.key == "event_ids")
+
+        self.assertEqual(sessions.label, "Sessions")
+        self.assertEqual(sessions.refs, [ModelRef("session", self.event.pk, self.event.name())])
 
     def test_an_out_of_range_value_is_shown_on_the_form_and_creates_no_job(self):
         response = self._post(self._knobs(min_iou="1.5"))

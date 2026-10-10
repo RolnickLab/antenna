@@ -39,7 +39,7 @@ class TrackingConfig(pydantic.BaseModel):
             "between its detections."
         ),
     )
-    event_ids: list[int] = pydantic.Field([], title="Sessions")
+    event_ids: list[int] = model_reference("session", [], title="Sessions")
     detection_algorithm_id: int | None = model_reference(
         "algorithm",
         None,

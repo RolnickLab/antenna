@@ -407,6 +407,32 @@ describe('getJobConfigFields', () => {
     ])
   })
 
+  test("names only the occurrence's own session of the sessions a run tracked", () => {
+    const session = (id: number) => ({
+      type: 'session',
+      id,
+      name: `Session ${id}`,
+    })
+    const job = {
+      id: 1,
+      name: 'Tracking',
+      config: [
+        {
+          key: 'event_ids',
+          label: 'Sessions',
+          value: [7, 8, 9],
+          refs: [session(7), session(8), session(9)],
+        },
+      ],
+    }
+
+    expect(getJobConfigFields(job, '8')).toEqual([
+      { ...job.config[0], refs: [session(8)] },
+    ])
+    expect(getJobConfigFields(job, '99')).toEqual([])
+    expect(getJobConfigFields(job)).toEqual(job.config)
+  })
+
   test('is empty for a job without config', () => {
     expect(getJobConfigFields({ id: 1, name: 'Pipeline', config: [] })).toEqual(
       []

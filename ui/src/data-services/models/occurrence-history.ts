@@ -475,13 +475,31 @@ export const getJobConfigField = (job: ServerHistoryJob | null, key: string) =>
 /** Config fields the result card already shows in a row of their own. */
 const CONFIG_SHOWN_ELSEWHERE = ['size_threshold']
 
-/** A job's config fields to show as rows, leaving out unset ones and those shown elsewhere. */
+/** Config fields listing sessions, of which a card names only the occurrence's own. */
+const SESSION_LIST_CONFIG = ['event_ids']
+
+/**
+ * A job's config fields to show as rows, leaving out unset ones and those shown elsewhere. With
+ * `sessionId`, a list of sessions keeps only that one, since a run's other sessions say nothing about
+ * the occurrence, and is left out when it does not name it.
+ */
 export const getJobConfigFields = (
-  job: ServerHistoryJob | null
+  job: ServerHistoryJob | null,
+  sessionId?: string
 ): ServerJobConfigField[] =>
-  (job?.config ?? []).filter(
-    ({ key, value }) =>
-      value !== null &&
-      value !== undefined &&
-      !CONFIG_SHOWN_ELSEWHERE.includes(key)
-  )
+  (job?.config ?? [])
+    .map((field) =>
+      sessionId !== undefined && SESSION_LIST_CONFIG.includes(field.key)
+        ? {
+            ...field,
+            refs: field.refs.filter((ref) => `${ref.id}` === sessionId),
+          }
+        : field
+    )
+    .filter(
+      ({ key, value, refs }) =>
+        value !== null &&
+        value !== undefined &&
+        !CONFIG_SHOWN_ELSEWHERE.includes(key) &&
+        !(SESSION_LIST_CONFIG.includes(key) && !refs.length)
+    )

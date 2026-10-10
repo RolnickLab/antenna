@@ -269,16 +269,18 @@ export const AlgorithmResult = ({
       value: new Set(entry.classifications.map((c) => c.detection_id)).size,
     })
   }
-  getJobConfigFields(entry.job).forEach(({ label, value, refs }) => {
-    stats.push({
-      label,
-      value: refs.length ? (
-        <ModelRefValues projectId={projectId as string} references={refs} />
-      ) : (
-        formatConfigValue(value)
-      ),
-    })
-  })
+  getJobConfigFields(entry.job, occurrence.sessionId).forEach(
+    ({ label, value, refs }) => {
+      stats.push({
+        label,
+        value: refs.length ? (
+          <ModelRefValues projectId={projectId as string} references={refs} />
+        ) : (
+          formatConfigValue(value)
+        ),
+      })
+    }
+  )
   if (entry.algorithm) {
     stats.push({
       label: translate(STRING.FIELD_LABEL_ALGORITHM),
