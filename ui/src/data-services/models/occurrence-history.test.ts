@@ -32,7 +32,7 @@ const JOB = {
       key: 'taxa_list_id',
       label: 'Species list',
       value: 2,
-      ref: { type: 'taxa_list', id: 2, name: 'Kept' },
+      refs: [{ type: 'taxa_list', id: 2, name: 'Kept' }],
     },
   ],
 }
@@ -374,34 +374,36 @@ describe('getJobConfigFields', () => {
     const field = (
       key: string,
       value: unknown,
-      ref: typeof deletedList | null = null
+      refs: (typeof deletedList)[] = []
     ) => ({
       key,
       label: `Label of ${key}`,
       value,
-      ref,
+      refs,
     })
     expect(
       getJobConfigFields({
         id: 1,
         name: 'Size filter',
         config: [
-          field('occurrence_id', 4, {
-            type: 'occurrence',
-            id: 4,
-            name: '#4',
-          }),
+          field('occurrence_id', 4, [
+            {
+              type: 'occurrence',
+              id: 4,
+              name: '#4',
+            },
+          ]),
           field('reweight', true),
           field('size_threshold', 0.01),
           field('source_image_collection_id', null),
           // A deleted list keeps its reference with no name, so the card shows its id as text.
-          field('taxa_list_id', 2, deletedList),
+          field('taxa_list_id', 2, [deletedList]),
         ],
       })
     ).toEqual([
-      field('occurrence_id', 4, { type: 'occurrence', id: 4, name: '#4' }),
+      field('occurrence_id', 4, [{ type: 'occurrence', id: 4, name: '#4' }]),
       field('reweight', true),
-      field('taxa_list_id', 2, deletedList),
+      field('taxa_list_id', 2, [deletedList]),
     ])
   })
 

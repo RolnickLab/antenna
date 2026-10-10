@@ -1303,6 +1303,9 @@ class EventManager(models.Manager.from_queryset(EventQuerySet)):
 class Event(BaseModel):
     """A monitoring session"""
 
+    reference_type = "session"
+    reference_name_field = "name"
+
     objects: EventManager = EventManager()
     group_by = models.CharField(
         max_length=255,

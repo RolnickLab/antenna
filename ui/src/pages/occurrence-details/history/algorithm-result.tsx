@@ -1,4 +1,7 @@
-import { ModelRefValue } from 'components/model-ref-value/model-ref-value'
+import {
+  ModelRefValue,
+  ModelRefValues,
+} from 'components/model-ref-value/model-ref-value'
 import {
   AlgorithmResultEntry,
   getJobConfigField,
@@ -39,8 +42,7 @@ const formatConfigValue = (value: unknown) => {
 /** The card's subtitle: for class masking the classifier and species list, otherwise the algorithm's name. */
 const getSubTitle = (entry: AlgorithmResultEntry) => {
   if (entry.kind === 'class_masking') {
-    const refFor = (key: string) =>
-      getJobConfigField(entry.job, key)?.ref ?? undefined
+    const refFor = (key: string) => getJobConfigField(entry.job, key)?.refs[0]
     const classifier = refFor('algorithm_id')
 
     return translate(STRING.HISTORY_MASKING_SUBTITLE, {
@@ -267,11 +269,11 @@ export const AlgorithmResult = ({
       value: new Set(entry.classifications.map((c) => c.detection_id)).size,
     })
   }
-  getJobConfigFields(entry.job).forEach(({ label, value, ref }) => {
+  getJobConfigFields(entry.job).forEach(({ label, value, refs }) => {
     stats.push({
       label,
-      value: ref ? (
-        <ModelRefValue projectId={projectId as string} reference={ref} />
+      value: refs.length ? (
+        <ModelRefValues projectId={projectId as string} references={refs} />
       ) : (
         formatConfigValue(value)
       ),

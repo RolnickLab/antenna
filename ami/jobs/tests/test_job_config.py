@@ -1,6 +1,9 @@
+from unittest import mock
+
+import pydantic
 from django.test import TestCase
 
-from ami.base.model_references import ModelRef, unmapped_reference_types
+from ami.base.model_references import ModelRef, model_reference, unmapped_reference_types
 from ami.jobs.job_config import JobConfigField, job_config_fields
 from ami.jobs.models import Job
 from ami.main.models import TaxaList
@@ -33,16 +36,34 @@ class JobConfigFieldsTestCase(TestCase):
         self.assertEqual(
             self._fields({"task": "class_masking", "config": config}),
             [
-                JobConfigField("source_image_collection_id", "Capture set", None, None),
+                JobConfigField("source_image_collection_id", "Capture set", None),
                 # A value that is not an id names no record, whatever the schema declares.
-                JobConfigField("occurrence_id", "Occurrence", True, None),
+                JobConfigField("occurrence_id", "Occurrence", True),
                 JobConfigField(
-                    "taxa_list_id", "Species list", taxa_list.pk, ModelRef("taxa_list", taxa_list.pk, "Kept species")
+                    "taxa_list_id", "Species list", taxa_list.pk, [ModelRef("taxa_list", taxa_list.pk, "Kept species")]
                 ),
                 JobConfigField(
-                    "algorithm_id", "Classifier", classifier.pk, ModelRef("algorithm", classifier.pk, "Classifier")
+                    "algorithm_id", "Classifier", classifier.pk, [ModelRef("algorithm", classifier.pk, "Classifier")]
                 ),
-                JobConfigField("reweight", "Re-weighted scores", True, None),
+                JobConfigField("reweight", "Re-weighted scores", True),
+            ],
+        )
+
+    def test_a_list_of_ids_names_one_record_per_id_in_order(self):
+        kept, other = TaxaList.objects.create(name="Kept"), TaxaList.objects.create(name="Other")
+
+        class ListConfig(pydantic.BaseModel):
+            taxa_list_ids: list[int] = model_reference("taxa_list", [], title="Species lists")
+
+        task = mock.Mock(config_schema=ListConfig)
+        with mock.patch("ami.jobs.job_config.get_postprocessing_task", return_value=task):
+            fields = self._fields({"task": "lists", "config": {"taxa_list_ids": [other.pk, kept.pk, 999999]}})
+        self.assertEqual(
+            fields[0].refs,
+            [
+                ModelRef("taxa_list", other.pk, "Other"),
+                ModelRef("taxa_list", kept.pk, "Kept"),
+                ModelRef("taxa_list", 999999, None),
             ],
         )
 
@@ -50,7 +71,7 @@ class JobConfigFieldsTestCase(TestCase):
         self.assertEqual(
             self._fields({"config": {"taxa_list_id": 3, "size_threshold": 0.01}}),
             [
-                JobConfigField("taxa_list_id", "taxa_list_id", 3, None),
+                JobConfigField("taxa_list_id", "taxa_list_id", 3),
                 JobConfigField("size_threshold", "size_threshold", 0.01),
             ],
         )

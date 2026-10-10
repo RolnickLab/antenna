@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ServerModelRef,
@@ -24,3 +25,21 @@ export const ModelRefValue = ({
     <>{label}</>
   )
 }
+
+/** Several records the API names, comma separated, each a link when it has a page. */
+export const ModelRefValues = ({
+  projectId,
+  references,
+}: {
+  projectId: string
+  references: ServerModelRef[]
+}) => (
+  <>
+    {references.map((reference, index) => (
+      <Fragment key={`${reference.type}-${reference.id}`}>
+        {index > 0 && ', '}
+        <ModelRefValue projectId={projectId} reference={reference} />
+      </Fragment>
+    ))}
+  </>
+)

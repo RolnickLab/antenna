@@ -34,8 +34,8 @@ export interface ServerHistoryAlgorithm {
 export interface ServerJobConfigField {
   key: string
   label: string
-  /** The record the field names, when it names one. */
-  ref: ServerModelRef | null
+  /** The records the field names: one per id it holds, in order. */
+  refs: ServerModelRef[]
   value: unknown
 }
 

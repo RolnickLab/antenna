@@ -1,3 +1,5 @@
+import datetime
+
 import pydantic
 from django.test import TestCase
 
@@ -8,7 +10,7 @@ from ami.base.model_references import (
     resolve_model_references,
     unmapped_reference_types,
 )
-from ami.main.models import TaxaList
+from ami.main.models import Event, TaxaList
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.queries import no_query_cache
 
@@ -26,8 +28,13 @@ class ReferenceTestCase(TestCase):
         self.assertEqual(refs[("algorithm", algorithm.pk)].name, "Classifier")
         self.assertEqual(refs[("taxa_list", 999999)], ModelRef("taxa_list", 999999, None))
 
+    def test_a_name_computed_by_a_method_is_called_on_each_row(self):
+        session = Event.objects.create(group_by="2026-07-01", start=datetime.datetime(2026, 7, 1, 21, 0))
+        refs = resolve_model_references([("session", session.pk)])
+        self.assertEqual(refs[("session", session.pk)], ModelRef("session", session.pk, "Wednesday, Jul 1 2026"))
+
     def test_types_come_from_the_models_that_declare_them(self):
-        self.assertTrue({"algorithm", "capture_set", "occurrence", "taxa_list"} <= set(reference_types()))
+        self.assertTrue({"algorithm", "capture_set", "occurrence", "session", "taxa_list"} <= set(reference_types()))
         self.assertIs(reference_types()["taxa_list"][0], TaxaList)
 
     def test_a_schema_naming_a_type_no_model_declares_is_reported(self):
