@@ -119,8 +119,8 @@ cascades and indexes exact. Only `DetectionEmbedding` exists today; the shared p
    writer's length lookup, and the partial (job, target) index. Give the indexes explicit short names
    (the 30 character limit) like `ml_detemb_*`.
 4. The migration must repeat what `makemigrations` does not infer: create the table, then run
-   `ALTER TABLE <table> ALTER COLUMN vector SET STORAGE EXTERNAL`, as `ml/0030` does for detections.
-   Enabling pgvector is already done by `ml/0029`.
+   `ALTER TABLE <table> ALTER COLUMN vector SET STORAGE EXTERNAL`, as `ml/0031` does for detections.
+   Enabling pgvector is already done by `ml/0030`.
 5. Add reader and writer functions next to the detection ones, keyed by algorithm and key like
    every other reader. The writer stays specific to its target (matching responses to targets is
    not shared).

@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ("main", "0097_detection_and_classification_job_indexes"),
         ("jobs", "0023_alter_job_job_type_key"),
-        ("ml", "0029_enable_pgvector"),
+        ("ml", "0030_enable_pgvector"),
     ]
 
     operations = [

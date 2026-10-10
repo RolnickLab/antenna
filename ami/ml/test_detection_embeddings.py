@@ -581,7 +581,7 @@ class TestPgvectorGuard(SimpleTestCase):
         import importlib
         from unittest import mock
 
-        migration = importlib.import_module("ami.ml.migrations.0029_enable_pgvector")
+        migration = importlib.import_module("ami.ml.migrations.0030_enable_pgvector")
         cursor = mock.MagicMock()
         cursor.__enter__.return_value.fetchone.return_value = row
         schema_editor = mock.Mock()
