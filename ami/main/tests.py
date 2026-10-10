@@ -8698,3 +8698,157 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
         html = self._get_html("/api/v2/identifications/")
         self._assert_number_input(html, "occurrence")
         self._assert_number_input(html, "taxon")
+
+
+class TestRegroupSplitsOccurrences(TestCase):
+    """Regrouping never leaves one occurrence spanning two sessions.
+
+    The captures are two bursts three hours apart: one session under a 6-hour gap, two
+    under a 2-hour gap. An occurrence built across all of them is what an earlier grouping
+    leaves behind when a later regroup draws a boundary through it.
+    """
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        create_taxa(project=cls.project)
+        cls.taxon, cls.other_taxon = list(Taxon.objects.filter(projects=cls.project).order_by("pk")[:2])
+        cls.user = User.objects.create_user(email="regroup-identifier@insectai.org")  # type: ignore[attr-defined]
+        start = datetime.datetime(2024, 6, 1, 22, 0)
+        cls.captures = [
+            SourceImage.objects.create(
+                deployment=cls.deployment,
+                timestamp=start + datetime.timedelta(minutes=minutes),
+                path=f"test/regroup-split-{i}.jpg",
+                width=640,
+                height=480,
+            )
+            for i, minutes in enumerate([0, 1, 2, 180, 181, 182])
+        ]
+
+    def _group(self, gap_hours: int) -> list[Event]:
+        group_images_into_events(self.deployment, max_time_gap=datetime.timedelta(hours=gap_hours))
+        for capture in self.captures:
+            capture.refresh_from_db()
+        return list(Event.objects.filter(deployment=self.deployment).order_by("start"))
+
+    def _make_occurrence(self, captures: list[SourceImage], linked: bool = True) -> tuple[Occurrence, list[Detection]]:
+        occurrence = Occurrence.objects.create(
+            event=captures[0].event, deployment=self.deployment, project=self.project
+        )
+        detections = []
+        for capture in captures:
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+            detection.classifications.create(taxon=self.taxon, score=0.9, timestamp=capture.timestamp)
+            detections.append(detection)
+        for earlier, later in zip(detections, detections[1:] if linked else []):
+            earlier.next_detection = later
+            earlier.save(update_fields=["next_detection"])
+        occurrence.save()
+        return occurrence, detections
+
+    def test_sessions_without_tracking_links_are_not_searched(self):
+        """Only tracking merges detections across captures, so a regroup with no links skips the search."""
+        self._group(gap_hours=6)
+        occurrence, detections = self._make_occurrence(self.captures, linked=False)
+
+        self._group(gap_hours=2)
+
+        self.assertEqual(self._detection_ids(occurrence), [d.pk for d in detections])
+
+    def _split_one_occurrence(self) -> tuple[Occurrence, Occurrence, list[Detection], list[Event]]:
+        self._group(gap_hours=6)
+        occurrence, detections = self._make_occurrence(self.captures)
+        events = self._group(gap_hours=2)
+        self.assertEqual(len(events), 2)
+        piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
+        occurrence.refresh_from_db()
+        return occurrence, piece, detections, events
+
+    def _detection_ids(self, occurrence: Occurrence) -> list[int]:
+        return list(occurrence.detections.order_by("timestamp").values_list("pk", flat=True))
+
+    def test_an_occurrence_across_a_new_boundary_is_split_into_one_per_session(self):
+        occurrence, piece, detections, (first, second) = self._split_one_occurrence()
+
+        self.assertEqual(self._detection_ids(occurrence), [d.pk for d in detections[:3]])
+        self.assertEqual(self._detection_ids(piece), [d.pk for d in detections[3:]])
+        self.assertEqual(occurrence.event_id, first.pk)
+        self.assertEqual(piece.event_id, second.pk)
+        self.assertEqual(piece.determination_id, self.taxon.pk)
+        self.assertEqual(first.occurrences_count, 1)
+        self.assertEqual(second.occurrences_count, 1)
+
+    def test_the_link_between_the_pieces_is_kept(self):
+        _, _, detections, _ = self._split_one_occurrence()
+
+        boundary = Detection.objects.get(pk=detections[2].pk)
+        self.assertEqual(boundary.next_detection_id, detections[3].pk)
+
+    def test_merging_sessions_leaves_occurrences_untouched(self):
+        self._group(gap_hours=2)
+        early, early_detections = self._make_occurrence(self.captures[:3])
+        late, late_detections = self._make_occurrence(self.captures[3:])
+
+        (merged,) = self._group(gap_hours=6)
+
+        self.assertEqual(Occurrence.objects.filter(deployment=self.deployment).count(), 2)
+        self.assertEqual(self._detection_ids(early), [d.pk for d in early_detections])
+        self.assertEqual(self._detection_ids(late), [d.pk for d in late_detections])
+        self.assertEqual(
+            set(Occurrence.objects.filter(deployment=self.deployment).values_list("event_id", flat=True)),
+            {merged.pk},
+        )
+
+    def test_identifications_are_copied_to_every_piece(self):
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_occurrence(self.captures)
+        superseded = Identification.objects.create(occurrence=occurrence, user=self.user, taxon=self.taxon)
+        current = Identification.objects.create(
+            occurrence=occurrence, user=self.user, taxon=self.other_taxon, comment="Wing pattern checked."
+        )
+
+        self._group(gap_hours=2)
+
+        occurrence.refresh_from_db()
+        piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
+        self.assertEqual(set(occurrence.identifications.values_list("pk", flat=True)), {superseded.pk, current.pk})
+        note = f"Copied from occurrence {occurrence.pk} when regrouping split it at a session boundary."
+        copies = {(i.taxon_id, i.user_id, i.withdrawn, i.created_at, i.comment) for i in piece.identifications.all()}
+        superseded.refresh_from_db()
+        self.assertEqual(
+            copies,
+            {
+                (self.taxon.pk, self.user.pk, True, superseded.created_at, note),
+                (self.other_taxon.pk, self.user.pk, False, current.created_at, f"Wing pattern checked.\n{note}"),
+            },
+        )
+        self.assertFalse(
+            piece.identifications.filter(
+                models.Q(agreed_with_identification__isnull=False) | models.Q(agreed_with_prediction__isnull=False)
+            ).exists()
+        )
+        self.assertEqual(occurrence.determination_id, self.other_taxon.pk)
+        self.assertEqual(piece.determination_id, self.other_taxon.pk)
+
+    def test_a_tracking_result_stays_on_the_earliest_piece(self):
+        from ami.ml.models.algorithm import Algorithm
+
+        self._group(gap_hours=6)
+        occurrence, _ = self._make_occurrence(self.captures)
+        algorithm = Algorithm.objects.create(name="Test tracking", key="test-tracking")
+        result = AlgorithmResult.objects.record(
+            occurrence=occurrence,
+            algorithm=algorithm,
+            kind="tracking",
+            data={"detection_count": 6, "motion": 0.0, "path_length": 0.0, "size_change": 1.0, "distinct_taxa": 1},
+        )
+
+        self._group(gap_hours=2)
+
+        piece = Occurrence.objects.exclude(pk=occurrence.pk).get(deployment=self.deployment)
+        result.refresh_from_db()
+        self.assertEqual(result.occurrence_id, occurrence.pk)
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=piece).exists())

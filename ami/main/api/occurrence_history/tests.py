@@ -106,13 +106,24 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         return response.data
 
     def _add_history(self, start: datetime.datetime, rounds: int = 1) -> None:
-        """Per round: a size filter result with the classification it created, and an identification."""
+        """Per round: a size filter result with the classification it created, and an identification.
+
+        The first result is ``self.job``'s; each later one comes from a run of its own with the same config,
+        since one run records one result per occurrence.
+        """
         for i in range(rounds):
             at = start + datetime.timedelta(hours=4 * i)
+            job = (
+                self.job
+                if not AlgorithmResult.objects.filter(job=self.job, occurrence=self.occurrence).exists()
+                else Job.objects.create(
+                    project=self.project, name=self.job.name, job_type_key="post_processing", params=self.job.params
+                )
+            )
             result = AlgorithmResult.objects.record(
                 occurrence=self.occurrence,
                 algorithm=self.size_filter,
-                job=self.job,
+                job=job,
                 kind=SIZE_FILTER,
                 value=0.001,
                 data={
@@ -128,7 +139,7 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
                 score=0.1,
                 algorithm=self.size_filter,
                 timestamp=at,
-                job=self.job,
+                job=job,
                 algorithm_result=result,
             )
             identification = Identification.objects.create(
@@ -425,6 +436,54 @@ class OccurrenceHistoryEndpointTestCase(OccurrenceFixtureTestCase):
         predictions = [e for e in occurrence_timeline(self.occurrence) if e.type == "prediction"]
         self.assertTrue(predictions)
         self.assertTrue(all(e.job == self.job for e in predictions))
+
+    def test_results_of_one_run_on_merged_occurrences_show_as_one_entry(self):
+        """A merge brings the absorbed occurrences' results along, so one run can hold several on the kept one.
+
+        They show as the newest result with every classification the run created, and a count of the rest;
+        a result of another run, and one with no job, stay entries of their own.
+        """
+        now = datetime.datetime.now() - datetime.timedelta(days=1)
+        other_job = Job.objects.create(
+            project=self.project, name="Second run", job_type_key="post_processing", params=self.job.params
+        )
+        rows = []
+        for job, detection, hours in (
+            (self.job, self.detections[0], 3),
+            (self.job, self.detections[1], 2),
+            (self.job, self.detections[2], 1),
+            (other_job, self.detections[3], 4),
+            (None, self.detections[3], 5),
+        ):
+            at = now - datetime.timedelta(hours=hours)
+            result = AlgorithmResult.objects.record(
+                occurrence=self.occurrence,
+                algorithm=self.size_filter,
+                job=job,
+                kind=SIZE_FILTER,
+                data={"relative_size": 0.001 * hours},
+                timestamp=at,
+            )
+            Classification.objects.create(
+                detection=detection,
+                taxon=self.taxon,
+                score=0.1,
+                algorithm=self.size_filter,
+                timestamp=at,
+                job=job,
+                algorithm_result=result,
+            )
+            rows.append(result)
+
+        entries = [e for e in self.get() if e["type"] == "algorithm_result"]
+
+        self.assertEqual([e["id"] for e in entries], [rows[2].pk, rows[3].pk, rows[4].pk])
+        newest = entries[0]
+        self.assertEqual(newest["results_merged_in"], 2)
+        self.assertEqual(
+            sorted(c["detection_id"] for c in newest["classifications"]), sorted(d.pk for d in self.detections[:3])
+        )
+        self.assertEqual([e["results_merged_in"] for e in entries[1:]], [0, 0])
 
     def test_a_result_without_a_job_has_no_config(self):
         AlgorithmResult.objects.record(

@@ -1561,6 +1561,20 @@ def update_calculated_fields_for_events(
     return to_update
 
 
+def update_calculated_fields_for_sessions_and_stations(event_ids: typing.Iterable[int | None]) -> None:
+    """Refresh the cached counts of these sessions and of the stations they belong to.
+
+    Call once after occurrences are created, merged or split, which neither the occurrence nor the
+    detection saves do. The station refresh scans each whole station, so call it from a background job.
+    """
+    pks = sorted({pk for pk in event_ids if pk is not None})
+    if not pks:
+        return
+    update_calculated_fields_for_events(pks=pks)
+    for deployment in Deployment.objects.filter(events__pk__in=pks).distinct():
+        deployment.update_calculated_fields(save=True)
+
+
 def audit_event_lengths(deployment: Deployment):
     logger.info("Checking for unusual event durations")
 
@@ -1768,6 +1782,8 @@ def _group_images_into_events_locked(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
+    occurrences_split_count = _split_occurrences_at_session_boundaries(job, touched_event_pks)
+
     # Realign Occurrence.event_id with each occurrence's detections' current
     # source_image.event_id. Occurrences are bound to an event once at creation
     # time (Detection.associate_new_occurrence and Pipeline.save_results both
@@ -1848,6 +1864,7 @@ def _group_images_into_events_locked(
             "Events created": events_created_count,
             "Events touched": len(touched_event_pks),
             "Empty events deleted": events_deleted_empty,
+            "Occurrences split at a session boundary": occurrences_split_count,
             "Duplicate timestamps": duplicate_timestamp_count,
             "Ungrouped captures": ungrouped_captures_count,
             "Captures missing timestamp": no_timestamp_captures_count,
@@ -1858,6 +1875,62 @@ def _group_images_into_events_locked(
         job.save()
 
     return events
+
+
+def _split_occurrences_at_session_boundaries(job: "Job | None", event_pks: set[int]) -> int:
+    """Split every occurrence whose detections now span several sessions, among the sessions a regroup touched.
+
+    An occurrence is expected to belong to one session, so a regroup that draws a session
+    boundary through it leaves one piece per session. Tracking is what merges detections of several
+    captures into one occurrence, so when no detection of these sessions has a tracking link the search is
+    skipped after one indexed query; an occurrence grouped some other way, with no links, is then not split.
+    The search itself reads every occurrence of the touched sessions. Returns how many occurrences were split.
+    """
+    from ami.ml.post_processing.tracking.sessions import lock_sessions, split_at_session_boundaries
+
+    if not Detection.objects.filter(source_image__event_id__in=event_pks, next_detection__isnull=False).exists():
+        return 0
+
+    def find_spanning_ids() -> list[int]:
+        capture_ids = list(SourceImage.objects.filter(event_id__in=event_pks).values_list("pk", flat=True))
+        touched_occurrence_ids = list(
+            Detection.objects.filter(source_image_id__in=capture_ids, occurrence__isnull=False)
+            .values_list("occurrence_id", flat=True)
+            .distinct()
+        )
+        return list(
+            Detection.objects.valid()
+            .filter(occurrence_id__in=touched_occurrence_ids)
+            .values("occurrence_id")
+            .annotate(sessions=models.Count("source_image__event", distinct=True))
+            .filter(sessions__gt=1)
+            .values_list("occurrence_id", flat=True)
+        )
+
+    candidate_ids = find_spanning_ids()
+    if not candidate_ids:
+        return 0
+    split_count = 0
+    # Holding the sessions' locks while the occurrences are found and split makes a tracking run
+    # on one of these sessions finish first, or wait for the split.
+    with transaction.atomic():
+        lock_sessions(
+            list(
+                SourceImage.objects.filter(detections__occurrence_id__in=candidate_ids)
+                .values_list("event_id", flat=True)
+                .distinct()
+            )
+        )
+        for occurrence in Occurrence.objects.filter(pk__in=find_spanning_ids()).order_by("pk"):
+            pieces = split_at_session_boundaries(occurrence)
+            if not pieces:
+                continue
+            split_count += 1
+            (job.logger if job else logger).info(
+                f"Split occurrence {occurrence.pk} at a session boundary; "
+                f"new occurrence(s) {[piece.pk for piece in pieces]} hold the later sessions."
+            )
+    return split_count
 
 
 def deployment_events_need_update(deployment: Deployment) -> bool:
@@ -3207,6 +3280,15 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
+
     # For type hints
     classifications: models.QuerySet["Classification"]
     source_image_id: int
@@ -3867,13 +3949,9 @@ def update_occurrence_determination(
     """
     needs_update = False
 
-    # Invalidate the cached properties so they will be re-calculated
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
-    if hasattr(occurrence, "best_prediction"):
-        del occurrence.best_prediction
-    if hasattr(occurrence, "best_identification"):
-        del occurrence.best_identification
+    # Clear the cached properties so they are recalculated. ``hasattr`` would run their queries first.
+    occurrence.__dict__.pop("best_identification", None)
+    occurrence.__dict__.pop("best_prediction", None)
 
     current_determination = (
         current_determination
