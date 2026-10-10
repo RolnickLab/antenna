@@ -10,6 +10,7 @@ from unittest import mock
 
 from cachalot.api import cachalot_disabled
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -262,3 +263,42 @@ class TestVisualSimilarityDisablesJit(VisualSimilarityFixture):
             statements = self._statements(f"ordering=visual_similarity&similar_to={self.seed.pk}")
         first_distance = next(i for i, sql in enumerate(statements) if "<=>" in sql)
         self.assertLess(statements.index("SET LOCAL jit = off"), first_distance)
+
+
+class TestVisualSimilarityCap(VisualSimilarityFixture):
+    """Above a configurable number of occurrences the sort is refused before any distance is computed."""
+
+    def _get(self, query: str):
+        return self.client.get(f"{self.url}&{query}")
+
+    def test_a_list_above_the_cap_is_refused_before_any_distance_is_computed(self):
+        with override_settings(SIMILARITY_SORT_MAX_OCCURRENCES=4), cachalot_disabled():
+            with CaptureQueriesContext(connection) as ctx:
+                response = self._get(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+        message = str(response.json()["ordering"])
+        self.assertIn("Narrow the filters", message)
+        self.assertIn("4", message)
+        self.assertFalse([q for q in ctx.captured_queries if "<=>" in q["sql"]])
+
+    def test_a_list_at_the_cap_is_sorted(self):
+        with override_settings(SIMILARITY_SORT_MAX_OCCURRENCES=5):
+            response = self._get(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["count"], 5)
+
+    def test_the_cap_applies_to_the_filtered_list(self):
+        """Narrowing the filters is the way back under the cap, so the count is taken after them."""
+        source_image = self.seed.detections.get().source_image_id
+        seed = f"ordering=visual_similarity&similar_to={self.seed.pk}"
+        with override_settings(SIMILARITY_SORT_MAX_OCCURRENCES=2):
+            self.assertEqual(self._get(seed).status_code, status.HTTP_400_BAD_REQUEST)
+            narrowed = self._get(f"{seed}&detections__source_image={source_image}")
+        self.assertEqual(narrowed.status_code, status.HTTP_200_OK, narrowed.content)
+        self.assertEqual(narrowed.json()["count"], 1)
+
+    def test_the_cap_does_not_limit_other_orderings(self):
+        with override_settings(SIMILARITY_SORT_MAX_OCCURRENCES=1):
+            response = self._get("ordering=-created_at")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["count"], 5)

@@ -187,7 +187,18 @@ class OccurrencePagination(LimitOffsetPaginationWithPermissions):
         # second time. Other orderings count the queryset as they always have.
         if "visual_similarity" not in queryset.query.annotations:
             return super().get_count(queryset)
-        return super().get_count(queryset.order_by().values("pk"))
+        count = super().get_count(queryset.order_by().values("pk"))
+        # Counted before the page is fetched, so a refused list computes no distances.
+        if count > settings.SIMILARITY_SORT_MAX_OCCURRENCES:
+            raise api_exceptions.ValidationError(
+                {
+                    "ordering": (
+                        f"Sorting by visual similarity is limited to {settings.SIMILARITY_SORT_MAX_OCCURRENCES:,} "
+                        f"occurrences and this list has {count:,}. Narrow the filters and try again."
+                    )
+                }
+            )
+        return count
 
 
 class ProjectViewSet(DefaultViewSet, ProjectMixin):

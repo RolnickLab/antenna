@@ -497,6 +497,10 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 # nginx client_max_body_size is the hard cap for all request types.
 DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024
 
+# The occurrence list sorted by visual similarity computes one cosine distance per listed
+# occurrence, so a list longer than this is refused until the user narrows the filters.
+SIMILARITY_SORT_MAX_OCCURRENCES = env.int("SIMILARITY_SORT_MAX_OCCURRENCES", default=50_000)
+
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
