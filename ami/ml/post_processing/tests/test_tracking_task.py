@@ -510,6 +510,43 @@ class TestTrackingResults(_TrackingCase):
         self.assertIsInstance(costs[1], float)
         self.assertIsNone(costs[2])
 
+    def test_a_retried_job_with_nothing_new_records_no_second_result(self):
+        captures = create_session(self.deployment, [[BOX], [BOX], [BOX]], self.taxa[0])
+        job = self.make_job()
+        self.run_task(captures[0].event, job=job)
+
+        self.run_task(captures[0].event, job=job, require_fresh_event=False)
+
+        self.assertEqual(AlgorithmResult.objects.filter(kind="tracking", job=job).count(), 1)
+
+    def test_a_retried_job_folds_what_it_adds_into_its_earlier_result(self):
+        """One result per occurrence per job: a retry that extends a chain updates the result it wrote.
+
+        The record still starts from the grouping before the job's first attempt, so a reset can put it back.
+        """
+        captures = create_session(self.deployment, [[BOX], [BOX], None], self.taxa[0])
+        event = captures[0].event
+        before = list(Detection.objects.filter(source_image__event=event).order_by("timestamp"))
+        original_occurrences = [d.occurrence_id for d in before]
+        job = self.make_job()
+        self.run_task(event, job=job)
+        first = AlgorithmResult.objects.get(kind="tracking", job=job)
+        added = add_detection(captures[2], BOX, self.taxa[0])
+
+        self.run_task(event, job=job, require_fresh_event=False)
+
+        result = AlgorithmResult.objects.get(kind="tracking", job=job)
+        self.assertEqual(result.pk, first.pk)
+        self.assertEqual(result.data["detection_ids"], [d.pk for d in before] + [added.pk])
+        self.assertEqual(result.data["previous_occurrence_ids"], original_occurrences + [added.occurrence_id])
+        self.assertEqual(result.data["detection_count"], 3)
+        self.assertEqual(
+            sorted(result.data["merged_occurrence_ids"]), sorted(original_occurrences[1:] + [added.occurrence_id])
+        )
+        costs = result.data["link_costs"]
+        self.assertEqual([cost is None for cost in costs], [False, False, True])
+        self.assertEqual(costs[0], first.data["link_costs"][0])
+
     def test_results_of_merged_occurrences_move_onto_the_keeper(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
         first, second = (c.detections.get().occurrence for c in captures)
