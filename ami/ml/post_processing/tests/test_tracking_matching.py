@@ -15,7 +15,7 @@ def _config(**kwargs) -> TrackingConfig:
 
 
 class TestTrackingConfig(SimpleTestCase):
-    def test_defaults_weigh_overlap_double_with_every_limit_off(self):
+    def test_defaults_weigh_overlap_double_with_every_limit_off_and_identified_sessions_tracked(self):
         config = _config()
         self.assertEqual(
             (config.cost_threshold, config.iou_weight, config.size_weight, config.distance_weight),
@@ -23,7 +23,7 @@ class TestTrackingConfig(SimpleTestCase):
         )
         for name in ("min_iou", "min_size_ratio", "max_distance", "max_capture_interval_seconds"):
             self.assertIsNone(getattr(config, name), name)
-        self.assertTrue(config.skip_if_human_identifications)
+        self.assertFalse(config.skip_if_human_identifications)
         self.assertTrue(config.require_fresh_event)
 
     def test_exactly_one_scope(self):

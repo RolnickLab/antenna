@@ -181,17 +181,107 @@ class TestGuards(_TrackingCase):
 
         self.assertEqual(self.occurrence_sizes(event), [3])
 
-    def test_human_identifications_skip_the_session_unless_the_guard_is_off(self):
+    def test_a_session_with_human_identifications_is_tracked_unless_asked_to_skip_it(self):
         captures = create_session(self.deployment, [[BOX], [BOX]], self.taxa[0])
         event = captures[0].event
         occurrence = Occurrence.objects.filter(event=event).first()
         Identification.objects.create(user=UserFactory(), taxon=self.taxa[1], occurrence=occurrence)
 
-        self.run_task(event)
+        self.run_task(event, skip_if_human_identifications=True)
         self.assertEqual(self.occurrence_sizes(event), [1, 1])
 
-        self.run_task(event, skip_if_human_identifications=False)
+        self.run_task(event)
         self.assertEqual(self.occurrence_sizes(event), [2])
+
+
+class TestIdentifiedOccurrences(_TrackingCase):
+    """A run keeps the occurrences people identified and never joins two whose identifications disagree."""
+
+    def setUp(self) -> None:
+        self.user = UserFactory()
+
+    def still_insect(self, captures_count: int = 3) -> tuple[Event, list[Occurrence]]:
+        captures = create_session(self.deployment, [[BOX]] * captures_count, self.taxa[0])
+        return captures[0].event, [c.detections.get().occurrence for c in captures]
+
+    def identify(self, occurrence: Occurrence, taxon: Taxon) -> Identification:
+        return Identification.objects.create(user=self.user, taxon=taxon, occurrence=occurrence)
+
+    def job_params(self, job: Job) -> dict[str, typing.Any]:
+        job.refresh_from_db()
+        return {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+
+    def make_job(self) -> Job:
+        job = Job.objects.create(name="t", project=self.project, job_type_key="post_processing")
+        job.progress.add_stage("Post-processing", key="post_processing")
+        job.save()
+        return job
+
+    def test_the_identified_occurrence_is_kept_when_others_merge_into_it(self):
+        """The occurrence someone identified keeps its id, even when an earlier capture's occurrence would be kept."""
+        event, occurrences = self.still_insect()
+        identification = self.identify(occurrences[1], self.taxa[1])
+
+        self.run_task(event)
+
+        kept = Occurrence.objects.get(event=event)
+        self.assertEqual(kept.pk, occurrences[1].pk)
+        self.assertEqual(kept.detections.count(), 3)
+        identification.refresh_from_db()
+        self.assertFalse(identification.withdrawn)
+        self.assertEqual(kept.determination, self.taxa[1])
+
+    def test_occurrences_identified_as_different_taxa_are_not_joined(self):
+        """Neither identification is withdrawn: the link that would have joined them is not made."""
+        event, occurrences = self.still_insect()
+        first = self.identify(occurrences[0], self.taxa[1])
+        last = self.identify(occurrences[2], self.taxa[2])
+        job = self.make_job()
+
+        self.run_task(event, job=job)
+
+        self.assertEqual(self.occurrence_sizes(event), [1, 2])
+        self.assertEqual(Occurrence.objects.get(pk=occurrences[0].pk).detections.count(), 2)
+        self.assertTrue(Occurrence.objects.filter(pk=occurrences[2].pk).exists())
+        middle = Detection.objects.get(source_image__event=event, occurrence=occurrences[0], next_detection=None)
+        self.assertIsNone(middle.next_detection_id)
+        for identification, occurrence in ((first, occurrences[0]), (last, occurrences[2])):
+            identification.refresh_from_db()
+            self.assertFalse(identification.withdrawn)
+            self.assertEqual(identification.occurrence_id, occurrence.pk)
+        params = self.job_params(job)
+        self.assertEqual(params["Detection links created"], 1)
+        self.assertEqual(params["Detection links refused because identifications disagree"], 1)
+
+    def test_occurrences_identified_as_the_same_taxon_are_joined(self):
+        event, occurrences = self.still_insect(2)
+        self.identify(occurrences[0], self.taxa[1])
+        Identification.objects.create(user=UserFactory(), taxon=self.taxa[1], occurrence=occurrences[1])
+
+        self.run_task(event)
+
+        self.assertEqual(self.occurrence_sizes(event), [2])
+        kept = Occurrence.objects.get(event=event)
+        self.assertEqual(kept.pk, occurrences[0].pk)
+        self.assertEqual(kept.identifications.filter(withdrawn=False).count(), 2)
+
+    def test_an_identification_saved_while_the_session_is_matched_stops_the_write(self):
+        event, occurrences = self.still_insect(2)
+        self.identify(occurrences[0], self.taxa[1])
+        job = self.make_job()
+        real = task_module.plan_session_links
+
+        def plan_then_identify(*args, **kwargs):
+            plan = real(*args, **kwargs)
+            self.identify(occurrences[1], self.taxa[2])
+            return plan
+
+        with mock.patch.object(task_module, "plan_session_links", plan_then_identify):
+            self.run_task(event, job=job)
+
+        self.assertEqual(self.occurrence_sizes(event), [1, 1])
+        self.assertFalse(Detection.objects.filter(source_image__event=event, next_detection__isnull=False).exists())
+        self.assertIn("it changed while it was being tracked", self.job_params(job)["Result"])
 
 
 class TestMerging(_TrackingCase):

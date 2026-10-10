@@ -60,6 +60,16 @@ def session_has_identifications(event: Event) -> bool:
     return Identification.objects.filter(occurrence__detections__source_image__event=event).exists()
 
 
+def identified_taxa(occurrence_ids: set[int]) -> dict[int, frozenset[int | None]]:
+    """The taxa named by each occurrence's active identifications, for the occurrences that have any."""
+    taxa: dict[int, set[int | None]] = collections.defaultdict(set)
+    for occurrence_id, taxon_id in Identification.objects.filter(
+        occurrence_id__in=sorted(occurrence_ids), withdrawn=False
+    ).values_list("occurrence_id", "taxon_id"):
+        taxa[occurrence_id].add(taxon_id)
+    return {pk: frozenset(ids) for pk, ids in taxa.items()}
+
+
 def processed_captures(event: Event) -> list[SourceImage]:
     """Captures of a session that have at least one detection row and a timestamp, oldest first.
 
@@ -78,8 +88,9 @@ def processed_captures(event: Event) -> list[SourceImage]:
 class SessionPlan:
     """What a run would change in one session, worked out without writing anything.
 
-    ``snapshot`` records each detection's ``next_detection`` and occurrence as they were read, so the
-    write phase can tell whether the session changed while the links were being matched.
+    ``snapshot`` records each detection's ``next_detection`` and occurrence as they were read, and
+    ``identified_taxa`` the identifications of those occurrences, so the write phase can tell whether the
+    session changed while the links were being matched.
     """
 
     event: Event
@@ -87,8 +98,11 @@ class SessionPlan:
     detection_algorithm_id: int | None
     detections: dict[int, Detection]
     snapshot: dict[int, tuple[int | None, int | None]]
+    identified_taxa: dict[int, frozenset[int | None]]
     links: list[Link]
     groups: list[MergeGroup]
+    # Links matched but not made because they would join occurrences whose identifications disagree.
+    links_refused: int
     transitions_too_far_apart: int
     transitions_without_dimensions: int
 
@@ -179,43 +193,49 @@ def plan_session_links(
     )
 
     snapshot = {d.pk: (d.next_detection_id, d.occurrence_id) for d in detections}
+    identified = identified_taxa({occurrence_id for _, occurrence_id in snapshot.values() if occurrence_id})
     all_links = {pk: next_id for pk, (next_id, _) in snapshot.items() if next_id is not None}
     all_links.update({source: target for source, target, _ in links})
-    groups = merge_groups(
+    merges = merge_groups(
         [d.pk for d in detections],
         {pk: occurrence_id for pk, (_, occurrence_id) in snapshot.items()},
         all_links,
         {source: cost for source, _, cost in links},
+        identified,
     )
+    refused = set(merges.refused_links)
+    made = [link for link in links if link[0] not in refused]
     return SessionPlan(
         event=event,
         source_images=source_images,
         detection_algorithm_id=config.detection_algorithm_id,
         detections={d.pk: d for d in detections},
         snapshot=snapshot,
-        links=links,
-        groups=groups,
+        identified_taxa=identified,
+        links=made,
+        groups=merges.groups,
+        links_refused=len(links) - len(made),
         transitions_too_far_apart=too_far,
         transitions_without_dimensions=without_dimensions,
     )
 
 
 def plan_is_current(plan: SessionPlan) -> bool:
-    """Whether the session still has the captures, links and occurrences the plan was worked out from."""
+    """Whether the captures, links, occurrences and identifications the plan was worked out from are unchanged."""
     if [image.pk for image in processed_captures(plan.event)] != [image.pk for image in plan.source_images]:
         return False
     current = {
         d.pk: (d.next_detection_id, d.occurrence_id)
         for d in session_detections(plan.source_images, plan.detection_algorithm_id)
     }
-    return current == plan.snapshot
+    return current == plan.snapshot and identified_taxa(plan.occurrence_ids()) == plan.identified_taxa
 
 
 def lock_occurrences(occurrence_ids: set[int]) -> None:
     """Hold a row lock on each occurrence until the transaction ends, in id order so two writers cannot deadlock.
 
-    An identification saved on a locked occurrence waits until the run commits, so the guard against
-    identified sessions sees it, and it is never written on an occurrence the run is about to delete.
+    An identification saved on a locked occurrence waits until the run commits, so the check that the
+    plan is current sees it, and it is never written on an occurrence the run is about to delete.
     """
     if occurrence_ids:
         list(
@@ -261,6 +281,7 @@ def preview_counts(plan: SessionPlan, emptied: dict[int, int] | None = None) -> 
     created = sum(1 for group in plan.groups if group.keeper_id is None)
     return {
         "links_created": len(plan.links),
+        "links_refused": plan.links_refused,
         "occurrences_before": before,
         "occurrences_after": before + created - len(emptied),
         "occurrences_created": created,
@@ -573,6 +594,7 @@ class TrackingTask(BasePostProcessingTask):
             "Sessions skipped": totals["skipped"],
             "Sessions failed": len(failed_event_ids),
             f"Detection links {would}created": totals["links_created"],
+            "Detection links refused because identifications disagree": totals["links_refused"],
             f"Occurrences {would}merged away": totals["occurrences_merged"],
             "Occurrences before": totals["occurrences_before"],
             "Occurrences after" if not preview else "Occurrences after the run": totals["occurrences_after"],

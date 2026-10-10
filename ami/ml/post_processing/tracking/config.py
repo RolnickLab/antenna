@@ -126,9 +126,13 @@ class TrackingConfig(pydantic.BaseModel):
     )
 
     skip_if_human_identifications: bool = pydantic.Field(
-        True,
+        False,
         title="Skip sessions with human identifications",
-        description="Leave a session alone when someone has already identified one of its occurrences.",
+        description=(
+            "Leave a session alone when someone has already identified one of its occurrences. Turned off, a run "
+            "keeps an identified occurrence when it merges others into it, and never joins two occurrences whose "
+            "identifications name different taxa."
+        ),
     )
     require_fresh_event: bool = pydantic.Field(
         True,
