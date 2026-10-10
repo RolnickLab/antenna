@@ -13,9 +13,11 @@ import pydantic
 from django.db import connection
 from django.test import SimpleTestCase, TestCase
 from django.test.utils import CaptureQueriesContext
+from rest_framework import status
+from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Deployment, Detection, SourceImage
+from ami.main.models import Classification, Deployment, Detection, Occurrence, SourceImage
 from ami.ml.embeddings.reader import (
     detections_missing_vectors,
     project_vectors,
@@ -27,7 +29,13 @@ from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map, save_results
 from ami.ml.schemas import DetectionResponse, PipelineResultsResponse
-from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_occurrences,
+    create_taxa,
+    no_processing_service_http,
+    setup_test_project,
+)
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 
 DETECTOR = ALGORITHM_CHOICES["random-detector"]
@@ -598,3 +606,62 @@ class TestEmbeddingColumn(TestCase):
                 """
             )
             self.assertEqual(cursor.fetchone(), ("halfvec", "e"))
+
+
+class TestEmbeddingsInOccurrenceApi(APITestCase):
+    """What the occurrence endpoints say about stored vectors: the algorithms on the detail view, and the
+    algorithm filter finding an occurrence by an embedding-only model."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        with no_processing_service_http():
+            cls.project, cls.deployment = setup_test_project(reuse=False)
+        cls.project.default_filters_score_threshold = 0.0
+        cls.project.save()
+        create_taxa(project=cls.project)
+        create_captures(deployment=cls.deployment, num_nights=1, images_per_night=3)
+        create_occurrences(deployment=cls.deployment, num=3, determination_score=0.9)
+        cls.both, cls.one, cls.none = list(Occurrence.objects.filter(project=cls.project).order_by("pk"))
+        cls.backbone = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
+        cls.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
+        both_detection, one_detection = (occurrence.detections.get() for occurrence in (cls.both, cls.one))
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(detection=both_detection, algorithm=cls.backbone, vector=[1.0, 0.0]),
+                DetectionEmbedding(detection=both_detection, algorithm=cls.other, vector=[1.0, 0.0]),
+                DetectionEmbedding(detection=one_detection, algorithm=cls.other, vector=[0.0, 1.0]),
+            ]
+        )
+
+    def _detail(self, occurrence: Occurrence) -> dict:
+        response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return response.json()
+
+    def _list_ids(self, query: str) -> set[int]:
+        response = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return {int(row["id"]) for row in response.json()["results"]}
+
+    def test_the_detail_lists_each_algorithm_that_has_a_vector_and_nothing_without_vectors(self):
+        self.assertEqual(self._detail(self.none)["embedding_algorithms"], [])
+        self.assertEqual(
+            self._detail(self.both)["embedding_algorithms"],
+            [{"id": self.backbone.pk, "name": "Backbone"}, {"id": self.other.pk, "name": "Other backbone"}],
+        )
+        self.assertEqual(
+            self._detail(self.one)["embedding_algorithms"], [{"id": self.other.pk, "name": "Other backbone"}]
+        )
+
+    def test_the_field_costs_one_query_whatever_the_number_of_algorithms(self):
+        def vector_queries(occurrence: Occurrence) -> int:
+            with cache_off(), CaptureQueriesContext(connection) as queries:
+                self._detail(occurrence)
+            return sum("ml_detectionembedding" in query["sql"] for query in queries.captured_queries)
+
+        self.assertEqual(vector_queries(self.none), 1)
+        self.assertEqual(vector_queries(self.both), 1)
+
+    def test_the_list_view_does_not_carry_the_field(self):
+        response = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
+        self.assertNotIn("embedding_algorithms", response.json()["results"][0])
