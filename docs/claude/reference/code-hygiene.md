@@ -294,7 +294,7 @@ that are used by reflection, so read those findings rather than acting on them.
 
 ```bash
 base=$(git merge-base origin/main HEAD)
-git diff "$base" -U0 -- '*.py' | grep -oE '^\+\s*(def|class) [A-Za-z_][A-Za-z0-9_]*' | awk '{print $NF}' \
+git diff "$base" -U0 -- '*.py' | grep -oE '^[+][[:space:]]*(async[[:space:]]+def|def|class) [A-Za-z_][A-Za-z0-9_]*' | awk '{print $NF}' \
   | grep -vE '^test_|TestCase$' | sort -u \
   | while read -r name; do [ "$(git grep -ow "$name" -- '*.py' | wc -l)" -le 1 ] && echo "$name"; done
 ```
