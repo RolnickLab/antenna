@@ -1,9 +1,11 @@
 from django.test import TestCase
+from django.urls import reverse
 
 from ami.main.models import Occurrence
 from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import setup_test_project
+from ami.users.models import User
 
 SIZE_FILTER = SizeFilterResultData.kind
 
@@ -97,3 +99,42 @@ class AlgorithmResultTestCase(TestCase):
         AlgorithmResult.objects.bulk_update([created], ["data"])
         created.refresh_from_db()
         self.assertEqual((saved.value, created.value), (0.004, 0.006))
+
+
+class AlgorithmResultAdminTestCase(TestCase):
+    """Staff can list, filter and open results in the admin, but not add or edit them."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        project, deployment = setup_test_project(reuse=False)
+        algorithm = Algorithm.objects.create(name="Size filter", key="size-filter-admin-test")
+        cls.results = [
+            AlgorithmResult.objects.record(
+                occurrence=Occurrence.objects.create(project=project, deployment=deployment),
+                algorithm=algorithm,
+                kind=SIZE_FILTER,
+                data={"relative_size": size},
+            )
+            for size in (0.001, 0.002)
+        ]
+        cls.superuser = User.objects.create_superuser(email="results-admin@insectai.org", password="x")
+
+    def setUp(self) -> None:
+        self.client.force_login(self.superuser)
+
+    def test_results_are_listed_filtered_and_shown_read_only(self):
+        changelist = reverse("admin:ml_algorithmresult_changelist")
+        response = self.client.get(changelist, {"kind": SIZE_FILTER})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["cl"].result_count, 2)
+
+        result = self.results[0]
+        response = self.client.get(reverse("admin:ml_algorithmresult_change", args=[result.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_change_permission"])
+        self.assertEqual(self.client.get(reverse("admin:ml_algorithmresult_add")).status_code, 403)
+
+        response = self.client.post(reverse("admin:ml_algorithmresult_change", args=[result.pk]), {"kind": "x"})
+        self.assertEqual(response.status_code, 403)
+        result.refresh_from_db()
+        self.assertEqual(result.kind, SIZE_FILTER)

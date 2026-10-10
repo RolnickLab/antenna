@@ -12,14 +12,14 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    volumes:
-      - .:/app:z
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_started
       redis:
+        condition: service_started
+      nats:
         condition: service_started
       # Wait for bucket setup to succeed so a failure stops the job here, not in later tests.
       minio-init:
@@ -28,8 +28,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-      nats:
-        condition: service_started
+    volumes:
+      - .:/app:z
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -60,9 +60,9 @@ services:
 
   celeryworker:
     <<: *django
+    command: /start-celeryworker
     depends_on:
       - rabbitmq
-    command: /start-celeryworker
 
   rabbitmq:
     image: rabbitmq:3-management

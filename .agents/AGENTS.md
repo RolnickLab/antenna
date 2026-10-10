@@ -420,6 +420,22 @@ Always-on rules (the most common review findings in this repo's history):
 - **Never materialize unbounded querysets** (`list(qs)`, Python-side aggregation over rows). Use SQL-side `aggregate()`, annotations, or subqueries — production projects have >100k occurrences.
 - **No queries inside loops.** Batch with `__in`, `prefetch_related`, or subqueries.
 
+## Code hygiene: look for opportunities
+
+Several people and agent sessions add features here in parallel. Keep half an eye out while working, and say what you find. Whatever this change itself left behind is this PR's job, not future work: a ticket is for debt you found but did not create, or a cleanup genuinely too large to ride along. A branch filing several tickets for its own leftovers is not finished. The established practice behind each line, the measured hotspots, the module precedents and the scan commands that work here are in `docs/claude/reference/code-hygiene.md`.
+
+- **DRY, at the rule of three.** A constant, label, threshold or helper defined twice drifts; by the third, extract. Search for the behaviour, not the name: the duplicate helper is called something else, which is also why one concept deserves one word across the repo, and a rename when the concept changes. DRY is about knowledge, not characters: two blocks that look alike but encode different decisions stay apart, and the wrong abstraction costs more than the duplication.
+- **Don't let spaghetti start.** `if`-chains on repeated string keys want an enum or small registry (precedent: `ami/ml/post_processing/registry.py`). Several ways to do one action want an inventory and one survivor. A shared component taking a feature-specific prop wants the feature's own component or flag.
+- **Find the existing home** before adding a module, map, list or doc section, and grep the whole repo for it, not just the sibling files. But a 5,000-line module is not a home (`ami/main/models.py` is one): when a new module or subpackage is the right answer, propose it, with a name that says what it owns and a boundary that matches how large Django apps are usually split. `ami.main` models do not import `ami.ml` or `ami.jobs`; the current exceptions are listed in the reference doc.
+- **Design it twice.** When a PR introduces a model, module, API shape or UI component, sketch two or three layouts (where each piece lives, what it is called, which way imports run, which existing component it extends) and pick one for maintainability and for how pleasant it will be to work in, not for how close it is to the first draft. Redo this at the end of review against `main`: after several rounds a branch treats its own layout as fixed, but to `main` all of it is new, and moving it later costs every stacked branch a rebase.
+- **Watch what is getting long:** a file that has stopped having one subject, a PR that outgrew its title. Split at a real seam, or ticket it; don't force one.
+- **Tests earn their place at merge, not while writing.** Cut what another test already proves at the same layer, and rewrite the ones whose name overclaims. Measure before blaming count: per-test fixtures, real network calls and `TransactionTestCase` are what grow this suite (#1481).
+- **Comments: the rule, the one reason, and a link** (`See #NNNN` or a doc path). Short, not terse. Write them against `main`, not against round three of the PR: a shouted `NOT` is usually arguing with a version only this branch ever had.
+- **Don't let newest win.** A new feature is another note in the chord: slot it into the existing order, default off or collapsed, rather than at the top of a surface that serves several others.
+- **Is a failure being swallowed?** An `except: pass`, a silent `continue` or an empty `catch` turns a bug into "nothing happens": a delete that fails silently looks like a button that does nothing. Surface the error, or say in one line why ignoring it is safe.
+- **Measure, don't eyeball.** Before calling an area clean, run the cheap scans (largest files, duplicate blocks, dead code, new code with no caller) rather than judging from the files you happened to open.
+- **Leave it cleaner than you found it,** without gold-plating: dead code and stale comments go now; understand something before deleting it; a cleanup big enough to stand alone gets its own PR. Deployment-specific values belong in `config/settings/` via `env(...)` with a default, never hard-coded.
+
 ## Definition of Done — Checklists
 
 These map 1:1 to the most frequent review findings across this repo's history. Run through the matching checklist before opening a PR.
@@ -448,6 +464,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 ### Before requesting review (any PR)
 
 - [ ] Self-review the full diff: no WIP debris (commented-out code, stale `noqa`/TODOs, duplicated conditions, typos).
+- [ ] The "Code hygiene" lines above checked over the whole branch diffed against `main`, not just the last commit, including the tests the PR adds and any comment written against an earlier round of this PR.
 - [ ] Linters pass with the repo's pinned configs (pre-commit hooks; `cd ui && yarn lint` for frontend).
 - [ ] PR title and description follow the conventions above — and are refreshed if scope changed during review.
 - [ ] Feature spans FE+BE? Agree on the API contract (fields, nesting, lookup keys) in the issue *before* implementing. Mid-review contract renegotiation is the main cause of months-long PRs in this repo.
@@ -541,7 +558,7 @@ npm run build                    # Production build
 
 ## Important File Locations
 
-- `ami/main/models.py` (~3700 lines) - Core domain models
+- `ami/main/models.py` (~5,500 lines) - Core domain models
 - `ami/main/models_future/filters.py` - Core filtering utilities (build_occurrence_default_filters_q)
 - `ami/ml/models/pipeline.py` - ML pipeline orchestration
 - `ami/ml/orchestration/processing.py` - Image processing workflow
@@ -556,6 +573,7 @@ npm run build                    # Production build
 
 - `docs/claude/INDEX.md` - Index of all agent docs (reference, runbooks, plans)
 - `docs/claude/reference/canonical-patterns.md` - Existing helpers/patterns to reuse, with file:line refs
+- `docs/claude/reference/code-hygiene.md` - Measured hotspots, module precedents to follow when splitting them, import direction, where configuration lives, the measured causes of the slow test suite, and scan commands that work here
 - `docs/claude/reference/query-patterns.md` - DB schema table, indexes, prefetch patterns, QuerySet method catalog
 - `.agents/DATABASE_SCHEMA.md` - Visual ERD (Mermaid)
 - `.agents/USER_PERMISSION_ROLES.md` - Permission roles reference
@@ -569,7 +587,7 @@ npm run build                    # Production build
 
 ## Known Technical Debt & Areas for Improvement
 
-1. **Model File Size** - `ami/main/models.py` is very large (~3700 lines) containing model definitions, business logic, processing orchestration, and helper functions. Consider splitting into separate modules.
+1. **Model File Size** - `ami/main/models.py` is very large (~5,500 lines, with `ami/main/tests.py` at ~8,700) containing model definitions, business logic, processing orchestration, and helper functions. Splitting it is wanted; `docs/claude/reference/code-hygiene.md` lists the subpackage arrangements already used elsewhere in the repo.
 
 2. **Processing Logic Extraction** - Functions like `process_single_source_image()` and `group_images_into_events()` should be moved from models to dedicated service modules (e.g., `ami/ml/orchestration/`, `ami/main/services/`).
 

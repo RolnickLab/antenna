@@ -1,20 +1,21 @@
 """
-This is a temporary module for adding new models and features while we migrate models.py to a more modular structure.
-Once the migration is complete, this module will be removed and the models will be moved to their respective files.
-
-This will happen after the current PRs are merged to minimize conflicts.
+This is a temporary module for adding and updating models and features while we
+migrate models.py to a more modular structure. Once the migration is complete,
+this module will be renamed and be the location for all models.
 
 Current models will be moved to:
 
 models/
-├── __init__.py          # Import everything for backward compatibility
+├── __init__.py         # Import everything for backward compatibility
 ├── base.py             # BaseModel and mixins
+├── content.py          # Page, BlogPost
+├── enums.py            # TaxonRank and other enums
+├── detection.py        # Detection, Classification, Occurrence
+├── identifications.py  # Identification
+├── images.py           # SourceImage, Event, SourceImageCollection
+├── filters.py          # Filters for database queries
+├── occurrence.py       # Occurrence rendering
 ├── projects.py         # Project, Device, Site, Deployment
 ├── storage.py          # S3StorageSource, SourceImageUpload
-├── images.py           # SourceImage, Event, SourceImageCollection
-├── taxonomy.py         # Taxon, TaxaList, Tag
-├── detection.py        # Detection, Classification, Occurrence
-├── identification.py   # Identification
-├── content.py          # Page, BlogPost
-└── enums.py           # TaxonRank and other enums
+└── taxonomy.py         # Taxon, TaxaList, Tag
 """
