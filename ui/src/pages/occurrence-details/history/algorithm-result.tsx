@@ -153,114 +153,121 @@ export const AlgorithmResult = ({
     occurrence.determinationTaxon?.id
   )
 
-  const stats: HistoryStat[] = getDeterminationStats(
-    entry.determination_before,
-    entry.determination_after
-  )
-  switch (entry.kind) {
-    case 'class_masking': {
-      stats.push({
-        label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
-        value: formatPercent(entry.data.excluded_probability),
-      })
-      // The top prediction before masking: what the run's best classification replaced.
-      const replaced = entry.classifications.find(
-        (c) => c.taxon !== null
-      )?.replaced
-      if (replaced?.taxon) {
-        stats.push({
-          label: translate(STRING.HISTORY_ORIGINAL_PREDICTION),
-          value:
-            replaced.score !== null
-              ? `${replaced.taxon.name} (${replaced.score.toFixed(2)})`
-              : replaced.taxon.name,
-        })
-      }
-      break
-    }
-    case 'size_filter': {
-      const threshold = getJobConfigField(entry.job, 'size_threshold')?.value
-      stats.push({
-        label: translate(STRING.HISTORY_DETECTION_SIZE),
-        value:
-          typeof threshold === 'number'
-            ? translate(STRING.HISTORY_DETECTION_SIZE_WITH_THRESHOLD, {
-                size: formatPercent(entry.data.relative_size),
-                threshold: formatPercent(threshold),
-              })
-            : translate(STRING.HISTORY_DETECTION_SIZE_VALUE, {
-                size: formatPercent(entry.data.relative_size),
-              }),
-      })
-      break
-    }
-    case 'tracking': {
-      const { data } = entry
-      stats.push(
-        {
-          label: translate(STRING.HISTORY_TRACKING_DETECTIONS),
-          value: data.detection_count,
-        },
-        ...(data.duration_seconds !== undefined &&
-        data.duration_seconds !== null
-          ? [
-              {
-                label: translate(STRING.FIELD_LABEL_DURATION),
-                value: formatDuration(data.duration_seconds),
-              },
-            ]
-          : []),
-        {
-          label: translate(STRING.HISTORY_TRACKING_MOVEMENT),
-          value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
-            distance: formatPercent(data.motion),
-          }),
-        },
-        {
-          label: translate(STRING.HISTORY_TRACKING_PATH_LENGTH),
-          value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
-            distance: formatPercent(data.path_length),
-          }),
-        },
-        {
-          label: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE),
-          value: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE_VALUE, {
-            ratio: `${Math.round(data.size_change * 100) / 100}`,
-          }),
-        },
-        {
-          label: translate(STRING.HISTORY_TRACKING_TAXA),
-          value: data.taxa?.length ? (
-            <TaxaNamed projectId={projectId as string} taxa={data.taxa} />
-          ) : (
-            data.distinct_taxa
-          ),
-        },
-        {
-          label: translate(STRING.HISTORY_TRACKING_LABEL_AGREEMENT),
-          value:
-            data.label_agreement !== null
-              ? formatPercent(data.label_agreement)
-              : translate(STRING.VALUE_NOT_AVAILABLE),
-        },
-        ...(data.score_mean !== undefined && data.score_mean !== null
-          ? [
-              {
-                label: translate(STRING.HISTORY_TRACKING_SCORE_RANGE),
-                value: translate(STRING.HISTORY_TRACKING_SCORE_RANGE_VALUE, {
-                  min: formatScore(data.score_min),
-                  max: formatScore(data.score_max),
-                  mean: formatScore(data.score_mean),
-                }),
-              },
-            ]
-          : []),
-        {
-          label: translate(STRING.HISTORY_TRACKING_MERGED),
-          value: data.merged_occurrence_ids.length,
-        }
+  // With other results of the run merged in, the figures and determination of any one of them may
+  // describe an absorbed occurrence, so the card shows only the count and the classifications.
+  const mergedIn = entry.results_merged_in > 0
+  const stats: HistoryStat[] = mergedIn
+    ? []
+    : getDeterminationStats(
+        entry.determination_before,
+        entry.determination_after
       )
-      break
+  if (!mergedIn) {
+    switch (entry.kind) {
+      case 'class_masking': {
+        stats.push({
+          label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
+          value: formatPercent(entry.data.excluded_probability),
+        })
+        // The top prediction before masking: what the run's best classification replaced.
+        const replaced = entry.classifications.find(
+          (c) => c.taxon !== null
+        )?.replaced
+        if (replaced?.taxon) {
+          stats.push({
+            label: translate(STRING.HISTORY_ORIGINAL_PREDICTION),
+            value:
+              replaced.score !== null
+                ? `${replaced.taxon.name} (${replaced.score.toFixed(2)})`
+                : replaced.taxon.name,
+          })
+        }
+        break
+      }
+      case 'size_filter': {
+        const threshold = getJobConfigField(entry.job, 'size_threshold')?.value
+        stats.push({
+          label: translate(STRING.HISTORY_DETECTION_SIZE),
+          value:
+            typeof threshold === 'number'
+              ? translate(STRING.HISTORY_DETECTION_SIZE_WITH_THRESHOLD, {
+                  size: formatPercent(entry.data.relative_size),
+                  threshold: formatPercent(threshold),
+                })
+              : translate(STRING.HISTORY_DETECTION_SIZE_VALUE, {
+                  size: formatPercent(entry.data.relative_size),
+                }),
+        })
+        break
+      }
+      case 'tracking': {
+        const { data } = entry
+        stats.push(
+          {
+            label: translate(STRING.HISTORY_TRACKING_DETECTIONS),
+            value: data.detection_count,
+          },
+          ...(data.duration_seconds !== undefined &&
+          data.duration_seconds !== null
+            ? [
+                {
+                  label: translate(STRING.FIELD_LABEL_DURATION),
+                  value: formatDuration(data.duration_seconds),
+                },
+              ]
+            : []),
+          {
+            label: translate(STRING.HISTORY_TRACKING_MOVEMENT),
+            value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
+              distance: formatPercent(data.motion),
+            }),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_PATH_LENGTH),
+            value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
+              distance: formatPercent(data.path_length),
+            }),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE),
+            value: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE_VALUE, {
+              ratio: `${Math.round(data.size_change * 100) / 100}`,
+            }),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_TAXA),
+            value: data.taxa?.length ? (
+              <TaxaNamed projectId={projectId as string} taxa={data.taxa} />
+            ) : (
+              data.distinct_taxa
+            ),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_LABEL_AGREEMENT),
+            value:
+              data.label_agreement !== null
+                ? formatPercent(data.label_agreement)
+                : translate(STRING.VALUE_NOT_AVAILABLE),
+          },
+          ...(data.score_mean !== undefined && data.score_mean !== null
+            ? [
+                {
+                  label: translate(STRING.HISTORY_TRACKING_SCORE_RANGE),
+                  value: translate(STRING.HISTORY_TRACKING_SCORE_RANGE_VALUE, {
+                    min: formatScore(data.score_min),
+                    max: formatScore(data.score_max),
+                    mean: formatScore(data.score_mean),
+                  }),
+                },
+              ]
+            : []),
+          {
+            label: translate(STRING.HISTORY_TRACKING_MERGED),
+            value: data.merged_occurrence_ids.length,
+          }
+        )
+        break
+      }
     }
   }
   if (entry.classifications.length) {

@@ -149,7 +149,9 @@ def _one_entry_per_run(results: list[AlgorithmResult]) -> list[tuple[AlgorithmRe
 
     A run records one result per occurrence, so more than one of a job, kind and algorithm means merged
     occurrences brought theirs along. They show as one entry until results can name detections (#1412).
-    A result with no job is its own entry.
+    The entry carries the newest result's figures and determination, which may describe an absorbed
+    occurrence, so the card shows only the count and the classifications of such an entry. A result with
+    no job is its own entry.
     """
     runs: dict[tuple, tuple[AlgorithmResult, list[AlgorithmResult]]] = {}
     for result in results:
