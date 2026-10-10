@@ -5,12 +5,11 @@ import {
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useOccurrenceHistory } from 'data-services/hooks/occurrences/useOccurrenceHistory'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { ImagesIcon, SearchIcon } from 'lucide-react'
+import { SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
   Box,
   Button,
-  buttonVariants,
   CodeBlock,
   IdentificationScore,
   InfoBlockField,
@@ -19,7 +18,7 @@ import {
 } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -29,6 +28,7 @@ import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
 import { OccurrenceTimeline } from './history/occurrence-timeline'
+import { MoreActions } from './more-actions/more-actions'
 import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
@@ -63,14 +63,6 @@ export const OccurrenceDetails = ({
     projectId,
   })
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
-  const similarityAlgorithm = occurrence.embeddingAlgorithms[0]
-  const similarOccurrencesRoute = `${APP_ROUTES.OCCURRENCES({
-    projectId: projectId as string,
-  })}?${new URLSearchParams({
-    ordering: 'visual_similarity',
-    similar_to: occurrence.id,
-    similarity_algorithm: `${similarityAlgorithm?.id}`,
-  })}`
 
   const blueprintItems = useMemo(
     () =>
@@ -186,15 +178,11 @@ export const OccurrenceDetails = ({
               />
             </BasicTooltip>
           ) : null}
-          {similarityAlgorithm ? (
-            <Link
-              className={buttonVariants({ size: 'small', variant: 'outline' })}
-              to={similarOccurrencesRoute}
-            >
-              <ImagesIcon className="w-4 h-4" />
-              <span>{translate(STRING.SHOW_SIMILAR_OCCURRENCES)}</span>
-            </Link>
-          ) : null}
+          <MoreActions
+            embeddingAlgorithms={occurrence.embeddingAlgorithms}
+            occurrenceId={occurrence.id}
+            projectId={projectId as string}
+          />
           {canUpdate && (
             <>
               <Agree
