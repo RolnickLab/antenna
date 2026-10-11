@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 
 import pydantic
 
+from ami.base.model_references import model_reference
 from ami.main.models import Detection, SourceImageCollection
 from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.embeddings.reader import detections_missing_vectors
@@ -16,11 +17,24 @@ from ami.ml.post_processing.base import BasePostProcessingTask
 
 
 class AddFeatureVectorsConfig(pydantic.BaseModel):
-    source_image_collection_id: int
-    pipeline_id: int
-    key: str = DEFAULT_EMBEDDING_KEY
-    # Captures per request. Each request carries every missing detection of its captures.
-    batch_size: int = pydantic.Field(default=10, ge=1, le=100)
+    source_image_collection_id: int = model_reference("capture_set", ..., title="Capture set")
+    pipeline_id: int = pydantic.Field(
+        ...,
+        title="Pipeline",
+        description="A pipeline with a feature extractor. Only detections that lack its vectors are sent.",
+    )
+    key: str = pydantic.Field(
+        DEFAULT_EMBEDDING_KEY,
+        title="Vector name",
+        description="The name the vectors are stored under. Keep the default unless the extractor has many outputs.",
+    )
+    batch_size: int = pydantic.Field(
+        10,
+        ge=1,
+        le=100,
+        title="Captures per request",
+        description="How many captures, with their missing detections, go to the processing service in one request.",
+    )
 
     class Config:
         extra = "forbid"
@@ -69,6 +83,15 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
             f"have detections without a vector from pipeline {pipeline} ==="
         )
 
+        totals = {
+            "Captures": 0,
+            "Detections sent": 0,
+            "Vectors stored": 0,
+            "Vectors unchanged": 0,
+            "Boxes unmatched": 0,
+        }
+        # Reported before the early return so a run with nothing to add shows zeros, not blanks.
+        self.report_stage_metrics(totals)
         if not capture_ids:
             self.logger.info(f"=== Completed {self.name}: nothing to add ===")
             return
@@ -81,14 +104,6 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
             )
         endpoint_url = urljoin(processing_service.endpoint_url, "/process")
 
-        totals = {
-            "Captures": 0,
-            "Detections sent": 0,
-            "Vectors stored": 0,
-            "Vectors unchanged": 0,
-            "Boxes unmatched": 0,
-        }
-        self.report_stage_metrics(totals)
         for start in range(0, len(capture_ids), config.batch_size):
             batch = list(
                 missing.filter(source_image_id__in=capture_ids[start : start + config.batch_size])

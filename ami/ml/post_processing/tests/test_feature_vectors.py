@@ -15,13 +15,14 @@ from django.test import Client, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from ami.base.model_references import field_titles
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Occurrence, SourceImage, SourceImageCollection
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService, ProjectPipelineConfig
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map
-from ami.ml.post_processing.feature_vectors import AddFeatureVectorsTask
+from ami.ml.post_processing.feature_vectors import AddFeatureVectorsConfig, AddFeatureVectorsTask
 from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
@@ -243,15 +244,17 @@ class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
 
         self.assertEqual(DetectionEmbedding.objects.count(), 0)
 
-    def test_a_second_run_sends_nothing(self):
+    def test_a_second_run_sends_nothing_and_reports_zeros(self):
         collection = self._collection(captures=2)
         self._run(collection)
         requests_after_first = len(self.fake.requests)
 
-        self._run(collection)
+        job = self._run(collection)
 
         self.assertEqual(len(self.fake.requests), requests_after_first)
         self.assertEqual(DetectionEmbedding.objects.count(), 4)
+        self.assertEqual(self._metrics(job)["Captures"], 0)
+        self.assertEqual(self._metrics(job)["Vectors stored"], 0)
 
     def test_a_pipeline_without_an_embedding_algorithm_is_refused_before_any_request(self):
         collection = self._collection(captures=1)
@@ -339,6 +342,9 @@ class TestAddFeatureVectorsAdmin(FeatureVectorsFixture, TestCase):
                 **data,
             },
         )
+
+    def test_every_config_field_has_a_title(self):
+        self.assertNotIn(None, field_titles(AddFeatureVectorsConfig).values())
 
     def test_the_form_lists_only_pipelines_with_an_embedding_algorithm(self):
         response = self._post([self._collection(captures=1)], {})

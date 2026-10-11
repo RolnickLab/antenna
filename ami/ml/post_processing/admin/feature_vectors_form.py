@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from django import forms
 
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models import Pipeline
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
 from ami.ml.post_processing.feature_vectors import AddFeatureVectorsConfig
+
+_FIELDS = AddFeatureVectorsConfig.__fields__
 
 
 class AddFeatureVectorsActionForm(BasePostProcessingActionForm):
@@ -19,18 +20,18 @@ class AddFeatureVectorsActionForm(BasePostProcessingActionForm):
 
     pipeline_id = forms.ModelChoiceField(
         queryset=Pipeline.objects.none(),
-        label="Pipeline",
-        help_text="A pipeline with a feature extractor. Only detections that lack its vectors are sent.",
+        label=_FIELDS["pipeline_id"].field_info.title,
+        help_text=_FIELDS["pipeline_id"].field_info.description,
     )
     key = forms.CharField(
-        label="Vector name",
-        initial=DEFAULT_EMBEDDING_KEY,
-        help_text="The name the vectors are stored under. Keep the default unless the extractor has several outputs.",
+        label=_FIELDS["key"].field_info.title,
+        initial=_FIELDS["key"].default,
+        help_text=_FIELDS["key"].field_info.description,
     )
     batch_size = forms.IntegerField(
-        label="Captures per request",
-        initial=AddFeatureVectorsConfig.__fields__["batch_size"].default,
-        help_text="How many captures, with their missing detections, go to the processing service in one request.",
+        label=_FIELDS["batch_size"].field_info.title,
+        initial=_FIELDS["batch_size"].default,
+        help_text=_FIELDS["batch_size"].field_info.description,
     )
 
     def __init__(self, *args, **kwargs):
