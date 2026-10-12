@@ -51,11 +51,20 @@ export const columns = ({
       })
 
       return (
-        <ImageTableCell
-          images={[item.images[0]]}
-          theme={ImageCellTheme.Light}
-          to={detailsRoute}
-        />
+        <div>
+          <ImageTableCell
+            images={[item.images[0]]}
+            theme={ImageCellTheme.Light}
+            to={detailsRoute}
+          />
+          {item.visualSimilarity !== undefined ? (
+            <span className="block pt-1 text-center body-small text-muted-foreground">
+              {item.visualSimilarity === null
+                ? '-'
+                : `${Math.round(item.visualSimilarity * 100)}%`}
+            </span>
+          ) : null}
+        </div>
       )
     },
   },
