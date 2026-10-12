@@ -53,7 +53,10 @@ export const Occurrences = () => {
   )
   const { sort, setSort } = useSort(
     { field: 'updated_at', order: 'desc' },
-    { similar_to: 'visual_similarity' }
+    {
+      similar_to: 'visual_similarity',
+      similarity_algorithm: 'visual_similarity',
+    }
   )
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
@@ -99,6 +102,11 @@ export const Occurrences = () => {
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
             <FilterControl field="similar_to" readonly />
+            <FilterControl
+              field="similarity_algorithm"
+              readonly
+              clearable={false}
+            />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
               <>
