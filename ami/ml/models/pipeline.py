@@ -40,7 +40,7 @@ from ami.main.models import (
 )
 from ami.ml.embeddings.writer import create_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -110,7 +110,9 @@ def filter_processed_images(
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
+    # A feature extractor never classifies; missing vectors are backfilled without reprocessing (#1462).
+    non_classifier_type_keys = detection_type_keys | {AlgorithmTaskType.EMBEDDING}
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in non_classifier_type_keys}
     if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
         # set().issubset(anything) is vacuously True, so without this short-circuit

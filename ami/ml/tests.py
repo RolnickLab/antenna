@@ -1020,6 +1020,35 @@ class TestPipeline(TestCase):
         result = list(filter_processed_images([image], self.pipeline))
         self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
 
+    def test_filter_processed_images_does_not_wait_for_classifications_from_a_feature_extractor(self):
+        """A feature extractor never classifies, so it must not make a classified image look unprocessed.
+
+        Missing vectors are backfilled without reprocessing; counting the extractor as a classifier
+        would send every capture through the whole pipeline again on every run.
+        """
+        from ami.ml.models.algorithm import AlgorithmTaskType
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detection = Detection.objects.create(
+            source_image=image, detection_algorithm=self.algorithms["random-detector"], bbox=[0.1, 0.2, 0.3, 0.4]
+        )
+        taxon = Taxon.objects.create(name="Test Species With Vectors")
+        for key in ["random-binary-classifier", "random-species-classifier"]:
+            Classification.objects.create(
+                detection=detection,
+                taxon=taxon,
+                algorithm=self.algorithms[key],
+                score=0.9,
+                timestamp=datetime.datetime.now(),
+            )
+        extractor = Algorithm.objects.create(
+            name="Feature extractor", key="test-feature-extractor", task_type=AlgorithmTaskType.EMBEDDING.value
+        )
+        self.pipeline.algorithms.add(extractor)
+
+        self.assertEqual(list(filter_processed_images([image], self.pipeline)), [])
+
     def test_filter_processed_images_empty_input(self):
         """An empty iterable should yield nothing and run no per-image queries."""
         from ami.ml.models.pipeline import filter_processed_images
