@@ -185,7 +185,7 @@ class OccurrencePagination(LimitOffsetPaginationWithPermissions):
         # A similarity-sorted list annotates the cosine distance as a correlated subquery. The
         # count does not need it, and left in, it would be evaluated for every occurrence a
         # second time. Other orderings count the queryset as they always have.
-        if "visual_similarity" not in queryset.query.annotations:
+        if "visual_distance" not in queryset.query.annotations:
             return super().get_count(queryset)
         count = super().get_count(queryset.order_by().values("pk"))
         # Counted before the page is fetched, so a refused list computes no distances.
@@ -1623,7 +1623,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             raise api_exceptions.ValidationError(
                 {"similar_to": f"Occurrence #{seed_id} has no feature vector from algorithm #{algorithm_id}."}
             )
-        distance = models.F("visual_similarity")
+        distance = models.F("visual_distance")
         return qs.with_visual_similarity(seed_vector, algorithm_id).order_by(  # type: ignore[attr-defined]
             distance.desc(nulls_last=True) if descending else distance.asc(nulls_last=True), "-pk"
         )

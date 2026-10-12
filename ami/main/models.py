@@ -3381,7 +3381,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
     def with_visual_similarity(self, seed_vector, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
-        """Annotate ``visual_similarity``: the cosine distance from ``seed_vector`` to each occurrence's vector.
+        """Annotate ``visual_distance``: the cosine distance from ``seed_vector`` to each occurrence's vector.
 
         The occurrence's vector is its representative detection's (see
         ``representative_embeddings``), from one algorithm only: distances between vectors of
@@ -3397,7 +3397,7 @@ class OccurrenceQuerySet(BaseQuerySet):
             .annotate(distance=pgvector.django.CosineDistance("vector", seed_vector))
             .values("distance")[:1]
         )
-        return self.annotate(visual_similarity=models.Subquery(nearest))
+        return self.annotate(visual_distance=models.Subquery(nearest))
 
     def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
         """Subquery matching occurrences with any result from the given algorithms: a detection

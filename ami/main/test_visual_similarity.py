@@ -315,3 +315,41 @@ class TestVisualSimilarityCap(VisualSimilarityFixture):
             response = self._get("ordering=-created_at")
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
         self.assertEqual(response.json()["count"], 5)
+
+
+class TestVisualSimilarityInThePayload(VisualSimilarityFixture):
+    """Each row of a similarity-sorted list carries its cosine similarity to the seed (1 is identical)."""
+
+    def _rows(self, query: str) -> dict[int, dict]:
+        response = self.client.get(f"{self.url}&{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return {int(row["id"]): row for row in response.json()["results"]}
+
+    def test_rows_carry_the_similarity_and_null_when_there_is_no_vector(self):
+        rows = self._rows(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+        self.assertAlmostEqual(rows[self.seed.pk]["visual_similarity"], 1.0, places=3)
+        self.assertGreater(rows[self.near.pk]["visual_similarity"], 0.9)
+        self.assertAlmostEqual(rows[self.far.pk]["visual_similarity"], 0.0, places=3)
+        self.assertIsNone(rows[self.no_vector.pk]["visual_similarity"])
+        self.assertIsNone(rows[self.other_only.pk]["visual_similarity"])
+
+    def test_the_value_does_not_depend_on_the_direction_of_the_sort(self):
+        ascending = self._rows(f"ordering=visual_similarity&similar_to={self.seed.pk}")
+        descending = self._rows(f"ordering=-visual_similarity&similar_to={self.seed.pk}")
+        self.assertEqual(
+            {pk: row["visual_similarity"] for pk, row in ascending.items()},
+            {pk: row["visual_similarity"] for pk, row in descending.items()},
+        )
+
+    def test_the_plain_list_and_the_detail_do_not_have_the_field(self):
+        self.assertTrue(all("visual_similarity" not in row for row in self._rows("").values()))
+        self.assertTrue(all("visual_similarity" not in row for row in self._rows("ordering=-created_at").values()))
+        detail = self.client.get(f"/api/v2/occurrences/{self.seed.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, status.HTTP_200_OK, detail.content)
+        self.assertNotIn("visual_similarity", detail.json())
+
+    def test_the_export_serializer_leaves_the_field_out(self):
+        """An export never sorts by similarity, so its rows must not gain a column for it."""
+        from ami.exports.format_types import get_export_serializer
+
+        self.assertNotIn("visual_similarity", get_export_serializer().Meta.fields)

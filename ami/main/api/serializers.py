@@ -1538,6 +1538,17 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
         ]
 
 
+class CosineSimilarityField(serializers.FloatField):
+    """Cosine similarity (1 is identical) from a cosine distance annotation.
+
+    The field is left out of a row whose queryset has no such annotation, and null when the
+    annotation is NULL (no vector to compare).
+    """
+
+    def to_representation(self, value):
+        return 1.0 - value
+
+
 class OccurrenceListSerializer(DefaultSerializer):
     # List cards render one cover image; detail subclass raises this to 100.
     detection_images_limit: int | None = 1
@@ -1550,6 +1561,8 @@ class OccurrenceListSerializer(DefaultSerializer):
     determination_details = serializers.SerializerMethodField()
     best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    # Only present on a list sorted by visual similarity; see OccurrenceQuerySet.with_visual_similarity.
+    visual_similarity = CosineSimilarityField(source="visual_distance", read_only=True)
 
     def get_permissions(self, instance, instance_data):
         request: Request = self.context["request"]
@@ -1589,6 +1602,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
             "best_machine_prediction",
             "identifications",
+            "visual_similarity",
             "created_at",
             "updated_at",
         ]

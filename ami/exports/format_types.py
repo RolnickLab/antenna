@@ -30,8 +30,13 @@ def get_export_serializer():
             return instance_data
 
         class Meta(OccurrenceSerializer.Meta):
-            # embedding_algorithms costs a query per occurrence and is not part of the export.
-            fields = [field for field in OccurrenceSerializer.Meta.fields if field != "embedding_algorithms"]
+            # embedding_algorithms costs a query per occurrence and visual_similarity needs a sorted
+            # list; neither is part of the export.
+            fields = [
+                field
+                for field in OccurrenceSerializer.Meta.fields
+                if field not in ("embedding_algorithms", "visual_similarity")
+            ]
 
         def to_representation(self, instance):
             return serializers.HyperlinkedModelSerializer.to_representation(self, instance)
