@@ -182,9 +182,9 @@ class TaxonPagination(LimitOffsetPaginationWithPermissions):
 
 class OccurrencePagination(LimitOffsetPaginationWithPermissions):
     def get_count(self, queryset):
-        # A similarity-sorted list annotates the cosine distance as a correlated subquery. The
-        # count does not need it, and left in, it would be evaluated for every occurrence a
-        # second time. Other orderings count the queryset as they always have.
+        # A similarity-sorted list annotates the distance as a correlated subquery. The count does
+        # not need it or the ordering, so they are stripped. Other lists count as they always have.
+        # See #1509.
         if "visual_distance" not in queryset.query.annotations:
             return super().get_count(queryset)
         count = super().get_count(queryset.order_by().values("pk"))

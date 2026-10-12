@@ -234,8 +234,8 @@ class TestVisualSimilarityPageCount(VisualSimilarityFixture):
         return [q["sql"] for q in ctx.captured_queries]
 
     def test_the_page_count_does_not_compute_the_distance(self):
-        """The count of a sorted list needs no distances; carrying the per-occurrence cosine
-        subquery into it would compute every distance a second time."""
+        """The count of a sorted list needs no distances, so its SQL must not carry the
+        per-occurrence cosine subquery."""
         with cachalot_disabled():
             queries = self._queries(f"ordering=visual_similarity&similar_to={self.seed.pk}&limit=2")
         counts = [sql for sql in queries if sql.startswith("SELECT COUNT(")]
