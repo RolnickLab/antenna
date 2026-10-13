@@ -14,6 +14,7 @@ from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.results.schemas import DeterminationSnapshot
 from ami.ml.results.writer import AlgorithmResultWriter
+from ami.utils.stats import softmax
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -170,10 +171,7 @@ def make_classifications_filtered_by_taxa_list(
             # full softmax (over every class) from the logits, then drop the excluded
             # classes to exactly zero. An excluded class can never win argmax or carry
             # probability.
-            shifted = np.asarray(logits, dtype=float)
-            shifted -= shifted.max()  # stabilises exp without changing the softmax
-            full_softmax = np.exp(shifted)
-            full_softmax /= full_softmax.sum()  # p over all classes; matches the retired ``scores``
+            full_softmax = softmax(logits)  # p over all classes; matches the retired ``scores``
 
             kept = full_softmax.copy()
             kept[excluded_indices] = 0.0
