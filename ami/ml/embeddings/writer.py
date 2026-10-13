@@ -130,7 +130,8 @@ def create_detection_embeddings(
         if first_writes:
             # Hold the lock until the vectors are committed, so a concurrent first writer sees them.
             stack.enter_context(transaction.atomic())
-            for algorithm, key in first_writes:
+            # A fixed order, so two batches that share new pairs cannot each hold one lock and wait for the other.
+            for algorithm, key in sorted(first_writes, key=lambda pair: (pair[0].pk, pair[1])):
                 _lock_first_write(algorithm, key)
                 stored_by_pair[(algorithm, key)] = DetectionEmbedding.objects.stored_length(algorithm.pk, key)
         _check_embedding_dimensions(lengths_by_pair, stored_by_pair)
