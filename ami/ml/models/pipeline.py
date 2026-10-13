@@ -544,7 +544,7 @@ def get_or_create_detection(
     get_was_processed(algorithm_key=...) returns correct per-algorithm processed status.
     """
     if detection_resp.bbox is not None:
-        serialized_bbox = list(detection_resp.bbox.dict().values())
+        serialized_bbox = detection_resp.bbox.as_coords()
     else:
         serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"

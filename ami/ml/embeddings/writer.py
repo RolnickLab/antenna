@@ -91,7 +91,7 @@ def create_detection_embeddings(
     for detection_resp in detection_responses:
         if detection_resp.bbox is None or not detection_resp.embeddings:
             continue
-        box_key = _box_key(detection_resp.source_image_id, detection_resp.bbox.dict().values())
+        box_key = _box_key(detection_resp.source_image_id, detection_resp.bbox.as_coords())
         candidates = by_box.get(box_key, [])
         if len(candidates) > 1:
             logger.warning(
