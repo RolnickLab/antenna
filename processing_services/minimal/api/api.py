@@ -62,6 +62,8 @@ def select_pipelines(setting: str) -> list[type[Pipeline]]:
 
 
 pipelines: list[type[Pipeline]] = select_pipelines(os.environ.get("AMI_PIPELINES", ""))
+# The pipelines the pull-mode worker registers and polls for.
+worker_pipelines: list[type[Pipeline]] = [pipeline for pipeline in pipelines if not pipeline.feature_only]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms

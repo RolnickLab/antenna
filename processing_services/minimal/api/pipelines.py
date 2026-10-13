@@ -192,6 +192,9 @@ class Pipeline:
     terminal_classifier: AlgorithmConfigResponse | None = None
     # The feature extractor this pipeline offers. It must also be listed in config.algorithms.
     feature_extractor: AlgorithmConfigResponse | None = None
+    # Feature-only pipelines embed detections sent with the request. Pull-mode tasks carry an image
+    # and never detections, so the worker does not offer them (as in the AMI Data Companion).
+    feature_only: bool = False
 
     def __init__(
         self,
@@ -347,6 +350,7 @@ class FeatureExtractorOnlyPipeline(Pipeline):
     """
 
     feature_extractor = algorithms.CONSTANT_FEATURE_EXTRACTOR
+    feature_only = True
     config = PipelineConfigResponse(
         name="Feature Extractor Only (constant)",
         slug="constant-feature-extractor-only",

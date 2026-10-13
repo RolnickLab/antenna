@@ -10,6 +10,11 @@ services:
       - minio:host-gateway
     networks:
       - antenna_network
+    # start.sh dispatches on MODE: api | worker | api+worker. For api+worker,
+    # start.sh runs FastAPI first (for register.py to read /info), then
+    # register.py, then the worker poll loop.
+    env_file:
+      - ./minimal/.env.dev
 
   ml_backend_example:
     build:

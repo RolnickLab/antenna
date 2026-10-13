@@ -16,6 +16,31 @@ In this directory, we define locally-run processing services as FastAPI apps. A 
 
 If your goal is to run an ML backend locally, simply copy the `example` app and follow the steps below.
 
+## v1 vs v2 processing services
+
+Antenna supports two processing-service paradigms:
+
+- **v1 (push / synchronous):** the service exposes `/info`, `/livez`, `/readyz`, `/process`. Antenna POSTs a `PipelineRequest` to `/process` when a job runs. Good for interactive/playground requests on a single image and for exposing pipeline schema at `/api/v2/docs/`.
+- **v2 (pull / async / worker):** a worker polls Antenna's job-queue HTTP endpoints (`POST /api/v2/jobs/{id}/tasks/`, `POST /api/v2/jobs/{id}/result/`) and processes tasks queued by Antenna in NATS JetStream. Antenna proxies NATS internally so the worker only talks HTTP. Good for long-running workloads, firewall-isolated GPU fleets, and horizontal scaling.
+
+The `minimal` container supports **both modes** and is driven by a `MODE` env var:
+
+- `MODE=api` (default; what CI uses) — v1 FastAPI only.
+- `MODE=worker` — v2 worker poll loop only.
+- `MODE=api+worker` — both, in one container. Used by `processing_services/docker-compose.yml` for local dev. Exercises the real v2 pull path (Redis / NATS / Celery / Celery Beat) with lightweight stub pipelines, no ML dependencies.
+
+See `docs/claude/planning/2026-04-17-minimal-worker-design.md` for the design.
+
+### Running the v2 path locally
+
+```bash
+docker compose up -d                                             # Antenna core
+docker compose -f processing_services/docker-compose.yml up -d   # minimal container in api+worker mode
+```
+
+The minimal container self-registers a `ProcessingService` (no `endpoint_url`, async-mode) against the "Default Project" seeded by `ami/main/management/commands/ensure_default_project.py`. Submit an `async_api` job for the `constant` or `random-detection-random-species` pipeline and the worker picks it up.
+
+
 ## Environment Set Up
 
 1. Update `processing_services/example/requirements.txt` with required packages (i.e. PyTorch, etc)
@@ -107,9 +132,13 @@ A feature-only pipeline receives detections and returns each one unchanged (boun
 
 `AMI_PIPELINES` is a comma-separated list of pipeline slugs to offer. An empty value offers all of them, and an unknown slug stops the service at startup.
 
+### Pull (async) mode
+
+Tasks fetched in pull mode do not carry the request config yet (see #1422). A worker therefore reads `AMI_INCLUDE_LOGITS`, `AMI_FEATURES_FOR_ALL_DETECTIONS`, and `AMI_EMBEDDING_EXTRACTOR` from its environment instead. They follow the request config rules: an unset `AMI_EMBEDDING_EXTRACTOR` runs each pipeline's own extractor and an empty one turns extractors off, so leave the variable out rather than setting it to an empty value by accident. The extractor setting applies only to pipelines that offer an extractor, and a key no pipeline offers stops the worker at startup. Until pull-mode tasks carry the project's pipeline config, the same project can get different vectors in push and pull mode: push mode follows the project's config, pull mode the worker's environment. Feature-only pipelines are push-only, so the worker neither registers nor polls for them. The worker lists unfinished jobs for all of its pipelines in one call (`pipeline__slug__in`, `ids_only`, `incomplete_only`, `dispatch_mode=async_api`), the same query the AMI Data Companion worker makes; Antenna records that call as the worker's heartbeat.
+
 ### The `minimal` service as a reference
 
-The `constant-feature-extractor` algorithm returns 8 values per detection, derived from the capture and the box, so the output is deterministic and needs no model weights. Classifier vectors returned for `features_for_all_detections` have 4 values. The pipelines `constant-with-feature-extractor` and `constant-feature-extractor-only` show the two shapes described above. To run the tests, execute `python -m unittest api.test` inside the service container.
+The `constant-feature-extractor` algorithm returns 8 values per detection, derived from the capture and the box, so the output is deterministic and needs no model weights. Classifier vectors returned for `features_for_all_detections` have 4 values. The pipelines `constant-with-feature-extractor` and `constant-feature-extractor-only` show the two shapes described above. To run the tests, execute `python -m unittest api.test worker.test_worker` inside the service container.
 
 ## Demo
 
