@@ -53,6 +53,7 @@ class TestGetOrDownloadFile(unittest.TestCase):
         self.assertEqual(get.call_args.kwargs["timeout"], utils.DOWNLOAD_TIMEOUT)
         self.assertEqual(path.read_bytes(), b"abcd")
         self.assertEqual(path.name, "weights.pth")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o644)
         self.assertEqual(again.resolve(), path.resolve())
         self.assertEqual([p.name for p in (self.cache_root / "models").iterdir()], ["weights.pth"])
 

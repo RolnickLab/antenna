@@ -109,6 +109,7 @@ def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
             partial_path.unlink(missing_ok=True)
             raise
 
+    partial_path.chmod(0o644)  # NamedTemporaryFile creates owner-only files, which breaks shared cache mounts.
     partial_path.replace(local_filepath)
     logger.info(f"Download completed: {local_filepath.resolve()}")
     return local_filepath.resolve()
