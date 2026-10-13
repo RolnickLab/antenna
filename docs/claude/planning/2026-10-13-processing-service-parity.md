@@ -160,7 +160,7 @@ keep `algorithm`, no classifications), vector lengths fixed per algorithm, `AMI_
 
 Full backend suite serially, own compose project `-p antenna-ci-psparity`, explicit `-f docker-compose.ci.yml`,
 recreate test DB + `FLUSHALL`; `makemigrations --check --dry-run`; pre-commit. Heavy steps under
-`systemd-run --user --scope -p MemoryHigh=24G` (BEAST: 22 GB available, swap full, 20 GB disk free at start).
+`systemd-run --user --scope -p MemoryHigh=24G` (the development host had about 22 GB of memory available and little free disk).
 
 ## 3. Open questions (sent to the originating session)
 
