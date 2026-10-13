@@ -4,7 +4,7 @@ import { FilterProps } from './types'
 
 export const CaptureSetFilter = ({ onAdd, onClear, value }: FilterProps) => (
   <EntityPicker
-    collection={API_ROUTES.CAPTURE_SETS}
+    collection={API_ROUTES.CAPTURE_SET_CHOICES}
     onValueChange={(value) => {
       if (value) {
         onAdd(value)

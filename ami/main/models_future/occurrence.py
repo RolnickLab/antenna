@@ -58,7 +58,10 @@ def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) 
     qs = Detection.objects.prefetch_related(
         Prefetch(
             "classifications",
-            queryset=Classification.objects.select_related("taxon", "algorithm"),
+            # applied_to__algorithm: post-processed classifications (class masking,
+            # rank rollup) serialize their provenance parent; pull it here so the
+            # nested applied_to render doesn't issue a query per classification.
+            queryset=Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm"),
         )
     ).order_by(*ordering)
     if with_source_image:

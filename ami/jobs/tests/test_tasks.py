@@ -866,7 +866,7 @@ class TestLogWorkerAvailability(TransactionTestCase):
 class TestMarkLostImagesFailed(TransactionTestCase):
     """Regression tests for the NATS-lost-images reconciler.
 
-    Production incident 2026-04-16 (job 2421): 998 images, 982 processed cleanly,
+    Based on a production incident: 998 images, 982 processed cleanly,
     5 explicit failures, and 16 images stuck indefinitely in Redis pending_images
     after an ADC worker hit a 2h NATS/Redis connection drop. NATS had given up
     (max_deliver=2) before the worker reconnected, so the messages were gone
@@ -892,7 +892,7 @@ class TestMarkLostImagesFailed(TransactionTestCase):
         cache.clear()
 
     def _make_stuck_job(self, total_images: int = 10, already_processed: int = 7, explicit_failures: int = 1):
-        """Build the job-2421 Redis + Job.progress shape.
+        """Build the incident's Redis + Job.progress shape.
 
         Returns (job, set_of_lost_ids). The lost count is derived so the three
         buckets always sum to ``total_images``.
@@ -903,7 +903,7 @@ class TestMarkLostImagesFailed(TransactionTestCase):
         job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,
-            name="job-2421-shape",
+            name="lost-images-shape",
             pipeline=self.pipeline,
             source_image_collection=self.collection,
             dispatch_mode=JobDispatchMode.ASYNC_API,
@@ -978,7 +978,7 @@ class TestMarkLostImagesFailed(TransactionTestCase):
 
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_marks_lost_images_as_failed_and_finalizes_success(self, mock_manager_class):
-        """Job-2421 shape: NATS drained (num_pending=0, num_ack_pending=0) while
+        """Incident shape: NATS drained (num_pending=0, num_ack_pending=0) while
         Redis pending still holds redelivery-exhausted ids. The helper should
         SADD those to failed_images, SREM from pending, and let the existing
         completion logic (failed/total < FAILURE_THRESHOLD) land the job in SUCCESS.

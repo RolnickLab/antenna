@@ -17,6 +17,41 @@ export class Species extends Taxon {
     return `https://api.antenna.insectai.org/bereich/main/taxon/${this.id}` // TODO: Use dynamic admin URL based on environment?
   }
 
+  get bestScoringOccurrenceId(): number | undefined {
+    return this._species.best_scoring_occurrence_id ?? undefined
+  }
+
+  // One occurrence chosen by the backend to verify this taxon's presence: the
+  // best-scoring unverified occurrence for unverified taxa, or the most recent
+  // occurrence for already-verified taxa. Populated only when the list is
+  // fetched with the example-occurrences flag; undefined otherwise.
+  //
+  // Named to avoid colliding with SpeciesDetails.exampleOccurrence, which is a
+  // different concept (a cover-style example image on the taxon detail model).
+  get verificationExample():
+    | {
+        id: number
+        detectionId: number | null
+        imageUrl: string | null
+        score: number | null
+        verified: boolean
+      }
+    | undefined {
+    const example = this._species.example_occurrence
+
+    if (!example) {
+      return undefined
+    }
+
+    return {
+      id: example.id,
+      detectionId: example.detection_id ?? null,
+      imageUrl: example.image_url ?? null,
+      score: example.score ?? null,
+      verified: !!example.verified,
+    }
+  }
+
   get coverImage(): { url: string; caption?: string } | undefined {
     if (!this._species.cover_image_url) {
       return undefined
@@ -62,6 +97,10 @@ export class Species extends Taxon {
     return this.iNaturalistId
       ? `https://www.inaturalist.org/taxa/${this.iNaturalistId}`
       : undefined
+  }
+
+  get lastDetectedOccurrenceId(): number | undefined {
+    return this._species.last_detected_occurrence_id ?? undefined
   }
 
   get lastSeen() {

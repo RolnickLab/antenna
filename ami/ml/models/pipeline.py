@@ -233,10 +233,15 @@ def collect_images(
     """
     task_logger = logger
     if job_id:
-        from ami.jobs.models import Job
+        from ami.jobs.models import Job, JobState
 
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
+        # Persist the collect stage as STARTED for every path: the filtered branch's throttle
+        # below updates only `progress` (never status), and reprocess-all has no loop at all,
+        # so without this neither path reports STARTED while collection runs.
+        job.progress.update_stage("collect", status=JobState.STARTED, progress=0)
+        job.save(update_fields=["progress", "updated_at"])
     else:
         job = None
 
@@ -518,6 +523,7 @@ def get_or_create_detection(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Detection, bool]:
     """
     Create a Detection object from a DetectionResponse, or update an existing one.
@@ -611,6 +617,7 @@ def get_or_create_detection(
             path=crop_url,
             detection_time=detection_resp.timestamp,
             detection_algorithm=detection_algo,
+            job_id=job_id,
         )
         if save:
             new_detection.save()
@@ -628,6 +635,7 @@ def create_detections(
     detections: list[DetectionResponse],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> list[Detection]:
     """
     Efficiently create multiple Detection objects from a list of DetectionResponse objects, grouped by source image.
@@ -658,6 +666,7 @@ def create_detections(
             algorithms_known=algorithms_known,
             save=False,
             logger=logger,
+            job_id=job_id,
         )
         if created:
             new_detections.append(detection)
@@ -751,6 +760,7 @@ def create_classification(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Classification, bool]:
     """
     Create a Classification object from a ClassificationResponse, or update an existing one.
@@ -838,6 +848,7 @@ def create_classification(
             scores=classification_resp.scores,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
+            job_id=job_id,
         )
         classification = new_classification
 
@@ -856,6 +867,7 @@ def create_classifications(
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
+    job_id: int | None = None,
 ) -> list[Classification]:
     """
     Efficiently create multiple Classification objects from a list of ClassificationResponse objects,
@@ -880,6 +892,7 @@ def create_classifications(
                 algorithms_known=algorithms_known,
                 save=False,
                 logger=logger,
+                job_id=job_id,
             )
             if created:
                 new_classifications.append(classification)
@@ -1066,10 +1079,12 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
+    # New rows record the job that wrote them; rows that already existed keep theirs.
     detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     classifications = create_classifications(
@@ -1077,6 +1092,7 @@ def save_results(
         detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     # Create a new occurrence for each detection (no tracking yet)
@@ -1118,6 +1134,7 @@ def save_results(
         detections=null_detection_responses,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     total_time = time.time() - start_time

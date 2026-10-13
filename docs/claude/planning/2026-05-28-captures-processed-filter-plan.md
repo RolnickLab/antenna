@@ -76,7 +76,7 @@ class TestCapturesProcessedFilter(APITestCase):
 
 Run:
 ```bash
-docker compose run --rm django python manage.py test ami.main.tests.TestCapturesProcessedFilter --keepdb -v 2
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.TestCapturesProcessedFilter --keepdb -v 2
 ```
 Expected: 3 tests PASS. (This is a characterization test for existing behavior; if `test_has_detections_false` fails returning 4 instead of 2, that means null-marker handling differs — stop and investigate before touching the UI.)
 

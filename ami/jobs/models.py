@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import random
 import time
@@ -79,7 +80,9 @@ class JobState(str, OrderedEnum):
 
     @classmethod
     def running_states(cls):
-        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
+        # Dispatched states the reapers/reconcilers select from. CREATED is not
+        # here: a not-yet-enqueued job has no Celery task to reap. See #1354.
+        return [cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
 
     @classmethod
     def final_states(cls):
@@ -96,8 +99,9 @@ class JobState(str, OrderedEnum):
 
     @classmethod
     def finalizable_states(cls):
-        # running_states() minus CANCELING (don't resurrect a cancel in progress)
-        # and UNKNOWN (never served; shouldn't auto-finalize). See #1337.
+        # States a job may auto-finalize from. Excludes CANCELING (don't resurrect
+        # a cancel in progress) and UNKNOWN (never served; shouldn't auto-finalize).
+        # See #1337.
         return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY]
 
 
@@ -711,6 +715,26 @@ class DataStorageSyncJob(JobType):
     regroup_stage_name = "Regroup sessions"
 
     @classmethod
+    def enqueue_for(cls, deployment: Deployment) -> "Job":
+        """
+        Create and enqueue a sync job for one station, returning the queued job.
+
+        The single place that builds a ``DataStorageSyncJob``, shared by the API's
+        per-row and bulk sync actions and the Django admin bulk action so all three
+        create it identically (one job per deployment). Callers own their own
+        preconditions — that a data source is configured, that skipped stations are
+        reported — this only builds and enqueues.
+        """
+        job = Job.objects.create(
+            name=f"Sync captures for deployment {deployment.pk}",
+            deployment=deployment,
+            project=deployment.project,
+            job_type_key=cls.key,
+        )
+        job.enqueue()
+        return job
+
+    @classmethod
     def run(cls, job: "Job"):
         """
         Run the data storage sync job.
@@ -874,6 +898,10 @@ class PostProcessingJob(JobType):
         job.progress.add_stage(cls.name, key=cls.key)
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
+        # Mark the stage started before the task runs, as the other job types do.
+        # A stage left at CREATED reads as "Waiting to start" however long the task
+        # takes, and a task's first progress report can be minutes in. See #1376.
+        job.progress.update_stage(cls.key, status=JobState.STARTED, progress=0)
         job.save()
 
         params = job.params or {}
@@ -886,6 +914,12 @@ class PostProcessingJob(JobType):
             raise ValueError(f"Unknown post-processing task '{task_key}'")
 
         task = task_cls(job=job, **config)
+        # Store the config as the task's schema validated it, defaults included, so the job
+        # records exactly what this run used. The occurrence history shows it.
+        validated_config = json.loads(task.config.json())
+        if validated_config != config:
+            job.params = {**params, "config": validated_config}
+            job.save(update_fields=["params", "updated_at"])
         task.run()
         job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()

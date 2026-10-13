@@ -16,6 +16,11 @@
   gap: 8px;
 }
 
+.actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .title {
   @include body-large;
   font-weight: 600;
@@ -39,7 +44,7 @@
 
   .actions {
     align-items: flex-start;
-    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .details {

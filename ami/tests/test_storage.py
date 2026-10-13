@@ -1,11 +1,15 @@
 import logging
+import uuid
+from unittest import mock
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
+from django.template.defaultfilters import filesizeformat
 from django.test import TestCase
 
-from ami.main.models import S3StorageSource
-from ami.tests.fixtures.main import create_captures_from_files, setup_test_project
+import ami.tasks
+from ami.main.models import Deployment, Project, S3StorageSource, SourceImage
+from ami.tests.fixtures.main import create_captures, create_captures_from_files, setup_test_project
 from ami.tests.fixtures.storage import S3_TEST_CONFIG
 from ami.utils import s3
 
@@ -265,3 +269,175 @@ class TestStorageSource(TestCase):
         status = self.storage_source.test_connection()
         self.assertTrue(status.connection_successful)
         self.assertIsNotNone(status.first_file_found)
+
+    def test_count_files_saves_the_total(self):
+        assert isinstance(self.storage_source, S3StorageSource)
+
+        count = self.storage_source.count_files()
+
+        self.assertGreater(count, 0, "The test bucket was populated, so files should be counted")
+        self.storage_source.refresh_from_db()
+        self.assertEqual(self.storage_source.total_files, count)
+
+    def test_calculate_size_saves_the_total_size_and_file_count(self):
+        assert isinstance(self.storage_source, S3StorageSource)
+
+        size = self.storage_source.calculate_size()
+
+        self.assertGreater(size, 0)
+        self.storage_source.refresh_from_db()
+        self.assertEqual(self.storage_source.total_size, size)
+        self.assertGreater(self.storage_source.total_files or 0, 0)
+
+    def test_calculate_storage_size_task_saves_the_total(self):
+        """The admin action and Celery both reach calculate_size() through this task."""
+        assert isinstance(self.storage_source, S3StorageSource)
+
+        size = ami.tasks.calculate_storage_size(self.storage_source.pk)
+
+        self.storage_source.refresh_from_db()
+        self.assertEqual(self.storage_source.total_size, size)
+
+    def test_capture_dimensions_are_read_from_the_storage_source(self):
+        """SourceImage.get_dimensions() reads the original image through the data source."""
+        capture, frame = self.captures[0]
+        # The sync already measured this capture; clear it so the read is unambiguous.
+        SourceImage.objects.filter(pk=capture.pk).update(width=None, height=None)
+        capture.refresh_from_db()
+
+        width, height = capture.get_dimensions()
+
+        self.assertEqual((width, height), (frame.width, frame.height))
+        capture.refresh_from_db()
+        self.assertEqual((capture.width, capture.height), (frame.width, frame.height))
+
+
+class TestStorageSourceModel(TestCase):
+    """``S3StorageSource`` logic that does not need a live object store."""
+
+    def setUp(self):
+        short_id = uuid.uuid4().hex[:8]
+        self.project = Project.objects.create(name=f"Storage Model Project {short_id}")
+        self.source = S3StorageSource.objects.create(
+            name=f"Model Source {short_id}",
+            project=self.project,
+            bucket="test-bucket",
+            prefix="test_prefix",
+            region="us-east-1",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            endpoint_url="http://minio:9000",
+            public_base_url="http://minio:9000/test-bucket/test_prefix/",
+        )
+
+    def _create_deployment(self, name: str, **indexed_totals) -> Deployment:
+        """Create a station on this storage source with the given indexed totals.
+
+        ``Deployment.save()`` recalculates ``data_source_total_*`` and ``captures_count``
+        from the captures a station actually has, so the totals are written with a
+        queryset update instead of being passed to ``create()``.
+        """
+        deployment = Deployment.objects.create(name=name, project=self.project, data_source=self.source)
+        if indexed_totals:
+            Deployment.objects.filter(pk=deployment.pk).update(**indexed_totals)
+            deployment.refresh_from_db()
+        return deployment
+
+    def test_config_maps_connection_fields(self):
+        config = self.source.config
+        self.assertEqual(config.bucket_name, "test-bucket")
+        self.assertEqual(config.prefix, "test_prefix")
+        self.assertEqual(config.region, "us-east-1")
+        self.assertEqual(config.access_key_id, "fake-access-key")
+        self.assertEqual(config.secret_access_key, "fake-secret-key")
+        self.assertEqual(config.endpoint_url, "http://minio:9000")
+        self.assertEqual(config.public_base_url, "http://minio:9000/test-bucket/test_prefix/")
+
+    def test_uri_joins_bucket_prefix_and_path(self):
+        self.assertEqual(self.source.uri("subdir/file.jpg"), "s3://test-bucket/test_prefix/subdir/file.jpg")
+
+    def test_uri_without_path_is_the_prefix_root(self):
+        self.assertEqual(self.source.uri(), "s3://test-bucket/test_prefix")
+
+    def test_uri_strips_surrounding_slashes(self):
+        self.assertEqual(self.source.uri("/subdir/file.jpg/"), "s3://test-bucket/test_prefix/subdir/file.jpg")
+
+    def test_uri_without_prefix_omits_the_empty_segment(self):
+        source = S3StorageSource.objects.create(
+            name="No Prefix Source", project=self.project, bucket="test-bucket", prefix=""
+        )
+        self.assertEqual(source.uri("file.jpg"), "s3://test-bucket/file.jpg")
+
+    def test_indexed_totals_sum_across_deployments(self):
+        self._create_deployment("One", data_source_total_files=10, data_source_total_size=1024, captures_count=10)
+        self._create_deployment("Two", data_source_total_files=5, data_source_total_size=512, captures_count=4)
+
+        source = S3StorageSource.objects.get(pk=self.source.pk)
+        self.assertEqual(source.deployments_count(), 2)
+        self.assertEqual(source.total_files_indexed(), 15)
+        self.assertEqual(source.total_size_indexed(), 1536)
+        self.assertEqual(source.total_captures_indexed(), 14)
+        self.assertEqual(source.total_size_indexed_display(), filesizeformat(1536))
+
+    def test_indexed_totals_with_no_deployments(self):
+        """The storage API exposes these fields for sources not yet wired to a station."""
+        self.assertEqual(self.source.deployments_count(), 0)
+        self.assertIsNone(self.source.total_files_indexed())
+        self.assertIsNone(self.source.total_size_indexed())
+        self.assertIsNone(self.source.total_captures_indexed())
+        # filesizeformat() swallows the None and reports zero rather than raising.
+        self.assertEqual(self.source.total_size_indexed_display(), filesizeformat(0))
+
+    def test_total_size_indexed_is_not_memoized(self):
+        """A fresh instance of the same row must see newly indexed data.
+
+        ``Model.__hash__`` is the pk, so a ``functools.cache`` on this method freezes
+        the total for every instance of the row for the life of the process.
+        """
+        self._create_deployment("First", data_source_total_size=1024)
+        self.assertEqual(S3StorageSource.objects.get(pk=self.source.pk).total_size_indexed(), 1024)
+
+        self._create_deployment("Second", data_source_total_size=512)
+        self.assertEqual(S3StorageSource.objects.get(pk=self.source.pk).total_size_indexed(), 1536)
+
+    def test_changing_public_base_url_updates_capture_urls(self):
+        """Captures cache the base URL, so changing it has to rewrite them."""
+        deployment = self._create_deployment("Station With Captures")
+        new_base_url = "http://minio:9000/test-bucket/new_prefix/"
+
+        with mock.patch("ami.tasks.update_public_urls.delay") as mocked_task:
+            self.source.public_base_url = new_base_url
+            self.source.save()
+
+        mocked_task.assert_called_once_with(deployment.pk, new_base_url)
+
+    def test_saving_other_fields_does_not_update_capture_urls(self):
+        self._create_deployment("Station With Captures")
+
+        with mock.patch("ami.tasks.update_public_urls.delay") as mocked_task:
+            self.source.name = "Renamed Source"
+            self.source.save()
+
+        mocked_task.assert_not_called()
+
+    def test_creating_a_source_does_not_update_capture_urls(self):
+        with mock.patch("ami.tasks.update_public_urls.delay") as mocked_task:
+            S3StorageSource.objects.create(
+                name="Brand New Source",
+                project=self.project,
+                bucket="test-bucket",
+                public_base_url="http://minio:9000/test-bucket/",
+            )
+
+        mocked_task.assert_not_called()
+
+    def test_update_public_urls_task_rewrites_every_capture(self):
+        deployment = self._create_deployment("Station For Task")
+        create_captures(deployment=deployment, num_nights=1, images_per_night=3)
+        new_base_url = "http://minio:9000/test-bucket/new_prefix/"
+
+        ami.tasks.update_public_urls(deployment.pk, new_base_url)
+
+        base_urls = set(deployment.captures.values_list("public_base_url", flat=True))
+        self.assertEqual(deployment.captures.count(), 3)
+        self.assertEqual(base_urls, {new_base_url})
