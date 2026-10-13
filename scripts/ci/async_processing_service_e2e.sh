@@ -34,9 +34,19 @@ $DC up -d ml_backend_worker
 PROJECT_ID=$($DC exec -T django python manage.py shell -c \
     "from ami.main.models import Project; print(Project.objects.get(name='Default Project').pk)" 2>/dev/null | tail -1)
 
+show_failure() {
+    echo "--- worker" >&2
+    $DC logs ml_backend_worker 2>&1 | grep -vE "GET /livez" | tail -40 >&2
+    echo "--- celery: result tasks, retries and errors" >&2
+    $DC logs celeryworker 2>&1 | grep -E "process_nats_pipeline_result|Pending images|acknowledged|ERROR|WARNING|Traceback|[Rr]etry" | tail -120 >&2
+    echo "--- job log (warnings and errors)" >&2
+    $DC exec -T django python manage.py shell -c \
+        "from ami.jobs.models import JobLog; [print(l.level, l.message) for l in JobLog.objects.exclude(level__in=['INFO','DEBUG']).order_by('pk')]" >&2 || true
+}
+
 if ! $DC exec -T django python manage.py test_ml_job_e2e --project "$PROJECT_ID" --collection "Default Collection" \
     --pipeline "$PIPELINE" --dispatch-mode async_api --timeout 300; then
-    $DC logs --tail 80 ml_backend_worker celeryworker >&2
+    show_failure
     exit 1
 fi
 
