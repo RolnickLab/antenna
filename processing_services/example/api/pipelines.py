@@ -71,6 +71,14 @@ class Pipeline:
         self.batch_sizes = custom_batch_sizes or self.batch_sizes or [1] * len(self.stages)
         assert len(self.batch_sizes) == len(self.stages), "Number of batch sizes must match the number of stages."
 
+    @classmethod
+    def get_config(cls) -> PipelineConfigResponse:
+        """
+        The pipeline description published in `/info`.
+        Override when part of it, such as a category map, is only available at runtime.
+        """
+        return cls.config
+
     def get_stages(self) -> list[Algorithm]:
         """
         An optional function to initialize and return a list of algorithms/stages.
@@ -364,8 +372,17 @@ class ZeroShotObjectDetectorWithGlobalMothClassifierPipeline(Pipeline):
             "Supports 29,176+ moth species trained on global data."
         ),
         version=1,
-        algorithms=[],  # Will be populated in get_stages()
+        algorithms=[],  # Populated by get_config() and get_stages(), which need the downloaded category map
     )
+
+    @classmethod
+    def get_config(cls) -> PipelineConfigResponse:
+        # The classifier's category map is read from its labels file, so it is not built at import time.
+        cls.config.algorithms = [
+            ZeroShotObjectDetector().algorithm_config_response,
+            GlobalMothClassifier().algorithm_config_response,
+        ]
+        return cls.config
 
     def get_stages(self) -> list[Algorithm]:
         zero_shot_object_detector = ZeroShotObjectDetector()

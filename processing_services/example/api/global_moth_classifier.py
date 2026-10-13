@@ -1,16 +1,21 @@
 """
-Global Moth Classifier algorithm implementation.
-Simplified version of trapdata.api.models.classification.MothClassifierGlobal
-adapted for the processing service framework.
+Global moth species classifier for the example processing service.
+
+Adapted from the classifier of the same name in the AMI data companion (trapdata), without its database or queue
+dependencies. It classifies cropped detections into ~29k species and returns the raw logits for every class; the
+caller derives probabilities from them.
 """
 
 import datetime
 import logging
+import os
+import time
 
+import requests
 import torch
 import torchvision.transforms
 
-from .algorithms import Algorithm
+from .algorithms import SAVED_MODELS, Algorithm
 from .base import TimmResNet50Base, imagenet_normalization
 from .schemas import (
     AlgorithmCategoryMapResponse,
@@ -23,13 +28,36 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Public object store holding the model weights and category maps. Override with the MODEL_BASE_URL environment
+# variable to use a mirror or a local directory laid out the same way.
+DEFAULT_MODEL_BASE_URL = (
+    "https://object-arbutus.alliancecan.ca/swift/v1/AUTH_3c987b8fc90743469d42899b1fdb48eb/ami-models/"
+)
+MODEL_BASE_URL_ENV_VAR = "MODEL_BASE_URL"
+
+WEIGHTS_RELATIVE_PATH = "moths/classification/global_resnet50_20240828_b06d3b3a.pth"
+LABELS_RELATIVE_PATH = "moths/classification/global_category_map_with_names_20240828.json"
+
+# Decimal places kept for each logit. The model has ~29k classes, so every digit multiplies the response size.
+LOGIT_DECIMALS = 4
+
+# Category maps by labels path, so repeated `/info` calls do not re-read and re-parse the labels file.
+_CATEGORY_MAPS: dict[str, dict[int, str]] = {}
+
+
+def get_model_url(relative_path: str) -> str:
+    """Join a model file path onto MODEL_BASE_URL (or the default public store)."""
+    base_url = os.environ.get(MODEL_BASE_URL_ENV_VAR) or DEFAULT_MODEL_BASE_URL
+    return f"{base_url.rstrip('/')}/{relative_path}"
+
 
 class GlobalMothClassifier(Algorithm, TimmResNet50Base):
     """
-    Global Moth Species Classifier.
+    Classifies cropped detections into one of the species in the global category map.
 
-    Simplified version of the trapdata GlobalMothSpeciesClassifier
-    that works without database dependencies.
+    `Algorithm` provides the interface the pipelines use, and `TimmResNet50Base` loads the weights and labels. The
+    weights are only downloaded when `compile()` runs, so creating the object and describing it in `/info` is cheap.
+    The loaded model is shared between instances, so later requests do not reload it.
     """
 
     name = "Global Species Classifier - Aug 2024"
@@ -37,91 +65,60 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
         "Trained on August 28th, 2024 for 29,176 species. "
         "https://wandb.ai/moth-ai/global-moth-classifier/runs/h0cuqrbc/overview"
     )
-    weights_path = (
-        "https://object-arbutus.cloud.computecanada.ca/ami-models/moths/classification/"
-        "global_resnet50_20240828_b06d3b3a.pth"
-    )
-    labels_path = (
-        "https://object-arbutus.cloud.computecanada.ca/ami-models/moths/classification/"
-        "global_category_map_with_names_20240828.json"
-    )
 
-    # Model configuration
     input_size = 128
     normalization = imagenet_normalization
     default_taxon_rank = "SPECIES"
     batch_size = 4
 
     def __init__(self, **kwargs):
-        """Initialize the global moth classifier."""
-        # Initialize Algorithm parent class
-        Algorithm.__init__(self)
-
-        # Store kwargs for later use in compile()
-        self._init_kwargs = kwargs
-
-        # Initialize basic attributes without loading model
+        self._init_kwargs = {
+            "weights_path": get_model_url(WEIGHTS_RELATIVE_PATH),
+            "labels_path": get_model_url(LABELS_RELATIVE_PATH),
+            **kwargs,
+        }
+        self.weights_path = self._init_kwargs["weights_path"]
+        self.labels_path = self._init_kwargs["labels_path"]
         self.model = None
         self.transforms = None
-        self.category_map = {}  # Empty dict for now
-        self.num_classes = 29176  # Known number of classes
-
-        logger.info(f"Initialized {self.name} (model loading deferred to compile())")
+        self.category_map = {}
+        self.num_classes = None
+        self._algorithm_config_response: AlgorithmConfigResponse | None = None
 
     @property
     def algorithm_config_response(self) -> AlgorithmConfigResponse:
-        """Get algorithm configuration for API response."""
-        if not hasattr(self, "_algorithm_config_response"):
-            # Create a basic config response before compilation
-            self._algorithm_config_response = AlgorithmConfigResponse(
-                name=self.name,
-                key=self.get_key(),
-                task_type="classification",
-                description=self.description,
-                version=1,
-                version_name="v1",
-                category_map=AlgorithmCategoryMapResponse(
-                    data=[],
-                    labels=[],
-                    version="v1",
-                    description="Global moth species classifier (not yet compiled)",
-                    uri=self.labels_path,
-                ),
-                uri=self.weights_path,
-            )
-        return self._algorithm_config_response
+        """The algorithm description, including the category map once the labels can be loaded."""
+        if self._algorithm_config_response is not None:
+            return self._algorithm_config_response
+        config = self.get_algorithm_config_response()
+        # Do not remember a description built without labels, so a later call can retry the download.
+        if self.category_map:
+            self._algorithm_config_response = config
+        return config
 
-    @algorithm_config_response.setter
-    def algorithm_config_response(self, value: AlgorithmConfigResponse):
-        """Set algorithm configuration response."""
-        self._algorithm_config_response = value
+    def _saved_model_key(self) -> str:
+        return f"{type(self).__name__}:{self.weights_path}:{self.labels_path}:{self._init_kwargs.get('device')}"
 
     def compile(self):
-        """Load model weights and initialize transforms (called by pipeline)."""
+        """Download (if needed) and load the weights and labels. Reuses an already loaded model."""
         if self.model is not None:
-            logger.info("Model already compiled, skipping...")
             return
 
-        logger.info(f"🔧 Compiling {self.name}...")
-        logger.info(f"   📊 Expected classes: {self.num_classes}")
-        logger.info(f"   🏷️  Labels URL: {self.labels_path}")
-        logger.info(f"   ⚖️  Weights URL: {self.weights_path}")
+        saved_key = self._saved_model_key()
+        if saved_key in SAVED_MODELS:
+            logger.info(f"Using saved model for {self.name}")
+            self.__dict__.update(SAVED_MODELS[saved_key])
+            return
 
-        # Initialize the TimmResNet50Base now (this will download weights/labels)
-        logger.info("   📥 Downloading model weights and labels...")
+        logger.info(f"Compiling {self.name} from {self.weights_path}")
         TimmResNet50Base.__init__(self, **self._init_kwargs)
-
-        # Set algorithm config response
-        logger.info("   📋 Setting up algorithm configuration...")
-        self.algorithm_config_response = self.get_algorithm_config_response()
-
-        logger.info(f"✅ {self.name} compiled successfully!")
-        logger.info(f"   📊 Loaded {len(self.category_map)} species categories")
-        logger.info(f"   🔧 Model device: {getattr(self, 'device', 'unknown')}")
-        logger.info(f"   🖼️  Input size: {self.input_size}x{self.input_size}")
+        SAVED_MODELS[saved_key] = {
+            name: getattr(self, name)
+            for name in ("model", "transforms", "category_map", "num_classes", "weights", "device")
+        }
+        logger.info(f"Compiled {self.name}: {self.num_classes} classes on {self.device}")
 
     def get_transforms(self) -> torchvision.transforms.Compose:
-        """Get transforms specific to this model."""
         return torchvision.transforms.Compose(
             [
                 torchvision.transforms.Resize((self.input_size, self.input_size)),
@@ -130,113 +127,82 @@ class GlobalMothClassifier(Algorithm, TimmResNet50Base):
             ]
         )
 
+    def post_process_batch(self, logits: torch.Tensor) -> list[dict]:
+        """Return the logits for every class, rounded to keep the response small. Probabilities are not computed."""
+        return [{"logits": [round(value, LOGIT_DECIMALS) for value in row.tolist()]} for row in logits.cpu()]
+
     def run(self, detections: list[Detection]) -> list[Detection]:
         """
-        Run classification on a list of detections.
+        Classify detections from their cropped images.
 
-        Args:
-            detections: List of Detection objects with cropped images
-
-        Returns:
-            List of Detection objects with added classifications
+        Detections without a cropped image are skipped with a warning and are not returned.
         """
         if not detections:
             return []
-
-        # Ensure model is compiled
-        if self.model is None:
+        if self.model is None or self.transforms is None:
             raise RuntimeError("Model not compiled. Call compile() first.")
 
         logger.info(f"Running {self.name} on {len(detections)} detections")
-
-        # Process detections in batches
-        classified_detections = []
+        classified_detections: list[Detection] = []
 
         for i in range(0, len(detections), self.batch_size):
-            batch_detections = detections[i : i + self.batch_size]
+            # Only detections that have an image are batched; predictions are paired with this list, not the input.
+            batched_detections: list[Detection] = []
             batch_images = []
-
-            # Prepare batch of images
-            for detection in batch_detections:
-                if detection._pil:
-                    # Convert to RGB if needed
-                    if detection._pil.mode != "RGB":
-                        img = detection._pil.convert("RGB")
-                    else:
-                        img = detection._pil
-                    batch_images.append(img)
-                else:
-                    logger.warning(f"Detection {detection.id} has no PIL image")
+            for detection in detections[i : i + self.batch_size]:
+                if detection._pil is None:
+                    logger.warning(f"Detection {detection.id} has no cropped image, skipping it")
                     continue
+                batched_detections.append(detection)
+                batch_images.append(detection._pil.convert("RGB"))
 
-            if not batch_images:
+            if not batched_detections:
                 continue
 
-            # Transform images
-            if self.transforms is None:
-                raise RuntimeError("Transforms not initialized. Call compile() first.")
-            batch_tensor = torch.stack([self.transforms(img) for img in batch_images])
+            batch_tensor = torch.stack([self.transforms(image) for image in batch_images])
+            start_time = time.perf_counter()
+            predictions = self.post_process_batch(self.predict_batch(batch_tensor))
+            inference_time = (time.perf_counter() - start_time) / len(batched_detections)
 
-            # Run inference
-            start_time = datetime.datetime.now()
-            predictions = self.predict_batch(batch_tensor)
-            processed_predictions = self.post_process_batch(predictions)
-            end_time = datetime.datetime.now()
-
-            inference_time = (end_time - start_time).total_seconds() / len(batch_images)
-
-            # Add classifications to detections
-            for detection, prediction in zip(batch_detections, processed_predictions):
-                # Get best prediction
-                best_score = max(prediction["scores"])
-                best_idx = prediction["scores"].index(best_score)
-                best_label = self.category_map.get(best_idx, f"class_{best_idx}")
-
+            for detection, prediction in zip(batched_detections, predictions, strict=True):
+                logits = prediction["logits"]
+                best_index = max(range(len(logits)), key=logits.__getitem__)
                 classification = ClassificationResponse(
-                    classification=best_label,
-                    labels=[best_label],
-                    scores=[best_score],
-                    logits=prediction["logits"],
+                    classification=self.category_map[best_index],
+                    logits=logits,
                     inference_time=inference_time,
                     timestamp=datetime.datetime.now(),
-                    algorithm=AlgorithmReference(
-                        name=self.name,
-                        key=self.get_key(),
-                    ),
+                    algorithm=AlgorithmReference(name=self.name, key=self.get_key()),
                     terminal=True,
                 )
+                classified_detections.append(detection.model_copy(update={"classifications": [classification]}))
 
-                # Add classification to detection
-                detection_with_classification = detection.copy(deep=True)
-                detection_with_classification.classifications = [classification]
-                classified_detections.append(detection_with_classification)
-
-        logger.info(f"Classified {len(classified_detections)} detections")
+        logger.info(f"Classified {len(classified_detections)} of {len(detections)} detections")
         return classified_detections
 
     def get_category_map(self) -> AlgorithmCategoryMapResponse:
-        """Get category map for API response."""
-        categories_sorted_by_index = sorted(self.category_map.items(), key=lambda x: x[0])
-        categories_data = [
-            {
-                "index": index,
-                "label": label,
-                "taxon_rank": self.default_taxon_rank,
-            }
-            for index, label in categories_sorted_by_index
-        ]
-        label_strings = [cat["label"] for cat in categories_data]
+        if not self.category_map and self.labels_path in _CATEGORY_MAPS:
+            self.category_map = _CATEGORY_MAPS[self.labels_path]
+        if not self.category_map:
+            try:
+                self.category_map = self.get_labels(self.labels_path)
+                _CATEGORY_MAPS[self.labels_path] = self.category_map
+            except (requests.RequestException, OSError, ValueError) as error:
+                logger.warning(f"Could not load the category labels from {self.labels_path}: {error}")
 
+        data = [
+            {"index": index, "label": label, "taxon_rank": self.default_taxon_rank}
+            for index, label in sorted(self.category_map.items())
+        ]
         return AlgorithmCategoryMapResponse(
-            data=categories_data,
-            labels=label_strings,
+            data=data,
+            labels=[row["label"] for row in data],
             version="v1",
-            description=f"Global moth species classifier with {len(categories_data)} species",
+            description=f"Global moth species classifier with {len(data)} species",
             uri=self.labels_path,
         )
 
     def get_algorithm_config_response(self) -> AlgorithmConfigResponse:
-        """Get algorithm configuration for API response."""
         return AlgorithmConfigResponse(
             name=self.name,
             key=self.get_key(),

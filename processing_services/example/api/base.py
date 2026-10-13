@@ -92,6 +92,10 @@ class SimplifiedInferenceBase:
 
         # Convert label->index mapping to index->label mapping
         index_to_label = {index: label for label, index in labels.items()}
+        if len(index_to_label) != len(labels) or sorted(index_to_label) != list(range(len(labels))):
+            raise ValueError(
+                f"Category labels in {local_path} must map each label to a unique index from 0 to {len(labels) - 1}"
+            )
         logger.info(f"✅ Loaded {len(index_to_label)} category labels")
         return index_to_label
 
@@ -194,18 +198,10 @@ class ResNet50Base(SimplifiedInferenceBase):
     def post_process_batch(self, logits: torch.Tensor) -> list:
         """Convert logits to predictions."""
         probabilities = torch.softmax(logits, dim=1)
-        predictions = []
-
-        for prob_tensor in probabilities:
-            prob_list = prob_tensor.cpu().numpy().tolist()
-            predictions.append(
-                {
-                    "scores": prob_list,
-                    "logits": logits[len(predictions)].cpu().numpy().tolist(),
-                }
-            )
-
-        return predictions
+        return [
+            {"scores": probs.cpu().numpy().tolist(), "logits": row.cpu().numpy().tolist()}
+            for probs, row in zip(probabilities, logits, strict=True)
+        ]
 
 
 class TimmResNet50Base(ResNet50Base):
