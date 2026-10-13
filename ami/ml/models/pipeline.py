@@ -40,7 +40,8 @@ from ami.main.models import (
 )
 from ami.ml.embeddings.writer import create_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType
+from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -91,6 +92,11 @@ def filter_processed_images(
     SKIP (already processed):
     4. Only null detections exist (bbox=None) — pipeline ran but found nothing
     5. Real detections exist and are fully classified by all pipeline classifiers
+    6. A pipeline with a detector and feature extractors but no classifier: every real
+       detection has a vector from each extractor
+
+    A feature extractor in a pipeline that also classifies is not waited for: its missing
+    vectors are backfilled without running the whole pipeline again.
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
@@ -110,8 +116,12 @@ def filter_processed_images(
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
-    if not pipeline_classifier_ids:
+    # A feature extractor never classifies; missing vectors are backfilled without reprocessing (#1462).
+    non_classifier_type_keys = detection_type_keys | {AlgorithmTaskType.EMBEDDING}
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in non_classifier_type_keys}
+    # Only consulted when the pipeline has no classifier, so vectors are its only output (case 6).
+    pipeline_extractor_ids = {a.id for a in pipeline_algorithms if a.task_type == AlgorithmTaskType.EMBEDDING}
+    if not pipeline_classifier_ids and not pipeline_extractor_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
         # set().issubset(anything) is vacuously True, so without this short-circuit
         # every image with existing detections gets skipped by the subset check
@@ -148,8 +158,19 @@ def filter_processed_images(
                 real_pipeline_detections_per_image[source_image_id].add(detection_id)
 
         classifier_ids_per_detection: dict[int, set[int]] = collections.defaultdict(set)
+        extractor_ids_per_detection: dict[int, set[int]] = collections.defaultdict(set)
         real_pipeline_detection_ids = [d for dets in real_pipeline_detections_per_image.values() for d in dets]
-        if real_pipeline_detection_ids:
+        if real_pipeline_detection_ids and not pipeline_classifier_ids:
+            vector_rows = (
+                DetectionEmbedding.objects.filter(
+                    detection_id__in=real_pipeline_detection_ids, algorithm_id__in=pipeline_extractor_ids
+                )
+                .order_by()
+                .values_list("detection_id", "algorithm_id")
+            )
+            for detection_id, algorithm_id in vector_rows:
+                extractor_ids_per_detection[detection_id].add(algorithm_id)
+        elif real_pipeline_detection_ids:
             classification_rows = (
                 Classification.objects.filter(detection_id__in=real_pipeline_detection_ids)
                 .order_by()
@@ -171,6 +192,19 @@ def filter_processed_images(
             real_det_ids = real_pipeline_detections_per_image.get(image_id)
             if not real_det_ids:
                 task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
+                continue
+
+            if not pipeline_classifier_ids:
+                if any(
+                    not pipeline_extractor_ids.issubset(extractor_ids_per_detection[detection_id])
+                    for detection_id in real_det_ids
+                ):
+                    task_logger.debug(
+                        f"Image {image} needs processing: has detections without vectors from {pipeline}"
+                    )
+                    yield image
+                else:
+                    task_logger.debug(f"Image {image} has vectors from every extractor of {pipeline}, skipping!")
                 continue
 
             if any(detection_id not in classifier_ids_per_detection for detection_id in real_det_ids):
@@ -542,7 +576,7 @@ def get_or_create_detection(
     get_was_processed(algorithm_key=...) returns correct per-algorithm processed status.
     """
     if detection_resp.bbox is not None:
-        serialized_bbox = list(detection_resp.bbox.dict().values())
+        serialized_bbox = detection_resp.bbox.as_coords()
     else:
         serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"

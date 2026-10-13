@@ -3400,27 +3400,19 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.annotate(visual_distance=models.Subquery(nearest))
 
     def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
-        """Subquery matching occurrences with any result from the given algorithms: a detection
-        made by one (detectors), a classification from one (classifiers and post-processing
-        algorithms such as class masking or a size filter), or a feature vector from one
-        (embedding-only models)."""
-        from ami.ml.models import DetectionEmbedding
+        """Subquery matching occurrences with any result from the given algorithms, in any of the
+        output tables listed in ``ami.ml.model_outputs``: a detection made by one (detectors), a
+        classification from one (classifiers and post-processing algorithms such as class masking or
+        a size filter), an algorithm result, or a feature vector (embedding-only models). Runs one
+        small lookup (cached by cachalot) to find which of those tables hold rows."""
+        from ami.ml.model_outputs import occurrences_from_algorithms
 
-        return Exists(
-            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
-                models.Q(detection_algorithm__in=algorithm_ids)
-                | models.Q(classifications__algorithm__in=algorithm_ids)
-            )
-        ) | Exists(
-            DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), algorithm_id__in=algorithm_ids)
-        )
+        return occurrences_from_algorithms(algorithm_ids)
 
     def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with at least one result from the given algorithms.
 
-        Matches detectors through Detection.detection_algorithm, classifiers or
-        post-processing algorithms through their classifications, and embedding models
-        through their feature vectors, so every algorithm listed by
+        Matches every output table in ``ami.ml.model_outputs``, so every algorithm listed by
         ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
         form returns each occurrence once; a join through
         ``detections__classifications`` returns one row per matching result, which
@@ -3435,21 +3427,17 @@ class OccurrenceQuerySet(BaseQuerySet):
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
 
-        An occurrence matches when the job created one of its detections, a classification
-        on one of them, an algorithm result for it, or a feature vector for one of its detections,
-        so several jobs can match the same occurrence.
+        An occurrence matches when the job wrote a row for it in any of the output tables listed in
+        ``ami.ml.model_outputs`` (a detection, a classification on one of its detections, an algorithm
+        result, or a feature vector for one of its detections), so several jobs can match the same
+        occurrence.
 
         Identifications are not matched: people make them, not jobs. EXISTS subqueries return
         each occurrence once, where a join would return one row per matching result.
         """
-        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
-        DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
-        return self.filter(
-            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-        )
+        from ami.ml.model_outputs import occurrences_from_job
+
+        return self.filter(occurrences_from_job(job_id))
 
     def with_timestamps(self):
         """

@@ -13,6 +13,13 @@ from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
 
+# Occurrence fields left out of exports: embedding_algorithms costs a query per occurrence, and
+# visual_similarity exists only on a list sorted by similarity. Neither is part of the export format.
+EXPORT_EXCLUDED_FIELDS = [
+    "embedding_algorithms",
+    "visual_similarity",
+]
+
 
 def get_export_serializer():
     from ami.main.api.serializers import OccurrenceSerializer
@@ -30,13 +37,7 @@ def get_export_serializer():
             return instance_data
 
         class Meta(OccurrenceSerializer.Meta):
-            # embedding_algorithms costs a query per occurrence and visual_similarity needs a sorted
-            # list; neither is part of the export.
-            fields = [
-                field
-                for field in OccurrenceSerializer.Meta.fields
-                if field not in ("embedding_algorithms", "visual_similarity")
-            ]
+            fields = [field for field in OccurrenceSerializer.Meta.fields if field not in EXPORT_EXCLUDED_FIELDS]
 
         def to_representation(self, instance):
             return serializers.HyperlinkedModelSerializer.to_representation(self, instance)
