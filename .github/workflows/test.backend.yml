@@ -55,7 +55,7 @@ jobs:
         run: docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 
       - name: Run the minimal processing service tests
-        run: docker compose -f docker-compose.ci.yml run --rm --no-deps ml_backend python -m unittest api.test
+        run: docker compose -f docker-compose.ci.yml run --rm --no-deps ml_backend python -m unittest api.test worker.test_worker
 
       - name: Tear down the Stack
         run: docker compose -f docker-compose.ci.yml down
