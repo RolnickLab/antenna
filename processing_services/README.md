@@ -76,6 +76,41 @@ PipelineChoice = typing.Literal[
     "new-pipeline-slug",
 ]
 ```
+
+## Processing service contract: feature vectors and request config
+
+This section describes what Antenna expects from a service that returns feature vectors or reads per-request settings. The `minimal` service implements all of it and is the reference to copy from.
+
+### Registering algorithms
+
+`/info` must list every algorithm whose key can appear in a response: the detector, each classifier, and any feature extractor. Antenna rejects a batch that names an algorithm the pipeline did not register. A detector has a `task_type` of `"detection"` or `"localization"`. A feature extractor has a `task_type` of `"embedding"` and no category map.
+
+### Returning feature vectors
+
+Vectors are returned on `DetectionResponse.embeddings`, a list of objects with a `features` list of floats and an `algorithm` reference (`name` and `key`). A detection carries at most one vector per algorithm, every vector from one algorithm has the same length, and only vectors from the same algorithm are comparable with each other. `ClassificationResponse` has no features field in Antenna, so the `include_features` option of the AMI Data Companion has no equivalent and is not stored.
+
+### Request config
+
+In synchronous (push) mode, the request `config` holds the pipeline's default config merged with the project's pipeline config. Services should read these keys and ignore every other key, because Antenna also sends keys meant only for itself, such as `request_source_image_batch_size`.
+
+| Key | Default | Meaning |
+|----|----|----|
+| `include_logits` | `true` | Return the raw logits with each classification. Turn off to shrink large responses. |
+| `features_for_all_detections` | `false` | Attach the terminal classifier's own feature vector to every detection, as an embedding keyed by that classifier. |
+| `embedding_extractor` | `null` | `null` runs the pipeline's own extractor if it has one, `""` turns the extractor off, and any other key the pipeline does not offer should be rejected with a 422. |
+
+### Feature-only pipelines
+
+A feature-only pipeline receives detections and returns each one unchanged (bounding box, algorithm reference, and `crop_image_url`) with one embedding and no classifications. Detections with no box, or an empty one, are skipped. Antenna matches the returned detections to its own by capture and box, so altering either would orphan the vector. These pipelines list a detector and a feature extractor in `/info`, as the AMI Data Companion does. When a request carries no detections, the pipeline detects first.
+
+### Choosing which pipelines to offer
+
+`AMI_PIPELINES` is a comma-separated list of pipeline slugs to offer. An empty value offers all of them, and an unknown slug stops the service at startup.
+
+### The `minimal` service as a reference
+
+The `constant-feature-extractor` algorithm returns 8 values per detection, derived from the capture and the box, so the output is deterministic and needs no model weights. Classifier vectors returned for `features_for_all_detections` have 4 values. The pipelines `constant-with-feature-extractor` and `constant-feature-extractor-only` show the two shapes described above. To run the tests, execute `python -m unittest api.test` inside the service container.
+
 ## Demo
 
 ## `minimal` Pipelines and Output Images
