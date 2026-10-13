@@ -16,6 +16,31 @@ In this directory, we define locally-run processing services as FastAPI apps. A 
 
 If your goal is to run an ML backend locally, simply copy the `example` app and follow the steps below.
 
+## v1 vs v2 processing services
+
+Antenna supports two processing-service paradigms:
+
+- **v1 (push / synchronous):** the service exposes `/info`, `/livez`, `/readyz`, `/process`. Antenna POSTs a `PipelineRequest` to `/process` when a job runs. Good for interactive/playground requests on a single image and for exposing pipeline schema at `/api/v2/docs/`.
+- **v2 (pull / async / worker):** a worker polls Antenna's job-queue HTTP endpoints (`POST /api/v2/jobs/{id}/tasks/`, `POST /api/v2/jobs/{id}/result/`) and processes tasks queued by Antenna in NATS JetStream. Antenna proxies NATS internally so the worker only talks HTTP. Good for long-running workloads, firewall-isolated GPU fleets, and horizontal scaling.
+
+The `minimal` container supports **both modes** and is driven by a `MODE` env var:
+
+- `MODE=api` (default; what CI uses) — v1 FastAPI only.
+- `MODE=worker` — v2 worker poll loop only.
+- `MODE=api+worker` — both, in one container. Used by `processing_services/docker-compose.yml` for local dev. Exercises the real v2 pull path (Redis / NATS / Celery / Celery Beat) with lightweight stub pipelines, no ML dependencies.
+
+See `docs/claude/planning/2026-04-17-minimal-worker-design.md` for the design.
+
+### Running the v2 path locally
+
+```bash
+docker compose up -d                                             # Antenna core
+docker compose -f processing_services/docker-compose.yml up -d   # minimal container in api+worker mode
+```
+
+The minimal container self-registers a `ProcessingService` (no `endpoint_url`, async-mode) against the "Default Project" seeded by `ami/main/management/commands/ensure_default_project.py`. Submit an `async_api` job for the `constant` or `random-detection-random-species` pipeline and the worker picks it up.
+
+
 ## Environment Set Up
 
 1. Update `processing_services/example/requirements.txt` with required packages (i.e. PyTorch, etc)
