@@ -132,9 +132,13 @@ A feature-only pipeline receives detections and returns each one unchanged (boun
 
 `AMI_PIPELINES` is a comma-separated list of pipeline slugs to offer. An empty value offers all of them, and an unknown slug stops the service at startup.
 
+### Pull (async) mode
+
+Tasks fetched in pull mode do not carry the request config yet (see #1422). A worker therefore reads `AMI_INCLUDE_LOGITS`, `AMI_FEATURES_FOR_ALL_DETECTIONS`, and `AMI_EMBEDDING_EXTRACTOR` from its environment instead. Feature-only pipelines are push-only, so the worker neither registers nor polls for them. The worker lists unfinished jobs for all of its pipelines in one call (`pipeline__slug__in`, `ids_only`, `incomplete_only`, `dispatch_mode=async_api`), the same query the AMI Data Companion worker makes; Antenna records that call as the worker's heartbeat.
+
 ### The `minimal` service as a reference
 
-The `constant-feature-extractor` algorithm returns 8 values per detection, derived from the capture and the box, so the output is deterministic and needs no model weights. Classifier vectors returned for `features_for_all_detections` have 4 values. The pipelines `constant-with-feature-extractor` and `constant-feature-extractor-only` show the two shapes described above. To run the tests, execute `python -m unittest api.test` inside the service container.
+The `constant-feature-extractor` algorithm returns 8 values per detection, derived from the capture and the box, so the output is deterministic and needs no model weights. Classifier vectors returned for `features_for_all_detections` have 4 values. The pipelines `constant-with-feature-extractor` and `constant-feature-extractor-only` show the two shapes described above. To run the tests, execute `python -m unittest api.test worker.test_worker` inside the service container.
 
 ## Demo
 
