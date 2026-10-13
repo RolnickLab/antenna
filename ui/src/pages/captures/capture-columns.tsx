@@ -1,22 +1,26 @@
 import { API_ROUTES } from 'data-services/constants'
 import { Capture } from 'data-services/models/capture'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
+  BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
+  ImageTableCell,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
+  Toolbar,
+} from 'nova-ui-kit'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Capture>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Capture>[] => [
   {
     id: 'thumbnail',
     name: translate(STRING.FIELD_LABEL_THUMBNAIL),
@@ -35,7 +39,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
 
       return (
         <ImageTableCell
-          images={[{ src: item.src }]}
+          images={[{ src: item.thumbnailSmall }]}
           theme={ImageCellTheme.Light}
           to={detailsRoute}
         />
@@ -44,7 +48,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   },
   {
     id: 'timestamp',
-    name: translate(STRING.FIELD_LABEL_TIMESTAMP),
+    name: translate(STRING.FIELD_LABEL_CAPTURE),
     sortField: 'timestamp',
     renderCell: (item: Capture) => {
       const detailsRoute = item.sessionId
@@ -64,6 +68,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
           <Link to={detailsRoute}>
             <BasicTableCell
               value={item.dateTimeLabel}
+              details={[`${translate(STRING.FIELD_LABEL_ID)}: ${item.id}`]}
               theme={CellTheme.Primary}
             />
           </Link>
@@ -76,6 +81,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     sortField: 'deployment__name',
     renderCell: (item: Capture) => {
       if (!item.deploymentId) {
@@ -100,6 +106,7 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
+    tooltip: translate(STRING.TOOLTIP_SESSION),
     sortField: 'event__start',
     renderCell: (item: Capture) => {
       if (!item.sessionId) {
@@ -135,8 +142,26 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     ),
   },
   {
+    id: 'filename',
+    name: translate(STRING.FIELD_LABEL_FILENAME),
+    renderCell: (item: Capture) => <BasicTableCell value={item.filename} />,
+  },
+  {
+    id: 'path',
+    name: translate(STRING.FIELD_LABEL_PATH),
+    sortField: 'path',
+    renderCell: (item: Capture) => <BasicTableCell value={item.path} />,
+  },
+  {
+    id: 'last-processed',
+    name: translate(STRING.FIELD_LABEL_LAST_PROCESSED),
+    sortField: 'last_processed',
+    renderCell: (item: Capture) => <DateTableCell date={item.lastProcessed} />,
+  },
+  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -164,24 +189,17 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: Capture) => {
-      if (!item.canDelete) {
-        return <></>
-      }
-
-      return (
-        <div className="flex items-center justify-end gap-2 p-4">
+    sticky: true,
+    renderCell: (item: Capture) => (
+      <Toolbar>
+        {item.canDelete ? (
           <DeleteEntityDialog
             collection={API_ROUTES.CAPTURES}
             id={item.id}
             type="capture"
           />
-        </div>
-      )
-    },
+        ) : null}
+      </Toolbar>
+    ),
   },
 ]

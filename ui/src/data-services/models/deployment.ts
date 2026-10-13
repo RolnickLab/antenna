@@ -25,8 +25,19 @@ export class Deployment extends Entity {
     return this._deployment.user_permissions.includes(UserPermission.Delete)
   }
 
+  get canSync(): boolean {
+    // Granted to ML data managers, project managers, and superusers. Superusers
+    // receive `sync` here too (guardian returns every project permission for
+    // them), so this getter alone is the sync gate.
+    return this._deployment.user_permissions.includes(UserPermission.Sync)
+  }
+
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
+  }
+
+  get dataSourceConnected(): boolean {
+    return this._deployment.data_source_connected ?? false
   }
 
   get currentJob(): Job | undefined {
@@ -35,10 +46,10 @@ export class Deployment extends Entity {
     }
 
     return this._jobs.sort((j1: Job, j2: Job) => {
-      const date1 = new Date(j1.updatedAt as string)
-      const date2 = new Date(j2.updatedAt as string)
+      const time1 = j1.updatedAt?.getTime() ?? 0
+      const time2 = j2.updatedAt?.getTime() ?? 0
 
-      return date2.getTime() - date1.getTime()
+      return time2 - time1
     })[0]
   }
 

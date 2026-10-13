@@ -14,7 +14,6 @@ repos:
       - id: debug-statements
       - id: check-builtin-literals
       - id: check-case-conflict
-      - id: check-docstring-first
       - id: detect-private-key
 
   - repo: https://github.com/adamchainz/django-upgrade
@@ -40,7 +39,7 @@ repos:
       - id: isort
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
+    rev: 6.1.0
     hooks:
       - id: flake8
         # Ensure flake8 reads the project's setup.cfg (pre-commit runs hooks

@@ -1,8 +1,7 @@
 import classNames from 'classnames'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Badge } from 'design-system/components/badge/badge'
 import { ChevronRightIcon, PenIcon } from 'lucide-react'
-import { buttonVariants, Tooltip } from 'nova-ui-kit'
+import { Badge, buttonVariants, Tooltip } from 'nova-ui-kit'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
@@ -13,19 +12,19 @@ import { useSidebarSections } from './useSidebarSections'
 
 export const Sidebar = ({ project }: { project: ProjectDetails }) => {
   const { sidebarSections, activeItem } = useSidebarSections(project)
-  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
+  const { setMainBreadcrumb } = useContext(BreadcrumbContext)
 
   useEffect(() => {
     if (activeItem) {
-      setDetailBreadcrumb({ title: activeItem.title, path: activeItem.path })
+      setMainBreadcrumb({ title: activeItem.title, path: activeItem.path })
     }
     return () => {
-      setDetailBreadcrumb(undefined)
+      setMainBreadcrumb(undefined)
     }
   }, [activeItem])
 
   return (
-    <div className="w-full h-min shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
+    <div className="w-full shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
       {project.image ? (
         <img src={project.image} alt="" />
       ) : (
@@ -131,7 +130,7 @@ export const DraftBadge = ({ project }: { project: ProjectDetails }) => (
             )}
             to={APP_ROUTES.GENERAL({ projectId: project.id })}
           >
-            <span>Configure</span>
+            <span>{translate(STRING.CONFIGURE)}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
         ) : null}

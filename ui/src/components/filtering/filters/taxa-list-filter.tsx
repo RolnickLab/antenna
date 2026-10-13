@@ -1,5 +1,6 @@
 import { TaxaList } from 'data-services/models/taxa-list'
 import { Select } from 'nova-ui-kit'
+import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 
 export const TaxaListFilter = ({ data = [], value, onAdd }: FilterProps) => {
@@ -12,9 +13,9 @@ export const TaxaListFilter = ({ data = [], value, onAdd }: FilterProps) => {
       onValueChange={onAdd}
     >
       <Select.Trigger>
-        <Select.Value placeholder="All taxa lists" />
+        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
       </Select.Trigger>
-      <Select.Content className="max-h-72">
+      <Select.Content>
         {taxaLists.map((list) => (
           <Select.Item key={list.id} value={list.id}>
             {list.name}

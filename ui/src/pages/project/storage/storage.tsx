@@ -1,12 +1,15 @@
 import { API_ROUTES } from 'data-services/constants'
 import { useStorageSources } from 'data-services/hooks/storage-sources/useStorageSources'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
+import {
+  PageHeader,
+  PaginationBar,
+  Table,
+  TableSortSettings,
+} from 'nova-ui-kit'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
@@ -30,12 +33,11 @@ export const Storage = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_STORAGE)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.CONFIGURING_DATA_SOURCE}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total })}
+        title={translate(STRING.NAV_ITEM_STORAGE)}
         tooltip={translate(STRING.TOOLTIP_STORAGE)}
       >
         {canCreate && (
@@ -43,7 +45,7 @@ export const Storage = () => {
         )}
       </PageHeader>
       <Table
-        columns={columns(projectId as string)}
+        columns={columns()}
         error={error}
         isLoading={isLoading}
         items={items}

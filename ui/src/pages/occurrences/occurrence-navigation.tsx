@@ -1,51 +1,55 @@
-import { Occurrence } from 'data-services/models/occurrence'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 
-const useOccurrenceNavigation = (occurrences?: Occurrence[]) => {
-  const { projectId, id } = useParams()
+// Ordered items the modal can page through. Only the id is needed: on the occurrences
+// list these are Occurrence models; on the taxa list they are the per-row example
+// occurrences, so paging steps to the next taxon's example.
+type NavItem = { id: string }
+
+const useOccurrenceNavigation = (
+  items?: NavItem[],
+  currentId?: string,
+  onNavigate?: (id: string) => void
+) => {
+  const { projectId, id: routeId } = useParams()
   const navigate = useNavigate()
-  const currentIndex = occurrences?.findIndex((o) => o.id === id)
-  const prevId =
-    currentIndex !== undefined ? occurrences?.[currentIndex - 1]?.id : undefined
-  const nextId =
-    currentIndex !== undefined ? occurrences?.[currentIndex + 1]?.id : undefined
+  const activeId = currentId ?? routeId
+  const currentIndex = items?.findIndex((o) => o.id === activeId)
+  const hasCurrent = currentIndex !== undefined && currentIndex >= 0
+  const prevId = hasCurrent ? items?.[currentIndex - 1]?.id : undefined
+  const nextId = hasCurrent ? items?.[currentIndex + 1]?.id : undefined
 
-  const goToPrev = useCallback(() => {
-    if (!prevId) {
-      return
-    }
+  const goTo = useCallback(
+    (targetId?: string) => {
+      if (!targetId) {
+        return
+      }
+      // The taxa list keeps the modal open and swaps the ?verifyOccurrence id in place;
+      // the occurrences list routes to that occurrence's detail page.
+      if (onNavigate) {
+        onNavigate(targetId)
+        return
+      }
+      navigate(
+        getAppRoute({
+          to: APP_ROUTES.OCCURRENCE_DETAILS({
+            projectId: projectId as string,
+            occurrenceId: targetId,
+          }),
+          keepSearchParams: true,
+        })
+      )
+    },
+    [navigate, onNavigate, projectId]
+  )
 
-    navigate(
-      getAppRoute({
-        to: APP_ROUTES.OCCURRENCE_DETAILS({
-          projectId: projectId as string,
-          occurrenceId: prevId,
-        }),
-        keepSearchParams: true,
-      })
-    )
-  }, [nextId])
-
-  const goToNext = useCallback(() => {
-    if (!nextId) {
-      return
-    }
-
-    navigate(
-      getAppRoute({
-        to: APP_ROUTES.OCCURRENCE_DETAILS({
-          projectId: projectId as string,
-          occurrenceId: nextId,
-        }),
-        keepSearchParams: true,
-      })
-    )
-  }, [nextId])
+  const goToPrev = useCallback(() => goTo(prevId), [goTo, prevId])
+  const goToNext = useCallback(() => goTo(nextId), [goTo, nextId])
 
   return {
     prevId,
@@ -57,11 +61,18 @@ const useOccurrenceNavigation = (occurrences?: Occurrence[]) => {
 
 export const OccurrenceNavigation = ({
   occurrences,
+  currentId,
+  onNavigate,
 }: {
-  occurrences?: Occurrence[]
+  occurrences?: NavItem[]
+  currentId?: string
+  onNavigate?: (id: string) => void
 }) => {
-  const { prevId, nextId, goToPrev, goToNext } =
-    useOccurrenceNavigation(occurrences)
+  const { prevId, nextId, goToPrev, goToNext } = useOccurrenceNavigation(
+    occurrences,
+    currentId,
+    onNavigate
+  )
 
   // Listen to key down events
   useEffect(() => {
@@ -90,6 +101,7 @@ export const OccurrenceNavigation = ({
   return (
     <>
       <Button
+        aria-label={translate(STRING.PREVIOUS)}
         className="absolute top-[50%] -left-8 -translate-x-full -translate-y-1/2 z-50"
         disabled={!prevId}
         onClick={goToPrev}
@@ -99,6 +111,7 @@ export const OccurrenceNavigation = ({
         <ChevronLeftIcon className="w-4 h-4" />
       </Button>
       <Button
+        aria-label={translate(STRING.NEXT)}
         className="absolute top-[50%] -right-8 translate-x-full -translate-y-1/2 z-50"
         disabled={!nextId}
         onClick={goToNext}

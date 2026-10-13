@@ -26,7 +26,12 @@ class ProjectSettingsMixin(models.Model):
 
     session_time_gap_seconds = models.IntegerField(
         default=60 * 60 * 2,  # Default to 2 hours
-        help_text="Time gap in seconds to consider a new session",
+        help_text=(
+            "Maximum gap between consecutive captures (in seconds) before a new session is started. "
+            "Changing this value does not regroup existing captures automatically — to apply, "
+            "select the affected deployments on the Deployments admin page and run the "
+            '"Regroup captures into sessions" action.'
+        ),
     )
 
     default_filters_score_threshold = models.FloatField(

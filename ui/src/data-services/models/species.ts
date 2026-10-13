@@ -1,4 +1,3 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
@@ -16,6 +15,41 @@ export class Species extends Taxon {
 
   get adminUrl(): string {
     return `https://api.antenna.insectai.org/bereich/main/taxon/${this.id}` // TODO: Use dynamic admin URL based on environment?
+  }
+
+  get bestScoringOccurrenceId(): number | undefined {
+    return this._species.best_scoring_occurrence_id ?? undefined
+  }
+
+  // One occurrence chosen by the backend to verify this taxon's presence: the
+  // best-scoring unverified occurrence for unverified taxa, or the most recent
+  // occurrence for already-verified taxa. Populated only when the list is
+  // fetched with the example-occurrences flag; undefined otherwise.
+  //
+  // Named to avoid colliding with SpeciesDetails.exampleOccurrence, which is a
+  // different concept (a cover-style example image on the taxon detail model).
+  get verificationExample():
+    | {
+        id: number
+        detectionId: number | null
+        imageUrl: string | null
+        score: number | null
+        verified: boolean
+      }
+    | undefined {
+    const example = this._species.example_occurrence
+
+    if (!example) {
+      return undefined
+    }
+
+    return {
+      id: example.id,
+      detectionId: example.detection_id ?? null,
+      imageUrl: example.image_url ?? null,
+      score: example.score ?? null,
+      verified: !!example.verified,
+    }
   }
 
   get coverImage(): { url: string; caption?: string } | undefined {
@@ -37,10 +71,8 @@ export class Species extends Taxon {
     return this._species.cover_image_url || null
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._species.created_at),
-    })
+  get createdAt(): Date {
+    return new Date(this._species.created_at)
   }
 
   get fieldguideId(): string | null {
@@ -67,14 +99,16 @@ export class Species extends Taxon {
       : undefined
   }
 
-  get lastSeenLabel() {
+  get lastDetectedOccurrenceId(): number | undefined {
+    return this._species.last_detected_occurrence_id ?? undefined
+  }
+
+  get lastSeen() {
     if (!this._species.last_detected) {
       return undefined
     }
 
-    const date = new Date(this._species.last_detected)
-
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+    return new Date(this._species.last_detected)
   }
 
   get numDetections(): number {
@@ -83,6 +117,10 @@ export class Species extends Taxon {
 
   get numOccurrences(): number {
     return this._species.occurrences_count ?? 0
+  }
+
+  get numVerified(): number {
+    return this._species.verified_count ?? 0
   }
 
   get score(): number | undefined {
@@ -109,10 +147,11 @@ export class Species extends Taxon {
     return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
   }
 
-  get updatedAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._species.updated_at),
-    })
+  get updatedAt(): Date | undefined {
+    if (!this._species.updated_at) {
+      return undefined
+    }
+    return new Date(this._species.updated_at)
   }
 
   get userPermissions(): UserPermission[] {

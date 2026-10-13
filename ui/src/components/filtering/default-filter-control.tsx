@@ -1,19 +1,16 @@
-import {
-  FormActions,
-  FormRow,
-  FormSection,
-} from 'components/form/layout/layout'
+import classNames from 'classnames'
+import { FormRow } from 'components/form/layout/layout'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { ProjectDetails } from 'data-services/models/project-details'
+import { ChevronRightIcon, InfoIcon } from 'lucide-react'
 import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
-import { InputValue } from 'design-system/components/input/input'
-import { ChevronRightIcon } from 'lucide-react'
-import { buttonVariants, Popover, Switch } from 'nova-ui-kit'
+  Button,
+  buttonVariants,
+  InputValue,
+  Popover,
+  Switch,
+} from 'nova-ui-kit'
+import { useId } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -25,6 +22,7 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   const { project } = useProjectDetails(projectId as string, true)
   const { filters, addFilter, clearFilter } = useFilters()
   const filter = filters.find((filter) => filter.field === field)
+  const labelId = useId()
 
   if (!filter) {
     return null
@@ -33,12 +31,16 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   return (
     <div className="flex items-center justify-between pl-2">
       <div className="flex items-center gap-1">
-        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+        <span
+          id={labelId}
+          className="text-muted-foreground body-overline-small font-bold pt-0.5"
+        >
           {filter.label}
         </span>
-        {project ? <DefaultFiltersPopover project={project} /> : null}
+        {project ? <DefaultFiltersTooltip project={project} /> : null}
       </div>
       <Switch
+        aria-labelledby={labelId}
         checked={stringToBoolean(filter.value) ?? true}
         onCheckedChange={(value) => {
           if (value) {
@@ -52,58 +54,57 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   )
 }
 
-export const DefaultFiltersPopover = ({
-  buttonTheme = IconButtonTheme.Plain,
+export const DefaultFiltersTooltip = ({
   project,
 }: {
-  buttonTheme?: IconButtonTheme
   project: ProjectDetails
 }) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <IconButton
-        icon={IconType.Info}
-        shape={IconButtonShape.Round}
-        theme={buttonTheme}
-      />
+      <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
+        <InfoIcon className="w-4 h-4" />
+      </Button>
     </Popover.Trigger>
-    <Popover.Content className="p-0">
-      <FormSection
-        title={translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
-        description="Data is filtered by default based on global project configuration."
-      >
-        <FormRow>
-          <InputValue
-            label="Score threshold"
-            value={project.settings.scoreThreshold}
-          />
-        </FormRow>
-        <FormRow>
-          <InputValue
-            label="Include taxa"
-            value={project.settings.includeTaxa
-              .map((taxon) => taxon.name)
-              .join(', ')}
-          />
-          <InputValue
-            label="Exclude taxa"
-            value={project.settings.excludeTaxa
-              .map((taxon) => taxon.name)
-              .join(', ')}
-          />
-        </FormRow>
-      </FormSection>
-      {project.canUpdate ? (
-        <FormActions>
+    <Popover.Content className="p-4 max-w-xs">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 border-b border-border pb-4">
+          <p className="body-small italic text-muted-foreground">
+            {translate(STRING.MESSAGE_DEFAULT_FILTERS)}
+          </p>
+          <FormRow>
+            <InputValue
+              label="Score threshold"
+              value={project.settings.scoreThreshold}
+            />
+          </FormRow>
+          <FormRow>
+            <InputValue
+              label="Include taxa"
+              value={project.settings.includeTaxa
+                .map((taxon) => taxon.name)
+                .join(', ')}
+            />
+            <InputValue
+              label="Exclude taxa"
+              value={project.settings.excludeTaxa
+                .map((taxon) => taxon.name)
+                .join(', ')}
+            />
+          </FormRow>
+        </div>
+        {project.canUpdate ? (
           <Link
-            className={buttonVariants({ size: 'small', variant: 'outline' })}
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              '!w-auto self-end'
+            )}
             to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
           >
-            <span>Configure</span>
+            <span>{translate(STRING.CONFIGURE)}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
-        </FormActions>
-      ) : null}
+        ) : null}
+      </div>
     </Popover.Content>
   </Popover.Root>
 )

@@ -46,6 +46,11 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
 
       # To stream the logs
       docker compose logs -f django celeryworker ui-dev
+
+      # To stop the ui-dev container, you must specify the profile when running `down` or `stop`
+      docker compose --profile ui-dev down
+      # Or!
+      docker compose --profile "*" down
       ```
       _**Note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
       for the `ui-dev` service, and is written by a `root` user.
@@ -66,6 +71,7 @@ docker compose -f processing_services/example/docker-compose.yml up -d
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger documentation: http://localhost:8000/api/v2/docs/
 - Minio UI: http://minio:9001, Minio service: http://minio:9000
+- NATS dashboard: https://natsdashboard.com/ (Add localhost)
 
 NOTE: If one of these services is not working properly, it could be due another process is using the port. You can check for this with `lsof -i :<PORT_NUMBER>`.
 
@@ -92,34 +98,7 @@ If using VS Code, install the [formatting extensions](.vscode/extensions.json) t
 
 ### Frontend
 
-#### Dependencies
-
-- [Node.js](https://nodejs.org/en/download/)
-- [Yarn](https://yarnpkg.com/getting-started/install)
-
-#### Configuration
-
-By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
-
-#### Installation
-
-Note: if you installed the ui using Docker first (as instructed in the quick-start) then your local `node_modules/` directory will be owned by root. Change the permissions with:
-`sudo chown -R ${UID}:${UID} ui/node_modules`. The version of Node on your host machine must match that of the Docker container (which will be the case if you follow the `nvm` instructions below.)
-
-```bash
-# Enter into the ui directory
-cd ui
-# Install Node Version Manager
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-# Install required Node.js version
-nvm install
-# Install Yarn dependencies
-yarn install
-# Start the frontend
-yarn start
-```
-
-Visit http://localhost:3000/
+See `ui/README.md` for information about the frontend!
 
 ### Backend
 
@@ -138,9 +117,13 @@ pip install -r requirements/local.txt
 
 #### Helpful Commands
 
-##### Run the docker compose stack in the background
+##### Run the Docker compose stack in the background
 
     docker compose up -d
+
+##### Rebuild Docker images
+
+    docker compose build
 
 ##### Watch the logs of Django & the backend workers
 
@@ -163,25 +146,25 @@ docker compose run --rm django python manage.py create_demo_project
 ##### Run tests
 
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 ##### Run tests with a specific pattern in the test name
 
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 ##### Run tests and drop into interactive shell on failure
 
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 ##### Speed up development of tests by reusing the db between test runs
 
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 ##### Run management scripts
@@ -261,6 +244,8 @@ Bucket: ami
 
 The local environment uses the `console` email backend. To view emails sent by the platform, check the console output (run the `docker compose logs -f django celeryworker` command).
 
+Links and the site name in account emails, such as password resets, come from the Site record. In the Django admin (Sites), set the Domain name to your web app's hostname and the Display name to the name users should see, then restart the web container.
+
 ## Database
 
 The local environment uses a local PostgreSQL database in a Docker container.
@@ -318,6 +303,7 @@ Antenna supports remote debugging with debugpy for both Django and Celery servic
 
 ### Troubleshooting
 
+- **Problems after pull**: If Dockerfiles or dependencies have been updated, make sure to rebuild the Docker images: `docker compose build`. For source code changes, this is not needed.
 - **Connection refused**: Make sure you copied `docker-compose.override-example.yml` to `docker-compose.override.yml`
 - **Debugger not stopping**: Verify breakpoints are set in code that actually executes
 - **Port conflicts**: Check that ports 5678 and 5679 aren't already in use on your host machine

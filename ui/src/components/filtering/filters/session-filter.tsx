@@ -15,7 +15,7 @@ export const SessionFilter = ({ value }: FilterProps) => {
   })()
 
   return (
-    <div className="px-2">
+    <div className="pt-0.5">
       <span className="text-muted-foreground">{label}</span>
     </div>
   )

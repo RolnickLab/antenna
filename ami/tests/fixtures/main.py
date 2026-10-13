@@ -384,6 +384,7 @@ def create_occurrences(
             source_image=source_image,
             timestamp=source_image.timestamp,
             bbox=[0.1, 0.1, 0.2, 0.2],
+            path=f"detections/test_detection_{i}.jpg",
         )
 
         detection.classifications.create(

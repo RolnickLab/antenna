@@ -1,8 +1,6 @@
 import classNames from 'classnames'
-import { FileInput } from 'design-system/components/file-input/file-input'
-import { FileInputAccept } from 'design-system/components/file-input/types'
 import { Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, FileInput } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import styles from './user-info-image-upload.module.scss'
@@ -28,7 +26,7 @@ export const UserInfoImageUpload = ({
 
   return (
     <>
-      <div className={classNames('bg-primary-50', styles.container)}>
+      <div className={classNames('mb-2 bg-primary-50', styles.container)}>
         <div className={styles.content}>
           {imageUrl ? (
             <>
@@ -43,7 +41,7 @@ export const UserInfoImageUpload = ({
         </div>
       </div>
       <FileInput
-        accept={FileInputAccept.Images}
+        accept="images"
         name="user-image"
         renderInput={(props) => (
           <Button

@@ -140,6 +140,73 @@ Access at: http://localhost:15672
 
 ## Troubleshooting Common Issues
 
+### Workers appear connected but tasks don't execute
+
+**Symptoms:**
+- Worker logs show "Connected to amqp://..." and "celery@... ready"
+- `celery inspect` times out: "No nodes replied within time constraint"
+- Flower shows "no workers connected"
+- Task publishing hangs indefinitely
+- RabbitMQ UI shows connections in "blocked" state
+
+**Possible cause: RabbitMQ Disk Space Alarm**
+
+When RabbitMQ runs low on disk space, it triggers an alarm and **blocks ALL connections** from publishing or consuming. This alarm is not prominently displayed in standard monitoring.
+
+**Diagnosis:**
+
+1. Check RabbitMQ Management UI (http://rabbitmq-server:15672) → Connections tab
+   - Look for State = "blocked" or "blocking"
+
+2. Check for active alarms on RabbitMQ server:
+   ```bash
+   rabbitmqctl list_alarms
+   # Note: "rabbitmqctl status | grep alarms" is unreliable
+   ```
+
+3. Check disk space:
+   ```bash
+   df -h
+   ```
+
+4. Check RabbitMQ logs:
+   ```bash
+   journalctl -u rabbitmq-server -n 100 | grep -i "alarm\|block"
+   ```
+
+**Resolution:**
+
+1. Free up disk space on RabbitMQ server
+2. Verify alarm cleared: `rabbitmqctl list_alarms`
+3. Adjust disk limit if needed: `rabbitmqctl set_disk_free_limit 5GB`
+4. Restart RabbitMQ: `systemctl restart rabbitmq-server`
+5. Restart workers: `docker compose restart celeryworker`
+
+**Prevention:**
+- Monitor disk space on RabbitMQ server (alert at 80% usage)
+- Set reasonable disk free limit: `rabbitmqctl set_disk_free_limit 5GB`
+- Configure log rotation for RabbitMQ logs
+- Purge stale queues regularly (see below)
+
+### Stale worker queues breaking celery inspect
+
+**Symptoms:**
+- `celery inspect` times out even after fixing RabbitMQ issues
+- Multiple `celery@<old-container-id>.celery.pidbox` queues in RabbitMQ
+
+**Cause:**
+Worker restarts create new pidbox control queues but old ones persist. `celery inspect` broadcasts to ALL and waits, timing out on dead workers.
+
+**Resolution:**
+1. Go to RabbitMQ Management UI → Queues
+2. Delete old `celery@<old-container-id>.celery.pidbox` queues
+3. Keep only current worker's pidbox queue
+
+**Alternative:** Target specific worker:
+```bash
+celery -A config.celery_app inspect stats -d celery@<current-worker-id>
+```
+
 ### Worker keeps restarting every 100 tasks
 
 **This is normal behavior** with `--max-tasks-per-child=100`.

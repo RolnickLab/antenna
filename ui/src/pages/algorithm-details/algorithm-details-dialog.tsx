@@ -1,11 +1,9 @@
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { useAlgorithmDetails } from 'data-services/hooks/algorithm/useAlgorithmDetails'
 import { Algorithm } from 'data-services/models/algorithm'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
 import { ExternalLinkIcon } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
+import { buttonVariants, Dialog, InputValue } from 'nova-ui-kit'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -58,28 +56,28 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
           value={algorithm.id}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_NAME)}
-          value={algorithm.name}
-        />
-      </FormRow>
-      <FormRow>
-        <InputValue
           label={translate(STRING.FIELD_LABEL_VERSION)}
           value={algorithm.version}
         />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_TASK_TYPE)}
-          value={algorithm.taskType}
-        />
       </FormRow>
       <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
-          value={algorithm.categoryCount}
+          label={translate(STRING.FIELD_LABEL_NAME)}
+          value={algorithm.name}
         />
         <InputValue
           label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
           value={algorithm.description}
+        />
+      </FormRow>
+      <FormRow>
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_TASK_TYPE)}
+          value={algorithm.taskType}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
+          value={algorithm.categoryCount}
         />
       </FormRow>
       <FormRow>
@@ -93,37 +91,39 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
         />
       </FormRow>
     </FormSection>
-    <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
-      <div className="grid grid-cols-2 gap-4">
-        {algorithm.uri && (
-          <a
-            className={buttonVariants({
-              size: 'small',
-              variant: 'outline',
-            })}
-            href={algorithm.uri}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
-            <ExternalLinkIcon className="w-4 h-4" />
-          </a>
-        )}
-        {algorithm.categoryMapURI && (
-          <a
-            className={buttonVariants({
-              size: 'small',
-              variant: 'outline',
-            })}
-            href={algorithm.categoryMapURI}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <span>{translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}</span>
-            <ExternalLinkIcon className="w-4 h-4" />
-          </a>
-        )}
-      </div>
-    </FormSection>
+    {algorithm.uri || algorithm.categoryMapURI ? (
+      <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
+        <div className="flex flex-col items-start gap-3">
+          {algorithm.uri && (
+            <a
+              className={buttonVariants({
+                size: 'small',
+                variant: 'outline',
+              })}
+              href={algorithm.uri}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
+              <ExternalLinkIcon className="w-4 h-4" />
+            </a>
+          )}
+          {algorithm.categoryMapURI && (
+            <a
+              className={buttonVariants({
+                size: 'small',
+                variant: 'outline',
+              })}
+              href={algorithm.categoryMapURI}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <span>{translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}</span>
+              <ExternalLinkIcon className="w-4 h-4" />
+            </a>
+          )}
+        </div>
+      </FormSection>
+    ) : null}
   </>
 )

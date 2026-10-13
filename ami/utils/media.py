@@ -2,12 +2,24 @@ import hashlib
 import logging
 from datetime import datetime
 
+import requests
 from PIL import Image
 from PIL.ExifTags import TAGS
 
 from ami.utils.dates import get_image_timestamp_from_filename
 
 logger = logging.getLogger(__name__)
+
+
+def fetch_image_content(url: str, timeout: tuple[float, float] = (5.0, 30.0)) -> bytes:
+    """Fetch raw image bytes from ``url``.
+
+    The default ``(connect=5s, read=30s)`` timeout keeps a stalled upstream from
+    tying up web workers — this runs synchronously in the thumbnail-generation path.
+    """
+    response = requests.get(url, timeout=timeout)
+    response.raise_for_status()
+    return response.content
 
 
 def extract_timestamp_from_exif(image: Image.Image) -> datetime | None:

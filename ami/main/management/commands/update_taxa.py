@@ -91,6 +91,10 @@ class Command(BaseCommand):
     ```
 
     You can include any column that exists in the Taxon model.
+
+    @TODO: Add --project parameter(s) to scope the taxa list to specific projects.
+    This would allow multiple projects to have taxa lists with the same name.
+    Usage would be: --project project-slug --project another-project-slug
     """
 
     help = "Update existing taxa with new data from a CSV file."
@@ -123,10 +127,11 @@ class Command(BaseCommand):
         incoming_taxa = read_csv(fname)
 
         # Get or create taxa list if specified
+        # Uses get_or_create_for_project with project=None to create a global list
         taxalist = None
         if options["list"]:
             list_name = options["list"]
-            taxalist, created = TaxaList.objects.get_or_create(name=list_name)
+            taxalist, created = TaxaList.objects.get_or_create_for_project(name=list_name, project=None)
             if created:
                 self.stdout.write(self.style.SUCCESS(f"Created new taxa list '{list_name}'"))
             else:
