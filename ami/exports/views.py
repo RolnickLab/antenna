@@ -1,6 +1,7 @@
 from rest_framework import status
 from rest_framework.response import Response
 
+from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.exports.serializers import DataExportSerializer
 from ami.jobs.models import DataExportJob, Job, SourceImageCollection
@@ -16,6 +17,7 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = DataExport.objects.all()
     serializer_class = DataExportSerializer
+    permission_classes = [ObjectPermission]
     ordering_fields = ["id", "format", "file_size", "created_at", "updated_at"]
 
     def get_queryset(self):
@@ -47,25 +49,31 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
                 collection = SourceImageCollection.objects.get(pk=collection_id)
             except SourceImageCollection.DoesNotExist:
                 return Response(
-                    {"error": "Collection does not exist."},
+                    {"error": "Capture set does not exist."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if collection.project != project:
                 return Response(
-                    {"error": "Collection does not belong to the selected project."},
+                    {"error": "Capture set does not belong to the selected project."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # Create DataExport object
-        data_export = DataExport.objects.create(
+        # Create unsaved DataExport instance
+        data_export = DataExport(
             user=request.user,
             format=format_type,
             filters=filters,
             project=project,
         )
+
+        # Check permissions on the unsaved instance
+        self.check_object_permissions(request, data_export)
+
+        # Save the instance after permission check passes
+        data_export.save()
         data_export.update_record_count()
 
-        job_name = f"Export occurrences{f' for collection {collection.pk}' if collection else ''}"
+        job_name = f"Export occurrences{f' for capture set {collection.pk}' if collection else ''}"
         job = Job.objects.create(
             name=job_name,
             project=project,

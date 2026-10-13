@@ -19,11 +19,19 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - minio-init
-      - ml_backend
-      - rabbitmq
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      nats:
+        condition: service_started
+      # Wait for bucket setup to succeed, so Django never starts against missing buckets.
+      minio-init:
+        condition: service_completed_successfully
+      ml_backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     volumes:
       - .:/app:z
     env_file:
@@ -75,7 +83,12 @@ services:
     volumes:
       - ./.git:/app/.git:ro
       - ./ui:/app
-    entrypoint: ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "yarn install && yarn start --debug --host 0.0.0.0 --port 4000",
+      ]
     environment:
       - API_PROXY_TARGET=http://django:8000
       - CHOKIDAR_USEPOLLING=true
@@ -83,6 +96,20 @@ services:
   redis:
     image: redis:6
     container_name: ami_local_redis
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_local_nats
+    hostname: nats
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # HTTP monitoring port
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   celeryworker:
     <<: *django
@@ -119,8 +146,9 @@ services:
       - antenna_network
 
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
-    command: minio server --console-address ":9001" /data
+    # Our own MinIO + mc build, from github.com/RolnickLab/minio-image (bump procedure there). See #1445.
+    image: insectai/minio:RELEASE.2026-09-16T00-00-00Z@sha256:1dca54196431cf11e745ebf743e1ceaa69f6d5a3070a6d8b068c7f5b0c981fa1
+    command: server --console-address ":9001" /data
     volumes:
       - "minio_data:/data"
     env_file:
@@ -145,15 +173,17 @@ services:
       - minio
 
   minio-init:
-    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    image: insectai/minio:RELEASE.2026-09-16T00-00-00Z@sha256:1dca54196431cf11e745ebf743e1ceaa69f6d5a3070a6d8b068c7f5b0c981fa1
     env_file:
       - ./.envs/.local/.django
     depends_on:
-      - minio
-      - minio-proxy
+      minio:
+        condition: service_healthy
+      minio-proxy:
+        condition: service_started
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
-    entrypoint: /etc/minio/init.sh
+    entrypoint: ["/bin/sh", "/etc/minio/init.sh"]
 
   ml_backend:
     build:

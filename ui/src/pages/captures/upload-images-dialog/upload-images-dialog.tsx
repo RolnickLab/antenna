@@ -9,9 +9,6 @@ import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Deployment } from 'data-services/models/deployment'
 import { ProjectDetails } from 'data-services/models/project-details'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { FormStepper } from 'design-system/components/form-stepper/form-stepper'
-import { InputValue } from 'design-system/components/input/input'
 import {
   ChevronRight,
   ChevronRightIcon,
@@ -19,7 +16,16 @@ import {
   Loader2Icon,
   UploadIcon,
 } from 'lucide-react'
-import { Button, buttonVariants, Select, Switch, Tooltip } from 'nova-ui-kit'
+import {
+  Button,
+  buttonVariants,
+  Dialog,
+  FormStepper,
+  InputValue,
+  Select,
+  Switch,
+  Tooltip,
+} from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -39,8 +45,8 @@ export const UploadImagesDialog = ({
   isOpen,
   setIsOpen,
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
   isOpen: boolean
   setIsOpen: (isOpen: boolean) => void
 }) => {
@@ -53,9 +59,17 @@ export const UploadImagesDialog = ({
     !!project?.settings.defaultProcessingPipeline
   )
 
-  const { uploadCaptures, isLoading, isSuccess, error } = useUploadCaptures()
+  const {
+    uploadCaptures,
+    isLoading,
+    isSuccess,
+    error,
+    reset: resetHook,
+  } = useUploadCaptures()
 
+  // Reset on open state change
   useEffect(() => {
+    resetHook()
     setCurrentSection(Section.Images)
     setImages([])
     setDeployment(undefined)
@@ -63,14 +77,14 @@ export const UploadImagesDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <UploadIcon className="w-4 h-4" />
-          <span>Upload images</span>
+          <span>{translate(STRING.UPLOAD_CAPTURES)}</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        <Dialog.Header title="Upload images"></Dialog.Header>
+        <Dialog.Header title={translate(STRING.UPLOAD_CAPTURES)} />
         {error ? <FormError message={error} /> : null}
         <div className={styles.content}>
           {isSuccess ? (
@@ -79,7 +93,7 @@ export const UploadImagesDialog = ({
               {processNow ? (
                 <>
                   <p className="text-center body-large mb-16">
-                    Stay tuned while your images are being processed.
+                    Stay tuned while your captures are being processed.
                   </p>
                   <Link
                     className={buttonVariants({ variant: 'success' })}
@@ -92,7 +106,7 @@ export const UploadImagesDialog = ({
               ) : (
                 <>
                   <p className="text-center body-large mb-16">
-                    Your images were uploaded and added to the selected
+                    Your captures were uploaded and added to the selected
                     monitoring station.
                   </p>
                   <Link
@@ -113,7 +127,7 @@ export const UploadImagesDialog = ({
                   items={[
                     {
                       id: Section.Images,
-                      label: 'Select images',
+                      label: 'Select captures',
                     },
                     {
                       id: Section.Station,
@@ -220,7 +234,7 @@ const SectionStation = ({
     <div>
       <FormSection
         title="Select station"
-        description="The images will be added to one of your monitoring stations."
+        description="The captures will be added to one of your monitoring stations."
       >
         <Select.Root
           disabled={deployments.length === 0}
@@ -232,9 +246,9 @@ const SectionStation = ({
           }
         >
           <Select.Trigger loading={isLoading}>
-            <Select.Value placeholder="Select a value" />
+            <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
           </Select.Trigger>
-          <Select.Content className="max-h-72">
+          <Select.Content>
             {deployments.map((d) => (
               <Select.Item key={d.id} value={d.id}>
                 {d.name}
@@ -285,10 +299,10 @@ const SectionUpload = ({
   <div>
     <FormSection
       title="Summary"
-      description="Your images will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
+      description="Your captures will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
     >
       <div className="grid grid-cols-2 gap-8">
-        <InputValue label="Images" value={images.length} />
+        <InputValue label="Captures" value={images.length} />
         <InputValue label="Station" value={deployment?.name} />
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -298,7 +312,7 @@ const SectionUpload = ({
               onCheckedChange={setProcessNow}
             />
             <label className="pt-0.5 body-small text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50">
-              Process images
+              Process captures
             </label>
             <DefaultPipelineInfo project={project} />
           </div>
@@ -314,7 +328,7 @@ const SectionUpload = ({
         <span>{translate(STRING.BACK)}</span>
       </Button>
       <Button
-        disabled={!(deployment && images.length)}
+        disabled={isLoading || !(deployment && images.length)}
         onClick={onSubmit}
         size="small"
         variant="success"
@@ -332,31 +346,33 @@ const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <Button size="icon" variant="ghost">
+        <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
           <InfoIcon className="w-4 h-4" />
         </Button>
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        {project.settings.defaultProcessingPipeline ? (
-          <InputValue
-            label="Default processing pipeline"
-            value={project.settings.defaultProcessingPipeline?.name}
-          />
-        ) : (
-          <p className="whitespace-normal">
-            The project has no default processing pipeline configured.
-          </p>
-        )}
-        <Link
-          className={classNames(
-            buttonVariants({ size: 'small', variant: 'outline' }),
-            '!w-auto'
+        <div className="flex flex-col gap-4">
+          {project.settings.defaultProcessingPipeline ? (
+            <InputValue
+              label="Default processing pipeline"
+              value={project.settings.defaultProcessingPipeline?.name}
+            />
+          ) : (
+            <p className="body-small whitespace-normal">
+              The project has no default processing pipeline configured.
+            </p>
           )}
-          to={APP_ROUTES.PROCESSING({ projectId: project.id })}
-        >
-          <span>Configure</span>
-          <ChevronRightIcon className="w-4 h-4" />
-        </Link>
+          <Link
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              '!w-auto self-end'
+            )}
+            to={APP_ROUTES.PROCESSING({ projectId: project.id })}
+          >
+            <span>{translate(STRING.CONFIGURE)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        </div>
       </Tooltip.Content>
     </Tooltip.Root>
   </Tooltip.Provider>

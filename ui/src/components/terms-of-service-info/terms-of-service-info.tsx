@@ -1,11 +1,9 @@
-import {
-  IconButton,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { XIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import styles from './terms-of-service-info.module.scss'
 
@@ -30,13 +28,16 @@ export const TermsOfServiceInfo = () => {
         <Link to={APP_ROUTES.TERMS_OF_SERVICE}>Terms of Service.</Link>
       </p>
       <div className={styles.iconContainer}>
-        <IconButton
-          icon={IconType.Cross}
-          theme={IconButtonTheme.Plain}
+        <Button
+          aria-label={translate(STRING.CLOSE)}
           onClick={() =>
             setUserPreferences({ ...userPreferences, termsMessageSeen: true })
           }
-        />
+          size="icon"
+          variant="ghost"
+        >
+          <XIcon className="w-4 h-4" />
+        </Button>
       </div>
     </div>
   )

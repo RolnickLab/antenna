@@ -16,7 +16,21 @@ export const useSpecies = (
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({ collection: API_ROUTES.SPECIES, params })
+  // Only the caller that renders the Example column asks for example occurrences, and
+  // never under a capture-set (collection) filter: on that path the example subqueries
+  // degrade to per-row scans, which is why the backend keeps them opt-in.
+  const hasCollectionFilter = params?.filters?.some(
+    (filter) => filter.field === 'collection' && filter.value
+  )
+  const fetchParams = {
+    ...params,
+    withExampleOccurrences:
+      !!params?.withExampleOccurrences && !hasCollectionFilter,
+  }
+  const fetchUrl = getFetchUrl({
+    collection: API_ROUTES.SPECIES,
+    params: fetchParams,
+  })
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerSpecies[]

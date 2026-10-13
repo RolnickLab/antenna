@@ -5,7 +5,7 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 import { IdentificationFieldValues } from './types'
 
-const convertToServerFieldValues = (
+export const convertToServerFieldValues = (
   fieldValues: IdentificationFieldValues
 ) => ({
   agreed_with_identification_id: fieldValues.agreeWith?.identificationId,
@@ -35,6 +35,9 @@ export const useCreateIdentification = (
       if (invalidate) {
         queryClient.invalidateQueries([API_ROUTES.IDENTIFICATIONS])
         queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
+        // Refresh the taxa list so verified counts and the example thumbnail
+        // reflect the new identification.
+        queryClient.invalidateQueries([API_ROUTES.SPECIES])
       }
       onSuccess?.()
     },

@@ -1,0 +1,97 @@
+@mixin heading-large {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 38px;
+  line-height: 40px;
+  font-weight: 500;
+}
+
+@mixin heading-medium {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 34px;
+  line-height: 38px;
+  font-weight: 500;
+}
+
+@mixin heading-small {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 32px;
+  line-height: 34px;
+  font-weight: 500;
+}
+
+@mixin body-xlarge {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 20px;
+  line-height: 24px;
+}
+
+@mixin body-large {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 18px;
+  line-height: 22px;
+}
+
+@mixin body-base {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+@mixin body-small {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+@mixin body-overline {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 14px;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+@mixin body-overline-small {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 12px;
+  line-height: 12px;
+  text-transform: uppercase;
+}
+
+@mixin body-overline-xsmall {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 10px;
+  line-height: 10px;
+  text-transform: uppercase;
+}
+
+@mixin body-number {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 16px;
+  line-height: 16px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+@mixin body-number-small {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 12px;
+  line-height: 12px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+@mixin bubble-label {
+  background-color: var(--color-secondary-100);
+  border-radius: 4px;
+  color: var(--color-primary);
+  display: inline-flex;
+  font-size: 16px;
+  font-weight: 600;
+  height: auto;
+  line-height: 20px;
+  padding: 6px 8px 4px;
+}
+
+// TODO: Generate from constants.ts
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;

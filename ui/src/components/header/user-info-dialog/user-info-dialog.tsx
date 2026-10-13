@@ -1,4 +1,4 @@
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Dialog } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
@@ -14,7 +14,7 @@ export const UserInfoDialog = () => {
 
   return (
     <Dialog.Root>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <div
           role="button"
           tabIndex={0}

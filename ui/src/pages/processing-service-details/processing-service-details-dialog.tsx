@@ -1,9 +1,8 @@
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { useProcessingServiceDetails } from 'data-services/hooks/processing-services/useProcessingServiceDetails'
 import { ProcessingService } from 'data-services/models/processing-service'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { InputValue } from 'design-system/components/input/input'
 import _ from 'lodash'
+import { Dialog, InputValue } from 'nova-ui-kit'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -14,8 +13,10 @@ import styles from './styles.module.scss'
 export const ProcessingServiceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
-  const { processingService, isLoading, error } =
-    useProcessingServiceDetails(id)
+  const { processingService, isLoading, error } = useProcessingServiceDetails(
+    id,
+    projectId as string
+  )
 
   return (
     <Dialog.Root
@@ -67,22 +68,27 @@ const ProcessingServiceDetailsContent = ({
           label={translate(STRING.FIELD_LABEL_ID)}
           value={processingService.id}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={processingService.name}
         />
-      </FormRow>
-      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
           value={processingService.description}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_LAST_CHECKED)}
-          value={processingService.lastChecked}
+          label={translate(STRING.FIELD_LABEL_ENDPOINT)}
+          value={processingService.endpointUrl}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
+          value={processingService.lastSeen}
         />
       </FormRow>
-
       <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_CREATED_AT)}

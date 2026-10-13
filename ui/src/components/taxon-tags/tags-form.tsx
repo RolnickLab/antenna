@@ -1,9 +1,8 @@
 import { useAssignTags } from 'data-services/hooks/taxa-tags/useAssignTags'
 import { useTags } from 'data-services/hooks/taxa-tags/useTags'
 import { Species, Tag } from 'data-services/models/species'
-import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { CheckIcon, Loader2Icon, PenIcon } from 'lucide-react'
-import { Button, Popover } from 'nova-ui-kit'
+import { Button, Checkbox, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -30,7 +29,12 @@ export const TagsForm = ({ species }: { species: Species }) => {
       }}
     >
       <Popover.Trigger asChild>
-        <Button size="icon" variant="ghost" disabled={tags.length === 0}>
+        <Button
+          aria-label={translate(STRING.EDIT)}
+          size="icon"
+          variant="ghost"
+          disabled={tags.length === 0}
+        >
           <PenIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>

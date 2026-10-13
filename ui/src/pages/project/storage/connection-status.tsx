@@ -1,13 +1,16 @@
 import { FormRow } from 'components/form/layout/layout'
 import { useTestStorageConnection } from 'data-services/hooks/storage-sources/useTestStorageConnection'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import * as Wizard from 'design-system/components/wizard/wizard'
+import {
+  BasicTooltip,
+  ConnectionStatusInfo,
+  InputContent,
+  InputValue,
+  ConnectionStatus as Status,
+  Wizard,
+} from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
-import { StatusInfo } from './status-info/status-info'
-import { Status } from './status-info/types'
 import styles from './storage.module.scss'
 
 export const ConnectionStatus = ({
@@ -117,7 +120,7 @@ export const ConnectionStatus = ({
             className={styles.wizardTrigger}
             showToggle
           >
-            <StatusInfo label={label} status={status} tooltip={details} />
+            <ConnectionStatusInfo status={status} tooltip={details} />
           </Wizard.Trigger>
           <Wizard.Content className={styles.wizardContent}>
             <FormRow>
@@ -129,7 +132,7 @@ export const ConnectionStatus = ({
                 <>
                   {data?.first_file_found ? (
                     <InputContent label="First file found">
-                      <Tooltip content={data.first_file_found}>
+                      <BasicTooltip asChild content={data.first_file_found}>
                         <a
                           href={data.first_file_found}
                           rel="noreferrer"
@@ -141,7 +144,7 @@ export const ConnectionStatus = ({
                             src={data.first_file_found}
                           />
                         </a>
-                      </Tooltip>
+                      </BasicTooltip>
                     </InputContent>
                   ) : (
                     <InputValue label="First file found" />

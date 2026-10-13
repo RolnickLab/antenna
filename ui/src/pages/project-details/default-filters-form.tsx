@@ -9,9 +9,8 @@ import { FormConfig } from 'components/form/types'
 import { AddTaxon } from 'components/taxon-search/add-taxon'
 import { TaxonSelect } from 'components/taxon-search/taxon-select'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { InputContent } from 'design-system/components/input/input'
 import { CheckIcon, Loader2Icon, XIcon } from 'lucide-react'
-import { Button, Slider } from 'nova-ui-kit'
+import { Button, InputContent, Slider } from 'nova-ui-kit'
 import { Fragment } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -196,6 +195,7 @@ const TaxaSelect = ({
             }}
           />
           <Button
+            aria-label={translate(STRING.CLEAR)}
             className="shrink-0 text-muted-foreground"
             onClick={() => onTaxaChange(taxa.filter((t) => t.id !== taxon.id))}
             size="icon"

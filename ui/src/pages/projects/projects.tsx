@@ -1,18 +1,33 @@
+import { SearchInput } from 'components/search-input/search-input'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import * as Tabs from 'design-system/components/tabs/tabs'
-import { Button } from 'nova-ui-kit'
+import { Grid2X2Icon, MapIcon, TableIcon } from 'lucide-react'
+import {
+  Button,
+  ColumnSettings,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  Table,
+  Tabs,
+  ToggleGroup,
+} from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { useSearch } from 'utils/useSearch'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { useSelectedView } from 'utils/useSelectedView'
-import { useWindowSize } from 'utils/useWindowSize'
+import { useSort } from 'utils/useSort'
+import { columns } from './project-columns'
 import { ProjectGallery } from './project-gallery'
+import { ProjectsMap } from './projects-map'
+
+// The map shows every project at once rather than a page of them.
+const MAP_LIMIT = 300
 
 export const TABS = {
   MY_PROJECTS: 'my-projects',
@@ -24,25 +39,53 @@ export const Projects = () => {
   const { userInfo } = useUserInfo()
   const { selectedView: selectedTab, setSelectedView: setSelectedTab } =
     useSelectedView(user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS)
-  const [windowWidth] = useWindowSize()
-  const { pagination, setPage } = usePagination({
-    perPage: windowWidth > 1024 ? 21 : 20, // Adjust page size based on page width to avoid gallery gaps
+  const { selectedView: layout, setSelectedView: setLayout } = useSelectedView(
+    'gallery',
+    'layout'
+  )
+  const { columnSettings, setColumnSettings } = useColumnSettings('projects', {
+    image: true,
+    name: true,
+    deployments: true,
+    captures: true,
+    occurrences: true,
+    taxa: true,
+    members: false,
+    'last-capture': true,
+    'last-occurrence-update': false,
+    'last-job-update': false,
+    'created-at': false,
+    'updated-at': false,
   })
-  const filters =
-    user.loggedIn && selectedTab === TABS.MY_PROJECTS
+  const { sort, setSort } = useSort()
+  const { pagination, setPage } = usePagination({ perPage: 40 })
+  const { search, setSearch } = useSearch()
+  const filters = [
+    ...(user.loggedIn && selectedTab === TABS.MY_PROJECTS
       ? [{ field: 'user_id', value: userInfo?.id }]
-      : []
+      : []),
+    ...(search ? [{ field: 'search', value: search }] : []),
+    ...(layout === 'map' ? [{ field: 'with_location', value: 'true' }] : []),
+  ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
-    useProjects({ pagination, filters })
+    useProjects({
+      pagination:
+        layout === 'map' ? { page: 0, perPage: MAP_LIMIT } : pagination,
+      filters,
+      sort,
+      // Totals are only shown, and only computed, in the table.
+      withCounts: layout === 'table',
+    })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_PROJECTS)}
-        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.PROJECT_CREATION}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
+        title={translate(STRING.NAV_ITEM_PROJECTS)}
       >
         {user.loggedIn ? (
           <Tabs.Root
@@ -64,9 +107,40 @@ export const Projects = () => {
             </Tabs.List>
           </Tabs.Root>
         ) : null}
+        <SearchInput
+          label={translate(STRING.SEARCH_PROJECTS)}
+          value={search}
+          onChange={setSearch}
+        />
         {canCreate ? <NewProjectDialog /> : null}
+        <ToggleGroup
+          items={[
+            {
+              value: 'table',
+              label: translate(STRING.TAB_ITEM_TABLE),
+              Icon: TableIcon,
+            },
+            {
+              value: 'gallery',
+              label: translate(STRING.TAB_ITEM_GALLERY),
+              Icon: Grid2X2Icon,
+            },
+            {
+              value: 'map',
+              label: translate(STRING.TAB_ITEM_MAP),
+              Icon: MapIcon,
+            },
+          ]}
+          value={layout}
+          onValueChange={setLayout}
+        />
+        <ColumnSettings
+          columns={columns}
+          columnSettings={columnSettings}
+          onColumnSettingsChange={setColumnSettings}
+        />
       </PageHeader>
-      {projects && projects.length === 0 && canCreate ? (
+      {projects && projects.length === 0 && canCreate && !search ? (
         <div className="flex flex-col items-center pt-32">
           <h1 className="mb-8 heading-large">Get started</h1>
           <p className="text-center body-large mb-16">
@@ -84,6 +158,18 @@ export const Projects = () => {
             </Button>
           </div>
         </div>
+      ) : layout === 'table' ? (
+        <Table
+          columns={columns.filter((column) => !!columnSettings[column.id])}
+          error={error}
+          isLoading={isLoading}
+          items={projects}
+          onSortSettingsChange={setSort}
+          sortable
+          sortSettings={sort}
+        />
+      ) : layout === 'map' ? (
+        <ProjectsMap error={error} isLoading={isLoading} projects={projects} />
       ) : (
         <ProjectGallery
           error={error}
@@ -92,7 +178,7 @@ export const Projects = () => {
         />
       )}
       <PageFooter>
-        {projects?.length ? (
+        {projects?.length && layout !== 'map' ? (
           <PaginationBar
             pagination={pagination}
             total={total}

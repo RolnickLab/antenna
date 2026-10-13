@@ -1,0 +1,14 @@
+.loadingSpinner {
+  display: inline-block;
+  border-style: solid;
+  border-color: var(--color-secondary-400);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    -webkit-transform: rotate(360deg);
+  }
+}

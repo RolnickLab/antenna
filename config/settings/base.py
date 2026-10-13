@@ -2,7 +2,9 @@
 Base settings to build other settings files upon.
 """
 
+import socket
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import django_stubs_ext
 import environ
@@ -230,20 +232,45 @@ X_FRAME_OPTIONS = "DENY"
 
 # EMAIL
 # ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
-EMAIL_BACKEND = env(
-    "DJANGO_EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",  # type: ignore[no-untyped-call]
-)
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
+# Note that EMAIL_BACKEND is a deprecated way to say this.
+# We need a default because one or more processes in our docker compose for prod
+# needs to load this without an env.
+EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 EMAIL_TIMEOUT = 5
 
-# Sendgrid
+# Credentials for providers which may be selected by EMAIL_BACKEND.
 ANYMAIL = {
     "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),  # type: ignore[no-untyped-call]
+    "MANDRILL_API_KEY": env("MANDRILL_API_KEY", default=None),  # type: ignore[no-untyped-call]
 }
+# Config for the Sendgrid email provider, which may be selected by EMAIL_BACKEND.
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
+
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="Antenna <noreply@example.com>")
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+EMAIL_SUBJECT_PREFIX = env("DJANGO_EMAIL_SUBJECT_PREFIX", default="[Antenna]")
+
+# TCP keepalive (shared by Redis cache and Celery/RabbitMQ broker)
+# ------------------------------------------------------------------------------
+# Without SO_KEEPALIVE set on the client socket, the kernel never sends
+# keepalive probes regardless of host-level sysctl tuning. Long-idle pooled
+# connections are then vulnerable to silent drops by stateful cloud firewalls
+# (the failure mode behind #1218, and the trigger for #1073).
+#
+# Default probe schedule: start after 60s idle, retry every 10s, give up
+# after 9 failed attempts -> first dead-connection detection at ~150s.
+#
+# These defaults are safe for all environments: no-ops on localhost
+# (local dev, docker-compose staging/demo), protective anywhere upstream
+# infrastructure can drop idle connections. Production operators can
+# override via env vars if their network needs different tuning (e.g. a
+# more aggressive firewall might warrant a shorter idle).
+TCP_KEEPALIVE_OPTIONS = {
+    socket.TCP_KEEPIDLE: env.int("TCP_KEEPALIVE_IDLE", default=60),
+    socket.TCP_KEEPINTVL: env.int("TCP_KEEPALIVE_INTVL", default=10),
+    socket.TCP_KEEPCNT: env.int("TCP_KEEPALIVE_CNT", default=9),
+}
 
 # CACHES
 # ------------------------------------------------------------------------------
@@ -257,10 +284,52 @@ CACHES = {
             # Mimicing memcache behavior.
             # https://github.com/jazzband/django-redis#memcached-exceptions-behavior
             "IGNORE_EXCEPTIONS": True,
+            # TCP keepalive -- see TCP_KEEPALIVE_OPTIONS above.
+            "SOCKET_KEEPALIVE": env.bool("REDIS_CACHE_SOCKET_KEEPALIVE", default=True),
+            "SOCKET_KEEPALIVE_OPTIONS": TCP_KEEPALIVE_OPTIONS,
+            # Cap connect-time to fail fast if the Redis host is unreachable,
+            # rather than hanging pooled-connection acquisition indefinitely.
+            # 5s is well above normal connect latency; raise in high-latency
+            # networks.
+            "SOCKET_CONNECT_TIMEOUT": env.int("REDIS_CACHE_SOCKET_CONNECT_TIMEOUT", default=5),
         },
     }
 }
 REDIS_URL = env("REDIS_URL", default=None)
+
+
+# Redis DB numbering convention:
+#   DB 0 = Django cache (REDIS_URL, used by django-redis CACHES above)
+#   DB 1 = Celery result backend (derived automatically below)
+# Separating DBs lets us flush cache without losing pending task results,
+# and monitor each independently. The function below rewrites the path
+# component of REDIS_URL to point at DB 1.
+# TODO: consider separate Redis instances with different eviction policies:
+#   allkeys-lru for cache, volatile-ttl for results. See issue #1189.
+def _celery_result_backend_url(redis_url):
+    if not redis_url:
+        return None
+    parsed = urlparse(redis_url)
+    parts = [s for s in parsed.path.split("/") if s]
+    if parts and parts[-1].isdigit():
+        parts[-1] = "1"
+    else:
+        parts.append("1")
+    return urlunparse(parsed._replace(path="/" + "/".join(parts)))
+
+
+CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND", default=None) or _celery_result_backend_url(REDIS_URL)
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
+# How long a worker has to ack a dispatched task before NATS redelivers it.
+# Must exceed worst-case task duration: S3 download + GPU cold-start + batch
+# inference + synchronous POST of results. With 24 MB images and batch sizes
+# of 8-24, anything under a minute caused spurious redeliveries under load;
+# 5 minutes gives cold-start GPU pipelines headroom without holding tasks
+# invisibly long after a genuine worker crash (bounded by max_deliver).
+NATS_TASK_TTR = env.int("NATS_TASK_TTR", default=300)
 
 # ADMIN
 # ------------------------------------------------------------------------------
@@ -305,15 +374,31 @@ CELERY_TASK_DEFAULT_QUEUE = "antenna"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-# "rpc://" means use RabbitMQ for results backend by default
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="rpc://")  # type: ignore[no-untyped-call]
+# Use Redis DB 1 for results (separate from cache on DB 0).
+# Falls back to CELERY_RESULT_BACKEND env var if explicitly set, otherwise derives from REDIS_URL.
+# See issue #1189 for discussion of result backend architecture.
+CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL or "rpc://"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
+# Stores full task args/kwargs/name in the result backend alongside status.
+# Useful for: inspecting task arguments in Flower, debugging failed tasks,
+# post-hoc analysis of what data a task received.
+# Cost: result keys are large because process_nats_pipeline_result receives the
+# full ML result JSON as args. Measured on demo (298 keys, 2026-03-26):
+#   Median: 5 KB, Avg: 191 KB, Max: 2.1 MB per key
+#   Distribution: 29 <1KB, 195 1-10KB, 52 100KB-1MB, 22 >1MB
+# With thousands of tasks per job, this adds significant memory pressure.
+# TODO: consider disabling this or setting ignore_result=True on bulk tasks
+# like process_nats_pipeline_result to reduce result backend load. See #1189.
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
 # https://github.com/celery/celery/pull/6122
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-max-retries
 CELERY_RESULT_BACKEND_MAX_RETRIES = 10
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_expires
+# Auto-expire task results after 72 hours. Keeps results available for inspection
+# and troubleshooting while preventing unbounded growth. Override via env var (seconds).
+CELERY_RESULT_EXPIRES = int(env("CELERY_RESULT_EXPIRES", default="259200"))  # type: ignore[no-untyped-call]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-accept_content
 CELERY_ACCEPT_CONTENT = ["json"]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-task_serializer
@@ -348,6 +433,33 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Split Celery work across three queues so one class of task can't starve
+# another. Staging/production/worker compose files each run a dedicated
+# worker service per queue; local/CI use a single worker consuming all queues.
+# See docker-compose.*.yml. Tasks not listed here fall back to the default
+# queue (antenna).
+#
+#   antenna     — default: beat tasks, cache refreshes, sync jobs, misc housekeeping
+#   jobs        — long-running run_job invocations (can hold a slot for hours)
+#   ml_results  — high-volume process_nats_pipeline_result + save_results bursts,
+#                 plus create_detection_images (emitted from save_results)
+CELERY_TASK_ROUTES = {
+    "ami.jobs.tasks.run_job": {"queue": "jobs"},
+    "ami.jobs.tasks.process_nats_pipeline_result": {"queue": "ml_results"},
+    "ami.ml.models.pipeline.save_results": {"queue": "ml_results"},
+    "ami.ml.tasks.create_detection_images": {"queue": "ml_results"},
+}
+
+# Worker concurrency (prefork pool size)
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
+# Celery's own default when unset is os.cpu_count(), which on the production
+# 8-core host produced an 8-process pool that could not keep up with the antenna
+# queue's DB/Redis-bound tasks (process_nats_pipeline_result, create_detection_images).
+# 8 is a conservative default that keeps local/staging/demo memory footprints
+# reasonable (each prefork worker is a separate Python process with imports +
+# DB connection). Production should override to 16 (see .envs/.production/.django-example).
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY", default=8)
+
 # Cancel & return to queue if connection is lost
 # https://docs.celeryq.dev/en/latest/userguide/configuration.html#worker-cancel-long-running-tasks-on-connection-loss
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
@@ -355,12 +467,16 @@ CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 # RabbitMQ broker connection settings
 # These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "socket_timeout": 120,  # Socket read/write timeout (seconds)
-    "socket_connect_timeout": 40,  # Max time to establish connection (seconds)
-    "socket_keepalive": True,  # Enable TCP keepalive probes
-    "retry_on_timeout": True,  # Retry operations on timeout
-    "max_connections": 20,  # Per-process connection pool limit
+    # TCP keepalive so the network stack doesn't silently drop connections.
+    # Shared schedule with the Redis cache above -- see TCP_KEEPALIVE_OPTIONS.
+    "socket_keepalive": True,
+    "socket_settings": TCP_KEEPALIVE_OPTIONS,
+    # Connection Stability Settings
+    "socket_connect_timeout": 40,  # Max time to establish connection
+    "retry_on_timeout": True,  # Retry operations if they time out
+    "max_connections": 20,  # Connection pool limit per process
     "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
+    # REMOVED "socket_timeout: 120" to prevent workers self-destructing during long blocking operations.
 }
 
 # Broker connection retry settings
@@ -369,6 +485,17 @@ CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
+
+# Maximum in-memory request body size for multipart form data and request.body access.
+# ML detection+classification payloads for a single batch can exceed the Django
+# default (2.5 MB). Configurable via env (integer, binary MiB — multiplied by
+# 1024*1024) so operators can tune without a code change. See RolnickLab/antenna#1223
+# for the longer-term fix (worker-side incremental result posting).
+#
+# Note: this setting does NOT apply to DRF JSON bodies — DRF parsers read from the
+# raw WSGI stream, bypassing request.body where Django enforces this limit.
+# nginx client_max_body_size is the hard cap for all request types.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
@@ -427,6 +554,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # Names for the single-value enums that tag each occurrence history entry (see
+    # OCCURRENCE_HISTORY_ENTRY_SCHEMA); without them drf-spectacular falls back to hashed names.
+    "ENUM_NAME_OVERRIDES": {
+        "AlgorithmResultEntryTypeEnum": ["algorithm_result"],
+        "IdentificationEntryTypeEnum": ["identification"],
+        "PredictionEntryTypeEnum": ["prediction"],
+    },
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
@@ -437,6 +571,7 @@ S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: i
 S3_TEST_KEY = env("MINIO_ROOT_USER", default=None)  # type: ignore[no-untyped-call]
 S3_TEST_SECRET = env("MINIO_ROOT_PASSWORD", default=None)  # type: ignore[no-untyped-call]
 S3_TEST_BUCKET = env("MINIO_TEST_BUCKET", default="ami-test")  # type: ignore[no-untyped-call]
+S3_TEST_REGION = env("MINIO_REGION", default=None)  # type: ignore[no-untyped-call]
 
 
 # Default processing service settings
@@ -448,3 +583,25 @@ DEFAULT_PROCESSING_SERVICE_ENDPOINT = env(
     "DEFAULT_PROCESSING_SERVICE_ENDPOINT", default=None  # type: ignore[no-untyped-call]
 )
 DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None)  # type: ignore[no-untyped-call]
+# Default taxa filters
+DEFAULT_INCLUDE_TAXA = env.list("DEFAULT_INCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
+DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
+
+# Purpose: master switch for per-job logs in the database and UI.
+# Set to False to disable them as a contention escape hatch.
+#
+# When True, ``JobLogHandler.emit`` persists each log line to ``jobs_job.logs``
+# (JSONB column) so the per-job log feed in the UI stays populated. When False,
+# log lines go to the container stdout logger only — used as an escape hatch
+# under concurrent async_api load where the per-record UPDATE on ``jobs_job.logs``
+# becomes a row-lock contention point (see issue #1256, PR #1261). Default True
+# preserves existing behavior; deployments seeing contention can set to False
+# until the append-only ``JobLog`` child table (PR #1259) is in place.
+JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]
+
+
+# Sizes for Source Image Thumbnails ("large" backs the zoomable session detail view)
+THUMBNAILS = {
+    "STORAGE_PREFIX": "thumbnails/",
+    "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}, "large": {"width": 2560}},
+}

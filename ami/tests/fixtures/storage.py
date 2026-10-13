@@ -15,6 +15,7 @@ S3_TEST_CONFIG = s3.S3Config(
     access_key_id=settings.S3_TEST_KEY,
     secret_access_key=settings.S3_TEST_SECRET,
     bucket_name=settings.S3_TEST_BUCKET,
+    region=settings.S3_TEST_REGION,
     prefix="test_prefix",
     public_base_url=f"http://minio:9000/{settings.S3_TEST_BUCKET}/test_prefix",
     # public_base_url="http://minio:9001",
@@ -33,6 +34,7 @@ def create_storage_source(project: Project, name: str, prefix: str = S3_TEST_CON
             access_key=S3_TEST_CONFIG.access_key_id,
             secret_key=S3_TEST_CONFIG.secret_access_key,
             public_base_url=S3_TEST_CONFIG.public_base_url,
+            region=S3_TEST_CONFIG.region,
         ),
     )
     return data_source
