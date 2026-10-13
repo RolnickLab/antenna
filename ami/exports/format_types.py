@@ -13,6 +13,12 @@ from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
 
+# Occurrence detail fields left out of exports. Each costs a query per occurrence and is not
+# part of the export format.
+EXPORT_EXCLUDED_FIELDS = [
+    "embedding_algorithms",
+]
+
 
 def get_export_serializer():
     from ami.main.api.serializers import OccurrenceSerializer
@@ -30,8 +36,7 @@ def get_export_serializer():
             return instance_data
 
         class Meta(OccurrenceSerializer.Meta):
-            # embedding_algorithms costs a query per occurrence and is not part of the export.
-            fields = [field for field in OccurrenceSerializer.Meta.fields if field != "embedding_algorithms"]
+            fields = [field for field in OccurrenceSerializer.Meta.fields if field not in EXPORT_EXCLUDED_FIELDS]
 
         def to_representation(self, instance):
             return serializers.HyperlinkedModelSerializer.to_representation(self, instance)

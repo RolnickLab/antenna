@@ -10,6 +10,13 @@ from django.db import migrations
 MINIMUM_VERSION = (0, 8)
 
 
+def _parse_version(version: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in version.split(".")[:2])
+    except ValueError:
+        return ()
+
+
 def check_pgvector_is_installed(apps, schema_editor):
     """Stop before any SQL runs unless the server offers pgvector 0.8 or later.
 
@@ -27,15 +34,24 @@ def check_pgvector_is_installed(apps, schema_editor):
             "run this migration again."
         )
     (version,) = row
-    try:
-        parsed = tuple(int(part) for part in version.split(".")[:2])
-    except ValueError:
-        parsed = ()
-    if parsed < MINIMUM_VERSION:
+    if _parse_version(version) < MINIMUM_VERSION:
         raise RuntimeError(
             f"pgvector {minimum} or later must be installed on this PostgreSQL server; found {version}. "
             "Upgrade the pgvector package on every database server, then run this migration again."
         )
+
+
+def update_pgvector_if_older(apps, schema_editor):
+    """Upgrade an extension an earlier experiment created below 0.8; leave a current one alone.
+
+    ``ALTER EXTENSION ... UPDATE`` requires owning the extension even when there is nothing to
+    update, so running it unconditionally fails where an administrator created the extension.
+    """
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        (version,) = cursor.fetchone()
+        if _parse_version(version) < MINIMUM_VERSION:
+            cursor.execute("ALTER EXTENSION vector UPDATE")
 
 
 class Migration(migrations.Migration):
@@ -46,11 +62,10 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(check_pgvector_is_installed, migrations.RunPython.noop),
         migrations.RunSQL(
-            # ALTER ... UPDATE is a no-op on a fresh install. It only matters for a development
-            # database where an experiment already created an older version of the extension.
-            sql="CREATE EXTENSION IF NOT EXISTS vector; ALTER EXTENSION vector UPDATE;",
+            sql="CREATE EXTENSION IF NOT EXISTS vector;",
             # The extension may be shared with other databases on the server, and dropping it can
             # be restricted in hosted environments, so the reverse leaves it in place.
             reverse_sql=migrations.RunSQL.noop,
         ),
+        migrations.RunPython(update_pgvector_if_older, migrations.RunPython.noop),
     ]

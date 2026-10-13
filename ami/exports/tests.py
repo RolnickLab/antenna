@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
-from ami.exports.format_types import JSONExporter
+from ami.exports.format_types import EXPORT_EXCLUDED_FIELDS, JSONExporter
 from ami.exports.models import DataExport
 from ami.exports.utils import get_data_in_batches
 from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
@@ -161,9 +161,9 @@ class DataExportTest(TestCase):
         """Test JSON export record count."""
         self.run_and_validate_export("occurrences_api_json")
 
-    def test_json_export_leaves_out_the_vector_algorithms_and_never_queries_vectors(self):
-        """The detail view's ``embedding_algorithms`` field costs a query per occurrence, so the
-        export serializer drops it; the exported JSON keeps its previous shape."""
+    def test_json_export_leaves_out_the_excluded_fields(self):
+        """Fields in ``EXPORT_EXCLUDED_FIELDS`` cost a query per occurrence, so exported rows never
+        carry them and their queries never run, even when the data exists."""
         algorithm = Algorithm.objects.create(name="Export embedder", key="export-embedder", task_type="embedding")
         DetectionEmbedding.objects.store(
             [
@@ -184,7 +184,8 @@ class DataExportTest(TestCase):
             ]
 
         self.assertGreaterEqual(len(rows), 2)
-        self.assertTrue(all("embedding_algorithms" not in row for row in rows))
+        for field in EXPORT_EXCLUDED_FIELDS:
+            self.assertTrue(all(field not in row for row in rows), field)
         self.assertFalse(any("ml_detectionembedding" in query["sql"] for query in queries.captured_queries))
 
     def test_csv_export_has_detection_fields(self):

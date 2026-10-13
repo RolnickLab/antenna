@@ -127,7 +127,7 @@ def store_detection_embeddings(
     for detection_resp in detection_responses:
         if detection_resp.bbox is None or not detection_resp.embeddings:
             continue
-        box_key = _box_key(detection_resp.source_image_id, detection_resp.bbox.dict().values())
+        box_key = _box_key(detection_resp.source_image_id, detection_resp.bbox.as_coords())
         candidates = by_box.get(box_key, [])
         if len(candidates) > 1:
             logger.warning(
@@ -167,7 +167,8 @@ def store_detection_embeddings(
         if first_writes:
             # Hold the lock until the vectors are committed, so a concurrent first writer sees them.
             stack.enter_context(transaction.atomic())
-            for algorithm, pair_key in first_writes:
+            # A fixed order, so two batches that share new pairs cannot each hold one lock and wait for the other.
+            for algorithm, pair_key in sorted(first_writes, key=lambda pair: (pair[0].pk, pair[1])):
                 _lock_first_write(algorithm, pair_key)
                 stored_by_pair[(algorithm, pair_key)] = DetectionEmbedding.objects.stored_length(
                     algorithm.pk, pair_key
