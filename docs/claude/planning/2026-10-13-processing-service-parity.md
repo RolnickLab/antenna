@@ -195,3 +195,33 @@ Keyword search over antenna + ADC PRs/issues (gh), bodies skimmed. Possibly inco
 
 Lessons: registration is add-only (renamed slugs linger), so new pipeline slugs should be final names;
 an earlier BioCLIP service lived in `processing_services/` and moved to ADC (8ec3704f), so real vector models belong in ADC, not here.
+
+## 5. Status and open decisions (end of 2026-10-13)
+
+Done: minimal service parity (147c0988, aa208483), README contract (d26084ef), Antenna round-trip tests
+`ami/ml/test_processing_service_contract.py` (sync vectors, project config forwarded, feature-only via
+`process_detections`), service unit tests wired into the backend workflow. Async branch
+`feat/processing-service-async-worker` (stacked): #1252 merged in, worker updated to the current jobs API,
+startup checks, CI job `test-async-processing-service` running `scripts/ci/async_processing_service_e2e.sh`.
+Manual async run on a local CI stack: job SUCCESS, 6 detections, 6 vectors of length 8 from the extractor.
+
+Open, for the owner (from the takeaway review):
+1. **Classifier vectors are stored but unreadable.** `features_for_all_detections` keys the vector by the
+   classifier (as ADC does, C:232). Antenna's `Pipeline.embedding_algorithms()` and the readers filter on
+   `task_type="embedding"`, so these rows are written and never read. Either readers accept "any algorithm with
+   stored vectors", or services report backbone vectors under an embedding-typed algorithm. The e2e tests avoid
+   depending on this.
+2. **Feature-only pipeline as a regular ML job.** The template mirrors ADC's `[detector, extractor]` shape, so
+   #1479's `is_embedding_only()` is False and an ML job can run it, creating detections without classifications and
+   occurrences without determinations. Fix candidates: #1479 predicate "has an embedding algorithm and no
+   classifier", or list only the extractor. Owner decision pending; the template was left in the ADC shape.
+3. **Scope of the async PR.** It contains draft #1252 (bootstrap, start modes, registration) merged in, not rewritten;
+   it overlaps #1194 (`register.py`, `start.sh`). If #1252 lands first, the async diff shrinks to the worker update.
+4. Push and pull mode can produce different vectors for the same project today: push reads the project's pipeline
+   config, pull reads the worker's environment (#1422, #1279, ADC #146).
+5. `client_info` is accepted by the jobs API but not read; NATS redelivery after a lost result POST is untested here
+   (see `docs/claude/debugging/chaos-scenarios.md`).
+
+Host gotchas met: `docker-compose.ci.yml` pins `container_name: ami_ci_nats` (override with `!reset null` for parallel
+stacks); with many stacks running the Celery `watchfiles` reloader dies on "Too many open files" (inotify), leaving
+async jobs PENDING; run `celery ... worker` directly in an override.
