@@ -6,6 +6,14 @@ import requests
 
 
 class TestUtils(TestCase):
+    def test_softmax_is_normalized_and_stable_for_large_logits(self):
+        from ami.utils.stats import softmax
+
+        probabilities = softmax([1000.0, 1001.0, 990.0])
+        self.assertAlmostEqual(float(probabilities.sum()), 1.0)
+        self.assertEqual(int(probabilities.argmax()), 1)
+        self.assertTrue(all(0.0 <= p <= 1.0 for p in probabilities))
+
     def test_extract_timestamps(self):
         from ami.utils.dates import get_image_timestamp_from_filename
 

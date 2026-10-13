@@ -55,6 +55,7 @@ from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
 from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
+from ami.utils.stats import softmax
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -2958,7 +2959,10 @@ class Classification(BaseModel):
     scores = ArrayField(
         models.FloatField(),
         null=True,
-        help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+        help_text=(
+            "Per-category probabilities. Deprecated as a service input: derived as the softmax of the logits "
+            "when the logits are available."
+        ),
     )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
@@ -3030,15 +3034,25 @@ class Classification(BaseModel):
             f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
         )
 
-    def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
+    def probabilities(self) -> list[float]:
         """
-        Return the scores with their index, but sorted by score.
+        The per-category probabilities of this classification, or an empty list if it has neither
+        ``scores`` nor ``logits``.
+
+        Stored ``scores`` win because post-processing (class masking) rewrites them while keeping
+        the original logits. Rows without ``scores`` get the softmax of their ``logits``.
         """
         if self.scores:
-            top_scores_by_index = sorted(enumerate(self.scores), key=lambda x: x[1], reverse=True)[:n]
-            return top_scores_by_index
-        else:
-            return []
+            return self.scores
+        if self.logits:
+            return softmax(self.logits).tolist()
+        return []
+
+    def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
+        """
+        Return the probabilities with their index, but sorted by probability.
+        """
+        return sorted(enumerate(self.probabilities()), key=lambda x: x[1], reverse=True)[:n]
 
     def predictions(self, sort=True) -> typing.Iterable[tuple[str, float]]:
         """
@@ -3046,7 +3060,7 @@ class Classification(BaseModel):
         """
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
-        scores = self.scores or []
+        scores = self.probabilities()
         preds = zip(self.category_map.labels, scores)
         if sort:
             return sorted(preds, key=lambda x: x[1], reverse=True)
@@ -3062,7 +3076,7 @@ class Classification(BaseModel):
         """
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
-        scores = self.scores or []
+        scores = self.probabilities()
         category_data_with_taxa = self.category_map.with_taxa()
         taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
         preds = zip(taxa_sorted_by_index, scores)

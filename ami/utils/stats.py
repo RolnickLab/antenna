@@ -9,9 +9,23 @@ from __future__ import annotations
 
 import collections
 import math
+import typing
+
+import numpy as np
 
 # z-score for a 95% two-sided confidence interval (Wilson score).
 WILSON_Z_95 = 1.959963984540054
+
+
+def softmax(logits: typing.Sequence[float]) -> np.ndarray:
+    """Return the softmax probabilities of ``logits``, which sum to 1.
+
+    The maximum is subtracted before exponentiating so large logits cannot overflow.
+    """
+    shifted = np.asarray(logits, dtype=float)
+    shifted = shifted - shifted.max()
+    probabilities = np.exp(shifted)
+    return probabilities / probabilities.sum()
 
 
 def wilson_interval(successes: int, total: int, z: float = WILSON_Z_95) -> tuple[float, float] | None:

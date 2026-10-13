@@ -42,6 +42,7 @@ from ami.tests.fixtures.main import (
 )
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
+from ami.utils.stats import softmax
 
 
 class TestProcessingServiceAPI(APITestCase):
@@ -2106,6 +2107,135 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
             0,
             "Deployment.taxa_count should reflect taxa from occurrences created by save_results",
         )
+
+
+class TestClassificationProbabilities(TestCase):
+    """Probabilities come from logits when a response has them, with deprecated scores as the fallback."""
+
+    LOGITS = [2.0, 0.5, -1.0]
+    PIPELINE_LOGGER = "ami.ml.models.pipeline"
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Probabilities Project")
+        self.deployment = Deployment.objects.create(name="d1", project=self.project)
+        event_time = datetime.datetime(2026, 4, 16, 22, 0, 0)
+        self.event = Event.objects.create(
+            project=self.project, deployment=self.deployment, group_by="2026-04-16", start=event_time, end=event_time
+        )
+        self.images = [
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                project=self.project,
+                event=self.event,
+                timestamp=event_time,
+                path=f"probabilities_test_{i}.jpg",
+            )
+            for i in range(2)
+        ]
+        self.pipeline = Pipeline.objects.create(name="Probabilities Pipeline")
+        self.detector = ALGORITHM_CHOICES["random-detector"]
+        self.classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        self.pipeline.algorithms.set(
+            [get_or_create_algorithm_and_category_map(algo) for algo in (self.detector, self.classifier)]
+        )
+        self.expected = softmax(self.LOGITS).tolist()
+        for label in ALGORITHM_CHOICES["random-species-classifier"].category_map.labels:  # type: ignore[union-attr]
+            Taxon.objects.get_or_create(name=label)
+
+    def _save(self, image: SourceImage, **classification_fields):
+        assert self.classifier.category_map
+        timestamp = image.timestamp
+        results = PipelineResultsResponse(
+            pipeline=self.pipeline.slug,
+            algorithms={},
+            total_time=0.01,
+            source_images=[SourceImageResponse(id=image.pk, url=image.path)],
+            detections=[
+                DetectionResponse(
+                    source_image_id=image.pk,
+                    bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    algorithm=AlgorithmReference(name=self.detector.name, key=self.detector.key),
+                    timestamp=timestamp,
+                    classifications=[
+                        ClassificationResponse(
+                            classification=self.classifier.category_map.labels[0],
+                            labels=self.classifier.category_map.labels,
+                            algorithm=AlgorithmReference(name=self.classifier.name, key=self.classifier.key),
+                            timestamp=timestamp,
+                            terminal=True,
+                            **classification_fields,
+                        )
+                    ],
+                )
+            ],
+        )
+        save_results(results)
+        return Classification.objects.get(detection__source_image=image)
+
+    def test_logits_only_matches_equivalent_scores_only(self):
+        from_logits = self._save(self.images[0], logits=self.LOGITS)
+        with self.assertLogs(self.PIPELINE_LOGGER, level="WARNING"):
+            from_scores = self._save(self.images[1], scores=self.expected)
+
+        self.assertEqual(from_logits.taxon, from_scores.taxon)
+        self.assertAlmostEqual(from_logits.score, from_scores.score)
+        self.assertEqual(from_logits.logits, self.LOGITS)
+        self.assertEqual(from_logits.scores, from_logits.probabilities())
+        for logits_item, scores_item in zip(from_logits.top_n(3), from_scores.top_n(3)):
+            self.assertEqual(logits_item["taxon"], scores_item["taxon"])
+            self.assertAlmostEqual(logits_item["score"], scores_item["score"])
+
+    def test_scores_only_is_stored_as_sent_with_one_warning_per_algorithm(self):
+        with self.assertLogs(self.PIPELINE_LOGGER, level="WARNING") as logs:
+            saved = self._save(self.images[0], scores=self.expected)
+
+        self.assertEqual(saved.scores, self.expected)
+        self.assertEqual(saved.score, max(self.expected))
+        self.assertIsNone(saved.logits)
+        deprecations = [m for m in logs.output if "have scores but no logits" in m]
+        self.assertEqual(len(deprecations), 1)
+        self.assertIn(self.classifier.key, deprecations[0])
+
+    def test_both_prefers_logits_and_does_not_warn(self):
+        calibrated = [0.5, 0.3, 0.2]
+        with self.assertNoLogs(self.PIPELINE_LOGGER, level="WARNING"):
+            saved = self._save(self.images[0], logits=self.LOGITS, scores=calibrated)
+
+        self.assertEqual(saved.scores, self.expected)
+        self.assertAlmostEqual(saved.score, max(self.expected))
+
+    def test_neither_logits_nor_scores_raises_a_clear_error(self):
+        with self.assertRaisesMessage(ValueError, "neither logits nor scores"):
+            self._save(self.images[0])
+
+    def test_stored_rows_without_logits_or_without_both_do_not_crash(self):
+        assert self.classifier.category_map
+        algorithm = self.pipeline.algorithms.get(key=self.classifier.key)
+        detection = Detection.objects.create(source_image=self.images[0], bbox=[0, 0, 1, 1])
+
+        def stored(**fields) -> Classification:
+            return Classification.objects.create(
+                detection=detection, algorithm=algorithm, timestamp=self.images[0].timestamp, **fields
+            )
+
+        legacy = stored(scores=self.expected)
+        self.assertEqual(legacy.probabilities(), self.expected)
+        self.assertEqual(len(legacy.top_n(2)), 2)
+        self.assertEqual(legacy.top_n(1)[0]["taxon"].name, "Vanessa atalanta")
+
+        logits_only = stored(logits=self.LOGITS)
+        self.assertEqual(logits_only.probabilities(), self.expected)
+        self.assertEqual(list(logits_only.predictions())[0][0], "Vanessa atalanta")
+
+        # Class masking keeps the original logits and rewrites the scores; the scores must win.
+        masked = stored(logits=self.LOGITS, scores=[0.0, 1.0, 0.0])
+        self.assertEqual(masked.top_n(1)[0]["taxon"].name, "Vanessa cardui")
+
+        empty = stored()
+        self.assertEqual(empty.probabilities(), [])
+        self.assertEqual(list(empty.predictions()), [])
+        self.assertEqual(list(empty.predictions_with_taxa()), [])
+        self.assertEqual(empty.top_n(3), [])
 
 
 class AlgorithmProjectTestBase(APITestCase):

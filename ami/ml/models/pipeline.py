@@ -54,6 +54,7 @@ from ami.ml.schemas import (
 )
 from ami.ml.tasks import celery_app, create_detection_images
 from ami.utils.requests import create_session, extract_error_message_from_response
+from ami.utils.stats import softmax
 
 logger = logging.getLogger(__name__)
 
@@ -683,6 +684,23 @@ def create_detections(
     return existing_detections + new_detections
 
 
+def classification_probabilities(classification_resp: ClassificationResponse) -> list[float]:
+    """
+    The per-category probabilities for a classification response: the softmax of its logits when it
+    has any, otherwise its (deprecated) scores.
+
+    :raises ValueError: if the response has neither logits nor scores.
+    """
+    if classification_resp.logits:
+        return softmax(classification_resp.logits).tolist()
+    if classification_resp.scores:
+        return list(classification_resp.scores)
+    raise ValueError(
+        f"Classification '{classification_resp.classification}' from algorithm "
+        f"'{classification_resp.algorithm.key}' has neither logits nor scores."
+    )
+
+
 def create_category_map_for_classification(
     classification_resp: ClassificationResponse,
     logger: logging.Logger = logger,
@@ -695,7 +713,9 @@ def create_category_map_for_classification(
 
     :return: The AlgorithmCategoryMap object
     """
-    labels = classification_resp.labels or list(map(str, range(len(classification_resp.scores))))
+    labels = classification_resp.labels or list(
+        map(str, range(len(classification_probabilities(classification_resp))))
+    )
     category_map_data = [
         {
             "label": label,
@@ -716,12 +736,14 @@ def create_category_map_for_classification(
 def get_or_create_taxon_for_classification(
     algorithm: Algorithm,
     classification_resp: ClassificationResponse,
+    probabilities: list[float],
     logger: logging.Logger = logger,
 ) -> Taxon:
     """
     Create a Taxon object from a ClassificationResponse and add it to a TaxaList.
 
     :param classification: A ClassificationResponse object
+    :param probabilities: The per-category probabilities of the classification, see classification_probabilities()
 
     :return: The Taxon object
     """
@@ -734,9 +756,9 @@ def get_or_create_taxon_for_classification(
     else:
         logger.debug(f"Using existing taxa list {taxa_list}")
 
-    # Get top label from classification scores
+    # Get top label from the classification probabilities
     assert algorithm.category_map, f"No category map found for algorithm {algorithm}"
-    label_data: dict = algorithm.category_map.data[classification_resp.scores.index(max(classification_resp.scores))]
+    label_data: dict = algorithm.category_map.data[probabilities.index(max(probabilities))]
     returned_taxon_name = classification_resp.classification
     # @TODO standardize the Taxon search / lookup. See similar query in ml.models.algorithm.AlgorithmCategoryMap
     taxon = Taxon.objects.filter(
@@ -777,6 +799,8 @@ def create_classification(
     ), f"No classification algorithm was specified for classification {classification_resp}"
     logger.debug(f"Processing classification {classification_resp}")
 
+    probabilities = classification_probabilities(classification_resp)
+
     try:
         classification_algo = algorithms_known[classification_resp.algorithm.key]
     except KeyError:
@@ -800,6 +824,7 @@ def create_classification(
     taxon = get_or_create_taxon_for_classification(
         algorithm=classification_algo,
         classification_resp=classification_resp,
+        probabilities=probabilities,
         logger=logger,
     )
 
@@ -807,7 +832,7 @@ def create_classification(
         detection=detection,
         taxon=taxon,
         algorithm=classification_algo,
-        score=max(classification_resp.scores),
+        score=max(probabilities),
     ).first()
 
     if existing_classification:
@@ -829,6 +854,8 @@ def create_classification(
                 if field == "category_map":
                     # Use the foreign key from the classification algorithm
                     setattr(existing_classification, field, classification_algo.category_map)
+                elif field == "scores":
+                    setattr(existing_classification, field, probabilities)
                 else:
                     # Get the value from the classification response
                     setattr(existing_classification, field, getattr(classification_resp, field))
@@ -842,10 +869,10 @@ def create_classification(
             detection=detection,
             taxon=taxon,
             algorithm=classification_algo,
-            score=max(classification_resp.scores),
+            score=max(probabilities),
             timestamp=classification_resp.timestamp or now(),
             logits=classification_resp.logits,
-            scores=classification_resp.scores,
+            scores=probabilities,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
             job_id=job_id,
@@ -859,6 +886,28 @@ def create_classification(
             logger.debug(f"Initialized new classification {new_classification} (not saved)")
 
     return classification, not existing_classification
+
+
+def warn_about_deprecated_scores(
+    detection_responses: list[DetectionResponse],
+    logger: logging.Logger = logger,
+) -> None:
+    """
+    Log one deprecation warning for each algorithm that sent scores without logits.
+
+    Scores are deprecated in favor of logits. One warning per algorithm keeps a batch of thousands of
+    classifications from flooding the log.
+    """
+    algorithm_keys = dict.fromkeys(
+        classification_resp.algorithm.key
+        for detection_resp in detection_responses
+        for classification_resp in detection_resp.classifications
+        if classification_resp.scores and not classification_resp.logits
+    )
+    for key in algorithm_keys:
+        logger.warning(
+            f"Classifications from algorithm '{key}' have scores but no logits. Scores are deprecated; send logits."
+        )
 
 
 def create_classifications(
@@ -883,6 +932,8 @@ def create_classifications(
     """
     existing_classifications: list[Classification] = []
     new_classifications: list[Classification] = []
+
+    warn_about_deprecated_scores(detection_responses, logger=logger)
 
     for detection, detection_resp in zip(detections, detection_responses):
         for classification_resp in detection_resp.classifications:

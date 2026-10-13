@@ -38,6 +38,7 @@ If your goal is to run an ML backend locally, simply copy the `example` app and 
 3. Implement the `run()` function. Some important considerations:
     - Always run `_get_pipeline_response` at the end of `run()` to get a valid `PipelineResultsResponse`
     - Each algorithm/stage in a pipeline should take a list of `SourceImage`s or `Detection`s and produce a list of `Detection`s (with or without classifications). The class member function `_get_detections()` handles this general stage structure; it batchifys the inputs and produces output detections.
+    - Send `logits` (the raw, pre-softmax output for each label) with each classification. Antenna derives the probabilities from them with a softmax. The `scores` field is deprecated: Antenna still accepts it when `logits` are missing, but logs a deprecation warning.
     - 4 example pipelines are already implemented. See the table at the end of the README for examples of what detections from each pipeline look like.
         - `ZeroShotHFClassifierPipeline`
         - `ZeroShotObjectDetectorPipeline`
