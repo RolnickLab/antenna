@@ -9,6 +9,7 @@ volumes:
   minio_data:
     driver: local
   node_modules:
+  ml_backend_model_cache:
 
 services:
   django: &django
@@ -190,6 +191,8 @@ services:
       context: ./processing_services/example
     volumes:
       - ./processing_services/example/:/app
+      # Hugging Face and torch downloads survive container rebuilds; the first start downloads the models.
+      - ml_backend_model_cache:/root/.cache
     ports:
       - "2005:2000"
     networks:
