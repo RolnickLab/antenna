@@ -11,7 +11,7 @@ In this directory, we define locally-run processing services as FastAPI apps. A 
 - `/process`: receives source images and existing detections via a `PipelineRequest` and returns a `PipelineResponse` containing detections
 
 `processing_services` contains 2 apps:
-- `example`: demos how to add custom pipelines/algorithms with real models. It runs as `ml_backend` in the main Antenna docker compose stack for local development, so jobs there produce real detections and classifications. The first start downloads the models into the `ml_backend_model_cache` volume, which keeps them across rebuilds; `docker volume rm` it to download again.
+- `example`: demos how to add custom pipelines/algorithms with real models. It runs as `ml_backend` in the main Antenna docker compose stack for local development, so jobs there produce real detections and classifications. The first job downloads the models (about 3.6 GB for the zero-shot pipelines; about a minute on a fast connection) into the `ml_backend_model_cache` volume, which keeps them across rebuilds; `docker volume rm` it to download again.
 - `minimal`: a simple ML backend with no models and fixed outputs, for testing the processing service API. The CI stack (`docker-compose.ci.yml`) uses it, and it can be started next to the main stack with `docker compose -f processing_services/docker-compose.yml up -d ml_backend_minimal`.
 
 If your goal is to run an ML backend locally, simply copy the `example` app and follow the steps below.
