@@ -30,11 +30,10 @@ class ModelOutput:
     # Lookup from a row to its project: the cheapest path, which is the table's own project
     # column when it has one.
     project_path: str
-    # Set on a table whose rows hang off another output's rows (classifications off detections): the
-    # model of that output, and the relation from its rows to this table's. The algorithm query then
-    # asks both in one EXISTS. Separate EXISTS joined by OR cannot become a semi-join, and Postgres
-    # then builds each one's matches for the whole table; one EXISTS keeps the per-occurrence lookup.
-    # See #1462.
+    # For a table whose rows hang off another output's rows (classifications off detections): that
+    # output's model, and the relation from its rows to this table's. The algorithm query asks both
+    # in one EXISTS, because separate EXISTS joined by OR make Postgres collect each one's matches
+    # across the whole table before it returns the first page. See #1462.
     folded_into: str = ""
     folded_path: str = ""
 

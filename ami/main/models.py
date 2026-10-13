@@ -3378,27 +3378,18 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
     def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
-        """Subquery matching occurrences with any result from the given algorithms: a detection
-        made by one (detectors), a classification from one (classifiers and post-processing
-        algorithms such as class masking or a size filter), or a feature vector from one
-        (embedding-only models)."""
-        from ami.ml.models import DetectionEmbedding
+        """Subquery matching occurrences with any result from the given algorithms, in any of the
+        output tables listed in ``ami.ml.model_outputs``: a detection made by one (detectors), a
+        classification from one (classifiers and post-processing algorithms such as class masking or
+        a size filter), an algorithm result, or a feature vector (embedding-only models)."""
+        from ami.ml.model_outputs import occurrences_from_algorithms
 
-        return Exists(
-            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
-                models.Q(detection_algorithm__in=algorithm_ids)
-                | models.Q(classifications__algorithm__in=algorithm_ids)
-            )
-        ) | Exists(
-            DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), algorithm_id__in=algorithm_ids)
-        )
+        return occurrences_from_algorithms(algorithm_ids)
 
     def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with at least one result from the given algorithms.
 
-        Matches detectors through Detection.detection_algorithm, classifiers or
-        post-processing algorithms through their classifications, and embedding models
-        through their feature vectors, so every algorithm listed by
+        Matches every output table in ``ami.ml.model_outputs``, so every algorithm listed by
         ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
         form returns each occurrence once; a join through
         ``detections__classifications`` returns one row per matching result, which

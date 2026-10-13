@@ -125,8 +125,23 @@ class TestModelOutputQueries(TestCase):
     def test_a_writer_exists_for_every_registered_table(self):
         self.assertEqual(set(self.writers), {output.model for output in model_outputs.MODEL_OUTPUTS})
 
+    def test_the_algorithm_filter_finds_the_result_in_each_table(self):
+        everything = set(self._occurrences().values_list("pk", flat=True))
+        for model, (occurrence, algorithm, _job) in self.written.items():
+            with self.subTest(model):
+                found = set(self._occurrences().processed_by_algorithm([algorithm.pk]).values_list("pk", flat=True))
+                self.assertEqual(found, {occurrence.pk})
+                left = set(self._occurrences().not_processed_by_algorithm([algorithm.pk]).values_list("pk", flat=True))
+                self.assertEqual(left, everything - {occurrence.pk})
+
     def test_the_job_filter_finds_the_result_in_each_table(self):
         for model, (occurrence, _algorithm, job) in self.written.items():
             with self.subTest(model):
                 found = set(self._occurrences().created_or_updated_by_job(job.pk).values_list("pk", flat=True))
                 self.assertEqual(found, {occurrence.pk})
+
+    def test_used_in_project_lists_the_algorithm_that_wrote_to_each_table(self):
+        used = set(Algorithm.objects.used_in_project(self.project).values_list("pk", flat=True))
+        expected = {algorithm.pk for _occurrence, algorithm, _job in self.written.values()}
+        self.assertEqual(used, expected)
+        self.assertNotIn(self.unused_algorithm.pk, used)

@@ -23,6 +23,7 @@ canonical but was undocumented.
 | Permission matrix test | `ami/main/tests.py:1532-1590` | Template: owner / member / other-user tests asserting 200/403 per endpoint action |
 | `update_calculated_fields()` | `ami/base/models.py:165` (usage: `ami/tests/fixtures/main.py:166`) | Refresh cached aggregates after related-data changes / bulk operations |
 | Feature vectors (`DetectionEmbedding`) | `ami/ml/models/embedding.py` (`DetectionEmbeddingQuerySet.store()`), reader in `ami/ml/embeddings/reader.py` | One row per (detection, algorithm, key), written from `DetectionResponse.embeddings` by `create_detection_embeddings()` in `ami/ml/embeddings/writer.py`. Read with `vectors_for_detections(ids, algorithm_id)`; never compare vectors across algorithms. Full guide: `docs/claude/reference/feature-vectors.md` |
+| Which tables an algorithm or job wrote to | `ami/ml/model_outputs.py` (`MODEL_OUTPUTS`) | The occurrence `algorithm` and `job` filters and `Algorithm.objects.used_in_project()` are built from this one list. A new output table is registered there (or named in `EXEMPT_MODELS`); a test fails until it is. |
 
 ## Conventions
 
