@@ -3413,21 +3413,17 @@ class OccurrenceQuerySet(BaseQuerySet):
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
 
-        An occurrence matches when the job created one of its detections, a classification
-        on one of them, an algorithm result for it, or a feature vector for one of its detections,
-        so several jobs can match the same occurrence.
+        An occurrence matches when the job wrote a row for it in any of the output tables listed in
+        ``ami.ml.model_outputs`` (a detection, a classification on one of its detections, an algorithm
+        result, or a feature vector for one of its detections), so several jobs can match the same
+        occurrence.
 
         Identifications are not matched: people make them, not jobs. EXISTS subqueries return
         each occurrence once, where a join would return one row per matching result.
         """
-        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
-        DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
-        return self.filter(
-            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-        )
+        from ami.ml.model_outputs import occurrences_from_job
+
+        return self.filter(occurrences_from_job(job_id))
 
     def with_timestamps(self):
         """
