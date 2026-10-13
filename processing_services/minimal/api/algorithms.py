@@ -117,3 +117,16 @@ RANDOM_SPECIES_CLASSIFIER = AlgorithmConfigResponse(
         uri="https://huggingface.co/RolnickLab/random-species-classifier",
     ),
 )
+
+CONSTANT_FEATURE_EXTRACTOR = AlgorithmConfigResponse(
+    name="Constant feature extractor",
+    key="constant-feature-extractor",
+    task_type="embedding",
+    description=(
+        "Return an 8-value feature vector for each detection, derived from its capture and box. "
+        "No model weights; the same box always gets the same vector."
+    ),
+    version=1,
+    version_name="v1",
+    category_map=None,
+)

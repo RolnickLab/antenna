@@ -2,7 +2,6 @@
 import datetime
 import logging
 import pathlib
-import typing
 
 import PIL.Image
 import pydantic
@@ -91,9 +90,12 @@ class ClassificationResponse(pydantic.BaseModel):
         default_factory=list,
         description="The calibrated probabilities for each class label, most commonly the softmax output.",
     )
-    logits: list[float] = pydantic.Field(
-        default_factory=list,
-        description="The raw logits output by the model, before any calibration or normalization.",
+    logits: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "The raw logits output by the model, before any calibration or normalization. "
+            "Omitted when the request config sets include_logits to false."
+        ),
     )
     inference_time: float | None = None
     algorithm: AlgorithmReference
@@ -119,8 +121,19 @@ class SourceImageResponse(pydantic.BaseModel):
 
 class DetectionRequest(pydantic.BaseModel):
     source_image: SourceImageRequest  # the 'original' image
-    bbox: BoundingBox
+    bbox: BoundingBox | None = None
     crop_image_url: str | None = None
+    algorithm: AlgorithmReference
+
+
+class EmbeddingResponse(pydantic.BaseModel):
+    """A feature vector for one detection, and the algorithm that produced it.
+
+    Only vectors from the same algorithm are comparable, and every vector from one algorithm
+    has the same length.
+    """
+
+    features: list[float] = pydantic.Field(description="The feature vector.")
     algorithm: AlgorithmReference
 
 
@@ -132,6 +145,10 @@ class DetectionResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     crop_image_url: str | None = None
     classifications: list[ClassificationResponse] = []
+    embeddings: list[EmbeddingResponse] | None = pydantic.Field(
+        default=None,
+        description="Feature vectors for this detection, at most one per algorithm.",
+    )
 
 
 class Detection(BaseImage):
@@ -139,6 +156,7 @@ class Detection(BaseImage):
     bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
+    crop_image_url: str | None = None  # as sent in the request, echoed back by feature-only pipelines
     classifications: list[ClassificationResponse] = []
 
 
@@ -203,14 +221,43 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant", "random-detection-random-species"]
+class PipelineRequestConfigParameters(pydantic.BaseModel):
+    """Per-request settings, sent by Antenna as the "config" of a request in synchronous mode.
+
+    Antenna merges the pipeline's default config with the project's pipeline config and sends the
+    result, including keys meant only for Antenna (such as those prefixed "request_"), so unknown
+    keys are ignored rather than rejected. The keys and defaults match the AMI Data Companion.
+    """
+
+    model_config = pydantic.ConfigDict(extra="ignore")
+
+    include_logits: bool = pydantic.Field(
+        default=True,
+        description="Return the raw logits with each classification. Turn off to shrink large responses.",
+    )
+    features_for_all_detections: bool = pydantic.Field(
+        default=False,
+        description=(
+            "Attach the terminal classifier's own feature vector to every detection, "
+            "as an embedding named after that classifier."
+        ),
+    )
+    embedding_extractor: str | None = pydantic.Field(
+        default=None,
+        description=(
+            "The key of the feature extractor that adds an embedding to every detection. "
+            "None uses the pipeline's extractor, if it has one; an empty string turns it off. "
+            "A key the pipeline does not offer is rejected."
+        ),
+        examples=["constant-feature-extractor", ""],
+    )
 
 
 class PipelineRequest(pydantic.BaseModel):
-    pipeline: PipelineChoice
+    pipeline: str
     source_images: list[SourceImageRequest]
     detections: list[DetectionRequest] | None = None
-    config: dict
+    config: PipelineRequestConfigParameters | None = None
 
     # Example for API docs:
     class Config:
@@ -228,7 +275,7 @@ class PipelineRequest(pydantic.BaseModel):
 
 
 class PipelineResultsResponse(pydantic.BaseModel):
-    pipeline: PipelineChoice
+    pipeline: str
     total_time: float
     algorithms: dict[str, AlgorithmConfigResponse] = pydantic.Field(
         default_factory=dict,
@@ -241,6 +288,7 @@ class PipelineResultsResponse(pydantic.BaseModel):
     )
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    errors: list | str | None = None
 
 
 class PipelineStageParam(pydantic.BaseModel):

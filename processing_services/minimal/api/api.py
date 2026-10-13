@@ -3,11 +3,18 @@ Fast API interface for processing images through the localization and classifica
 """
 
 import logging
+import os
 import time
 
 import fastapi
 
-from .pipelines import ConstantPipeline, Pipeline, RandomDetectionRandomSpeciesPipeline
+from .pipelines import (
+    ConstantPipeline,
+    ConstantWithFeatureExtractorPipeline,
+    FeatureExtractorOnlyPipeline,
+    Pipeline,
+    RandomDetectionRandomSpeciesPipeline,
+)
 from .schemas import (
     AlgorithmConfigResponse,
     Detection,
@@ -31,7 +38,30 @@ logger = logging.getLogger(__name__)
 app = fastapi.FastAPI()
 
 
-pipelines: list[type[Pipeline]] = [ConstantPipeline, RandomDetectionRandomSpeciesPipeline]
+ALL_PIPELINES: list[type[Pipeline]] = [
+    ConstantPipeline,
+    RandomDetectionRandomSpeciesPipeline,
+    ConstantWithFeatureExtractorPipeline,
+    FeatureExtractorOnlyPipeline,
+]
+
+
+def select_pipelines(setting: str) -> list[type[Pipeline]]:
+    """The pipelines named in a comma-separated AMI_PIPELINES value, or all of them when it is empty.
+
+    An unknown slug raises, so a typo stops the service at startup instead of hiding a pipeline.
+    """
+    by_slug = {pipeline.config.slug: pipeline for pipeline in ALL_PIPELINES}
+    slugs = [slug.strip() for slug in setting.split(",") if slug.strip()]
+    if not slugs:
+        return list(ALL_PIPELINES)
+    unknown = [slug for slug in slugs if slug not in by_slug]
+    if unknown:
+        raise ValueError(f"Unknown pipelines in AMI_PIPELINES: {unknown}. Choices: {list(by_slug)}")
+    return [by_slug[slug] for slug in slugs]
+
+
+pipelines: list[type[Pipeline]] = select_pipelines(os.environ.get("AMI_PIPELINES", ""))
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
@@ -82,6 +112,10 @@ async def readyz():
 @app.post("/process", tags=["services"])
 async def process(data: PipelineRequest) -> PipelineResultsResponse:
     pipeline_slug = data.pipeline
+    try:
+        Pipeline = pipeline_choices[pipeline_slug]
+    except KeyError:
+        raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
 
     source_images = [SourceImage(**img.model_dump()) for img in data.source_images]
     # Open source images once before processing
@@ -97,14 +131,11 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     start_time = time.time()
 
     try:
-        Pipeline = pipeline_choices[pipeline_slug]
-    except KeyError:
-        raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
-
-    try:
         pipeline = Pipeline(
             source_images=source_images,
             existing_detections=detections,
+            request_config=data.config,
+            detections_sent=bool(data.detections),
         )
         results = pipeline.run()
     except Exception as e:
@@ -140,6 +171,10 @@ def create_detections(
     source_image_map = {img.id: img for img in source_images}
     grouped_detection_requests = {}
     for request in detection_requests:
+        bbox = request.bbox
+        if bbox is None or bbox.x2 <= bbox.x1 or bbox.y2 <= bbox.y1:
+            logger.warning(f"Skipping a detection request with no box or an empty box: {bbox}")
+            continue
         if request.source_image.id not in grouped_detection_requests:
             grouped_detection_requests[request.source_image.id] = []
         grouped_detection_requests[request.source_image.id].append(request)
@@ -206,6 +241,7 @@ def create_detections(
                 id=cropped_image_id,
                 url=request.crop_image_url or source_image.url,
                 algorithm=request.algorithm,
+                crop_image_url=request.crop_image_url,
             )
             # Set the _pil attribute to the cropped image
             det._pil = cropped_image_pil
