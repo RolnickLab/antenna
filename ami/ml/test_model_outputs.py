@@ -145,3 +145,74 @@ class TestModelOutputQueries(TestCase):
         expected = {algorithm.pk for _occurrence, algorithm, _job in self.written.values()}
         self.assertEqual(used, expected)
         self.assertNotIn(self.unused_algorithm.pk, used)
+
+    def _algorithm_sql(self, *algorithm_ids) -> str:
+        return str(self._occurrences().processed_by_algorithm(list(algorithm_ids)).query)
+
+    def test_a_classifier_selection_builds_one_exists_over_detections_and_classifications(self):
+        """The common case, one classifier, is a single EXISTS so Postgres can plan a semi-join;
+        ORed EXISTS cannot, and make it collect every match in the table before the first page."""
+        _occurrence, classifier, _job = self.written["main.Classification"]
+        sql = self._algorithm_sql(classifier.pk)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertIn("main_classification", sql)
+        self.assertNotIn("ml_detectionembedding", sql)
+        self.assertNotIn("ml_algorithmresult", sql)
+
+    def test_a_detector_selection_does_not_join_classifications(self):
+        _occurrence, detector, _job = self.written["main.Detection"]
+        sql = self._algorithm_sql(detector.pk)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertNotIn("main_classification", sql)
+
+    def test_an_embedding_only_selection_builds_only_the_vector_exists(self):
+        _occurrence, extractor, _job = self.written["ml.DetectionEmbedding"]
+        sql = self._algorithm_sql(extractor.pk)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertIn("ml_detectionembedding", sql)
+        self.assertNotIn("main_classification", sql)
+
+    def test_an_algorithm_holding_rows_in_two_tables_gets_both_terms(self):
+        """Whether an algorithm has vectors is read from the data: a classifier that also stored its
+        backbone vectors matches through both tables."""
+        occurrence, classifier, job = self.written["main.Classification"]
+        extra = self._make_occurrence()
+        self._write_detection_embedding(extra, classifier, job)
+        sql = self._algorithm_sql(classifier.pk)
+        self.assertEqual(sql.count("EXISTS"), 2)
+        found = set(self._occurrences().processed_by_algorithm([classifier.pk]).values_list("pk", flat=True))
+        self.assertEqual(found, {occurrence.pk, extra.pk})
+
+    def test_a_mixed_selection_ors_the_terms_it_needs(self):
+        classified, classifier, _ = self.written["main.Classification"]
+        embedded, extractor, _ = self.written["ml.DetectionEmbedding"]
+        queryset = self._occurrences().processed_by_algorithm([classifier.pk, extractor.pk])
+        self.assertEqual(set(queryset.values_list("pk", flat=True)), {classified.pk, embedded.pk})
+        self.assertEqual(self._algorithm_sql(classifier.pk, extractor.pk).count("EXISTS"), 2)
+
+    def test_an_algorithm_without_results_matches_nothing(self):
+        everything = set(self._occurrences().values_list("pk", flat=True))
+        ids = [self.unused_algorithm.pk]
+        self.assertEqual(list(self._occurrences().processed_by_algorithm(ids)), [])
+        self.assertEqual(
+            set(self._occurrences().not_processed_by_algorithm(ids).values_list("pk", flat=True)), everything
+        )
+
+    def test_the_algorithm_filter_costs_one_lookup_beside_the_list_query(self):
+        """One query finds which tables hold rows for the algorithms; none of the list or count
+        queries repeats it. An algorithm without rows needs no query on the occurrences at all.
+        Cachalot is off so every query counts."""
+        from ami.tests.fixtures.queries import no_query_cache
+
+        _occurrence, classifier, _job = self.written["main.Classification"]
+
+        def filtered(ids):
+            return self._occurrences().processed_by_algorithm(ids)
+
+        with no_query_cache():
+            with self.assertNumQueries(2):
+                list(filtered([classifier.pk]))
+            with self.assertNumQueries(2):
+                filtered([classifier.pk]).count()
+            with self.assertNumQueries(1):
+                list(filtered([self.unused_algorithm.pk]))

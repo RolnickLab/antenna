@@ -3381,7 +3381,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         """Subquery matching occurrences with any result from the given algorithms, in any of the
         output tables listed in ``ami.ml.model_outputs``: a detection made by one (detectors), a
         classification from one (classifiers and post-processing algorithms such as class masking or
-        a size filter), an algorithm result, or a feature vector (embedding-only models)."""
+        a size filter), an algorithm result, or a feature vector (embedding-only models). Runs one
+        small lookup (cached by cachalot) to find which of those tables hold rows."""
         from ami.ml.model_outputs import occurrences_from_algorithms
 
         return occurrences_from_algorithms(algorithm_ids)

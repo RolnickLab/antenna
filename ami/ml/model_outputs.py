@@ -98,26 +98,48 @@ EXEMPT_MODELS: dict[str, str] = {}
 
 
 def occurrences_from_algorithms(algorithm_ids) -> Q:
-    """Matches occurrences with a result from any of the algorithms, in any output table."""
-    conditions = {
-        output.model: Q(**{f"{output.algorithm_field}__in": algorithm_ids})
-        for output in MODEL_OUTPUTS
-        if not output.folded_into
-    }
+    """Matches occurrences with a result from any of the algorithms, in the tables that hold some.
+
+    One small lookup per call (cached by cachalot) finds which tables have rows for the algorithms,
+    and only those become EXISTS terms. A single classifier or detector then yields one EXISTS, which
+    Postgres plans as a semi-join; ORed EXISTS cannot be, and make it collect every match in the
+    table before returning a first page. Algorithms with no rows anywhere match nothing. See #1462.
+    """
+    matching = _models_with_rows_from(algorithm_ids)
+    roots = {output.model: output for output in MODEL_OUTPUTS if not output.folded_into}
+    conditions: dict[str, Q] = {}
     for output in MODEL_OUTPUTS:
-        if output.folded_into:
-            conditions[output.folded_into] |= Q(
-                **{f"{output.folded_path}__{output.algorithm_field}__in": algorithm_ids}
-            )
+        if output.model in matching:
+            root, path = (output.folded_into, f"{output.folded_path}__") if output.folded_into else (output.model, "")
+            lookup = Q(**{f"{path}{output.algorithm_field}__in": algorithm_ids})
+            conditions[root] = conditions[root] | lookup if root in conditions else lookup
+    if not conditions:
+        return Q(pk__in=[])
     return _any_of(
         Exists(
-            output.model_class.objects.filter(**{output.occurrence_path: OuterRef("pk")}).filter(
-                conditions[output.model]
-            )
+            roots[root].model_class.objects.filter(**{roots[root].occurrence_path: OuterRef("pk")}).filter(condition)
         )
-        for output in MODEL_OUTPUTS
-        if not output.folded_into
+        for root, condition in conditions.items()
     )
+
+
+def _models_with_rows_from(algorithm_ids) -> set[str]:
+    """The output models that hold at least one row written by any of the algorithms.
+
+    Decided by the data, not the algorithm's task type: a classifier's backbone vectors are stored
+    under the classifier itself. One query, with a LIMIT 1 probe per table that filters on the
+    literal ids. A probe correlated with the algorithm row instead makes Postgres scan the whole
+    table to prove an algorithm has no rows there (measured 80 ms on a 640k-row table).
+    """
+    probes = {
+        f"has_output_{index}": Exists(
+            output.model_class.objects.filter(**{f"{output.algorithm_field}__in": algorithm_ids})
+        )
+        for index, output in enumerate(MODEL_OUTPUTS)
+    }
+    rows = apps.get_model("ml", "Algorithm").objects.filter(pk__in=algorithm_ids).annotate(**probes)
+    flags = [any(column) for column in zip(*rows.values_list(*probes))]
+    return {output.model for output, has_rows in zip(MODEL_OUTPUTS, flags) if has_rows}
 
 
 def occurrences_from_job(job_id: int) -> Q:
