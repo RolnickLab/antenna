@@ -14,14 +14,38 @@ so the reply_subject ACK still fires downstream.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
-from api.api import pipeline_choices  # type: ignore[import-not-found]
-from api.schemas import PipelineResultsResponse, SourceImage, SourceImageResponse  # type: ignore[import-not-found]
+from api.api import worker_pipelines  # type: ignore[import-not-found]
+from api.schemas import (  # type: ignore[import-not-found]
+    PipelineRequestConfigParameters,
+    PipelineResultsResponse,
+    SourceImage,
+    SourceImageResponse,
+)
 
 from .schemas import PipelineProcessingTask, PipelineResultsError, PipelineTaskResult
 
 logger = logging.getLogger(__name__)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    return default if value is None else value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def worker_request_config() -> PipelineRequestConfigParameters:
+    """The request config for pull-mode tasks, read from the environment.
+
+    Pull-mode tasks carry no config (see #1422), so the worker reads the same settings the
+    AMI Data Companion worker does. Unset variables keep the push-mode defaults.
+    """
+    return PipelineRequestConfigParameters(
+        include_logits=_env_flag("AMI_INCLUDE_LOGITS", True),
+        features_for_all_detections=_env_flag("AMI_FEATURES_FOR_ALL_DETECTIONS", False),
+        embedding_extractor=os.environ.get("AMI_EMBEDDING_EXTRACTOR"),
+    )
 
 
 def process_task(task: PipelineProcessingTask, pipeline_slug: str) -> PipelineTaskResult:
@@ -34,7 +58,7 @@ def process_task(task: PipelineProcessingTask, pipeline_slug: str) -> PipelineTa
     reply_subject = task.reply_subject or ""
 
     try:
-        PipelineCls = pipeline_choices[pipeline_slug]
+        PipelineCls = {pipeline.config.slug: pipeline for pipeline in worker_pipelines}[pipeline_slug]
     except KeyError:
         return _error_result(reply_subject, task.image_id, f"Unknown pipeline slug '{pipeline_slug}'")
 
@@ -46,7 +70,9 @@ def process_task(task: PipelineProcessingTask, pipeline_slug: str) -> PipelineTa
 
     start = time.time()
     try:
-        pipeline = PipelineCls(source_images=[source_image], existing_detections=[])
+        pipeline = PipelineCls(
+            source_images=[source_image], existing_detections=[], request_config=worker_request_config()
+        )
         detections = pipeline.run()
     except Exception as e:
         logger.exception("Pipeline run failed for task %s", task.id)

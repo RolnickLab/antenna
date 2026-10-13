@@ -26,7 +26,7 @@ import sys
 import time
 
 import requests
-from api.api import pipelines as pipeline_classes  # type: ignore[import-not-found]
+from api.api import worker_pipelines as pipeline_classes  # type: ignore[import-not-found]
 from api.schemas import PipelineConfigResponse  # type: ignore[import-not-found]
 from worker.schemas import (  # type: ignore[import-not-found]
     AsyncPipelineRegistrationRequest,
@@ -107,7 +107,7 @@ def resolve_project_id(api_url: str, headers: dict[str, str]) -> str:
 
 
 def fetch_own_pipelines() -> list[PipelineConfigResponse]:
-    """Return the pipeline configs this container serves.
+    """Return the pipeline configs the worker polls for (feature-only pipelines are push-only).
 
     Imported directly from the api module rather than fetched over HTTP from
     the co-located FastAPI service — register.py runs in the same container,

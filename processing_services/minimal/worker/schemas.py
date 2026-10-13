@@ -38,6 +38,19 @@ class PipelineProcessingTask(pydantic.BaseModel):
     reply_subject: str | None = None
 
 
+class JobListItem(pydantic.BaseModel):
+    """One job from `GET /api/v2/jobs/?ids_only=1`."""
+
+    id: int
+    pipeline_slug: str
+
+
+class JobsListResponse(pydantic.BaseModel):
+    """Response body of `GET /api/v2/jobs/?ids_only=1` (paginated)."""
+
+    results: list[JobListItem] = []
+
+
 class TasksResponse(pydantic.BaseModel):
     """Response body of `POST /api/v2/jobs/{id}/tasks/`."""
 

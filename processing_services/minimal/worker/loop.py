@@ -1,9 +1,8 @@
 """
 Worker poll loop. Mode B (all-pipelines) per the design doc.
 
-Iterates each of this container's registered pipeline slugs in turn, so the
-slug for any given job is always the outer loop variable — no reverse lookup
-from job_id → slug needed.
+Lists unfinished async jobs for all of this worker's pipelines in one call;
+each listed job names its pipeline slug.
 
 # TODO(follow-up): add --pipeline <slug> flag (mode A) so multiple workers can
 #   run side-by-side as competing consumers for the same pipeline.
@@ -18,7 +17,7 @@ import os
 import signal
 import time
 
-from api.api import pipeline_choices  # type: ignore[import-not-found]
+from api.api import worker_pipelines  # type: ignore[import-not-found]
 
 from .client import AntennaClient
 from .runner import process_task
@@ -45,7 +44,7 @@ class Loop:
 
     def run(self) -> None:
         self._install_signal_handlers()
-        logger.info("Polling for jobs on pipelines: %s", list(pipeline_choices))
+        logger.info("Polling for jobs on pipelines: %s", self.slugs)
 
         while not self.shutdown:
             try:
@@ -57,27 +56,30 @@ class Loop:
             if not iterated:
                 time.sleep(self.poll_interval)
 
+    @property
+    def slugs(self) -> list[str]:
+        return [pipeline.config.slug for pipeline in worker_pipelines]
+
     def _iterate(self) -> bool:
-        """One poll cycle across all registered pipeline slugs. Returns True if any work was done."""
+        """One poll cycle across our pipelines. Returns True if any work was done."""
         did_work = False
-        for slug in pipeline_choices:
+        for job_id, slug in self.client.list_active_jobs(self.slugs):
             if self.shutdown:
                 break
-            job_ids = self.client.list_active_jobs(slug)
-            for job_id in job_ids:
-                if self.shutdown:
-                    break
-                tasks = self.client.reserve_tasks(job_id, self.batch_size, client_info=self.client_info)
-                if not tasks:
-                    continue
-                did_work = True
-                results = [process_task(task, slug) for task in tasks]
-                ack = self.client.submit_results(job_id, results, client_info=self.client_info)
-                logger.info(
-                    "Job %s (%s): processed %d task(s), results_queued=%s",
-                    job_id,
-                    slug,
-                    len(tasks),
-                    ack.get("results_queued"),
-                )
+            if slug not in self.slugs:
+                logger.warning("Job %s is for pipeline %s, which this worker does not offer", job_id, slug)
+                continue
+            tasks = self.client.reserve_tasks(job_id, self.batch_size, client_info=self.client_info)
+            if not tasks:
+                continue
+            did_work = True
+            results = [process_task(task, slug) for task in tasks]
+            ack = self.client.submit_results(job_id, results, client_info=self.client_info)
+            logger.info(
+                "Job %s (%s): processed %d task(s), results_queued=%s",
+                job_id,
+                slug,
+                len(tasks),
+                ack.get("results_queued"),
+            )
         return did_work
