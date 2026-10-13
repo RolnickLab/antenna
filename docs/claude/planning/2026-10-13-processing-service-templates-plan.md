@@ -172,3 +172,24 @@ poll jobs (or add `GET /jobs/next`, #1265, with key support), fix the discarded 
 key cache. Suggest closing #1011 with thanks (owner's call).
 
 PR 1's work (listing fix, CI async job, schema parity) is the same under (a) and (c); only (b) changes it.
+
+## 9. Status (2026-10-13, evening)
+
+| PR | State |
+|---|---|
+| #1513 (new) | Draft. Probabilities derived from logits on save; reads prefer stored `scores` (class masking rewrites them, keeps logits), then softmax(logits), then nothing; deprecation warning once per algorithm per batch; help-text migration `main/0100`. Full suite 863 OK. |
+| #1252 | Pushed (main merged; listing fix; schema parity; tests; drift guard; CI async job). GitHub: lint, test, test-async-processing-service green on 746a74dd. |
+| #992 | Pushed (main merged; live weights URL behind `MODEL_BASE_URL`; alignment fix; logits only, rounded to 4 decimals; tests; real CPU run: ~318 KB JSON per detection, 11–14 s warm per image, mostly the OWLv2 detector). Needs #1513 to save. |
+| #952 | Pushed (main merged; model cache volume: first job 60 s and 3.6 GB, after recreate 13.7 s). |
+
+**Intermittent lost result (Antenna, found by the new CI job).** First CI run on 2c83fb01: the worker processed all 6
+tasks and `/result/` accepted all 6 (`results_queued` 4 + 2), the process stage reached 100%, but only 5 results were
+saved and acknowledged (NATS delivery 1 never acked) and the job stayed STARTED at 83% past the 300 s timeout; no
+redelivery reached the worker. Re-run on 746a74dd passed; 8 local runs passed. Not yet explained: the dump kept only
+the last 80 log lines, so the missing `process_nats_pipeline_result` task's fate (failed and waiting for NATS
+redelivery, retrying, or never run) is unknown. The improved dump in `scripts/ci/async_processing_service_e2e.sh`
+prints the job's warnings/errors and the result-task lines next time. Candidate ticket; place it in the job-status
+failure family before patching.
+
+Open for the owner: auth path (§8, recommend c); #1513 read precedence; #992 logit rounding; whether to file the
+lost-result ticket; ADC #149-style payload size for full logits (~318 KB per detection).
