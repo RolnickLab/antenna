@@ -107,7 +107,11 @@ Schemas are split so the v1 FastAPI side doesn't have to know anything about pul
 The worker speaks to Antenna over HTTP only. Direct NATS access from a worker is not supported (Antenna proxies NATS behind the HTTP endpoints). This matches the ADC contract and lets workers run behind firewalls.
 
 **Fetch active jobs:**
-- `GET /api/v2/jobs/?pipeline=<slug>&status=STARTED&ids_only=true` for each of the stub's pipeline slugs.
+- `GET /api/v2/jobs/?pipeline__slug__in=<slug,slug>&ids_only=1&incomplete_only=1&dispatch_mode=async_api`, one call
+  for all of the stub's pipelines, returning `{results: [{id, pipeline_slug}]}` (one job per call, random order). This
+  is the AMI Data Companion worker's query, and Antenna records it as the worker's idle heartbeat (only the
+  `pipeline__slug__in` form does); `incomplete_only` also catches RETRY jobs, and `dispatch_mode` keeps synchronous
+  jobs out (their `/tasks/` call returns 400). Revised 2026-10-13; an earlier draft polled each slug separately.
 
 **Reserve tasks:**
 - `POST /api/v2/jobs/{id}/tasks/` with `{"batch_size": 4}` →  `{"tasks": [PipelineProcessingTask, ...]}`
@@ -125,17 +129,15 @@ All 3 endpoints use `Authorization: Token <token>` for now. See "Forward compati
 #   enables multiple workers as competing consumers for the same pipeline.
 # TODO(follow-up): add `--job-id <id>` flag (mode C) for one-shot job-pinned runs,
 #   for test harnesses that want to drain and exit.
-my_slugs = list(pipeline_choices.keys())
 while not shutdown:
     did_work = False
-    for slug in my_slugs:
-        for job_id in client.list_active_jobs(slug):
-            tasks = client.reserve_tasks(job_id, batch_size=WORKER_BATCH_SIZE)
-            if not tasks:
-                continue
-            did_work = True
-            results = [runner.process(task, slug) for task in tasks]  # exceptions → PipelineResultsError
-            client.submit_results(job_id, results)
+    for job_id, slug in client.list_active_jobs(list(pipeline_choices)):
+        tasks = client.reserve_tasks(job_id, batch_size=WORKER_BATCH_SIZE)
+        if not tasks:
+            continue
+        did_work = True
+        results = [runner.process(task, slug) for task in tasks]  # exceptions → PipelineResultsError
+        client.submit_results(job_id, results)
     if not did_work:
         sleep(WORKER_POLL_INTERVAL_SECONDS)
 ```
@@ -152,7 +154,7 @@ The outer iteration is per-slug rather than "list all jobs for all slugs at once
 2. Django applies migrations.
 3. **An idempotent `ensure_default_project` management command runs from the Django `/start` script when `ENSURE_DEFAULT_PROJECT=1` is set in the env.** It ensures:
     - The default user exists (`antenna@insectai.org`, password `localadmin`). Matches `.envs/.local/.django` and the values already baked into PR #1194's `register.py` defaults.
-    - A project exists with a known slug (`default-project`). If one already exists with that slug, no-op. If not, create it with the default user as owner. The project's PK is looked up and exposed as the `ANTENNA_PROJECT_ID` env the minimal worker container reads.
+    - A project named "Default Project" exists (looked up by name; created with the default user as owner if missing), with a small "Default Collection" of sample images. `register.py` resolves the project by `ANTENNA_DEFAULT_PROJECT_NAME`, or uses `ANTENNA_PROJECT_ID` when set.
 4. The minimal container starts. `start.sh` launches FastAPI in background.
 5. `register.py` waits for `http://localhost:2000/livez` (own server ready), then for `ANTENNA_API_URL/livez` (Antenna ready), then logs in, creates/finds a ProcessingService, registers pipelines. Has existing retry loop (10 attempts, 5s apart) for "project not found yet" etc.
 6. `worker_main.py` starts polling.

@@ -40,6 +40,18 @@ docker compose -f processing_services/docker-compose.yml up -d   # minimal conta
 
 The minimal container self-registers a `ProcessingService` (no `endpoint_url`, async-mode) against the "Default Project" seeded by `ami/main/management/commands/ensure_default_project.py`. Submit an `async_api` job for the `constant` or `random-detection-random-species` pipeline and the worker picks it up.
 
+### What a pull-mode worker must do
+
+These rules come from Antenna's job API, and the AMI Data Companion's worker follows them too:
+
+- Authenticate with `Authorization: Token <token>`.
+- Find work with one call for all of its pipelines: `GET /api/v2/jobs/?pipeline__slug__in=<slugs>&ids_only=1&incomplete_only=1&dispatch_mode=async_api`. Each listed job carries its `pipeline_slug`. Antenna treats this call as the worker's heartbeat, so a service that stops polling shows as offline after about a minute.
+- Reserve tasks with `POST /api/v2/jobs/{id}/tasks/` and return one result per task to `POST /api/v2/jobs/{id}/result/`, carrying the task's `reply_subject`. Include the task's image in the result's `source_images` even when nothing was detected, because that is how Antenna counts the image as processed. A failure is reported as `{"error": "...", "image_id": "..."}` so the task is still acknowledged.
+- Register the pipelines it serves with `POST /api/v2/projects/{id}/pipelines/`, listing every algorithm its results can name.
+- Expect `503` from either endpoint when Antenna's queue is briefly unavailable, and retry.
+
+The CI job `test-async-processing-service` runs `scripts/ci/async_processing_service_e2e.sh`, which runs an `async_api` job through the minimal worker end to end.
+
 
 ## Environment Set Up
 
