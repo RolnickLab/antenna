@@ -131,8 +131,20 @@ class ClassificationResponse(pydantic.BaseModel):
             "Use the category map from the algorithm to get the full list of labels and metadata."
         ),
     )
-    scores: list[float] = []
-    logits: list[float] | None = None
+    scores: list[float] = pydantic.Field(
+        default=[],
+        description=(
+            "Deprecated: send `logits` instead. The probability of each label, in the same order as the "
+            "category map. Ignored when `logits` is present."
+        ),
+    )
+    logits: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Preferred. The raw, pre-softmax output for each label, in the same order as the category map. "
+            "Probabilities are derived from these with a softmax."
+        ),
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True
