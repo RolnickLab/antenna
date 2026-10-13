@@ -20,7 +20,7 @@ import time
 from api.api import worker_pipelines  # type: ignore[import-not-found]
 
 from .client import AntennaClient
-from .runner import process_task
+from .runner import check_worker_settings, process_task
 from .schemas import ProcessingServiceClientInfo
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 class Loop:
     def __init__(self, client: AntennaClient, client_info: ProcessingServiceClientInfo) -> None:
+        check_worker_settings()
         self.client = client
         self.client_info = client_info
         self.shutdown = False

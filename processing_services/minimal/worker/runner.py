@@ -35,17 +35,35 @@ def _env_flag(name: str, default: bool) -> bool:
     return default if value is None else value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def worker_request_config() -> PipelineRequestConfigParameters:
+def worker_request_config(pipeline_cls=None) -> PipelineRequestConfigParameters:
     """The request config for pull-mode tasks, read from the environment.
 
     Pull-mode tasks carry no config (see #1422), so the worker reads the same settings the
-    AMI Data Companion worker does. Unset variables keep the push-mode defaults.
+    AMI Data Companion worker does. Unset variables keep the push-mode defaults; an empty
+    AMI_EMBEDDING_EXTRACTOR turns the extractor off. The extractor setting only applies to
+    pipelines that offer an extractor, so one key cannot fail every task of the others.
     """
+    extractor = os.environ.get("AMI_EMBEDDING_EXTRACTOR")
+    if pipeline_cls is not None and pipeline_cls.feature_extractor is None:
+        extractor = None
     return PipelineRequestConfigParameters(
         include_logits=_env_flag("AMI_INCLUDE_LOGITS", True),
         features_for_all_detections=_env_flag("AMI_FEATURES_FOR_ALL_DETECTIONS", False),
-        embedding_extractor=os.environ.get("AMI_EMBEDDING_EXTRACTOR"),
+        embedding_extractor=extractor,
     )
+
+
+def check_worker_settings() -> None:
+    """Fail at startup, not per task, when the worker has nothing to poll or an unknown extractor."""
+    if not worker_pipelines:
+        raise RuntimeError(
+            "No pipeline can run in pull mode: AMI_PIPELINES selects only feature-only pipelines, "
+            "which need detections that pull-mode tasks never carry."
+        )
+    extractor = os.environ.get("AMI_EMBEDDING_EXTRACTOR")
+    offered = {p.feature_extractor.key for p in worker_pipelines if p.feature_extractor}
+    if extractor and extractor not in offered:
+        raise ValueError(f"AMI_EMBEDDING_EXTRACTOR={extractor!r} is not offered by any pipeline. Offered: {offered}")
 
 
 def process_task(task: PipelineProcessingTask, pipeline_slug: str) -> PipelineTaskResult:
@@ -71,7 +89,7 @@ def process_task(task: PipelineProcessingTask, pipeline_slug: str) -> PipelineTa
     start = time.time()
     try:
         pipeline = PipelineCls(
-            source_images=[source_image], existing_detections=[], request_config=worker_request_config()
+            source_images=[source_image], existing_detections=[], request_config=worker_request_config(PipelineCls)
         )
         detections = pipeline.run()
     except Exception as e:

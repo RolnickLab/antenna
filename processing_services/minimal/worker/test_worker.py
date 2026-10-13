@@ -10,7 +10,7 @@ from api.api import worker_pipelines
 
 from .client import AntennaClient
 from .loop import Loop
-from .runner import process_task, worker_request_config
+from .runner import check_worker_settings, process_task, worker_request_config
 from .schemas import PipelineProcessingTask, PipelineResultsError, ProcessingServiceClientInfo
 
 WORKER_ENV = {"WORKER_POLL_INTERVAL_SECONDS": "0", "WORKER_BATCH_SIZE": "2"}
@@ -94,6 +94,22 @@ class TestRunner(WorkerTestCase):
         [detection] = result.detections
         [embedding] = detection.embeddings
         self.assertEqual(embedding.algorithm.key, algorithms.CONSTANT_CLASSIFIER.key)
+
+    def test_an_extractor_setting_does_not_fail_pipelines_without_an_extractor(self):
+        with mock.patch.dict(os.environ, {"AMI_EMBEDDING_EXTRACTOR": "constant-feature-extractor"}):
+            check_worker_settings()
+            result = process_task(task(), "constant").result
+        self.assertNotIsInstance(result, PipelineResultsError)
+
+    def test_an_unknown_extractor_setting_stops_the_worker_at_startup(self):
+        with mock.patch.dict(os.environ, {"AMI_EMBEDDING_EXTRACTOR": "typo"}):
+            with self.assertRaises(ValueError):
+                check_worker_settings()
+
+    def test_a_worker_with_no_pull_mode_pipelines_stops_at_startup(self):
+        with mock.patch("worker.runner.worker_pipelines", []):
+            with self.assertRaises(RuntimeError):
+                check_worker_settings()
 
     def test_an_unopenable_image_becomes_an_error_result(self):
         with mock.patch("api.schemas.get_image", return_value=None):
