@@ -15,7 +15,13 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo, TasksResponse
+from .schemas import (
+    JobsListResponse,
+    PipelineProcessingTask,
+    PipelineTaskResult,
+    ProcessingServiceClientInfo,
+    TasksResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,36 +46,31 @@ class AntennaClient:
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-    def list_active_jobs(self, pipeline_slug: str) -> list[int]:
+    def list_active_jobs(self, pipeline_slugs: list[str]) -> list[tuple[int, str]]:
         """
-        Find STARTED job ids for a single pipeline slug.
+        Find unfinished async jobs for any of our pipelines, as (job id, pipeline slug) pairs.
 
-        Calls GET /jobs/?pipeline__slug=<slug>&status=STARTED&ids_only=true.
-        The server's `pipeline` filter expects a DB id; `pipeline__slug` is
-        the slug-based alias exposed by JobFilterSet.
+        Calls GET /jobs/?pipeline__slug__in=<slugs>&ids_only=1&incomplete_only=1&dispatch_mode=async_api,
+        the same query the AMI Data Companion worker sends. Antenna records this call as the
+        worker's heartbeat (a service that stops polling shows as offline after a minute), and
+        returns one job per call, in random order, so several workers spread across jobs.
         """
         try:
             resp = self.session.get(
                 f"{self.api_url}/api/v2/jobs/",
-                params={"pipeline__slug": pipeline_slug, "status": "STARTED", "ids_only": "true"},
+                params={
+                    "pipeline__slug__in": ",".join(pipeline_slugs),
+                    "ids_only": 1,
+                    "incomplete_only": 1,
+                    "dispatch_mode": "async_api",
+                },
                 timeout=self.timeout,
             )
             resp.raise_for_status()
         except requests.RequestException as e:
-            logger.warning("list_active_jobs failed for pipeline=%s: %s", pipeline_slug, e)
+            logger.warning("list_active_jobs failed for pipelines=%s: %s", pipeline_slugs, e)
             return []
-
-        payload = resp.json()
-        # `ids_only=true` returns a flat list. Some list endpoints return
-        # {"results": [...]}; handle both.
-        entries = payload if isinstance(payload, list) else payload.get("results", [])
-        ids: set[int] = set()
-        for entry in entries:
-            if isinstance(entry, dict) and "id" in entry:
-                ids.add(int(entry["id"]))
-            elif isinstance(entry, int):
-                ids.add(entry)
-        return sorted(ids)
+        return [(job.id, job.pipeline_slug) for job in JobsListResponse.model_validate(resp.json()).results]
 
     def reserve_tasks(
         self,
