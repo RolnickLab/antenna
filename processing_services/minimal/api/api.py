@@ -135,6 +135,7 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
             source_images=source_images,
             existing_detections=detections,
             request_config=data.config,
+            detections_sent=bool(data.detections),
         )
         results = pipeline.run()
     except Exception as e:

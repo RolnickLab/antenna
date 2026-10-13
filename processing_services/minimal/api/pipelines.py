@@ -198,9 +198,12 @@ class Pipeline:
         source_images: list[SourceImage],
         existing_detections: list[Detection],
         request_config: PipelineRequestConfigParameters | None = None,
+        detections_sent: bool = False,
     ):
         self.source_images = source_images
         self.existing_detections = existing_detections
+        # True when the request carried detections, even if every one was skipped as empty.
+        self.detections_sent = detections_sent
         self.request_config = request_config or PipelineRequestConfigParameters()
         self.extractor = self.resolve_extractor()
 
@@ -366,6 +369,10 @@ class FeatureExtractorOnlyPipeline(Pipeline):
         if self.existing_detections:
             logger.info("Using the detections sent with the request...")
             detections = self.existing_detections
+        elif self.detections_sent:
+            # Detecting here would return boxes the caller never sent and cannot match.
+            logger.info("Every detection sent was skipped as empty; returning none.")
+            detections = []
         else:
             logger.info("No detections sent, running the constant detector...")
             detections = make_constant_detection(self.source_images)

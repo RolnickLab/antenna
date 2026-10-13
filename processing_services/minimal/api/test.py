@@ -105,6 +105,10 @@ class TestAPI(unittest.TestCase):
         [embedding] = detection["embeddings"]
         self.assertEqual(embedding["algorithm"]["key"], EXTRACTOR_KEY)
 
+    def test_feature_only_pipeline_returns_nothing_when_every_sent_detection_is_skipped(self):
+        data = self.process("constant-feature-extractor-only", detections=[detection_request(None)])
+        self.assertEqual(data["detections"], [])
+
     def test_feature_only_pipeline_detects_when_sent_no_detections(self):
         data = self.process("constant-feature-extractor-only", {"embedding_extractor": ""})
         [detection] = data["detections"]
