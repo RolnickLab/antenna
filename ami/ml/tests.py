@@ -1049,6 +1049,30 @@ class TestPipeline(TestCase):
 
         self.assertEqual(list(filter_processed_images([image], self.pipeline)), [])
 
+    def test_filter_processed_images_with_only_a_detector_and_an_extractor_waits_for_vectors(self):
+        """With no classifier, vectors are the pipeline's output: a capture is processed once each
+        real detection has one from every extractor, and is not reprocessed on every run."""
+        from ami.ml.models.algorithm import AlgorithmTaskType
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+        extractor = Algorithm.objects.create(
+            name="Feature extractor", key="test-feature-extractor", task_type=AlgorithmTaskType.EMBEDDING.value
+        )
+        pipeline = Pipeline.objects.create(name="Detector and extractor")
+        pipeline.algorithms.set([detector, extractor])
+        detection = Detection.objects.create(
+            source_image=image, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4]
+        )
+
+        self.assertEqual(list(filter_processed_images([image], pipeline)), [image])
+
+        DetectionEmbedding.objects.create(
+            detection=detection, algorithm=extractor, project=self.project, vector=[0.5] * 4
+        )
+        self.assertEqual(list(filter_processed_images([image], pipeline)), [])
+
     def test_filter_processed_images_empty_input(self):
         """An empty iterable should yield nothing and run no per-image queries."""
         from ami.ml.models.pipeline import filter_processed_images
