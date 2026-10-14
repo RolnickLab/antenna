@@ -1225,7 +1225,7 @@ class TestImageGrouping(TestCase):
 
         image_width, image_height = 100, 100
 
-        captures = create_captures(deployment=self.deployment)
+        captures = create_captures(deployment=self.deployment, width=None, height=None)
         events = Event.objects.filter(captures__in=captures).distinct()
 
         for event in events:

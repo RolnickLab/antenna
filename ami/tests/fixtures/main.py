@@ -138,8 +138,11 @@ def create_captures(
     interval_minutes: int = 10,
     subdir: str = "test",
     update_deployment: bool = True,
+    width: int | None = 640,
+    height: int | None = 480,
 ):
-    # Create some images over a few monitoring nights
+    # Create some images over a few monitoring nights. These files are never uploaded, so captures get a
+    # size up front; without one, event grouping asks storage for it and waits on a failed request.
     first_night = datetime.datetime.now()
 
     created = []
@@ -152,6 +155,8 @@ def create_captures(
                 deployment=deployment,
                 timestamp=night_timestamp + datetime.timedelta(minutes=i * interval_minutes),
                 path=path,
+                width=width,
+                height=height,
             )
             created.append(img)
 
