@@ -126,8 +126,8 @@ def occurrences_from_algorithms(algorithm_ids) -> Q:
 def _models_with_rows_from(algorithm_ids) -> set[str]:
     """The output models that hold at least one row written by any of the algorithms.
 
-    Decided by the data, not the algorithm's task type: a classifier's backbone vectors are stored
-    under the classifier itself. One query, with a LIMIT 1 probe per table that filters on the
+    Decided by the data, not the algorithm's task type, because one algorithm can write to more than
+    one table. One query, with a LIMIT 1 probe per table that filters on the
     literal ids. A probe correlated with the algorithm row instead makes Postgres scan the whole
     table to prove an algorithm has no rows there (measured 80 ms on a 640k-row table).
     """

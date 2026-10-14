@@ -156,13 +156,20 @@ class TestModelOutputQueries(TestCase):
         sql = self._algorithm_sql(classifier.pk)
         self.assertEqual(sql.count("EXISTS"), 1)
         self.assertIn("main_classification", sql)
-        self.assertNotIn("ml_detectionembedding", sql)
         self.assertNotIn("ml_algorithmresult", sql)
+        self.assertNotIn("ml_detectionembedding", sql)
 
     def test_a_detector_selection_does_not_join_classifications(self):
         _occurrence, detector, _job = self.written["main.Detection"]
         sql = self._algorithm_sql(detector.pk)
         self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertNotIn("main_classification", sql)
+
+    def test_an_algorithm_result_only_selection_builds_only_that_exists(self):
+        _occurrence, post_processor, _job = self.written["ml.AlgorithmResult"]
+        sql = self._algorithm_sql(post_processor.pk)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertIn("ml_algorithmresult", sql)
         self.assertNotIn("main_classification", sql)
 
     def test_an_embedding_only_selection_builds_only_the_vector_exists(self):
@@ -173,11 +180,11 @@ class TestModelOutputQueries(TestCase):
         self.assertNotIn("main_classification", sql)
 
     def test_an_algorithm_holding_rows_in_two_tables_gets_both_terms(self):
-        """Whether an algorithm has vectors is read from the data: a classifier that also stored its
-        backbone vectors matches through both tables."""
+        """Which tables an algorithm wrote to is read from the data: an algorithm that wrote both a
+        classification and an algorithm result matches through both tables."""
         occurrence, classifier, job = self.written["main.Classification"]
         extra = self._make_occurrence()
-        self._write_detection_embedding(extra, classifier, job)
+        self._write_algorithm_result(extra, classifier, job)
         sql = self._algorithm_sql(classifier.pk)
         self.assertEqual(sql.count("EXISTS"), 2)
         found = set(self._occurrences().processed_by_algorithm([classifier.pk]).values_list("pk", flat=True))
@@ -185,10 +192,10 @@ class TestModelOutputQueries(TestCase):
 
     def test_a_mixed_selection_ors_the_terms_it_needs(self):
         classified, classifier, _ = self.written["main.Classification"]
-        embedded, extractor, _ = self.written["ml.DetectionEmbedding"]
-        queryset = self._occurrences().processed_by_algorithm([classifier.pk, extractor.pk])
-        self.assertEqual(set(queryset.values_list("pk", flat=True)), {classified.pk, embedded.pk})
-        self.assertEqual(self._algorithm_sql(classifier.pk, extractor.pk).count("EXISTS"), 2)
+        recorded, post_processor, _ = self.written["ml.AlgorithmResult"]
+        queryset = self._occurrences().processed_by_algorithm([classifier.pk, post_processor.pk])
+        self.assertEqual(set(queryset.values_list("pk", flat=True)), {classified.pk, recorded.pk})
+        self.assertEqual(self._algorithm_sql(classifier.pk, post_processor.pk).count("EXISTS"), 2)
 
     def test_an_algorithm_without_results_matches_nothing(self):
         everything = set(self._occurrences().values_list("pk", flat=True))
