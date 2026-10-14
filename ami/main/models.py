@@ -2726,39 +2726,6 @@ class SourceImageThumbnail(BaseModel):
         ]
 
 
-# @final
-# class IdentificationHistory(BaseModel):
-#     """A history of identifications for an occurrence."""
-#
-#     # @TODO
-#     pass
-
-
-@functools.cache
-def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxon: "Taxon") -> bool | None:
-    """
-    Determine if a user has made an identification of an occurrence that agrees with the given taxon.
-
-    If a user has identified the same occurrence with the same taxon, then they "agree".
-
-    @TODO if we want to reduce this to one query per request, we can accept just User & Occurrence
-    then return the list of Taxon IDs that the user has added to that occurrence.
-    then the view functions can check if the given taxon is in that list. Or check the list of identifications
-    already retrieved by the view.
-    """
-
-    # Anonymous users don't have a primary key and will throw an error when used in a query.
-    if not user or not user.pk or not taxon or not occurrence:
-        return None
-
-    return Identification.objects.filter(
-        occurrence=occurrence,
-        user=user,
-        taxon=taxon,
-        withdrawn=False,
-    ).exists()
-
-
 @final
 class Identification(BaseModel):
     """A classification of an occurrence by a human."""
