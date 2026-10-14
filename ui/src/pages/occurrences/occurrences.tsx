@@ -1,4 +1,5 @@
 import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
@@ -47,6 +48,7 @@ export const Occurrences = () => {
       deployment: true,
       duration: false,
       detections: true,
+      size: true,
       score: true,
       ['updated-at']: true,
     }
@@ -57,6 +59,7 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
+  const { project } = useProjectDetails(projectId as string, true)
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -104,6 +107,14 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
+            {(project?.hasCalibratedStations ||
+              someActive(['size_min_mm'], activeFilters)) && (
+              <FilterControl field="size_min_mm" />
+            )}
+            {(!project?.hasCalibratedStations ||
+              someActive(['size_min'], activeFilters)) && (
+              <FilterControl field="size_min" />
+            )}
           </FilterSection>
           <FilterSection
             title={translate(STRING.MORE_FILTERS)}
