@@ -1,4 +1,4 @@
-# First install of the pgvector extension, which stores feature vectors (DetectionEmbedding).
+# First install of the pgvector extension, which stores feature vectors.
 #
 # The extension package must already be installed on the PostgreSQL server (for example
 # the postgresql-16-pgvector package); CREATE EXTENSION only registers it in this database.
