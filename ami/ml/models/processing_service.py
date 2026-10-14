@@ -239,7 +239,6 @@ class ProcessingService(BaseModel):
         # Create session with retry logic for connection errors and timeouts
         session = create_session(
             retries=3,
-            backoff_factor=2,  # 0s, 2s, 4s delays between retries
             status_forcelist=(500, 502, 503, 504),
         )
 
