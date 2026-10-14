@@ -961,12 +961,9 @@ class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
 class TaxaList(BaseModel):
     """A checklist of taxa"""
 
-<<<<<<< HEAD
     reference_type = "taxa_list"
     reference_name_field = "name"
 
-=======
->>>>>>> 6c6dd45e (Moved code from ami.main.models to ami.main.models_future.taxonomy:)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
