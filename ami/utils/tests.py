@@ -101,3 +101,21 @@ class TestUtils(TestCase):
 
         _, kwargs = mocked.call_args
         self.assertEqual(kwargs["timeout"], (2.0, 10.0))
+
+
+class TestNoQueryCache(TestCase):
+    def test_query_cache_is_turned_back_on_after_an_exception(self):
+        from cachalot.api import LOCAL_STORAGE
+
+        from ami.utils.query_cache import no_query_cache
+
+        LOCAL_STORAGE.cachalot_enabled = True
+
+        @no_query_cache()
+        def failing_task():
+            self.assertFalse(LOCAL_STORAGE.cachalot_enabled)
+            raise RuntimeError("task failed")
+
+        with self.assertRaises(RuntimeError):
+            failing_task()
+        self.assertTrue(LOCAL_STORAGE.cachalot_enabled)

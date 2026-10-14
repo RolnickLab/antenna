@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
-from cachalot.api import cachalot_disabled
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from redis.exceptions import RedisError
@@ -17,6 +16,7 @@ from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
+from ami.utils.query_cache import no_query_cache
 from config import celery_app
 
 if TYPE_CHECKING:
@@ -226,7 +226,7 @@ def _log_worker_availability(job) -> None:
 # is strictly a throughput win. Celery task decorator stack order matters:
 # @celery_app.task wraps the cachalot-wrapped function, so Celery sees the
 # cachalot context manager enter/exit on every task execution.
-@cachalot_disabled()
+@no_query_cache()
 def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
     Process a single pipeline result asynchronously.

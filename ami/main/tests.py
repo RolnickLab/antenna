@@ -7512,7 +7512,7 @@ class TestOccurrenceJobFilter(APITestCase):
         """The filter adds no queries of its own: one statement for the rows and one for the count,
         with no ids read into Python first and no query per occurrence. Cachalot is off so every
         query counts."""
-        from ami.tests.fixtures.queries import no_query_cache
+        from ami.utils.query_cache import no_query_cache
 
         def filtered():
             return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
