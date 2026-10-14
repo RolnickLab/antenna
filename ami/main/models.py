@@ -3376,23 +3376,21 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
-    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
-        """Subquery matching occurrences with any result from the given algorithms —
-        a detection made by one (detectors) or a classification from one (classifiers
-        and post-processing algorithms such as class masking or a size filter)."""
-        return Exists(
-            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
-                models.Q(detection_algorithm__in=algorithm_ids)
-                | models.Q(classifications__algorithm__in=algorithm_ids)
-            )
-        )
+    def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
+        """Subquery matching occurrences with any result from the given algorithms, in any of the
+        output tables listed in ``ami.ml.model_outputs``: a detection made by one (detectors), a
+        classification from one (classifiers and post-processing algorithms such as class masking or
+        a size filter), or an algorithm result. Runs one small lookup (cached by cachalot) to find
+        which of those tables hold rows."""
+        from ami.ml.model_outputs import occurrences_from_algorithms
+
+        return occurrences_from_algorithms(algorithm_ids)
 
     def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with at least one result from the given algorithms.
 
-        Matches detectors through Detection.detection_algorithm and classifiers or
-        post-processing algorithms through their classifications, so every algorithm
-        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
+        Matches every output table in ``ami.ml.model_outputs``, so every algorithm listed by
+        ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
         form returns each occurrence once; a join through
         ``detections__classifications`` returns one row per matching result, which
         inflates pagination counts and duplicates rows across pages.
@@ -3406,18 +3404,16 @@ class OccurrenceQuerySet(BaseQuerySet):
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
 
-        An occurrence matches when the job created one of its detections, a classification
-        on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
+        An occurrence matches when the job wrote a row for it in any of the output tables listed in
+        ``ami.ml.model_outputs`` (a detection, a classification on one of its detections, an algorithm
+        result), so several jobs can match the same occurrence.
 
         Identifications are not matched: people make them, not jobs. EXISTS subqueries return
         each occurrence once, where a join would return one row per matching result.
         """
-        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
-        return self.filter(
-            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-        )
+        from ami.ml.model_outputs import occurrences_from_job
+
+        return self.filter(occurrences_from_job(job_id))
 
     def with_timestamps(self):
         """
