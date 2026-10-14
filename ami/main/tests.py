@@ -8780,12 +8780,8 @@ class TestRegroupSplitsOccurrences(TestCase):
         self.assertEqual(piece.determination_id, self.taxon.pk)
         self.assertEqual(first.occurrences_count, 1)
         self.assertEqual(second.occurrences_count, 1)
-
-    def test_the_link_between_the_pieces_is_kept(self):
-        _, _, detections, _ = self._split_one_occurrence()
-
-        boundary = Detection.objects.get(pk=detections[2].pk)
-        self.assertEqual(boundary.next_detection_id, detections[3].pk)
+        # The link across the boundary is kept, so the pieces can be joined again if the sessions merge.
+        self.assertEqual(Detection.objects.get(pk=detections[2].pk).next_detection_id, detections[3].pk)
 
     def test_merging_sessions_leaves_occurrences_untouched(self):
         self._group(gap_hours=2)

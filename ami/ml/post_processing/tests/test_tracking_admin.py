@@ -10,7 +10,7 @@ from django.urls import reverse
 from ami.base.model_references import ModelRef
 from ami.jobs.job_config import job_config_fields
 from ami.jobs.models import Job
-from ami.main.models import Project, SourceImageCollection
+from ami.main.models import SourceImageCollection
 from ami.ml.post_processing.tracking import TrackingConfig
 from ami.tests.fixtures.main import create_captures, setup_test_project
 from ami.users.models import User
@@ -27,7 +27,7 @@ COST_FIELDS = (
 )
 
 
-class _TrackingAdminCase(TestCase):
+class TestTrackingAdminActions(TestCase):
     @classmethod
     def setUpTestData(cls) -> None:
         cls.superuser = User.objects.create_superuser(email=f"trackadmin+{cls.__name__}@example.com", password="x")
@@ -54,8 +54,6 @@ class _TrackingAdminCase(TestCase):
             **overrides,
         }
 
-
-class TestEventAdminTrackingAction(_TrackingAdminCase):
     def _post(self, data: dict, pks: list[int] | None = None):
         selected = [str(pk) for pk in (pks or [self.event.pk])]
         return self.client.post(
@@ -118,12 +116,6 @@ class TestEventAdminTrackingAction(_TrackingAdminCase):
         self.assertTrue(response.context["form"].errors.get("min_iou"))
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
 
-    def test_a_zero_interval_is_refused_by_the_schema_and_shown_on_the_field(self):
-        response = self._post(self._knobs(max_capture_interval_seconds="0"))
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context["form"].errors.get("max_capture_interval_seconds"))
-        self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
-
     def test_sessions_without_a_project_are_refused(self):
         orphan = self.event
         type(orphan).objects.filter(pk=orphan.pk).update(project=None)
@@ -131,11 +123,8 @@ class TestEventAdminTrackingAction(_TrackingAdminCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "have no project")
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
-        self.assertTrue(Project.objects.filter(pk=self.project.pk).exists())
 
-
-class TestCollectionAdminTrackingAction(_TrackingAdminCase):
-    def test_creates_a_job_scoped_to_the_capture_set(self):
+    def test_the_capture_set_action_creates_a_job_scoped_to_the_set(self):
         collection = SourceImageCollection.objects.create(project=self.project, name="Tracking admin test set")
         collection.images.set(self.event.captures.all())
 

@@ -104,7 +104,7 @@ class TestPairCost(SimpleTestCase):
 
 
 class TestIntervalLimit(SimpleTestCase):
-    def test_interval_limit(self):
+    def test_captures_further_apart_than_the_interval_limit_or_without_a_time_are_not_compared(self):
         t0 = datetime.datetime(2026, 7, 1, 22, 0, 0)
         near, far = t0 + datetime.timedelta(seconds=20), t0 + datetime.timedelta(seconds=45)
         first = t0
