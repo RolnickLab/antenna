@@ -27,6 +27,28 @@ export class SessionDetails extends Session {
     return this._event.stats.detections_max_count
   }
 
+  get detectionsPerCapture():
+    | {
+        max: number
+        median: number
+        quartiles: [number, number]
+        busiestCaptureId: string
+      }
+    | undefined {
+    const stats = this._event.stats
+
+    if (stats.detections_max_count === null || !stats.busiest_capture) {
+      return undefined
+    }
+
+    return {
+      max: stats.detections_max_count,
+      median: stats.detections_median_count,
+      quartiles: [stats.detections_q1_count, stats.detections_q3_count],
+      busiestCaptureId: `${stats.busiest_capture.id}`,
+    }
+  }
+
   get summaryData(): Plot[] {
     return this._event.summary_data
   }
