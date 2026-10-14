@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from cachalot.api import LOCAL_STORAGE
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -29,8 +29,8 @@ from ami.users.models import User
 logger = logging.getLogger(__name__)
 
 
-class TestProcessNatsPipelineResultError(TransactionTestCase):
-    """E2E tests for process_nats_pipeline_result with error handling."""
+class NatsPipelineResultFixtures:
+    """Job, images and Redis state shared by the process_nats_pipeline_result tests."""
 
     def setUp(self):
         """Setup test fixtures."""
@@ -100,6 +100,10 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         self.assertIsNotNone(progress, f"Progress not found for stage '{stage}'")
         self.assertEqual(progress.processed, expected_processed)
         self.assertEqual(progress.total, expected_total)
+
+
+class TestProcessNatsPipelineResultError(NatsPipelineResultFixtures, TestCase):
+    """E2E tests for process_nats_pipeline_result with error handling."""
 
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_process_nats_pipeline_result_with_error(self, mock_manager_class):
@@ -249,48 +253,6 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         # Assert: All tasks acknowledged
         self.assertEqual(mock_manager.acknowledge_task.call_count, 3)
-
-    @patch("ami.jobs.tasks.TaskQueueManager")
-    def test_process_nats_pipeline_result_concurrent_updates(self, mock_manager_class):
-        """
-        Test that concurrent workers update state independently without contention.
-
-        Without a lock, two workers processing different images can both call
-        update_state and receive valid progress — no retry needed, no blocking.
-        """
-        mock_manager = self._setup_mock_nats(mock_manager_class)
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            # Worker 1 processes images[0]
-            result_1 = executor.submit(
-                process_nats_pipeline_result.apply,
-                kwargs={
-                    "job_id": self.job.pk,
-                    "result_data": self._create_error_result(image_id=str(self.images[0].pk)),
-                    "reply_subject": "reply.concurrent.1",
-                },
-            )
-
-            # Worker 2 processes images[1] — no retry, no lock to wait for
-            result_2 = executor.submit(
-                process_nats_pipeline_result.apply,
-                kwargs={
-                    "job_id": self.job.pk,
-                    "result_data": self._create_error_result(image_id=str(self.images[1].pk)),
-                    "reply_subject": "reply.concurrent.2",
-                },
-            )
-
-        self.assertTrue(result_1.result().successful())
-        self.assertTrue(result_2.result().successful())
-
-        # Both images should be marked as processed
-        manager = AsyncJobStateManager(self.job.pk)
-        progress = manager.get_progress("process")
-        self.assertIsNotNone(progress)
-        self.assertEqual(progress.processed, 2)
-        self.assertEqual(progress.total, 3)
-        self.assertEqual(mock_manager.acknowledge_task.call_count, 2)
 
     @patch("ami.jobs.tasks._fail_job")
     @patch("ami.jobs.tasks._ack_task_via_nats")
@@ -518,7 +480,53 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         mock_manager.acknowledge_task.assert_called_once_with(reply_subject)
 
 
-class TestTaskFailureGuard(TransactionTestCase):
+class TestProcessNatsPipelineResultConcurrency(NatsPipelineResultFixtures, TransactionTestCase):
+    """Workers in other threads use their own database connections, so the fixtures must be committed."""
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_process_nats_pipeline_result_concurrent_updates(self, mock_manager_class):
+        """
+        Test that concurrent workers update state independently without contention.
+
+        Without a lock, two workers processing different images can both call
+        update_state and receive valid progress — no retry needed, no blocking.
+        """
+        mock_manager = self._setup_mock_nats(mock_manager_class)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Worker 1 processes images[0]
+            result_1 = executor.submit(
+                process_nats_pipeline_result.apply,
+                kwargs={
+                    "job_id": self.job.pk,
+                    "result_data": self._create_error_result(image_id=str(self.images[0].pk)),
+                    "reply_subject": "reply.concurrent.1",
+                },
+            )
+
+            # Worker 2 processes images[1] — no retry, no lock to wait for
+            result_2 = executor.submit(
+                process_nats_pipeline_result.apply,
+                kwargs={
+                    "job_id": self.job.pk,
+                    "result_data": self._create_error_result(image_id=str(self.images[1].pk)),
+                    "reply_subject": "reply.concurrent.2",
+                },
+            )
+
+        self.assertTrue(result_1.result().successful())
+        self.assertTrue(result_2.result().successful())
+
+        # Both images should be marked as processed
+        manager = AsyncJobStateManager(self.job.pk)
+        progress = manager.get_progress("process")
+        self.assertIsNotNone(progress)
+        self.assertEqual(progress.processed, 2)
+        self.assertEqual(progress.total, 3)
+        self.assertEqual(mock_manager.acknowledge_task.call_count, 2)
+
+
+class TestTaskFailureGuard(TestCase):
     """
     Bug C regression tests for the task_failure signal guard in update_job_failure.
 
@@ -738,7 +746,7 @@ class TestResultEndpointWithError(APITestCase):
         self.assertIn("error", task_kwargs["result_data"])
 
 
-class TestLogWorkerAvailability(TransactionTestCase):
+class TestLogWorkerAvailability(TestCase):
     """Verify the worker-availability log lines emitted when run_job hands an
     async_api job off to NATS. These replace the previous opaque
     "async results still in-flight" line with a concrete count of how many
@@ -866,7 +874,7 @@ class TestLogWorkerAvailability(TransactionTestCase):
         self.assertFalse(any("Zero workers have been seen" in ln for ln in output))
 
 
-class TestMarkLostImagesFailed(TransactionTestCase):
+class TestMarkLostImagesFailed(TestCase):
     """Regression tests for the NATS-lost-images reconciler.
 
     Based on a production incident: 998 images, 982 processed cleanly,
@@ -1235,7 +1243,7 @@ class TestMarkLostImagesFailed(TransactionTestCase):
         self.assertEqual(job.status, JobState.SUCCESS.value)
 
 
-class TestConditionalTerminalTransition(TransactionTestCase):
+class TestConditionalTerminalTransition(TestCase):
     """Regression tests for issue #1337.
 
     `_update_job_progress` used to write the overall `job.status` as part of the
@@ -1474,7 +1482,7 @@ class TestConcurrentStatusRace(TransactionTestCase):
         )
 
 
-class TestTerminalTransitionChokepoint(TransactionTestCase):
+class TestTerminalTransitionChokepoint(TestCase):
     """Regression tests for issue #1337, terminal-writer hardening.
 
     #1338 guarded the terminal write in ``_update_job_progress``. The other
