@@ -605,6 +605,8 @@ class ClassificationAdmin(IdSearchAdminMixin, admin.ModelAdmin[Classification]):
     # every taxon / detection / classification — the latter makes the change page
     # unusable on a large database.
     autocomplete_fields = ("detection", "taxon", "algorithm", "category_map", "applied_to")
+    # Algorithm results have no admin to search, so the link is an id input rather than a select.
+    raw_id_fields = ("algorithm_result",)
     # A digit term jumps to that classification by id (IdSearchAdminMixin); text searches taxon name.
     search_fields = ("taxon__name",)
     # Order by -id (indexed PK) rather than the model's -created_at (no index).

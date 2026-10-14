@@ -1290,6 +1290,9 @@ class EventManager(models.Manager.from_queryset(EventQuerySet)):
 class Event(BaseModel):
     """A monitoring session"""
 
+    reference_type = "session"
+    reference_name_field = "name"
+
     objects: EventManager = EventManager()
     group_by = models.CharField(
         max_length=255,
@@ -2908,7 +2911,12 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 
 @final
 class Classification(BaseModel):
-    """The output of a classifier"""
+    """A taxon classification of one detection: the taxon a classifier or a post-processing run assigned it.
+
+    ``job`` records the run that wrote it, when there was one. ``algorithm_result`` is the
+    post-processing result the row was created for, so the occurrence history can show a run
+    with the classifications it produced; classifications from a pipeline leave it empty.
+    """
 
     project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
@@ -2950,6 +2958,15 @@ class Classification(BaseModel):
         related_name="classifications",
         db_index=False,
     )
+    # Indexed by the partial index in Meta, not by the foreign key's own index.
+    algorithm_result = models.ForeignKey(
+        "ml.AlgorithmResult",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classifications",
+        db_index=False,
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -2974,6 +2991,13 @@ class Classification(BaseModel):
             # written before jobs were recorded have no job. See #1471 for the measurements.
             models.Index(
                 fields=["job", "detection"], name="cls_job_detection_idx", condition=models.Q(job__isnull=False)
+            ),
+            # Deleting a result looks up its classifications. Partial, because pipeline
+            # classifications never have a result.
+            models.Index(
+                fields=["algorithm_result"],
+                name="cls_algorithm_result_idx",
+                condition=models.Q(algorithm_result__isnull=False),
             ),
         ]
 
@@ -3362,15 +3386,17 @@ class OccurrenceQuerySet(BaseQuerySet):
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
 
-        An occurrence matches when the job created one of its detections, or a classification
-        on one of them, so several jobs can match the same occurrence.
+        An occurrence matches when the job created one of its detections, a classification
+        on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
 
-        Identifications are not matched: people make them, not jobs. Two EXISTS subqueries
-        return each occurrence once, where a join would return one row per matching result.
+        Identifications are not matched: people make them, not jobs. EXISTS subqueries return
+        each occurrence once, where a join would return one row per matching result.
         """
+        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
         return self.filter(
             Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
             | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
         )
 
     def with_timestamps(self):
@@ -3600,6 +3626,9 @@ class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
 @final
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
+
+    reference_type = "occurrence"
+    reference_name_field = None
 
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
@@ -4027,6 +4056,9 @@ class SourceImageCollection(BaseModel):
     Collections are saved so that they can be reviewed or re-used later.
 
     """
+
+    reference_type = "capture_set"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)

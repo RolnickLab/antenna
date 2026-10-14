@@ -32,6 +32,8 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
+from ami.main.api.occurrence_history.timeline import occurrence_timeline
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
@@ -1522,11 +1524,17 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    # Actions that read one occurrence's history. They build their own queries and never
+    # serialize the occurrence, and the default filters, which shape lists, do not hide it.
+    HISTORY_ACTIONS = ("history",)
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
         qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
+        if self.action in self.HISTORY_ACTIONS:
+            return qs
         qs = qs.select_related(
             "determination",
             "deployment",
@@ -1574,6 +1582,25 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        operation_id="occurrences_history_retrieve",
+        parameters=[project_id_doc_param],
+        filters=False,
+        responses=OCCURRENCE_HISTORY_ENTRY_SCHEMA,
+    )
+    @action(detail=True, methods=["get"], name="history", pagination_class=None, filter_backends=[])
+    def history(self, request: Request, pk=None) -> Response:
+        """Everything that happened to this occurrence, newest first.
+
+        Merges post-processing results with the classifications they created, identifications
+        and predictions into one list. Available to anyone who can open the occurrence, including
+        for an occurrence that the project's default filters hide from lists and the detail view.
+        The list's filters do not apply: the history is for one occurrence, found by its id.
+        """
+        occurrence = self.get_object()
+        entries = occurrence_timeline(occurrence)
+        return Response(serialize_history(entries, {"request": request}))
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")

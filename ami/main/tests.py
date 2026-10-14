@@ -42,9 +42,11 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
@@ -7409,8 +7411,8 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
 
 class TestOccurrenceJobFilter(APITestCase):
     """
-    Covers the ``?job=`` occurrence filter: occurrences with a detection or a
-    classification written by the given job. Each occurrence must appear once, however
+    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification
+    or an algorithm result written by the given job. Each occurrence must appear once, however
     many of its rows the job wrote, and a malformed id must be a 400, not a 500.
     """
 
@@ -7446,6 +7448,15 @@ class TestOccurrenceJobFilter(APITestCase):
         # Only the other job, and no job at all, must not match.
         self.occ_other = self._make_occurrence([(self.other_job, [self.other_job])])
         self.occ_none = self._make_occurrence([(None, [None])])
+        # The job wrote only an algorithm result, as a post-processing run that changes no prediction does.
+        self.occ_result = self._make_occurrence([(None, [None])])
+        AlgorithmResult.objects.record(
+            occurrence=self.occ_result,
+            algorithm=self.algorithm,
+            job=self.job,
+            kind=SizeFilterResultData.kind,
+            data={"relative_size": 0.001},
+        )
 
     def _make_occurrence(self, detections) -> Occurrence:
         """``detections`` is a list of (detection job, [classification jobs])."""
@@ -7481,8 +7492,10 @@ class TestOccurrenceJobFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         ids = [row["id"] for row in response.json()["results"]]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
-        self.assertEqual(response.json()["count"], 3)
+        self.assertEqual(
+            set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk}
+        )
+        self.assertEqual(response.json()["count"], 4)
 
     def test_other_job_matches_only_its_own_occurrences(self):
         response = self._list(self.other_job.pk)
@@ -7499,23 +7512,18 @@ class TestOccurrenceJobFilter(APITestCase):
         """The filter adds no queries of its own: one statement for the rows and one for the count,
         with no ids read into Python first and no query per occurrence. Cachalot is off so every
         query counts."""
-        from cachalot.api import cachalot_disabled
+        from ami.tests.fixtures.queries import no_query_cache
 
         def filtered():
             return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
 
-        disabled = cachalot_disabled()
-        disabled.__enter__()
-        try:
+        with no_query_cache():
             with self.assertNumQueries(1):
                 ids = {occurrence.pk for occurrence in filtered()}
             with self.assertNumQueries(1):
                 count = filtered().count()
-        finally:
-            # cachalot_disabled() does not restore itself when the block raises.
-            disabled.__exit__(None, None, None)
-        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk})
-        self.assertEqual(count, 3)
+        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk})
+        self.assertEqual(count, 4)
 
 
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):

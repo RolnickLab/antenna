@@ -1799,9 +1799,10 @@ class TestJobChoices(APITestCase):
         """No per-job work: listing eight jobs runs the same queries as listing three, for a member
         whose permissions would otherwise be resolved on every row. Cachalot is off so every query
         counts."""
-        from cachalot.api import cachalot_disabled
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
+
+        from ami.tests.fixtures.queries import no_query_cache
 
         self.client.force_authenticate(self.user)  # The owner is a member of their project.
 
@@ -1811,17 +1812,12 @@ class TestJobChoices(APITestCase):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             return len(response.json()["results"]), len(queries.captured_queries)
 
-        disabled = cachalot_disabled()
-        disabled.__enter__()
-        try:
+        with no_query_cache():
             three_rows, three_rows_queries = list_choices()
             Job.objects.bulk_create(
                 Job(project=self.project, name=f"More {index}", job_type_key=MLJob.key) for index in range(5)
             )
             eight_rows, eight_rows_queries = list_choices()
-        finally:
-            # cachalot_disabled() does not restore itself when the block raises.
-            disabled.__exit__(None, None, None)
         self.assertEqual((three_rows, eight_rows), (3, 8))
         self.assertEqual(eight_rows_queries, three_rows_queries)
 
