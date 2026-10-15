@@ -181,12 +181,6 @@ class JobListSerializer(DefaultSerializer):
         # side effect are also posted directly by existing clients. It says which types a
         # job form should offer as a choice, which is the UI's question, not the API's.
 
-        missing_fields = [name for name in job_type.required_fields if not attrs.get(name)]
-        if missing_fields:
-            raise serializers.ValidationError(
-                {f"{name}_id": f"A {job_type.name} job needs this." for name in missing_fields}
-            )
-
         params = attrs.get("params") or {}
         missing_params = [name for name in job_type.required_params if not params.get(name)]
         if missing_params:
