@@ -59,6 +59,9 @@ claiming a query is cheap.
 | Q4 | Which models have vectors in a project, and how many | `vector_counts_by_algorithm(project_id, key=None)` | `GROUP BY algorithm_id, key` within a project | the same index (index-only); when one project holds most of the table the planner may scan the table instead, measured at 36 ms for 359k rows |
 | Q5 | Detections that still lack a vector from a model | `detections_missing_vectors(detections, algorithm_id, key)` | `NOT EXISTS` on (detection, algorithm, key) added to the caller's queryset | (algorithm, key, detection), index-only |
 | Q6 | Nearest neighbours of one vector, when exact scans are too slow | not shipped | `ORDER BY vector::halfvec(D) <=> seed` within one (algorithm, key) | a partial HNSW index per (algorithm, key), see below |
+| Q7 | Which algorithms stored vectors in a project (choices for the occurrence algorithm filter) | `Algorithm.objects.used_in_project(project)` | `SELECT DISTINCT algorithm_id WHERE project_id = P`, next to its detection and classification lookups | reads one project's range of (project, algorithm, key, detection); not measured |
+| Q8 | Which algorithms have a vector for one occurrence (`embedding_algorithms` on the occurrence detail) | `OccurrenceSerializer.get_embedding_algorithms` | `EXISTS` per algorithm on the occurrence's detections, one query | (algorithm, key, detection) probed through the detection's occurrence; not measured |
+| Q9 | Occurrences with a vector from given algorithms (the `algorithm` and `not_algorithm` filters) | `OccurrenceQuerySet.processed_by_algorithm()` | `build_occurrence_results_q()` in `ami/main/models_future/filters.py`: the vector `EXISTS` is ORed in only when the algorithms have vectors | (algorithm, key, detection); not measured |
 
 `project_vectors` pages with `detection_id > last` rather than `OFFSET`, so every page costs the
 same and memory stays at one chunk. Callers keep their own scope by passing `detection_ids` or by
@@ -149,5 +152,6 @@ warning. Keep full precision somewhere else only where that difference matters, 
 Vectors are deleted with their detection or algorithm. Deleting a job keeps its vectors (the job
 reference becomes null). Saving identical results twice changes nothing; a new vector for the same
 (detection, algorithm, key) replaces the old one in place.
-The replacing job is recorded on the row. A vector that is identical on a re-run is not written, and keeps the
+The replacing job is recorded on the row, so a job that changed a vector is found by the
+"created or updated by job" filter. A vector that is identical on a re-run is not written, and keeps the
 job that first stored it.
