@@ -445,11 +445,9 @@ class JobType:
     name: str
     key: str
 
-    # What a job of this type cannot run without. The API refuses to create one that is
-    # missing any of these, so a gap is a 400 when the job is made rather than a failure
-    # minutes later when it runs. ``required_params`` are keys inside ``Job.params``;
-    # ``required_fields`` are fields on the job itself.
-    required_fields: tuple[str, ...] = ()
+    # Keys a job of this type cannot run without, inside ``Job.params``. The API refuses
+    # to create one that is missing any of these, so a gap is a 400 when the job is made
+    # rather than a failure minutes later when it runs.
     required_params: tuple[str, ...] = ()
 
     # Whether a person can start one from the UI. The rest are created by the platform:
