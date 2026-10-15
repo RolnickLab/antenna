@@ -23,7 +23,8 @@ from django.core.files.storage import default_storage
 from django.db.models import QuerySet
 from django.utils.text import slugify
 
-from ami.main.models import DEFAULT_EMBEDDING_KEY, Identification, Project
+from ami.main.models import Identification, Project
+from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import NamedReference, TrainedAlgorithmReference, TrainingDatasetMetadata, TrainingDatasetSettings

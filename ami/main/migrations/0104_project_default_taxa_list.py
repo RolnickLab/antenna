@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0101_grant_train_classifier_job_permission"),
+        ("main", "0103_grant_train_classifier_job_permission"),
     ]
 
     operations = [

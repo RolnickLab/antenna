@@ -7,7 +7,7 @@ braces. It is kept so the grant is explicit rather than a side effect of a signa
 
 Guardian reads object-level rows, so each project gets a ``GroupObjectPermission``; adding
 to ``group.permissions`` alone would not appear in ``get_perms(user, project)``. Mirrors
-``0099_grant_occurrence_set_permissions``.
+``0101_grant_occurrence_set_permissions``.
 """
 
 from django.db import migrations
@@ -87,7 +87,7 @@ def revoke(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0100_train_classifier_job_permission"),
+        ("main", "0102_train_classifier_job_permission"),
         ("guardian", "0002_generic_permissions_index"),
     ]
 
