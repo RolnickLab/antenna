@@ -163,7 +163,7 @@ class AlgorithmQuerySet(BaseQuerySet):
 
         "Used" means owning actual output rows: classifiers and post-processing algorithms are found
         through their classifications or algorithm results, detectors through their detections
-        (detectors never author a Classification), the same tables ``build_occurrence_results_q``
+        (detectors never author a Classification), the same tables ``build_processed_by_algorithm_q``
         searches. Superseded pipeline versions and standalone post-processing algorithms therefore
         stay listed as long as their results exist, while a configured-but-never-run algorithm does
         not appear.
