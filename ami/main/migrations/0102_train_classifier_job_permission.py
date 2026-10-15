@@ -5,7 +5,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0099_grant_occurrence_set_permissions"),
+        ("main", "0101_grant_occurrence_set_permissions"),
     ]
 
     operations = [
