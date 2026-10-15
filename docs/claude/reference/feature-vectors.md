@@ -144,10 +144,17 @@ by at most 1.5e-4 and the top-1 neighbour agreed in 98.2 percent of cases. Value
 half-precision range (beyond 65,504, NaN, infinity) cannot be stored; the writer skips them with a
 warning. Keep full precision somewhere else only where that difference matters, and say so.
 
+## Query cache
+
+The vector table is listed in `CACHALOT_UNCACHABLE_TABLES` (`config/settings/base.py`), so queries
+that read it are never cached: vector rows are large, and the cache shares Redis with async job
+state. This only works when django-cachalot can see the table in the query. It does not see tables
+inside a negated `Exists` in `filter()`, which is why `detections_missing_vectors` uses `exclude()`.
+
 ## Deletion and retention
 
 Vectors are deleted with their detection or algorithm. Deleting a job keeps its vectors (the job
 reference becomes null). Saving identical results twice changes nothing; a new vector for the same
-(detection, algorithm, key) replaces the old one in place.
-The replacing job is recorded on the row. A vector that is identical on a re-run is not written, and keeps the
-job that first stored it.
+(detection, algorithm, key) replaces the old one in place, and the replacing job is recorded on
+the row. A vector that is identical on a re-run is not written, and keeps the job that first stored
+it.

@@ -1382,6 +1382,12 @@ class TestDuplicateFieldsOnChildren(TestCase):
         embedding.refresh_from_db()
         assert embedding.project == self.project_two
 
+    def test_saving_a_deployment_that_did_not_move_leaves_feature_vectors_alone(self):
+        """Realigning vectors joins detections and captures, so a save that moves nothing skips it."""
+        with CaptureQueriesContext(connection) as queries:
+            self.deployment.save()
+        assert not any("ml_detectionembedding" in query["sql"] for query in queries.captured_queries)
+
     def test_delete_project(self):
         self.project_one.delete()
 
