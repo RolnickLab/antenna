@@ -1236,7 +1236,6 @@ class TestImageGrouping(TestCase):
             set_dimensions_for_collection(event=event)
 
             for capture in event.captures.all():
-                # print(capture.path, capture.width, capture.height)
                 assert (capture.width == image_width) and (capture.height == image_height)
 
 

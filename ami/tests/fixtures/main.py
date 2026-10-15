@@ -142,7 +142,7 @@ def create_captures(
     height: int | None = 480,
 ):
     # Create some images over a few monitoring nights. These files are never uploaded, so captures get a
-    # size up front; without one, event grouping asks storage for it and waits on a failed request.
+    # size up front; without one, event grouping asks storage for it and waits on a failed request. See #1481.
     first_night = datetime.datetime.now()
 
     created = []
