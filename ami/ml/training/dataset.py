@@ -26,7 +26,7 @@ from django.utils.text import slugify
 from ami.main.models import Identification, Project
 from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models.algorithm import Algorithm
-from ami.ml.models.embedding import DetectionEmbedding
+from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
 from ami.ml.schemas import NamedReference, TrainedAlgorithmReference, TrainingDatasetMetadata, TrainingDatasetSettings
 
 if TYPE_CHECKING:
@@ -151,7 +151,7 @@ def row_as_dict(
         "split": split_for(occurrence.pk, salt, test_fraction) if occurrence else None,
     }
     if include_features:
-        row["features"] = embedding.vector.to_list()
+        row["features"] = as_half_precision(embedding.vector).tolist()
     return row
 
 
@@ -237,7 +237,7 @@ def build_training_dataset(
         name = occurrence.determination.name
         if name not in class_index:
             continue
-        features[kept] = np.asarray(embedding.vector.to_list(), dtype=DATASET_DTYPE)
+        features[kept] = as_half_precision(embedding.vector).astype(DATASET_DTYPE)
         labels[kept] = class_index[name]
         detection_ids[kept] = embedding.detection_id
         occurrence_ids[kept] = occurrence.pk
