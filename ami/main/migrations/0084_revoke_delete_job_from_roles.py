@@ -63,5 +63,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(remove_delete_job_from_role_groups, noop_reverse),
+        migrations.RunPython(remove_delete_job_from_role_groups, noop_reverse, elidable=True),
     ]
