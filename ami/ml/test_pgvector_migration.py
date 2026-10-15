@@ -33,5 +33,11 @@ class TestPgvectorGuard(SimpleTestCase):
         # ALTER EXTENSION ... UPDATE needs ownership even when nothing changes, so a current
         # extension an administrator created must not be touched.
         update = "ALTER EXTENSION vector UPDATE"
-        self.assertIn(update, self._run(("0.5.1",), step="update_pgvector_if_older"))
-        self.assertNotIn(update, self._run(("0.8.7",), step="update_pgvector_if_older"))
+        self.assertIn(update, self._run(("0.5.1", True), step="update_pgvector_if_older"))
+        self.assertNotIn(update, self._run(("0.8.7", True), step="update_pgvector_if_older"))
+        self.assertNotIn(update, self._run(("0.8.7", False), step="update_pgvector_if_older"))
+
+    def test_an_old_extension_owned_by_another_role_stops_with_an_instruction(self):
+        # Without ownership the UPDATE fails with a bare permission error, so the migration names the fix instead.
+        with self.assertRaisesRegex(RuntimeError, "version 0.5.1, and this database role does not own it"):
+            self._run(("0.5.1", False), step="update_pgvector_if_older")
