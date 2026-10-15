@@ -1,8 +1,9 @@
 """
-E2E tests for ami.jobs.tasks, focusing on error handling in process_nats_pipeline_result.
+Tests for ami.jobs.tasks: processing pipeline results and errors, job progress, and job status transitions.
 
-This test suite verifies the critical error handling path when PipelineResultsError
-is received instead of successful pipeline results.
+Classes use TestCase, which rolls back each test. Classes whose tests start threads stay
+TransactionTestCase, because each thread opens its own database connection and only sees
+committed rows. See #1481.
 """
 
 import datetime
@@ -34,6 +35,7 @@ class NatsPipelineResultFixtures:
 
     def setUp(self):
         """Setup test fixtures."""
+        super().setUp()
         cache.clear()  # Critical: clear Redis between tests
 
         self.project = Project.objects.create(name="Error Test Project")
@@ -75,6 +77,7 @@ class NatsPipelineResultFixtures:
     def tearDown(self):
         """Clean up after tests."""
         cache.clear()
+        super().tearDown()
 
     def _setup_mock_nats(self, mock_manager_class):
         """Helper to setup mock NATS manager."""
@@ -455,7 +458,7 @@ class TestProcessNatsPipelineResultError(NatsPipelineResultFixtures, TestCase):
         """
         Test graceful handling when job is deleted before error processed.
 
-        From tasks.py lines 97-101, should log error and acknowledge without raising.
+        Should log an error and acknowledge the message without raising.
         """
         mock_manager = self._setup_mock_nats(mock_manager_class)
 
@@ -1376,7 +1379,8 @@ class TestConcurrentStatusRace(TransactionTestCase):
     from a pre-terminal status, so the committed ``REVOKED`` is preserved.
 
     The assertion is written so that green means the bug is fixed and red means
-    the race reproduced.
+    the race reproduced. Stays a TransactionTestCase: the racing threads use their
+    own database connections and must see each other's commits.
     """
 
     def setUp(self):
@@ -1616,7 +1620,9 @@ class TestCancelCompletionRace(TransactionTestCase):
     The invariant: whichever path commits its guarded terminal UPDATE first
     wins, and the loser's guard no-ops rather than clobbering with a full-row
     save. A SUCCESS is never overwritten to REVOKED by a stale cancel, and a
-    REVOKED is never resurrected to SUCCESS by a late completion.
+    REVOKED is never resurrected to SUCCESS by a late completion. Stays a
+    TransactionTestCase: the racing threads use their own database connections and
+    must see each other's commits.
     """
 
     def setUp(self):
