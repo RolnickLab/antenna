@@ -1234,6 +1234,13 @@ class Deployment(BaseModel):
             project=self.project
         )
 
+        # Feature vectors copy their project from the detection's capture and are read by it
+        # (``vector_counts_by_algorithm``), so they follow the capture when it moves.
+        DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
+        DetectionEmbedding.objects.filter(detection__source_image__deployment=self).exclude(
+            project=self.project
+        ).update(project=self.project)
+
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
 
