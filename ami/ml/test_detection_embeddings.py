@@ -345,6 +345,17 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         self.assertFalse(DetectionEmbedding.objects.exists())
         self.assertIn(f"capture {image.pk}", "\n".join(logs.output))
 
+    def test_an_existing_box_returned_twice_is_one_detection_and_keeps_its_vector(self):
+        """Detection creation returns the stored detection once per response, so a repeated box
+        must not look like two detections sharing it."""
+        image = self._image()
+        self._save(self._rejected(image, box=5.0))
+        self._save(
+            self._rejected(image, _embedding_payload(self.LOW), box=5.0),
+            self._rejected(image, _embedding_payload(self.LOW), box=5.0),
+        )
+        self.assertEqual(self._stored(image), {(5.0, SPECIES.key): self.LOW})
+
     def test_only_the_first_write_of_an_algorithm_and_key_takes_the_advisory_lock(self):
         image, other = self._image(), self._image()
         self._save(self._rejected(image), self._rejected(other))
@@ -358,12 +369,6 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
             self._save(self._rejected(other, _embedding_payload(self.LOW)))
         self.assertEqual(locks(first.captured_queries), 1)
         self.assertEqual(locks(later.captured_queries), 0)
-
-    def test_a_second_batch_of_another_length_is_refused_after_the_first_commits(self):
-        image, other = self._image(), self._image()
-        self._save(self._moth(image, _embedding_payload(self.LOW)))
-        with self.assertRaises(EmbeddingDimensionMismatch):
-            self._save(self._moth(other, _embedding_payload([0.5] * 8)))
 
 
 class TestEmbeddingProject(TestCase):

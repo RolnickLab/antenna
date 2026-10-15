@@ -83,8 +83,13 @@ def create_detection_embeddings(
     """
     by_box: dict[tuple, list[Detection]] = collections.defaultdict(list)
     for detection in detections:
-        if detection.bbox is not None:
-            by_box[_box_key(detection.source_image_id, detection.bbox)].append(detection)
+        if detection.bbox is None:
+            continue
+        candidates = by_box[_box_key(detection.source_image_id, detection.bbox)]
+        # A box the service returned twice comes back as the same stored detection twice; that is
+        # one detection, not two sharing a box. Unsaved instances compare by identity, so stay apart.
+        if detection not in candidates:
+            candidates.append(detection)
     embeddings: dict[tuple[int, int, str], DetectionEmbedding] = {}
     lengths_by_pair: dict[tuple[Algorithm, str], set[int]] = collections.defaultdict(set)
     unmatched = not_finite = 0
