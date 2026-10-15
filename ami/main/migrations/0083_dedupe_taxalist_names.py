@@ -68,5 +68,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(dedupe_taxa_list_names, reverse_noop),
+        migrations.RunPython(dedupe_taxa_list_names, reverse_noop, elidable=True),
     ]
