@@ -214,29 +214,20 @@ def build_occurrence_default_filters_q(
     return filter_q
 
 
-def build_occurrence_results_q(*, algorithm_ids: list[int] | None = None, job_id: int | None = None) -> Q:
-    """Matches occurrences that the given algorithms, or the given job, left a result on.
+def build_processed_by_algorithm_q(algorithm_ids: list[int]) -> Q:
+    """Matches occurrences that any of the given algorithms left a result on.
 
     A result is a detection, a classification or a feature vector on one of the occurrence's
-    detections, or an algorithm result. This is the one place that lists those tables, so a new kind of output is
-    added here. EXISTS subqueries return each occurrence once, where a join would return one row
-    per matching result. Pass exactly one of ``algorithm_ids`` or ``job_id``.
+    detections, or an algorithm result; ``build_created_or_updated_by_job_q`` reads the same tables, so a new kind of
+    output is added to both. EXISTS subqueries return each occurrence once, where a join would
+    return one row per matching result.
     """
     from django.apps import apps
     from django.db.models import Exists, OuterRef
 
     Detection = apps.get_model("main", "Detection")
-    Classification = apps.get_model("main", "Classification")
     AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
     DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
-
-    if job_id is not None:
-        return (
-            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-        )
 
     results_q = Exists(
         Detection.objects.filter(occurrence=OuterRef("pk")).filter(
@@ -252,3 +243,25 @@ def build_occurrence_results_q(*, algorithm_ids: list[int] | None = None, job_id
         if rows.exists():
             results_q |= Exists(rows.filter(**{occurrence_path: OuterRef("pk")}))
     return results_q
+
+
+def build_created_or_updated_by_job_q(job_id: int) -> Q:
+    """Matches occurrences that the given job left a result on.
+
+    Reads the same tables as ``build_processed_by_algorithm_q``, so a new kind of output is added to
+    both.
+    """
+    from django.apps import apps
+    from django.db.models import Exists, OuterRef
+
+    Detection = apps.get_model("main", "Detection")
+    Classification = apps.get_model("main", "Classification")
+    AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
+    DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
+
+    return (
+        Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+        | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+        | Exists(DetectionEmbedding.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+        | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+    )

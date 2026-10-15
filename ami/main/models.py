@@ -36,9 +36,10 @@ from ami.base.fields import DateStringField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
 from ami.main.models_future.filters import (
+    build_created_or_updated_by_job_q,
     build_occurrence_default_filters_q,
-    build_occurrence_results_q,
     build_occurrence_score_threshold_q,
+    build_processed_by_algorithm_q,
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
@@ -3390,13 +3391,13 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         Matches detectors through their detections, classifiers and post-processing algorithms
         through their classifications or algorithm results, so every algorithm listed by
-        ``Algorithm.objects.used_in_project()`` can match here. See ``build_occurrence_results_q``.
+        ``Algorithm.objects.used_in_project()`` can match here. See ``build_processed_by_algorithm_q``.
         """
-        return self.filter(build_occurrence_results_q(algorithm_ids=algorithm_ids))
+        return self.filter(build_processed_by_algorithm_q(algorithm_ids))
 
     def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with no result from any of the given algorithms."""
-        return self.exclude(build_occurrence_results_q(algorithm_ids=algorithm_ids))
+        return self.exclude(build_processed_by_algorithm_q(algorithm_ids))
 
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
@@ -3405,9 +3406,9 @@ class OccurrenceQuerySet(BaseQuerySet):
         on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
 
         Identifications are not matched: people make them, not jobs. See
-        ``build_occurrence_results_q``.
+        ``build_created_or_updated_by_job_q``.
         """
-        return self.filter(build_occurrence_results_q(job_id=job_id))
+        return self.filter(build_created_or_updated_by_job_q(job_id))
 
     def with_timestamps(self):
         """

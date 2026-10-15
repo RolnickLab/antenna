@@ -61,7 +61,7 @@ claiming a query is cheap.
 | Q6 | Nearest neighbours of one vector, when exact scans are too slow | not shipped | `ORDER BY vector::halfvec(D) <=> seed` within one (algorithm, key) | a partial HNSW index per (algorithm, key), see below |
 | Q7 | Which algorithms stored vectors in a project (choices for the occurrence algorithm filter) | `Algorithm.objects.used_in_project(project)` | `SELECT DISTINCT algorithm_id WHERE project_id = P`, next to its detection and classification lookups | reads one project's range of (project, algorithm, key, detection); not measured |
 | Q8 | Which algorithms have a vector for one occurrence (`embedding_algorithms` on the occurrence detail) | `OccurrenceSerializer.get_embedding_algorithms` | `EXISTS` per algorithm on the occurrence's detections, one query | (algorithm, key, detection) probed through the detection's occurrence; not measured |
-| Q9 | Occurrences with a vector from given algorithms (the `algorithm` and `not_algorithm` filters) | `OccurrenceQuerySet.processed_by_algorithm()` | `build_occurrence_results_q()` in `ami/main/models_future/filters.py`: the vector `EXISTS` is ORed in only when the algorithms have vectors | (algorithm, key, detection); not measured |
+| Q9 | Occurrences with a vector from given algorithms (the `algorithm` and `not_algorithm` filters) | `OccurrenceQuerySet.processed_by_algorithm()` | `build_processed_by_algorithm_q()` in `ami/main/models_future/filters.py`: the vector `EXISTS` is ORed in only when the algorithms have vectors | (algorithm, key, detection); not measured |
 
 `project_vectors` pages with `detection_id > last` rather than `OFFSET`, so every page costs the
 same and memory stays at one chunk. Callers keep their own scope by passing `detection_ids` or by
