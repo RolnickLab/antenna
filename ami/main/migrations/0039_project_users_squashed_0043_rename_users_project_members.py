@@ -6,15 +6,6 @@ import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-    replaces = [
-        ("main", "0039_project_users"),
-        ("main", "0007_project_owner"),
-        ("main", "0040_merge_0007_project_owner_0039_project_users"),
-        ("main", "0041_alter_project_users"),
-        ("main", "0042_alter_project_users"),
-        ("main", "0043_rename_users_project_members"),
-    ]
-
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("main", "0038_alter_detection_path_alter_sourceimage_event_and_more"),
