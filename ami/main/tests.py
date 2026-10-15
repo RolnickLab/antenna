@@ -1366,6 +1366,23 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.events.first().project == self.project_two
         assert self.deployment.occurrences.first().project == self.project_two
 
+    def test_change_project_moves_algorithm_results(self):
+        """Algorithm results copy their project from the occurrence, so a moved deployment takes them along."""
+        from ami.ml.models.algorithm import Algorithm
+
+        algorithm = Algorithm.objects.create(name="Moved Post-processor", version=1)
+        occurrence = self.deployment.occurrences.first()
+        result = AlgorithmResult.objects.record(
+            occurrence=occurrence, algorithm=algorithm, kind=SizeFilterResultData.kind, data={"relative_size": 0.001}
+        )
+        assert result.project == self.project_one
+
+        self.deployment.project = self.project_two
+        self.deployment.save()
+
+        result.refresh_from_db()
+        assert result.project == self.project_two
+
     def test_delete_project(self):
         self.project_one.delete()
 
