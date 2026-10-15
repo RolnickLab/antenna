@@ -95,8 +95,9 @@ def filter_processed_images(
     6. A pipeline with a detector and feature extractors but no classifier: every real
        detection has a vector from each extractor
 
-    A feature extractor in a pipeline that also classifies is not waited for: its missing
-    vectors are backfilled without running the whole pipeline again.
+    A feature extractor in a pipeline that also classifies is not waited for, so a missing vector
+    alone never sends a capture through the whole pipeline again. Captures processed before vectors
+    were switched on keep none until they are backfilled (#1479).
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
@@ -116,7 +117,7 @@ def filter_processed_images(
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    # A feature extractor never classifies; missing vectors are backfilled without reprocessing (#1462).
+    # A feature extractor never classifies, so waiting for its classifications would reprocess every capture.
     non_classifier_type_keys = detection_type_keys | {AlgorithmTaskType.EMBEDDING}
     pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in non_classifier_type_keys}
     # Only consulted when the pipeline has no classifier, so vectors are its only output (case 6).

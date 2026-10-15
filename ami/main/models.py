@@ -1216,6 +1216,7 @@ class Deployment(BaseModel):
             "Occurrence",
             "SourceImage",
         ]
+        moved: dict[str, int] = {}
         for model_name in child_models:
             model = apps.get_model("main", model_name)
             qs = model.objects.filter(deployment=self).exclude(project=self.project)
@@ -1225,7 +1226,7 @@ class Deployment(BaseModel):
                     f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            qs.update(project=self.project)
+            moved[model_name] = qs.update(project=self.project)
 
         # Algorithm results copy their project from the occurrence and are filtered by it
         # (``Algorithm.objects.used_in_project()``), so they follow the occurrence when it moves.
@@ -1235,11 +1236,13 @@ class Deployment(BaseModel):
         )
 
         # Feature vectors copy their project from the detection's capture and are read by it
-        # (``vector_counts_by_algorithm``), so they follow the capture when it moves.
-        DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
-        DetectionEmbedding.objects.filter(detection__source_image__deployment=self).exclude(
-            project=self.project
-        ).update(project=self.project)
+        # (``vector_counts_by_algorithm``), so they follow the captures when they move. The update
+        # joins through detections and captures, so it runs only when some capture moved.
+        if moved["SourceImage"]:
+            DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
+            DetectionEmbedding.objects.filter(detection__source_image__deployment=self).exclude(
+                project=self.project
+            ).update(project=self.project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""

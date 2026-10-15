@@ -1023,8 +1023,8 @@ class TestPipeline(TestCase):
     def test_filter_processed_images_does_not_wait_for_classifications_from_a_feature_extractor(self):
         """A feature extractor never classifies, so it must not make a classified image look unprocessed.
 
-        Missing vectors are backfilled without reprocessing; counting the extractor as a classifier
-        would send every capture through the whole pipeline again on every run.
+        Counting the extractor as a classifier would send every capture through the whole pipeline
+        again on every run, because it never writes a classification.
         """
         from ami.ml.models.algorithm import AlgorithmTaskType
         from ami.ml.models.pipeline import filter_processed_images

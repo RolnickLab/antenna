@@ -92,7 +92,7 @@ def create_detection_embeddings(
             candidates.append(detection)
     embeddings: dict[tuple[int, int, str], DetectionEmbedding] = {}
     lengths_by_pair: dict[tuple[Algorithm, str], set[int]] = collections.defaultdict(set)
-    unmatched = not_finite = 0
+    unmatched = not_finite = repeated = 0
     for detection_resp in detection_responses:
         if detection_resp.bbox is None or not detection_resp.embeddings:
             continue
@@ -120,7 +120,10 @@ def create_detection_embeddings(
                 not_finite += 1
                 continue
             lengths_by_pair[(algorithm, DEFAULT_EMBEDDING_KEY)].add(len(embedding_resp.features))
-            embeddings[(detection.pk, algorithm.pk, DEFAULT_EMBEDDING_KEY)] = DetectionEmbedding(
+            row_key = (detection.pk, algorithm.pk, DEFAULT_EMBEDDING_KEY)
+            # One row per (detection, algorithm, key): a second vector replaces the first.
+            repeated += row_key in embeddings
+            embeddings[row_key] = DetectionEmbedding(
                 detection=detection,
                 algorithm=algorithm,
                 key=DEFAULT_EMBEDDING_KEY,
@@ -143,6 +146,11 @@ def create_detection_embeddings(
 
         if unmatched:
             logger.warning(f"Skipped the vectors of {unmatched} returned boxes that match no single stored detection.")
+        if repeated:
+            logger.warning(
+                f"Skipped {repeated} vectors: an algorithm sent more than one vector for a detection, "
+                "and only the last one is kept."
+            )
         if not_finite:
             logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
         if embeddings:
