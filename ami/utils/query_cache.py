@@ -5,11 +5,12 @@ from cachalot.api import cachalot_disabled
 
 @contextlib.contextmanager
 def no_query_cache():
-    """Turn off the cachalot query cache for a block, and turn it back on even when the block raises.
+    """Stop reads in a block from using the cachalot query cache, and restore the previous state even when it raises.
 
-    Use this instead of ``cachalot.api.cachalot_disabled()``, which only re-enables the cache on a
-    clean exit: one exception leaves the cache off for the rest of the thread, so a Celery worker
-    stays uncached until restart and later query-count tests in the same process fail.
+    Writes still invalidate cached tables inside the block; only reads bypass the cache.
+    Use this instead of ``cachalot.api.cachalot_disabled()``, which only restores the state on a clean
+    exit: one exception leaves the cache off for the rest of the thread, so a Celery worker stays
+    uncached until its process is recycled and later query-count tests in the same process fail.
     Works as a decorator too, re-entered on every call.
     """
     context = cachalot_disabled()

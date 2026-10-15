@@ -218,14 +218,11 @@ def _log_worker_availability(job) -> None:
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
-# Disable cachalot cache invalidation for this task. Each call writes
-# Detection/Classification rows and UPDATEs jobs_job; under concurrent
-# async_api load, cachalot's post-write invalidation added ~2.5s/task
-# (measured on demo, issue #1256 Path 4). This is a pure write path —
-# nothing inside benefits from the query cache — so skipping invalidation
-# is strictly a throughput win. Celery task decorator stack order matters:
-# @celery_app.task wraps the cachalot-wrapped function, so Celery sees the
-# cachalot context manager enter/exit on every task execution.
+# Reads inside this task bypass the cachalot query cache. Each call writes the
+# tables it reads, so cached reads would be invalidated right away. Writes
+# still invalidate cachalot's tables either way. Added for throughput under
+# async_api load (#1256); whether it is still needed is unmeasured. Keep it
+# below @celery_app.task so it is entered and exited on every execution.
 @no_query_cache()
 def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
