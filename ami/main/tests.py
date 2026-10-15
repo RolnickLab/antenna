@@ -7408,6 +7408,43 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
 
+    def test_filter_by_post_processing_algorithm_matches_its_algorithm_results(self):
+        """A post-processing algorithm that records a value rather than a label writes only an
+        algorithm result, so the filter must find it there too."""
+        from ami.ml.models.algorithm import Algorithm
+
+        post_processor = Algorithm.objects.create(name="Filter Post-processor", version=1)
+        recorded = self._make_occurrence(detector=self.other, classifiers=[])
+        AlgorithmResult.objects.record(
+            occurrence=recorded,
+            algorithm=post_processor,
+            kind=SizeFilterResultData.kind,
+            data={"relative_size": 0.001},
+        )
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([post_processor.pk])
+        self.assertEqual(self._pks(matched), {recorded.pk})
+
+    def test_algorithm_results_are_searched_only_when_the_algorithms_have_some(self):
+        """A second EXISTS joined by OR stops Postgres planning the first as a semi-join, so a
+        classifier with no algorithm results must get a single EXISTS."""
+        sql = str(Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk]).query)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertNotIn("ml_algorithmresult", sql)
+        self.assertNotIn("ml_detectionembedding", sql)
+
+    def test_filter_by_feature_extractor_matches_occurrences_with_its_vectors(self):
+        """A feature extractor writes only vectors, so the filter must find it there too."""
+        from ami.ml.models import DetectionEmbedding
+        from ami.ml.models.algorithm import Algorithm
+
+        extractor = Algorithm.objects.create(name="Filter Extractor", version=1)
+        with_vector = self._make_occurrence(detector=self.other, classifiers=[])
+        DetectionEmbedding.objects.store(
+            [DetectionEmbedding(detection=with_vector.detections.get(), algorithm=extractor, vector=[0.5] * 4)]
+        )
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([extractor.pk])
+        self.assertEqual(self._pks(matched), {with_vector.pk})
+
 
 class TestOccurrenceJobFilter(APITestCase):
     """
@@ -7502,6 +7539,20 @@ class TestOccurrenceJobFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.json()["results"]}
         self.assertEqual(ids, {self.occ_classified.pk, self.occ_other.pk})
+
+    def test_matches_an_occurrence_where_the_job_wrote_only_a_vector(self):
+        from ami.ml.models import DetectionEmbedding
+
+        with_vector = self._make_occurrence([(None, [])])
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(
+                    detection=with_vector.detections.get(), algorithm=self.algorithm, vector=[0.5] * 4, job=self.job
+                )
+            ]
+        )
+        matched = Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
+        self.assertIn(with_vector.pk, set(matched.values_list("pk", flat=True)))
 
     def test_non_integer_job_is_a_bad_request(self):
         response = self._list("abc")

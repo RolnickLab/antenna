@@ -2334,6 +2334,31 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
 
         self.assertIn("Class Masked Classifier", self._choice_names(self.project.pk))
 
+    def test_post_processing_algorithm_with_only_algorithm_results_is_a_choice(self):
+        """A post-processing algorithm that records a value rather than a label writes only
+        algorithm results; it must still be offered so its results can be filtered."""
+        from ami.ml.models.algorithm_result import AlgorithmResult
+        from ami.ml.post_processing.small_size_filter import SizeFilterResultData
+
+        size_filter = Algorithm.objects.create(name="Size Filter", version=1)
+        occurrence = Occurrence.objects.create(project=self.project)
+        AlgorithmResult.objects.record(
+            occurrence=occurrence, algorithm=size_filter, kind=SizeFilterResultData.kind, data={"relative_size": 0.001}
+        )
+        self.assertIn("Size Filter", self._choice_names(self.project.pk))
+
+    def test_feature_extractor_with_only_vectors_is_a_choice(self):
+        """A feature extractor writes only vectors; it must still be offered so occurrences can be
+        filtered by it."""
+        from ami.ml.models import DetectionEmbedding
+
+        extractor = Algorithm.objects.create(name="Vector Extractor", version=1)
+        detection = Detection.objects.create(source_image=SourceImage.objects.create(project=self.project))
+        DetectionEmbedding.objects.store(
+            [DetectionEmbedding(detection=detection, algorithm=extractor, vector=[0.5] * 4)]
+        )
+        self.assertIn("Vector Extractor", self._choice_names(self.project.pk))
+
     def test_classifications_in_other_project_do_not_leak(self):
         """An algorithm whose classifications live in another project must not appear."""
         other_masked_algo = Algorithm.objects.create(name="Other Project Masked", version=1)
