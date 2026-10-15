@@ -1,5 +1,7 @@
 from django.contrib.auth.models import Group, Permission
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from guardian.shortcuts import assign_perm, get_perms
 
 from ami.main.models import Project
@@ -44,7 +46,14 @@ class TestCreateRolesForProject(TestCase):
             group = Group.objects.get(name=role.get_group_name(other))
             self.assertEqual(set(get_perms(group, other)), set(role.permissions))
 
+    def test_rerun_with_unchanged_roles_writes_nothing(self):
+        # Runs for every project after each migration; an unchanged project should only be read.
+        with CaptureQueriesContext(connection) as queries:
+            create_roles_for_project(self.project)
+        writes = [q["sql"] for q in queries if q["sql"].split()[0] in ("INSERT", "UPDATE", "DELETE")]
+        self.assertEqual(writes, [])
+
     def test_query_count_does_not_grow_with_the_number_of_permissions(self):
         # Five roles hold about a hundred permissions; one query per permission took ~1,000 queries per project.
-        with no_query_cache(), self.assertNumQueries(22):
+        with no_query_cache(), self.assertNumQueries(12):
             create_roles_for_project(self.project)
