@@ -35,5 +35,5 @@ class Migration(migrations.Migration):
     # Rename all existing algorithm keys to use underscores instead of dashes. Ensure there are no clashes as we go.
 
     operations = [
-        migrations.RunPython(rename_algorithm_keys, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(rename_algorithm_keys, reverse_code=migrations.RunPython.noop, elidable=True),
     ]

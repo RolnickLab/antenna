@@ -94,7 +94,7 @@ class Migration(migrations.Migration):
             options={"unique_together": {("user", "project")}},
         ),
         # 2. Copy old M2M data to new through model
-        migrations.RunPython(forwards, backwards),
+        migrations.RunPython(forwards, backwards, elidable=True),
         # 3. Drop old M2M implicit table
         migrations.RunSQL(
             "DROP TABLE IF EXISTS main_project_members;",
