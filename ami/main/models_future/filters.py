@@ -212,3 +212,38 @@ def build_occurrence_default_filters_q(
             filter_q &= taxa_q
 
     return filter_q
+
+
+def build_occurrence_results_q(*, algorithm_ids: list[int] | None = None, job_id: int | None = None) -> Q:
+    """Matches occurrences that the given algorithms, or the given job, left a result on.
+
+    A result is a detection, a classification on one of the occurrence's detections, or an
+    algorithm result. This is the one place that lists those tables, so a new kind of output is
+    added here. EXISTS subqueries return each occurrence once, where a join would return one row
+    per matching result. Pass exactly one of ``algorithm_ids`` or ``job_id``.
+    """
+    from django.apps import apps
+    from django.db.models import Exists, OuterRef
+
+    Detection = apps.get_model("main", "Detection")
+    Classification = apps.get_model("main", "Classification")
+    AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
+
+    if job_id is not None:
+        return (
+            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+        )
+
+    results_q = Exists(
+        Detection.objects.filter(occurrence=OuterRef("pk")).filter(
+            Q(detection_algorithm__in=algorithm_ids) | Q(classifications__algorithm__in=algorithm_ids)
+        )
+    )
+    # A second EXISTS joined by OR stops Postgres planning the first one as a semi-join, which
+    # slows the common one-classifier filter, so add it only when there is something to find.
+    algorithm_results = AlgorithmResult.objects.filter(algorithm__in=algorithm_ids)
+    if algorithm_results.exists():
+        results_q |= Exists(algorithm_results.filter(occurrence=OuterRef("pk")))
+    return results_q

@@ -161,27 +161,48 @@ class AlgorithmQuerySet(BaseQuerySet):
         """Algorithms that produced results in the project, whether or not their
         pipeline is still enabled there.
 
-        "Used" means owning actual output rows in any table listed in ``ami.ml.model_outputs``:
-        classifiers and post-processing algorithms are found through their classifications,
-        detectors through their detections (detectors never author a Classification), and
-        algorithms that only wrote algorithm results through those. Superseded pipeline versions
-        and standalone post-processing algorithms therefore stay listed as long as their results
-        exist, while a configured-but-never-run algorithm does not appear.
+        "Used" means owning actual output rows: classifiers and post-processing algorithms are found
+        through their classifications or algorithm results, detectors through their detections
+        (detectors never author a Classification), the same tables ``build_occurrence_results_q``
+        searches. Superseded pipeline versions and standalone post-processing algorithms therefore
+        stay listed as long as their results exist, while a configured-but-never-run algorithm does
+        not appear.
 
-        Cost note (EXPLAIN-verified against a production copy): neither the classification
-        nor the detection lookup can be answered from an index, because neither table has a
-        project column — project is reachable only through source_image. Both sides scan, so
-        the call costs roughly 0.1-0.6 s cold regardless of project size, growing with total
-        table size. The algorithm-result lookup reads one project's rows through its own project
-        column; not measured on a production copy.
-        Executes one lookup per table immediately rather than lazily; the id lists are tiny
-        (one row per algorithm) and sorted so the SQL string, and therefore cachalot's
-        cache key, is stable. Making this index-fast requires a denormalised project
-        column on Classification/Detection.
+        Cost note (EXPLAIN-verified against a production copy): neither the classification nor the
+        detection lookup can be answered from an index, because neither table has a project column;
+        project is reachable only through source_image. Both sides scan, so the call costs roughly
+        0.1-0.6 s cold regardless of project size, growing with total table size. The
+        algorithm-result lookup uses that table's own project column. Executes the lookups
+        immediately rather than lazily; the id lists are tiny (one row per algorithm) and sorted so
+        the SQL string, and therefore cachalot's cache key, is stable. Making this index-fast
+        requires a denormalised project column on Classification/Detection.
         """
-        from ami.ml.model_outputs import algorithm_ids_in_project
+        from ami.main.models import Classification, Detection
+        from ami.ml.models.algorithm_result import AlgorithmResult
 
-        return self.filter(pk__in=algorithm_ids_in_project(project))
+        # ``order_by()`` clears each model's default ordering before ``distinct()``;
+        # otherwise the ordering columns widen the DISTINCT back to one row per result.
+        classifier_ids = (
+            Classification.objects.filter(detection__source_image__project=project)
+            .order_by()
+            .values_list("algorithm_id", flat=True)
+            .distinct()
+        )
+        detector_ids = (
+            Detection.objects.filter(source_image__project=project)
+            .order_by()
+            .values_list("detection_algorithm", flat=True)
+            .distinct()
+        )
+        result_ids = (
+            AlgorithmResult.objects.filter(project=project)
+            .order_by()
+            .values_list("algorithm_id", flat=True)
+            .distinct()
+        )
+        ids = set(classifier_ids) | set(detector_ids) | set(result_ids)
+        ids.discard(None)  # detections without a detection_algorithm
+        return self.filter(pk__in=sorted(ids))
 
 
 # Task types enum for better type checking

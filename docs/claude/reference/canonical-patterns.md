@@ -21,8 +21,8 @@ canonical but was undocumented.
 | Test data | `ami/tests/fixtures/` (main.py, images.py, ml.py), `ami/users/tests/factories.py` | Use fixtures/factories, not manual model instantiation |
 | Query-count assertion | `ami/ml/tests.py:1006` | `assertNumQueries` example — pair with a multi-row fixture |
 | Permission matrix test | `ami/main/tests.py:1532-1590` | Template: owner / member / other-user tests asserting 200/403 per endpoint action |
+| `build_occurrence_results_q()` | `ami/main/models_future/filters.py` (usage: `OccurrenceQuerySet.processed_by_algorithm`, `created_or_updated_by_job`) | Occurrences an algorithm or a job left a result on. The one list of output tables (detections, classifications, algorithm results); add a new output table here and in `Algorithm.objects.used_in_project()` |
 | `update_calculated_fields()` | `ami/base/models.py:165` (usage: `ami/tests/fixtures/main.py:166`) | Refresh cached aggregates after related-data changes / bulk operations |
-| Which tables an algorithm or job wrote to | `ami/ml/model_outputs.py` (`MODEL_OUTPUTS`) | The occurrence `algorithm` and `job` filters and `Algorithm.objects.used_in_project()` are built from this one list. A new output table is registered there (or named in `EXEMPT_MODELS`); a test fails until it is. |
 
 ## Conventions
 

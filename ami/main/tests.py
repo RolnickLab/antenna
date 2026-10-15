@@ -7408,6 +7408,29 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
 
+    def test_filter_by_post_processing_algorithm_matches_its_algorithm_results(self):
+        """A post-processing algorithm that records a value rather than a label writes only an
+        algorithm result, so the filter must find it there too."""
+        from ami.ml.models.algorithm import Algorithm
+
+        post_processor = Algorithm.objects.create(name="Filter Post-processor", version=1)
+        recorded = self._make_occurrence(detector=self.other, classifiers=[])
+        AlgorithmResult.objects.record(
+            occurrence=recorded,
+            algorithm=post_processor,
+            kind=SizeFilterResultData.kind,
+            data={"relative_size": 0.001},
+        )
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([post_processor.pk])
+        self.assertEqual(self._pks(matched), {recorded.pk})
+
+    def test_algorithm_results_are_searched_only_when_the_algorithms_have_some(self):
+        """A second EXISTS joined by OR stops Postgres planning the first as a semi-join, so a
+        classifier with no algorithm results must get a single EXISTS."""
+        sql = str(Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk]).query)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertNotIn("ml_algorithmresult", sql)
+
 
 class TestOccurrenceJobFilter(APITestCase):
     """
