@@ -1126,8 +1126,7 @@ def save_results(
     # Before classifications, so an unregistered embedding algorithm stops the batch at the
     # same point an unregistered classification algorithm does.
     create_detection_embeddings(
-        detections=detections,
-        detection_responses=results.detections,
+        saved_detections=saved_detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
         job_id=job.pk if job else None,
