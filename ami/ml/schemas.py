@@ -18,6 +18,10 @@ class BoundingBox(pydantic.BaseModel):
     x2: float
     y2: float
 
+    def as_coords(self) -> list[float]:
+        """The box as ``[x1, y1, x2, y2]``, the order ``from_coords`` reads and detections store."""
+        return [self.x1, self.y1, self.x2, self.y2]
+
     @classmethod
     def from_coords(cls, coords: typing.Any, raise_on_error: bool = True) -> "BoundingBox | None":
         """

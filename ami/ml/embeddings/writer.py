@@ -1,4 +1,4 @@
-"""Store the feature vectors a processing service returns with its detections."""
+"""Validate and store the feature vectors that processing services return in pipeline results."""
 
 import logging
 
