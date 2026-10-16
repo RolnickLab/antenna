@@ -142,6 +142,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(
             merge_duplicate_category_maps,
-            reverse_merge_duplicate_category_maps,
+            reverse_merge_duplicate_category_maps, elidable=True,
         ),
     ]
