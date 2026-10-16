@@ -1202,10 +1202,12 @@ class Deployment(BaseModel):
 
     def update_children(self):
         """
-        Update all attribute on all child objects that should be equal to their deployment values.
+        Set the project of every row that keeps its own copy of this deployment's project.
 
-        e.g. Events, Occurrences, SourceImages must belong to same project as their deployment. But
-        they have their own copy of that attribute to reduce the number of joins required to query them.
+        Events, occurrences, captures and feature vectors copy their deployment's project so that queries
+        and permission checks need no join; this puts them back on the deployment's project after it
+        changes. Only the project is set: any other copied field is left as it is. A deployment can move
+        to another project; its captures never move to another deployment.
         """
 
         # All the child models that have a foreign key to project
@@ -1214,7 +1216,7 @@ class Deployment(BaseModel):
             "Occurrence",
             "SourceImage",
         ]
-        moved: dict[str, int] = {}
+        captures_moved = 0
         for model_name in child_models:
             model = apps.get_model("main", model_name)
             qs = model.objects.filter(deployment=self).exclude(project=self.project)
@@ -1224,12 +1226,14 @@ class Deployment(BaseModel):
                     f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            moved[model_name] = qs.update(project=self.project)
+            updated = qs.update(project=self.project)
+            if model_name == "SourceImage":
+                captures_moved = updated
 
         # Feature vectors copy their project from the detection's capture and are read by it
-        # (``vector_counts_by_algorithm``), so they follow the captures when they move. The update
-        # joins through detections and captures, so it runs only when some capture moved.
-        if moved["SourceImage"]:
+        # (``vector_counts_by_algorithm``), so their project is only wrong when some capture's was. The
+        # update joins through detections and captures, so it runs only when a capture's project changed.
+        if captures_moved:
             DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
             DetectionEmbedding.objects.filter(detection__source_image__deployment=self).exclude(
                 project=self.project
