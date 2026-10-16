@@ -1210,34 +1210,33 @@ class Deployment(BaseModel):
         to another project; its captures never move to another deployment.
         """
 
-        # All the child models that have a foreign key to project
+        deployment_project = self.project
+
+        # Each table that keeps its own copy of the deployment's project, with the path from its rows to
+        # that project. More tables join this list as they gain a project column (#1453).
         child_models = [
-            "Event",
-            "Occurrence",
-            "SourceImage",
+            ("main.Event", "deployment__project"),
+            ("main.Occurrence", "deployment__project"),
+            ("main.SourceImage", "deployment__project"),
+            ("ml.DetectionEmbedding", "detection__source_image__deployment__project"),
         ]
-        captures_moved = 0
-        for model_name in child_models:
-            model = apps.get_model("main", model_name)
-            qs = model.objects.filter(deployment=self).exclude(project=self.project)
+        # Shorter paths first. A table reached through other rows copies its project from them, so it is
+        # checked only when a table with a shorter path had rows to fix: its lookup joins several tables,
+        # and this runs on every deployment save.
+        moved_at_shorter_path = 0
+        for model_label, project_path in sorted(child_models, key=lambda child: child[1].count("__")):
+            deployment_path = project_path.removesuffix("__project")
+            if deployment_path != "deployment" and not moved_at_shorter_path:
+                continue
+            model = apps.get_model(model_label)
+            qs = model.objects.filter(**{deployment_path: self}).exclude(project=deployment_project)
             project_values = set(qs.values_list("project", flat=True).distinct())
-            if len(project_values):
+            if project_values:
                 logger.warning(
-                    f"Deployment {self} has alternate projects set on {model_name} "
+                    f"Deployment {self} has alternate projects set on {model_label} "
                     f"objects: {project_values}. Updating them!"
                 )
-            updated = qs.update(project=self.project)
-            if model_name == "SourceImage":
-                captures_moved = updated
-
-        # Feature vectors copy their project from the detection's capture and are read by it
-        # (``vector_counts_by_algorithm``), so their project is only wrong when some capture's was. The
-        # update joins through detections and captures, so it runs only when a capture's project changed.
-        if captures_moved:
-            DetectionEmbedding = apps.get_model("ml", "DetectionEmbedding")
-            DetectionEmbedding.objects.filter(detection__source_image__deployment=self).exclude(
-                project=self.project
-            ).update(project=self.project)
+            moved_at_shorter_path += qs.update(project=deployment_project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
