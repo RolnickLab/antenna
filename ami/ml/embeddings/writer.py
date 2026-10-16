@@ -18,11 +18,11 @@ class EmbeddingDimensionMismatch(PipelineNotConfigured):
 def validate_detection_embeddings(
     detection_responses: list[DetectionResponse], algorithms_known: dict[str, Algorithm]
 ) -> None:
-    """Raise if any vector in the results cannot be stored.
+    """Raise if any vector in these results cannot be stored. Call it before saving anything.
 
     Each vector must come from an algorithm registered for the pipeline (else ``PipelineNotConfigured``)
     that declares the length of its vectors, and must have that length (else ``EmbeddingDimensionMismatch``).
-    Vectors of different lengths can never be compared, so an algorithm has exactly one.
+    Values out of range and repeated algorithms are already rejected by the results schema.
     """
     for detection_resp in detection_responses:
         for embedding_resp in detection_resp.embeddings or []:
@@ -52,9 +52,8 @@ def create_detection_embeddings(
     :param algorithms_known: The pipeline's registered algorithms, by key
     :param job_id: The job whose results these are, recorded on each new row
 
-    The first vector stored for a detection and algorithm is kept, and a later one is not written, as
-    detections and classifications are never overwritten either. To store new vectors, delete the
-    detections, or register the new model as a new algorithm.
+    The first vector stored for a detection and algorithm is kept; later ones are ignored. To replace
+    vectors, delete the detections, or register the new model as a new algorithm.
     """
     embeddings: list[DetectionEmbedding] = []
     for detection, detection_resp in saved_detections:

@@ -212,8 +212,9 @@ class DetectionResponse(pydantic.BaseModel):
     embeddings: list[EmbeddingResponse] | None = pydantic.Field(
         default=None,
         description=(
-            "Feature vectors for this detection, at most one per algorithm. Only vectors from the same "
-            "algorithm are comparable. See docs on how to support models that output multiple vectors."
+            "Feature vectors for this detection, at most one per algorithm. Each algorithm must declare "
+            "embedding_dimensions in /info. To return several vectors from one model, register one algorithm "
+            "per output (see processing_services/README.md, 'Returning feature vectors')."
         ),
     )
 

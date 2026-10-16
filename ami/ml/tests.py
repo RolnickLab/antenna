@@ -1052,11 +1052,8 @@ class TestPipeline(TestCase):
         self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
 
     def test_filter_processed_images_does_not_wait_for_classifications_from_a_feature_extractor(self):
-        """A feature extractor never classifies, so it must not make a classified image look unprocessed.
-
-        Counting the extractor as a classifier would send every capture through the whole pipeline
-        again on every run, because it never writes a classification.
-        """
+        """An image classified by every classifier counts as processed even if the pipeline also has a
+        feature extractor, which never writes classifications."""
         from ami.ml.models.algorithm import AlgorithmTaskType
         from ami.ml.models.pipeline import filter_processed_images
 

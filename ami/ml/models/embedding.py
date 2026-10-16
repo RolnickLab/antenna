@@ -1,7 +1,8 @@
-"""Feature vectors (embeddings) that algorithms produce for detections, and later for captures and taxa.
+"""Tables of feature vectors (embeddings) that algorithms produce for detections.
 
-Vectors are compared only within one algorithm, and each algorithm declares one vector length
-(``Algorithm.embedding_dimensions``). See docs/claude/reference/feature-vectors.md.
+Vectors are comparable only within one algorithm, and each algorithm declares one vector length
+(``Algorithm.embedding_dimensions``). Only detections have a table so far; the commented-out classes
+at the end show the pattern for captures and taxa. See docs/claude/reference/feature-vectors.md.
 """
 
 import typing
@@ -24,15 +25,14 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
 
 
 class BaseEmbedding(BaseModel):
-    """The columns every feature vector table shares; a subclass adds its target and its own Meta.
+    """The columns every feature vector table shares.
 
-    Each algorithm stores at most one vector per target, and a model with several outputs registers
-    one algorithm per output. The column is an unsized ``halfvec`` so that algorithms whose vectors differ in
-    length share one table. A subclass adds its target foreign key, a manager built from a
-    ``BaseEmbeddingQuerySet`` subclass, and a Meta with its unique constraint and indexes.
+    A subclass adds its target (the detection, capture or taxon the vector describes), a manager built
+    from ``BaseEmbeddingQuerySet``, and a Meta with a unique constraint on (target, algorithm) and its
+    indexes. The ``vector`` column has no fixed length, so algorithms with different lengths share a table.
     """
 
-    # A subclass's own indexes lead with each of these columns, so none has a single-column index.
+    # No single-column indexes: each subclass declares composite indexes that lead with these columns.
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="%(class)ss", db_index=False)
     # The job whose results stored the vector. Deleting the job keeps the vector.
     job = models.ForeignKey(
@@ -59,7 +59,8 @@ class DetectionEmbedding(BaseEmbedding):
     """
 
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
-    # Named detection_embeddings rather than the base's %(class)ss.
+    # Redeclared only for readable reverse names (algorithm.detection_embeddings); a new table can keep
+    # the base's "%(class)ss" names.
     algorithm = models.ForeignKey(
         "ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
     )
@@ -125,7 +126,7 @@ class DetectionEmbedding(BaseEmbedding):
 #
 # class TaxonEmbedding(BaseEmbedding):
 #     """A feature vector for a taxon, for example a text embedding of its name or a mean of its verified
-#     detections. Its project is the project it was computed for."""
+#     detections. Taxa belong to no project, so decide what ``project`` means here before building it."""
 #
 #     taxon = models.ForeignKey("main.Taxon", on_delete=models.CASCADE, related_name="embeddings", db_index=False)
 #

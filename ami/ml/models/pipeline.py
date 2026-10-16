@@ -92,8 +92,8 @@ def filter_processed_images(
     4. Only null detections exist (bbox=None) — pipeline ran but found nothing
     5. Real detections exist and are fully classified by all pipeline classifiers
 
-    Feature extractors are not waited for: they never classify, and a missing vector alone does not
-    send a capture through the whole pipeline again (#1479 fills in missing vectors).
+    Algorithms with the "embedding" task type are not counted as classifiers, because they never
+    write a classification. A capture that lacks only a vector is therefore not reprocessed.
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
@@ -509,7 +509,7 @@ def get_or_create_algorithm_and_category_map(
         algo.embedding_dimensions = declared_dimensions
         algo_fields_updated.append("embedding_dimensions")
     elif declared_dimensions is not None and declared_dimensions != algo.embedding_dimensions:
-        # A new length means a new model, and its vectors could not be compared with the stored ones.
+        # A different length means a different model, whose vectors cannot be compared with the stored ones.
         raise PipelineNotConfigured(
             f"Algorithm '{algo.key}' is registered with {algo.embedding_dimensions}-dimension feature vectors, "
             f"but the processing service now declares {declared_dimensions}. Register the new model under a new "
@@ -603,7 +603,7 @@ def get_or_create_detection(
         crop_url = None
 
     if existing_detection:
-        # The capture is already loaded; attach it so callers can read it without a query per detection.
+        # Reuse the capture already loaded here, so reading detection.source_image costs no query.
         existing_detection.source_image = source_image
         if not existing_detection.path:
             existing_detection.path = crop_url
