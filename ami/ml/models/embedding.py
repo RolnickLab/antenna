@@ -10,7 +10,6 @@ from django.utils import timezone
 
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main.models import Detection
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 
 # A 2048-d vector is roughly 20 KB of SQL text (estimate), so this keeps each INSERT to a few MB.
 EMBEDDING_BATCH_SIZE = 200
@@ -67,19 +66,19 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
 
     target_field: typing.ClassVar[str]
 
-    def for_algorithm(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
-        """Vectors of one kind from one algorithm: the only set whose vectors may be compared."""
-        return self.filter(algorithm_id=algorithm_id, key=key)
+    def for_algorithm(self, algorithm_id: int):
+        """The vectors of one algorithm: the only set whose vectors may be compared."""
+        return self.filter(algorithm_id=algorithm_id)
 
-    def stored_length(self, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY) -> int | None:
-        """The length of the vectors already stored for one (algorithm, key), or None when there are none.
+    def stored_length(self, algorithm_id: int) -> int | None:
+        """The length of the vectors already stored for one algorithm, or None when there are none.
 
-        Reads the first row of the pair (an indexed lookup on (algorithm, key, target) whether or not
-        the pair has rows), so a writer can hold each pair to one length without a stored field. The
+        Reads the algorithm's first row (an indexed lookup on (algorithm, target) whether or not it
+        has rows), so a writer can hold each algorithm to one length without a stored field. The
         ``order_by`` is what lets the planner walk that index instead of scanning the table until a row matches.
         """
         rows = (
-            self.for_algorithm(algorithm_id, key)
+            self.for_algorithm(algorithm_id)
             .order_by(f"{self.target_field}_id")
             .annotate(dims=VectorDims("vector"))
             .values_list("dims", flat=True)[:1]
@@ -89,7 +88,7 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
     def store(self, embeddings) -> tuple[int, int]:
         """Write vectors insert-mostly; returns (written, unchanged).
 
-        A (target, algorithm, key) that already holds the same vector is left alone, so saving
+        A (target, algorithm) that already holds the same vector is left alone, so saving
         the same results twice changes nothing. One holding another vector is updated in place
         (ON CONFLICT DO UPDATE), which also keeps two writers of the same pair from losing a row.
         """
@@ -98,22 +97,21 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
             return 0, 0
         target_id = f"{self.target_field}_id"
         typing.cast(type["BaseEmbedding"], self.model).fill_project_ids(embeddings)
-        # Three __in filters select a cross product of ids, algorithms and keys, but it is bounded by the batch.
+        # Two __in filters select a cross product of ids and algorithms, but it is bounded by the batch.
         stored = {
-            (target, algorithm_id, key): vector
-            for target, algorithm_id, key, vector in self.filter(
+            (target, algorithm_id): vector
+            for target, algorithm_id, vector in self.filter(
                 **{
                     f"{target_id}__in": {getattr(embedding, target_id) for embedding in embeddings},
                     "algorithm_id__in": {embedding.algorithm_id for embedding in embeddings},
-                    "key__in": {embedding.key for embedding in embeddings},
                 }
             )
             .order_by()
-            .values_list(target_id, "algorithm_id", "key", "vector")
+            .values_list(target_id, "algorithm_id", "vector")
         }
         to_write = []
         for embedding in embeddings:
-            existing = stored.get((getattr(embedding, target_id), embedding.algorithm_id, embedding.key))
+            existing = stored.get((getattr(embedding, target_id), embedding.algorithm_id))
             if existing is None or not same_vector(existing, embedding.vector):
                 to_write.append(embedding)
         if to_write:
@@ -123,7 +121,7 @@ class BaseEmbeddingQuerySet(BaseQuerySet):
                 update_conflicts=True,
                 # A changed vector takes the new job, so "updated by job" finds it; unchanged ones are not written.
                 update_fields=["vector", "job", "timestamp", "updated_at"],
-                unique_fields=[self.target_field, "algorithm", "key"],
+                unique_fields=[self.target_field, "algorithm"],
             )
         return len(to_write), len(embeddings) - len(to_write)
 
@@ -135,9 +133,10 @@ class DetectionEmbeddingQuerySet(BaseEmbeddingQuerySet):
 class BaseEmbedding(BaseModel):
     """The columns every kind of feature vector table shares; a subclass adds its target and its own Meta.
 
-    Vectors are comparable only within one (algorithm, key): ``key`` names the output when one
-    model yields several, and the column is an unsized ``halfvec`` because extractors differ in
-    length. Each (algorithm, key) keeps one length, enforced by the writer against an existing row.
+    Vectors are comparable only within one algorithm, so each algorithm holds at most one vector per
+    target; a model with several outputs registers one algorithm per output (see
+    docs/claude/reference/feature-vectors.md). The column is an unsized ``halfvec`` because extractors
+    differ in length; each algorithm keeps one length, enforced by the writer against an existing row.
     A subclass adds its target foreign key, a ``fill_project_ids`` classmethod, a manager built
     from a ``BaseEmbeddingQuerySet`` subclass, and a Meta with its own unique constraint and
     indexes (see docs/claude/reference/feature-vectors.md, "Adding a sibling table").
@@ -152,7 +151,6 @@ class BaseEmbedding(BaseModel):
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)ss", db_index=False
     )
     project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="%(class)ss", db_index=False)
-    key = models.CharField(max_length=255, default=DEFAULT_EMBEDDING_KEY)
     vector = pgvector.django.HalfVectorField(help_text="The feature vector, in half precision.")
     timestamp = models.DateTimeField(default=timezone.now)
 
@@ -202,21 +200,20 @@ class DetectionEmbedding(BaseEmbedding):
     class Meta:
         indexes = [
             # Project-scoped reads of one model: a project's vectors in detection order, and counts per model.
-            models.Index(fields=["project", "algorithm", "key", "detection"], name="ml_detemb_proj_algo_key_det"),
-            # The writer's per-model length lookup: the first row of a pair, by detection, with or without rows.
-            models.Index(fields=["algorithm", "key", "detection"], name="ml_detemb_algo_key"),
+            models.Index(fields=["project", "algorithm", "detection"], name="ml_detemb_proj_algo_det"),
+            # The writer's per-model length lookup: an algorithm's first row, by detection, with or without rows.
+            models.Index(fields=["algorithm", "detection"], name="ml_detemb_algo_det"),
             # "Occurrences this job touched" looks up a job's vectors by job, then detection.
             models.Index(fields=["job", "detection"], name="ml_detemb_job_det", condition=models.Q(job__isnull=False)),
         ]
         constraints = [
-            models.CheckConstraint(check=~models.Q(key=""), name="%(app_label)s_%(class)s_key_not_empty"),
             models.UniqueConstraint(
-                fields=["detection", "algorithm", "key"], name="%(app_label)s_%(class)s_unique_detection_algorithm_key"
+                fields=["detection", "algorithm"], name="%(app_label)s_%(class)s_unique_detection_algorithm"
             ),
         ]
 
     def __str__(self) -> str:
-        return f"#{self.pk} {self.key} for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
+        return f"#{self.pk} for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
 
     @classmethod
     def fill_project_ids(cls, embeddings: list["DetectionEmbedding"]) -> None:

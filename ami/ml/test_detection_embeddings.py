@@ -1,8 +1,8 @@
 """How detection feature vectors are stored and read back.
 
-These pin that a vector is stored once per detection, algorithm and key on the detection it
+These pin that a vector is stored once per detection and algorithm on the detection it
 was sent with, never as a classification; that its project is copied from the detection's
-capture; that writes are insert-mostly; and that readers return one (algorithm, key) at a time.
+capture; that writes are insert-mostly; and that readers return one algorithm at a time.
 """
 
 import contextlib
@@ -421,10 +421,10 @@ def cache_off():
 
 
 class TestQueryHelpers(TestCase):
-    """The functions in ``ami.ml.embeddings.reader``: each reads one (algorithm, key) in a fixed number of queries.
+    """The functions in ``ami.ml.embeddings.reader``: each reads one algorithm in a fixed number of queries.
 
-    The fixture mixes two models of different lengths and a second key of one model with a third
-    length, so a helper that merged pairs would return the wrong lengths or counts.
+    The fixture mixes two models of different lengths, so a helper that merged models would return
+    the wrong lengths or counts.
     """
 
     @classmethod
@@ -446,24 +446,23 @@ class TestQueryHelpers(TestCase):
         self.detections += made
         return made
 
-    def _store(self, detections, algorithm, length, key="embedding"):
+    def _store(self, detections, algorithm, length):
         DetectionEmbedding.objects.store(
             [
-                DetectionEmbedding(detection=d, algorithm=algorithm, key=key, vector=[float(i % 7) / 4] * length)
+                DetectionEmbedding(detection=d, algorithm=algorithm, vector=[float(i % 7) / 4] * length)
                 for i, d in enumerate(detections)
             ]
         )
 
     def _fill(self, count: int):
-        """``count`` detections with an 8-d vector from one model and a 4-d one from another, the
-        first of them also with a 2-d vector under a second key of the first model."""
+        """``count`` detections with an 8-d vector from one model, and every other one also with a
+        4-d vector from another."""
         detections = self._detections(count)
         self._store(detections, self.eight, 8)
         self._store(detections[::2], self.four, 4)
-        self._store(detections[:1], self.eight, 2, key="projection")
         return detections
 
-    def test_an_algorithm_may_hold_a_different_length_under_each_key(self):
+    def test_vectors_for_detections_returns_one_models_vectors_as_float32(self):
         detections = self._fill(3)
         ids = [d.pk for d in detections]
         eight = vectors_for_detections(ids, self.eight.pk)
@@ -471,8 +470,6 @@ class TestQueryHelpers(TestCase):
         self.assertEqual({v.dtype for v in eight.values()}, {np.dtype(np.float32)})
         self.assertEqual(float(eight[ids[1]][0]), 0.25)
         self.assertEqual(sorted(vectors_for_detections(ids, self.four.pk)), [ids[0], ids[2]])
-        projection = vectors_for_detections(ids, self.eight.pk, key="projection")
-        self.assertEqual({k: v.shape for k, v in projection.items()}, {ids[0]: (2,)})
 
     def test_vectors_for_detections_takes_one_query_at_any_size(self):
         counts = []
@@ -495,7 +492,8 @@ class TestQueryHelpers(TestCase):
             self.assertEqual(array.dtype, np.dtype(np.float32))
         # A chunk size that divides the rows exactly ends without an empty chunk.
         self.assertEqual([len(i) for i, _ in project_vectors(self.project.pk, self.eight.pk, chunk_size=7)], [7])
-        self.assertEqual(list(project_vectors(self.project.pk, self.eight.pk, key="missing")), [])
+        unused = Algorithm.objects.create(name="Unused", key="unused", task_type="embedding")
+        self.assertEqual(list(project_vectors(self.project.pk, unused.pk)), [])
 
     def test_project_vectors_keeps_models_apart_and_honours_the_id_scope(self):
         detections = self._fill(6)
@@ -506,18 +504,9 @@ class TestQueryHelpers(TestCase):
         ((ids, _),) = project_vectors(self.project.pk, self.four.pk, detection_ids=wanted)
         self.assertEqual(ids, [detections[0].pk, detections[2].pk])
 
-    def test_counts_are_per_algorithm_and_key(self):
+    def test_counts_are_per_algorithm(self):
         self._fill(5)
-        pk = self.project.pk
-        self.assertEqual(
-            vector_counts_by_algorithm(pk),
-            {(self.eight.pk, "embedding"): 5, (self.four.pk, "embedding"): 3, (self.eight.pk, "projection"): 1},
-        )
-        self.assertEqual(
-            vector_counts_by_algorithm(pk, key="embedding"),
-            {(self.eight.pk, "embedding"): 5, (self.four.pk, "embedding"): 3},
-        )
-        self.assertEqual(vector_counts_by_algorithm(pk, key="nothing"), {})
+        self.assertEqual(vector_counts_by_algorithm(self.project.pk), {self.eight.pk: 5, self.four.pk: 3})
 
     def test_detections_missing_vectors_keeps_the_callers_scope(self):
         detections = self._fill(4)
@@ -529,7 +518,6 @@ class TestQueryHelpers(TestCase):
             {d.pk for d in detections_missing_vectors(scope.filter(pk__lte=detections[1].pk), self.four.pk)},
             {detections[1].pk},
         )
-        self.assertEqual(detections_missing_vectors(scope, self.eight.pk, key="projection").count(), 3)
 
     def test_detections_missing_vectors_is_never_served_from_the_query_cache(self):
         """The vector table is uncachable, which only holds if django-cachalot sees it in the query.
