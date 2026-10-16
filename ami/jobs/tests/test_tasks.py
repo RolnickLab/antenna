@@ -11,6 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from cachalot.api import LOCAL_STORAGE
 from django.core.cache import cache
 from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
@@ -321,6 +322,8 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         mock_fail.assert_not_called()
         mock_ack.assert_not_called()
+        # The task turns the query cache off while it runs; a failure must not leave it off.
+        self.assertTrue(getattr(LOCAL_STORAGE, "cachalot_enabled", True))
 
     @patch("ami.jobs.tasks._fail_job")
     @patch("ami.jobs.tasks._ack_task_via_nats")

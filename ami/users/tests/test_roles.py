@@ -7,8 +7,8 @@ from django.test.utils import CaptureQueriesContext
 from guardian.shortcuts import assign_perm, get_perms
 
 from ami.main.models import Project
-from ami.tests.fixtures.queries import no_query_cache
 from ami.users.roles import BasicMember, Role, create_roles_for_project
+from ami.utils.query_cache import no_query_cache
 
 
 class TestCreateRolesForProject(TestCase):
