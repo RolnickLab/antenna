@@ -20,13 +20,24 @@ import styles from './occurrences.module.scss'
 export const columns = ({
   projectId,
   showActions,
+  canSortBySimilarity,
 }: {
   projectId: string
   showActions?: boolean
+  canSortBySimilarity?: boolean
 }): TableColumn<Occurrence>[] => [
   {
     id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
+    name: translate(
+      canSortBySimilarity
+        ? STRING.FIELD_LABEL_SIMILARITY
+        : STRING.FIELD_LABEL_SNAPSHOTS
+    ),
+    sortField: canSortBySimilarity ? 'visual_similarity' : undefined,
+    defaultSortOrder: 'asc',
+    tooltip: canSortBySimilarity
+      ? translate(STRING.TOOLTIP_SIMILAR_TO)
+      : undefined,
     styles: {
       textAlign: TextAlign.Center,
     },
@@ -40,11 +51,20 @@ export const columns = ({
       })
 
       return (
-        <ImageTableCell
-          images={[item.images[0]]}
-          theme={ImageCellTheme.Light}
-          to={detailsRoute}
-        />
+        <div>
+          <ImageTableCell
+            images={[item.images[0]]}
+            theme={ImageCellTheme.Light}
+            to={detailsRoute}
+          />
+          {item.visualSimilarity !== undefined ? (
+            <span className="block pt-1 text-center body-small text-muted-foreground">
+              {item.visualSimilarity === null
+                ? '-'
+                : `${Math.round(item.visualSimilarity * 100)}%`}
+            </span>
+          ) : null}
+        </div>
       )
     },
   },

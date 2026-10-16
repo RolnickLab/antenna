@@ -51,10 +51,13 @@ export const Occurrences = () => {
       ['updated-at']: true,
     }
   )
-  const { sort, setSort } = useSort({
-    field: 'updated_at',
-    order: 'desc',
-  })
+  const { sort, setSort } = useSort(
+    { field: 'updated_at', order: 'desc' },
+    {
+      similar_to: 'visual_similarity',
+      similarity_algorithm: 'visual_similarity',
+    }
+  )
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
@@ -72,6 +75,9 @@ export const Occurrences = () => {
   const tableColumns = columns({
     projectId: projectId as string,
     showActions: selectedItems.length === 0,
+    canSortBySimilarity: !!filters.find(
+      (filter) => filter.field === 'similar_to'
+    )?.value?.length,
   })
 
   useEffect(() => {
@@ -95,6 +101,12 @@ export const Occurrences = () => {
             <DefaultFiltersControl field="apply_defaults" />
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
+            <FilterControl field="similar_to" readonly />
+            <FilterControl
+              field="similarity_algorithm"
+              readonly
+              clearable={false}
+            />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
               <>

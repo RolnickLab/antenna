@@ -9,8 +9,10 @@ import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
 import { DeviceFilter } from './filters/device-filter'
 import { ImageFilter } from './filters/image-filter'
+import { OccurrenceFilter } from './filters/occurrence-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { SessionFilter } from './filters/session-filter'
+import { SimilarityModelFilter } from './filters/similarity-model-filter'
 import { SiteFilter } from './filters/site-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
@@ -45,6 +47,8 @@ const ComponentMap: {
   not_tag_id: TagFilter,
   not_taxa_list_id: TaxaListFilter,
   pipeline: PipelineFilter,
+  similar_to: OccurrenceFilter,
+  similarity_algorithm: SimilarityModelFilter,
   source_image_collection: CaptureSetFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,

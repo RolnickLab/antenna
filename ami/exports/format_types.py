@@ -13,10 +13,11 @@ from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
 
-# Occurrence detail fields left out of exports. Each costs a query per occurrence and is not
-# part of the export format.
+# Occurrence fields left out of exports: embedding_algorithms costs a query per occurrence, and
+# visual_similarity exists only on a list sorted by similarity. Neither is part of the export format.
 EXPORT_EXCLUDED_FIELDS = [
     "embedding_algorithms",
+    "visual_similarity",
 ]
 
 
