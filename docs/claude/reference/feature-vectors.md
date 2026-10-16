@@ -37,29 +37,33 @@ image vector and a projected one) registers one algorithm per output; see `proce
 Each algorithm has one vector length, `Algorithm.embedding_dimensions`, declared by its processing
 service in `/info` and recorded at registration. An unsized column lets algorithms of different lengths
 share the table, and the declared length keeps one algorithm's vectors comparable. Registration refuses
-a different length for an algorithm that already has one: register the new ML model under a new
-algorithm key, or delete the algorithm (and with it its vectors) first.
+a different length for an algorithm that already has one, for that pipeline only (the registration
+endpoints answer 400 and register the service's other pipelines): register the new ML model under a
+new algorithm key. Do not delete the old algorithm to make room: its classifications and detections
+would lose their algorithm.
 
 ## Writing
 
 `save_results` runs `validate_detection_embeddings` before it saves anything, then
-`create_detection_embeddings` after the detections are saved. A batch is refused, with nothing
+`create_detection_embeddings` after the detections are saved. The results are refused, with nothing
 written, when a vector:
 
 - comes from an algorithm the pipeline did not register (`PipelineNotConfigured`),
-- comes from an algorithm that declares no length, or has another length (`EmbeddingDimensionMismatch`),
-- holds a value half precision cannot store (NaN, infinity, beyond ±65,504), or a detection carries
-  two vectors from one algorithm (both rejected by the results schema, so the async results endpoint
-  answers 400 before anything is queued).
+- or (`EmbeddingRefused`) comes from an algorithm that declares no length, has another length, holds a
+  value half precision cannot store (NaN, infinity, beyond ±65,504), repeats an algorithm on one
+  detection, sits on a detection without a bounding box, or belongs to a capture without a project.
+
+In the async path each image's results are saved by their own task, so a refusal fails only that image.
 
 The first vector stored for a (detection, algorithm) is kept: later ones are not written
-(`INSERT … ON CONFLICT DO NOTHING`), as detections and classifications are never overwritten either. To
-store new vectors, delete the detections or register the new ML model as a new algorithm.
+(`INSERT … ON CONFLICT DO NOTHING`). To store new vectors, delete the detections or register the new ML
+model as a new algorithm.
 
-Concurrent writers: the writer opens no transaction and takes no lock of its own. Each INSERT of up
-to 200 rows locks its rows for that statement only. Rows are inserted in (detection, algorithm)
-order, because two inserts that share rows in different orders deadlock; `TestConcurrentWriters`
-reproduces the deadlock without the ordering.
+Concurrent writers: the writer takes no lock of its own. Its one `bulk_create` runs its INSERTs of up to
+200 rows in a single transaction, so the inserted rows stay locked until the last INSERT finishes. Rows
+are inserted in (detection, algorithm) order, because two writers that insert shared rows in different
+orders deadlock; with the ordering removed, `TestConcurrentWriters` fails with "deadlock detected"
+(checked on 2026-10-16).
 
 ## Reading
 
@@ -75,8 +79,7 @@ realistic data before calling a query cheap. `TestReadingVectors` shows the basi
 | Detections still lacking a vector from an algorithm | `NOT EXISTS` on (detection, algorithm), added to the caller's detection queryset | (algorithm, detection), index-only; 138 ms over a 179k-detection project (parallel hash anti-join) |
 | Occurrences ordered by similarity to one occurrence | a representative detection's vector per occurrence, then cosine distance | (algorithm, detection), probed once per occurrence; exact scans measured at 16-19 ms per 1,000 candidates |
 
-Measured on a copy of production data in October 2026, partly while the table had a since-removed
-`key` column. Nearest-neighbour (HNSW) indexes are not created; #1500 tracks when to add them.
+Measured on a copy of production data in October 2026, on an earlier version of this table. Nearest-neighbour (HNSW) indexes are not created; #1500 tracks when to add them.
 
 Avoid: computing similarity in Python over unbounded rows (use the database's distance operators,
 or read in pages); a read without an algorithm filter, which silently mixes algorithms; and `.distinct()`
@@ -104,8 +107,9 @@ commented-out `SourceImageEmbedding` and `TaxonEmbedding` to start from:
 1. Subclass `BaseEmbedding` (algorithm, job, project, vector, timestamp) and add the target foreign
    key with `db_index=False`.
 2. Use a `BaseEmbeddingQuerySet` subclass as the manager.
-3. Write the Meta: a unique constraint on (target, algorithm), and indexes on (project, algorithm,
-   target), (algorithm, target) and a partial (job, target), with explicit names under 30 characters.
+3. In the Meta, set `indexes, constraints = embedding_table_options("<target>", prefix=..., short_target=...)`:
+   a unique constraint on (target, algorithm) and indexes on (project, algorithm, target), (algorithm,
+   target) and a partial (job, target). The reverse names come from the base (`algorithm.<table>s`).
 4. In the migration, after creating the table, run
    `ALTER TABLE <table> ALTER COLUMN vector SET STORAGE EXTERNAL`, as `ml/0031` does.
 5. Write a writer for the target next to the detection one, and add the table to

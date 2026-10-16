@@ -1,15 +1,11 @@
 import datetime
 import logging
-import math
 import typing
 
 import pydantic
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-# The largest value a half-precision float holds; feature vectors are stored in half precision.
-HALF_PRECISION_MAX = 65504.0
 
 
 class BoundingBox(pydantic.BaseModel):
@@ -193,17 +189,6 @@ class EmbeddingResponse(pydantic.BaseModel):
     features: list[float] = pydantic.Field(description="The feature vector.")
     algorithm: AlgorithmReference
 
-    @pydantic.validator("features")
-    def _features_storable(cls, v):
-        if not v:
-            raise ValueError("features must contain at least one value")
-        if not all(math.isfinite(value) and abs(value) <= HALF_PRECISION_MAX for value in v):
-            raise ValueError(
-                f"features must be finite numbers between -{HALF_PRECISION_MAX:g} and {HALF_PRECISION_MAX:g}, "
-                "the range of the half-precision values they are stored as"
-            )
-        return v
-
 
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
@@ -221,13 +206,6 @@ class DetectionResponse(pydantic.BaseModel):
             "per output (see processing_services/README.md, 'Returning feature vectors')."
         ),
     )
-
-    @pydantic.validator("embeddings")
-    def _one_embedding_per_algorithm(cls, v):
-        keys = [embedding.algorithm.key for embedding in v or []]
-        if len(keys) != len(set(keys)):
-            raise ValueError(f"embeddings must hold at most one vector per algorithm, got algorithms {keys}")
-        return v
 
 
 class PipelineRequestConfigParameters(dict):

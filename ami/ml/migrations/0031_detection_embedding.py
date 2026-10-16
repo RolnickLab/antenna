@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         db_index=False,
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="detection_embeddings",
+                        related_name="%(class)ss",
                         to="ml.algorithm",
                     ),
                 ),
@@ -64,7 +64,7 @@ class Migration(migrations.Migration):
                         db_index=False,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="detection_embeddings",
+                        related_name="%(class)ss",
                         to="jobs.job",
                     ),
                 ),
@@ -73,7 +73,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         db_index=False,
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="detection_embeddings",
+                        related_name="%(class)ss",
                         to="main.project",
                     ),
                 ),

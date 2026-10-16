@@ -17,16 +17,12 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, SourceImage
-from ami.ml.embeddings.writer import (
-    EmbeddingDimensionMismatch,
-    create_detection_embeddings,
-    validate_detection_embeddings,
-)
+from ami.main.models import Classification, Detection, Project, SourceImage
+from ami.ml.embeddings.writer import EmbeddingRefused, create_detection_embeddings, validate_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
+from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map, save_results
-from ami.ml.schemas import AlgorithmConfigResponse, DetectionResponse, PipelineResultsResponse
+from ami.ml.schemas import AlgorithmConfigResponse, DetectionResponse, PipelineConfigResponse, PipelineResultsResponse
 from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.tests.fixtures.queries import no_query_cache
@@ -44,7 +40,7 @@ def _embedding_payload(vector: list[float], algorithm: AlgorithmConfigResponse =
 
 
 class TestEmbeddingSchema(SimpleTestCase):
-    """The checks the results schema makes, which reject a bad vector before any result is saved."""
+    """The ``embeddings`` field of the results schema and the declared length of an algorithm."""
 
     def _detection(self, **extra) -> dict:
         return {
@@ -59,18 +55,6 @@ class TestEmbeddingSchema(SimpleTestCase):
         self.assertIsNone(DetectionResponse.parse_obj(self._detection()).embeddings)
         parsed = DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([0.5] * 512)))
         self.assertEqual(len(parsed.embeddings or []), 1)
-
-    def test_a_vector_half_precision_cannot_store_is_refused(self):
-        for vector in ([], [float("nan")] * 4, [float("inf")] * 4, [1e6] * 4):
-            with self.subTest(vector=vector[:1]), self.assertRaises(pydantic.ValidationError):
-                DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload(vector)))
-        DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([65504.0, -65504.0])))
-
-    def test_two_vectors_from_one_algorithm_on_one_detection_are_refused(self):
-        with self.assertRaises(pydantic.ValidationError):
-            DetectionResponse.parse_obj(
-                self._detection(embeddings=_embedding_payload([0.5] * 4) + _embedding_payload([0.25] * 4))
-            )
 
     def test_a_declared_vector_length_must_be_positive(self):
         with self.assertRaises(pydantic.ValidationError):
@@ -98,6 +82,27 @@ class TestDeclaredVectorLength(TestCase):
             get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": 1024}))
         self.assertIn("new algorithm key", str(raised.exception))
         self.assertEqual(Algorithm.objects.get(key=SPECIES.key).embedding_dimensions, LENGTH)
+
+    def test_a_refused_pipeline_leaves_the_other_pipelines_of_the_service_registered(self):
+        """The refusal is reported in the response (the endpoints answer 400), not raised, so a service whose
+        one pipeline changed an ML model can still register the rest, and new projects can still be created."""
+        get_or_create_algorithm_and_category_map(SPECIES)
+        with no_processing_service_http():
+            project, _ = setup_test_project(reuse=False)
+        service = ProcessingService.objects.create(name="Vector service", endpoint_url=None)
+        changed = SPECIES.copy(update={"embedding_dimensions": 1024})
+        response = service.create_pipelines(
+            pipeline_configs=[
+                PipelineConfigResponse(name="Changed", slug="changed", version=1, algorithms=[DETECTOR, changed]),
+                PipelineConfigResponse(name="Unchanged", slug="unchanged", version=1, algorithms=[DETECTOR, BINARY]),
+            ],
+            projects=Project.objects.filter(pk=project.pk),
+        )
+        self.assertFalse(response.success)
+        self.assertIn("Pipeline 'changed'", response.error or "")
+        self.assertEqual([pipeline.slug for pipeline in response.pipelines], ["unchanged"])
+        self.assertTrue(Pipeline.objects.filter(slug="unchanged").exists())
+        self.assertFalse(Pipeline.objects.filter(slug="changed").exists())
 
 
 class ClassifierPipelineMixin:
@@ -190,14 +195,17 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         cls._set_up_pipeline()
 
     def test_every_detection_stores_its_vector_with_its_captures_project(self):
-        """Including the rejected crop, which has no species classification that could carry one."""
+        """Including the rejected crop, which has no species classification that could carry one. The
+        capture's project differs from its station's here, so a fallback to the station would fail."""
         image = self._image()
+        other_project = Project.objects.create(name="Capture's own project", owner=self.project.owner)
+        SourceImage.objects.filter(pk=image.pk).update(project=other_project)
         self._save(
             self._moth(image, _embedding_payload(self.LOW)),
             self._rejected(image, _embedding_payload(self.HIGH), box=100.0),
         )
         self.assertEqual(self._stored(image), {(0.0, SPECIES.key): self.LOW, (100.0, SPECIES.key): self.HIGH})
-        self.assertEqual(set(DetectionEmbedding.objects.values_list("project_id", flat=True)), {self.project.pk})
+        self.assertEqual(set(DetectionEmbedding.objects.values_list("project_id", flat=True)), {other_project.pk})
 
     def test_two_models_store_their_vectors_side_by_side_on_one_detection(self):
         image = self._image()
@@ -257,36 +265,41 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
             self._rejected(image, _embedding_payload(self.LOW), box=5.0),
             self._rejected(image, _embedding_payload(self.HIGH), box=5.0),
         )
-        self.assertEqual(len(self._stored(image)), 1)
+        self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=image).count(), 1)
+        self.assertEqual(self._stored(image), {(5.0, SPECIES.key): self.LOW})
 
     def test_a_vector_that_cannot_be_stored_stops_the_batch_before_anything_is_saved(self):
-        """An unregistered algorithm, a vector of another length than its algorithm declares, and an
-        algorithm that declares no length each raise before any detection or classification is written."""
+        """Each reason a vector is refused raises before any detection or classification of the batch is
+        written, so a retry starts from a clean capture."""
         undeclared = get_or_create_algorithm_and_category_map(
             AlgorithmConfigResponse(name="Undeclared extractor", key="undeclared-extractor", task_type="embedding")
         )
         self.pipeline.algorithms.add(undeclared)
         unregistered = AlgorithmConfigResponse(name="Unregistered", key="unregistered-embedder")
-        cases = [
-            (PipelineNotConfigured, _embedding_payload(self.LOW, algorithm=unregistered)),
-            (EmbeddingDimensionMismatch, _embedding_payload([0.5] * 512)),
-            (EmbeddingDimensionMismatch, [{"algorithm": {"name": "x", "key": undeclared.key}, "features": [0.5]}]),
-        ]
-        for error, embeddings in cases:
+        nan, inf, too_large = ([value] + [0.5] * (LENGTH - 1) for value in (float("nan"), float("inf"), 1e6))
+        cases = {
+            "unregistered algorithm": (PipelineNotConfigured, _embedding_payload(self.LOW, algorithm=unregistered)),
+            "wrong length": (EmbeddingRefused, _embedding_payload([0.5] * 512)),
+            "no declared length": (EmbeddingRefused, _embedding_payload([0.5], algorithm=undeclared)),
+            "not a number": (EmbeddingRefused, _embedding_payload(nan)),
+            "infinite": (EmbeddingRefused, _embedding_payload(inf)),
+            "beyond half precision": (EmbeddingRefused, _embedding_payload(too_large)),
+            "two from one algorithm": (EmbeddingRefused, _embedding_payload(self.LOW) + _embedding_payload(self.HIGH)),
+            "no bounding box": (EmbeddingRefused, _embedding_payload(self.LOW)),
+            "capture without a project": (EmbeddingRefused, _embedding_payload(self.LOW)),
+        }
+        for reason, (error, embeddings) in cases.items():
             image = self._image()
-            with self.subTest(error=error.__name__, key=embeddings[0]["algorithm"]["key"]):
+            detection = self._moth(image, embeddings)
+            if reason == "no bounding box":
+                detection["bbox"] = None
+            if reason == "capture without a project":
+                SourceImage.objects.filter(pk=image.pk).update(project=None)
+            with self.subTest(reason):
                 with self.assertRaises(error):
-                    self._save(self._moth(image, embeddings), self._moth(image, box=100.0))
+                    self._save(detection, self._moth(image, box=100.0))
                 self.assertFalse(Detection.objects.filter(source_image=image).exists())
                 self.assertFalse(Classification.objects.filter(detection__source_image=image).exists())
-        self.assertFalse(DetectionEmbedding.objects.exists())
-
-    def test_a_capture_without_a_project_refuses_its_vectors(self):
-        """A vector's project is its capture's, with no fallback, so a capture without one cannot store vectors."""
-        image = self._image()
-        SourceImage.objects.filter(pk=image.pk).update(project=None)
-        with self.assertRaisesMessage(ValueError, f"Capture #{image.pk} belongs to no project"):
-            self._save(self._moth(image, _embedding_payload(self.LOW)))
         self.assertFalse(DetectionEmbedding.objects.exists())
 
     def test_storing_vectors_takes_one_insert_however_many_detections(self):
@@ -300,7 +313,8 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
         pairs = list(zip(detections, parsed))
 
-        with self.assertNumQueries(0):
+        # One query, to check that the captures belong to a project.
+        with self.assertNumQueries(1):
             validate_detection_embeddings(parsed, algorithms_known)
         with self.assertNumQueries(1):
             create_detection_embeddings(pairs[:1], algorithms_known)

@@ -18,6 +18,30 @@ from ami.main.models import Detection
 EMBEDDING_BATCH_SIZE = 200
 
 
+def embedding_table_options(target: str, prefix: str, short_target: str) -> tuple[list, list]:
+    """The indexes and unique constraint every vector table needs, as (indexes, constraints) for its Meta.
+
+    ``target`` is the table's target field. ``prefix`` and ``short_target`` build index names that fit
+    Django's 30-character limit, for example ``ml_detemb_algo_det``.
+    """
+    indexes = [
+        # A project's vectors from one algorithm, in target order, and vector counts per algorithm.
+        models.Index(fields=["project", "algorithm", target], name=f"ml_{prefix}_proj_algo_{short_target}"),
+        # One algorithm's vectors across all projects, and the cascade when an algorithm is deleted.
+        models.Index(fields=["algorithm", target], name=f"ml_{prefix}_algo_{short_target}"),
+        # A job's vectors, and clearing the job when it is deleted.
+        models.Index(
+            fields=["job", target], name=f"ml_{prefix}_job_{short_target}", condition=models.Q(job__isnull=False)
+        ),
+    ]
+    constraints = [
+        models.UniqueConstraint(
+            fields=[target, "algorithm"], name=f"%(app_label)s_%(class)s_unique_{target}_algorithm"
+        ),
+    ]
+    return indexes, constraints
+
+
 class BaseEmbeddingQuerySet(BaseQuerySet):
     def for_algorithm(self, algorithm_id: int):
         """The vectors of one algorithm: the only set whose vectors may be compared."""
@@ -28,11 +52,11 @@ class BaseEmbedding(BaseModel):
     """The columns every feature vector table shares.
 
     A subclass adds its target (the detection, capture or taxon the vector describes), a manager built
-    from ``BaseEmbeddingQuerySet``, and a Meta with a unique constraint on (target, algorithm) and its
-    indexes. The ``vector`` column has no fixed length, so algorithms with different lengths share a table.
+    from ``BaseEmbeddingQuerySet``, and a Meta from ``embedding_table_options``. The ``vector`` column has
+    no fixed length, so algorithms with different lengths share a table.
     """
 
-    # No single-column indexes: each subclass declares composite indexes that lead with these columns.
+    # No single-column indexes: embedding_table_options adds composite indexes that lead with these columns.
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="%(class)ss", db_index=False)
     # The job whose results stored the vector. Deleting the job keeps the vector.
     job = models.ForeignKey(
@@ -59,39 +83,11 @@ class DetectionEmbedding(BaseEmbedding):
     """
 
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
-    # Redeclared only for readable reverse names (algorithm.detection_embeddings); a new table can keep
-    # the base's "%(class)ss" names.
-    algorithm = models.ForeignKey(
-        "ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
-    )
-    job = models.ForeignKey(
-        "jobs.Job",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="detection_embeddings",
-        db_index=False,
-    )
-    project = models.ForeignKey(
-        "main.Project", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
-    )
 
     objects = DetectionEmbeddingQuerySet.as_manager()
 
     class Meta:
-        indexes = [
-            # A project's vectors from one algorithm, in detection order, and vector counts per algorithm.
-            models.Index(fields=["project", "algorithm", "detection"], name="ml_detemb_proj_algo_det"),
-            # One algorithm's vectors across all projects, and the cascade when an algorithm is deleted.
-            models.Index(fields=["algorithm", "detection"], name="ml_detemb_algo_det"),
-            # A job's vectors, and clearing the job when it is deleted.
-            models.Index(fields=["job", "detection"], name="ml_detemb_job_det", condition=models.Q(job__isnull=False)),
-        ]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["detection", "algorithm"], name="%(app_label)s_%(class)s_unique_detection_algorithm"
-            ),
-        ]
+        indexes, constraints = embedding_table_options("detection", prefix="detemb", short_target="det")
 
     def __str__(self) -> str:
         return f"#{self.pk} for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
@@ -110,18 +106,7 @@ class DetectionEmbedding(BaseEmbedding):
 #     objects = BaseEmbeddingQuerySet.as_manager()
 #
 #     class Meta:
-#         indexes = [
-#             models.Index(fields=["project", "algorithm", "source_image"], name="ml_srcemb_proj_algo_src"),
-#             models.Index(fields=["algorithm", "source_image"], name="ml_srcemb_algo_src"),
-#             models.Index(
-#                 fields=["job", "source_image"], name="ml_srcemb_job_src", condition=models.Q(job__isnull=False)
-#             ),
-#         ]
-#         constraints = [
-#             models.UniqueConstraint(
-#                 fields=["source_image", "algorithm"], name="%(app_label)s_%(class)s_unique_source_image_algorithm"
-#             ),
-#         ]
+#         indexes, constraints = embedding_table_options("source_image", prefix="srcemb", short_target="src")
 #
 #
 # class TaxonEmbedding(BaseEmbedding):
@@ -133,13 +118,4 @@ class DetectionEmbedding(BaseEmbedding):
 #     objects = BaseEmbeddingQuerySet.as_manager()
 #
 #     class Meta:
-#         indexes = [
-#             models.Index(fields=["project", "algorithm", "taxon"], name="ml_taxemb_proj_algo_taxon"),
-#             models.Index(fields=["algorithm", "taxon"], name="ml_taxemb_algo_taxon"),
-#             models.Index(fields=["job", "taxon"], name="ml_taxemb_job_taxon", condition=models.Q(job__isnull=False)),
-#         ]
-#         constraints = [
-#             models.UniqueConstraint(
-#                 fields=["taxon", "algorithm"], name="%(app_label)s_%(class)s_unique_taxon_algorithm"
-#             ),
-#         ]
+#         indexes, constraints = embedding_table_options("taxon", prefix="taxemb", short_target="taxon")

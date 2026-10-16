@@ -223,7 +223,9 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         processing_service = ProcessingService.objects.get(pk=pk)
         response = processing_service.create_pipelines()
         processing_service.save()
-        return Response(response.dict())
+        return Response(
+            response.dict(), status=status.HTTP_200_OK if response.success else status.HTTP_400_BAD_REQUEST
+        )
 
 
 class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
@@ -297,4 +299,6 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
         # Record that we heard from this async processing service
         processing_service.mark_seen(live=True)
 
-        return Response(response.dict(), status=status.HTTP_201_CREATED)
+        return Response(
+            response.dict(), status=status.HTTP_201_CREATED if response.success else status.HTTP_400_BAD_REQUEST
+        )

@@ -10,7 +10,7 @@ from django.db import models
 
 from ami.base.models import BaseQuerySet
 from ami.main.models import BaseModel, Project
-from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
+from ami.ml.models.pipeline import Pipeline, embedding_dimensions_conflicts, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import (
     PipelineConfigResponse,
@@ -106,8 +106,14 @@ class ProcessingService(BaseModel):
         pipelines_created = []
         algorithms_created = []
         projects = projects or self.projects.all()
+        refused: dict[str, list[str]] = {}
 
         for pipeline_data in pipelines_to_add:
+            # Checked before anything is written, so one refused pipeline leaves the others registered.
+            if conflicts := embedding_dimensions_conflicts(pipeline_data.algorithms):
+                refused[pipeline_data.slug] = conflicts
+                logger.error(f"Pipeline '{pipeline_data.slug}' was not registered: {' '.join(conflicts)}")
+                continue
             pipeline = Pipeline.objects.filter(
                 models.Q(slug=pipeline_data.slug) | models.Q(name=pipeline_data.name, version=pipeline_data.version)
             ).first()
@@ -168,8 +174,9 @@ class ProcessingService(BaseModel):
 
         return PipelineRegistrationResponse(
             timestamp=datetime.datetime.now(),
-            success=True,
-            pipelines=pipelines_to_add,
+            success=not refused,
+            error=" ".join(f"Pipeline '{slug}': {' '.join(conflicts)}" for slug, conflicts in refused.items()) or None,
+            pipelines=[pipeline for pipeline in pipelines_to_add if pipeline.slug not in refused],
             pipelines_created=pipelines_created,
             algorithms_created=algorithms_created,
         )

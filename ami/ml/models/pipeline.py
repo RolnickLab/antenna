@@ -93,7 +93,8 @@ def filter_processed_images(
     5. Real detections exist and are fully classified by all pipeline classifiers
 
     Algorithms with the "embedding" task type are not counted as classifiers, because they never
-    write a classification. A capture that lacks only a vector is therefore not reprocessed.
+    write a classification, so a capture that lacks only a vector is not reprocessed. A pipeline with no
+    classifier at all (a detector and feature extractors) reprocesses every capture, as a detector-only one does.
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
@@ -442,6 +443,23 @@ def collect_detections(
     return detection_requests
 
 
+def embedding_dimensions_conflicts(algorithm_configs: list[AlgorithmConfigResponse]) -> list[str]:
+    """Why each declared vector length differs from the length already registered for that algorithm.
+
+    A different length means a different ML model, whose vectors cannot be compared with the stored ones.
+    """
+    declared = {config.key: config.embedding_dimensions for config in algorithm_configs if config.embedding_dimensions}
+    registered = Algorithm.objects.filter(key__in=declared, embedding_dimensions__isnull=False).values_list(
+        "key", "embedding_dimensions"
+    )
+    return [
+        f"Algorithm '{key}' is registered with {length}-dimension feature vectors, but the processing service "
+        f"now declares {declared[key]}. Register the new ML model under a new algorithm key."
+        for key, length in registered
+        if length != declared[key]
+    ]
+
+
 def get_or_create_algorithm_and_category_map(
     algorithm_config: AlgorithmConfigResponse,
     logger: logging.Logger = logger,
@@ -504,18 +522,11 @@ def get_or_create_algorithm_and_category_map(
             else:
                 logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
 
-    declared_dimensions = algorithm_config.embedding_dimensions
-    if declared_dimensions is not None and algo.embedding_dimensions is None:
-        algo.embedding_dimensions = declared_dimensions
+    if algorithm_config.embedding_dimensions is not None and algo.embedding_dimensions is None:
+        algo.embedding_dimensions = algorithm_config.embedding_dimensions
         algo_fields_updated.append("embedding_dimensions")
-    elif declared_dimensions is not None and declared_dimensions != algo.embedding_dimensions:
-        # A different length means a different ML model, whose vectors cannot be compared with the stored ones.
-        raise PipelineNotConfigured(
-            f"Algorithm '{algo.key}' is registered with {algo.embedding_dimensions}-dimension feature vectors, "
-            f"but the processing service now declares {declared_dimensions}. Register the new ML model under a new "
-            "algorithm key (for example one that includes the new version), or delete the registered algorithm, "
-            "which also deletes its stored vectors, and register the pipelines again."
-        )
+    elif conflicts := embedding_dimensions_conflicts([algorithm_config]):
+        raise PipelineNotConfigured(conflicts[0])
 
     # Update fields that may have changed in the processing service, with a warning
     # These are fields that we have added to the API since the algorithm was first created
