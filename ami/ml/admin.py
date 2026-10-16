@@ -129,11 +129,11 @@ class AlgorithmCategoryMapAdmin(AdminBase):
 class DetectionEmbeddingAdmin(admin.ModelAdmin):
     """Read-only view of stored feature vectors: the vector is never loaded, only its length."""
 
-    list_display = ["id", "detection_id", "algorithm", "key", "vector_length", "job", "project", "timestamp"]
+    list_display = ["id", "detection_id", "algorithm", "vector_length", "job", "project", "timestamp"]
     list_select_related = ["algorithm", "job", "project"]
     list_filter = ["algorithm"]
     raw_id_fields = ["detection"]
-    fields = ("detection", "algorithm", "key", "vector_length", "job", "project", "timestamp")
+    fields = ("detection", "algorithm", "vector_length", "job", "project", "timestamp")
     readonly_fields = fields
     ordering = ["-id"]
     show_full_result_count = False
