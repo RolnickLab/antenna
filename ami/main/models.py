@@ -1206,42 +1206,28 @@ class Deployment(BaseModel):
 
     def update_children(self):
         """
-        Set the project of every row that keeps its own copy of this deployment's project.
+        Update all attribute on all child objects that should be equal to their deployment values.
 
-        Events, occurrences, captures, feature vectors and algorithm results copy their deployment's
-        project so that queries and permission checks need no join; this puts them back on the
-        deployment's project after it changes. Only the project is set: any other copied field is left
-        as it is. A deployment can move to another project; its captures never move to another deployment.
+        e.g. Events, Occurrences, SourceImages must belong to same project as their deployment. But
+        they have their own copy of that attribute to reduce the number of joins required to query them.
         """
 
-        deployment_project = self.project
-
-        # Each table that keeps its own copy of the deployment's project, with the path from its rows to
-        # that project. More tables join this list as they gain a project column (#1453).
+        # All the child models that have a foreign key to project
         child_models = [
-            ("main.Event", "deployment__project"),
-            ("main.Occurrence", "deployment__project"),
-            ("main.SourceImage", "deployment__project"),
-            ("ml.DetectionEmbedding", "detection__source_image__deployment__project"),
-            ("ml.AlgorithmResult", "occurrence__deployment__project"),
+            "Event",
+            "Occurrence",
+            "SourceImage",
         ]
-        # Shorter paths first. A table reached through other rows copies its project from them, so it is
-        # checked only when a table with a shorter path had rows to fix: its lookup joins several tables,
-        # and this runs on every deployment save.
-        moved_at_shorter_path = 0
-        for model_label, project_path in sorted(child_models, key=lambda child: child[1].count("__")):
-            deployment_path = project_path.removesuffix("__project")
-            if deployment_path != "deployment" and not moved_at_shorter_path:
-                continue
-            model = apps.get_model(model_label)
-            qs = model.objects.filter(**{deployment_path: self}).exclude(project=deployment_project)
+        for model_name in child_models:
+            model = apps.get_model("main", model_name)
+            qs = model.objects.filter(deployment=self).exclude(project=self.project)
             project_values = set(qs.values_list("project", flat=True).distinct())
-            if project_values:
+            if len(project_values):
                 logger.warning(
-                    f"Deployment {self} has alternate projects set on {model_label} "
+                    f"Deployment {self} has alternate projects set on {model_name} "
                     f"objects: {project_values}. Updating them!"
                 )
-            moved_at_shorter_path += qs.update(project=deployment_project)
+            qs.update(project=self.project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""

@@ -1366,45 +1366,6 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.events.first().project == self.project_two
         assert self.deployment.occurrences.first().project == self.project_two
 
-    def test_change_project_moves_algorithm_results(self):
-        """Algorithm results copy their project from the occurrence, so a moved deployment takes them along."""
-        from ami.ml.models.algorithm import Algorithm
-
-        algorithm = Algorithm.objects.create(name="Moved Post-processor", version=1)
-        occurrence = self.deployment.occurrences.first()
-        result = AlgorithmResult.objects.record(
-            occurrence=occurrence, algorithm=algorithm, kind=SizeFilterResultData.kind, data={"relative_size": 0.001}
-        )
-        assert result.project == self.project_one
-
-        self.deployment.project = self.project_two
-        self.deployment.save()
-
-        result.refresh_from_db()
-        assert result.project == self.project_two
-
-    def test_change_project_moves_feature_vectors(self):
-        """Feature vectors copy their project from the detection's capture, so a moved deployment takes them along."""
-        from ami.ml.models.algorithm import Algorithm
-        from ami.ml.models.embedding import DetectionEmbedding
-
-        algorithm = Algorithm.objects.create(name="Moved Feature Extractor", version=1)
-        detection = self.deployment.occurrences.first().detections.first()
-        embedding = DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, vector=[0.1, 0.2])
-        assert embedding.project == self.project_one
-
-        self.deployment.project = self.project_two
-        self.deployment.save()
-
-        embedding.refresh_from_db()
-        assert embedding.project == self.project_two
-
-    def test_saving_a_deployment_that_did_not_move_leaves_feature_vectors_alone(self):
-        """Realigning vectors joins detections and captures, so a save that moves nothing skips it."""
-        with CaptureQueriesContext(connection) as queries:
-            self.deployment.save()
-        assert not any("ml_detectionembedding" in query["sql"] for query in queries.captured_queries)
-
     def test_delete_project(self):
         self.project_one.delete()
 
