@@ -690,6 +690,37 @@ class TestPipeline(TestCase):
         self.assertEqual(set(detections.values_list("job_id", flat=True)), {first_job.pk})
         self.assertEqual(set(classifications.values_list("job_id", flat=True)), {first_job.pk})
 
+    def test_each_classification_lands_on_its_own_detection_in_a_batch_of_new_and_existing_boxes(self):
+        """Each classification is saved on the detection its response came from, in a batch that
+        mixes a new box, an already-stored box and a box whose capture does not exist. See #1436."""
+        image = self.test_images[0]
+        first = self.fake_pipeline_results([image], self.pipeline)
+        save_results(first)
+
+        known = first.detections[0]
+        first_score = max(known.classifications[1].scores)
+        new = known.copy(deep=True)
+        new.bbox = BoundingBox(x1=2.0, y1=2.0, x2=3.0, y2=3.0)
+        orphan = new.copy(deep=True)
+        orphan.source_image_id = str(SourceImage.objects.order_by("-pk").values_list("pk", flat=True).first() + 1)
+        new.classifications[1].scores = [0.111]
+        known = known.copy(deep=True)
+        known.classifications[1].scores = [0.999]
+
+        second = self.fake_pipeline_results([image], self.pipeline)
+        second.detections = [new, orphan, known]
+        save_results(second)
+
+        species = self.algorithms["random-species-classifier"]
+        scores_by_box = {
+            tuple(detection.bbox): set(
+                detection.classifications.filter(algorithm=species).values_list("score", flat=True)
+            )
+            for detection in image.detections.all()
+        }
+        self.assertEqual(scores_by_box[(2.0, 2.0, 3.0, 3.0)], {0.111})
+        self.assertEqual(scores_by_box[(0.0, 0.0, 1.0, 1.0)], {first_score, 0.999})
+
     def test_skip_existing_when_all_matching(self):
         """
         When processing images, skip images that have already been processed by the same set of algorithms.
