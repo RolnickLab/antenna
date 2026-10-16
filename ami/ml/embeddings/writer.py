@@ -17,11 +17,6 @@ from ami.ml.schemas import DetectionResponse
 logger = logging.getLogger(__name__)
 
 
-def _box_key(source_image_id, coordinates) -> tuple:
-    """Exact coordinates, the identity ``get_or_create_detection`` reuses detections by."""
-    return (str(source_image_id), tuple(float(value) for value in coordinates))
-
-
 class EmbeddingDimensionMismatch(PipelineNotConfigured):
     """A vector's length differs from the length its algorithm has produced before."""
 
@@ -60,8 +55,7 @@ def _check_embedding_dimensions(
 
 
 def create_detection_embeddings(
-    detections: list[Detection],
-    detection_responses: list[DetectionResponse],
+    saved_detections: list[tuple[Detection, DetectionResponse]],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     job_id: int | None = None,
@@ -69,46 +63,24 @@ def create_detection_embeddings(
     """
     Store the feature vectors sent with each detection, one row per (detection, algorithm).
 
-    Writes are insert-mostly (see ``DetectionEmbeddingQuerySet.store``): saving the same results
-    twice changes nothing, and a new vector from an algorithm replaces its old one. Only
+    Each vector is stored on the detection its response was saved as, from the pairs
+    ``create_detections`` returns, so a vector can never land on another box (#1436). Writes are
+    insert-mostly (see ``DetectionEmbeddingQuerySet.store``): saving the same results twice
+    changes nothing, and a new vector from an algorithm replaces its old one. Only
     ``DetectionEmbedding`` rows are written, never a classification, so no determination can
     change. A vector with a value half precision cannot hold (NaN, infinity, beyond 65504) is
-    skipped with a warning.
-
-    Responses are matched to ``detections`` by image and box (by exact coordinates), the
-    key ``get_or_create_detection`` reuses detections by, because detection creation returns
-    existing detections ahead of new ones and pairing by position would swap vectors. An
-    algorithm key the pipeline has not registered raises ``PipelineNotConfigured``, as it does
-    for classifications, and a vector whose length differs from its algorithm's raises
-    ``EmbeddingDimensionMismatch``. ``job_id`` records the job whose results stored each vector.
-    Returns the embeddings that were sent to the store (written or unchanged).
+    skipped with a warning. An algorithm key the pipeline has not registered raises
+    ``PipelineNotConfigured``, as it does for classifications, and a vector whose length differs
+    from its algorithm's raises ``EmbeddingDimensionMismatch``. ``job_id`` records the job whose
+    results stored each vector. Returns the embeddings that were sent to the store (written or
+    unchanged).
     """
-    by_box: dict[tuple, list[Detection]] = collections.defaultdict(list)
-    for detection in detections:
-        if detection.bbox is None:
-            continue
-        candidates = by_box[_box_key(detection.source_image_id, detection.bbox)]
-        # A box the service returned twice comes back as the same stored detection twice; that is
-        # one detection, not two sharing a box. Unsaved instances compare by identity, so stay apart.
-        if detection not in candidates:
-            candidates.append(detection)
     embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
     lengths_by_algorithm: dict[Algorithm, set[int]] = collections.defaultdict(set)
-    unmatched = not_finite = repeated = 0
-    for detection_resp in detection_responses:
-        if detection_resp.bbox is None or not detection_resp.embeddings:
+    not_finite = repeated = 0
+    for detection, detection_resp in saved_detections:
+        if not detection_resp.embeddings:
             continue
-        box_key = _box_key(detection_resp.source_image_id, detection_resp.bbox.as_coords())
-        candidates = by_box.get(box_key, [])
-        if len(candidates) > 1:
-            logger.warning(
-                f"Skipped the vectors of capture {box_key[0]} box {box_key[1]}: "
-                f"{len(candidates)} stored detections share that box."
-            )
-        if len(candidates) != 1:
-            unmatched += 1
-            continue
-        detection = candidates[0]
         for embedding_resp in detection_resp.embeddings:
             try:
                 algorithm = algorithms_known[embedding_resp.algorithm.key]
@@ -147,8 +119,6 @@ def create_detection_embeddings(
                 stored_by_algorithm[algorithm] = DetectionEmbedding.objects.stored_length(algorithm.pk)
         _check_embedding_dimensions(lengths_by_algorithm, stored_by_algorithm)
 
-        if unmatched:
-            logger.warning(f"Skipped the vectors of {unmatched} returned boxes that match no single stored detection.")
         if repeated:
             logger.warning(
                 f"Skipped {repeated} vectors: an algorithm sent more than one vector for a detection, "
@@ -158,5 +128,7 @@ def create_detection_embeddings(
             logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
         if embeddings:
             written, unchanged = DetectionEmbedding.objects.store(embeddings.values())
-            logger.info(f"Stored {written} feature vectors ({unchanged} unchanged) for {len(detections)} detections.")
+            logger.info(
+                f"Stored {written} feature vectors ({unchanged} unchanged) for {len(saved_detections)} detections."
+            )
     return list(embeddings.values())

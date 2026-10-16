@@ -254,7 +254,7 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         self.assertEqual(list(replaced.vector), self.HIGH)
         self.assertGreater(replaced.updated_at, first.updated_at)
 
-    def test_an_algorithm_and_key_keep_the_length_of_their_first_vector(self):
+    def test_an_algorithm_keeps_the_length_of_its_first_vector(self):
         """Vectors of another length are refused, because they could never be compared."""
         image, other = self._image(), self._image()
         self._save(self._moth(image, _embedding_payload([0.5] * 512)))
@@ -297,32 +297,22 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
             DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=b)) for b in boxes
         ]
         algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
+        pairs = list(zip(detections, parsed))
 
         # Measure after a first write, on other detections so no read is served from the query cache.
-        create_detection_embeddings(detections[:1], parsed[:1], algorithms_known)
+        create_detection_embeddings(pairs[:1], algorithms_known)
         DetectionEmbedding.objects.all().delete()
         with CaptureQueriesContext(connection) as one:
-            create_detection_embeddings(detections[1:2], parsed[1:2], algorithms_known)
+            create_detection_embeddings(pairs[1:2], algorithms_known)
         DetectionEmbedding.objects.all().delete()
         with CaptureQueriesContext(connection) as five:
-            stored = create_detection_embeddings(detections, parsed, algorithms_known)
+            stored = create_detection_embeddings(pairs, algorithms_known)
         self.assertEqual(len(five), len(one))
         self.assertEqual(len(stored), 5)
 
         # A rerun with identical vectors reads the length and the stored rows and writes nothing.
         with self.assertNumQueries(2):
-            create_detection_embeddings(detections, parsed, algorithms_known)
-
-    def test_a_vector_matches_its_box_exactly_after_a_json_round_trip(self):
-        image = self._image()
-        self._save(self._rejected(image, box=0.1234567))
-        sent = DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=0.1234567))
-        round_tripped = DetectionResponse.parse_raw(sent.json())
-        detections = list(Detection.objects.filter(source_image=image))
-        algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
-
-        stored = create_detection_embeddings(detections, [round_tripped], algorithms_known)
-        self.assertEqual([embedding.detection_id for embedding in stored], [detections[0].pk])
+            create_detection_embeddings(pairs, algorithms_known)
 
     def test_two_nearby_boxes_each_get_their_own_vector(self):
         image = self._image()
@@ -334,27 +324,9 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         )
         self.assertEqual(self._stored(image), {(near, SPECIES.key): self.LOW, (nearer, SPECIES.key): self.HIGH})
 
-    def test_a_box_stored_twice_is_skipped_and_logged_not_guessed(self):
-        image = self._image()
-        self._save(self._rejected(image, box=5.0))
-        original = Detection.objects.get(source_image=image)
-        Detection.objects.create(
-            source_image=image, bbox=original.bbox, detection_algorithm=original.detection_algorithm
-        )
-        sent = DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=5.0))
-        algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
-
-        with self.assertLogs("ami.ml.embeddings.writer", level="WARNING") as logs:
-            stored = create_detection_embeddings(
-                list(Detection.objects.filter(source_image=image)), [sent], algorithms_known
-            )
-        self.assertEqual(stored, [])
-        self.assertFalse(DetectionEmbedding.objects.exists())
-        self.assertIn(f"capture {image.pk}", "\n".join(logs.output))
-
     def test_an_existing_box_returned_twice_is_one_detection_and_keeps_its_vector(self):
-        """Detection creation returns the stored detection once per response, so a repeated box
-        must not look like two detections sharing it."""
+        """Detection creation pairs both copies of a repeated box with the one stored detection,
+        which keeps a single vector."""
         image = self._image()
         self._save(self._rejected(image, box=5.0))
         self._save(
@@ -363,7 +335,7 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         )
         self.assertEqual(self._stored(image), {(5.0, SPECIES.key): self.LOW})
 
-    def test_only_the_first_write_of_an_algorithm_and_key_takes_the_advisory_lock(self):
+    def test_only_the_first_write_of_an_algorithm_takes_the_advisory_lock(self):
         image, other = self._image(), self._image()
         self._save(self._rejected(image), self._rejected(other))
 
