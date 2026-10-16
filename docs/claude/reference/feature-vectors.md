@@ -18,6 +18,11 @@ and `ami/ml/embeddings/reader.py` (query functions). Introduced in #1462.
 | `project` | Copied from the detection's capture (or its station), so project-scoped queries need no join. |
 | `job` | The job whose results stored the vector; set to null if the job is deleted. |
 
+A vector keeps the project it was written with. Moving a station to another project does not move
+its vectors: `Deployment.update_children` realigns only events, occurrences and captures. Until the
+move command (#1192) or a project-consistency check (#1453) covers vectors, a moved station's vectors
+stay with its old project.
+
 Indexes: the unique constraint on (detection, algorithm), an index on
 (project, algorithm, detection), an index on (algorithm, detection) that serves the writer's
 length lookup (an algorithm's first row, ordered by detection), and a partial index on (job, detection)
