@@ -1,5 +1,6 @@
 import datetime
 import logging
+import math
 import typing
 
 import pydantic
@@ -7,16 +8,15 @@ import pydantic
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# The largest value a half-precision float holds; feature vectors are stored in half precision.
+HALF_PRECISION_MAX = 65504.0
+
 
 class BoundingBox(pydantic.BaseModel):
     x1: float
     y1: float
     x2: float
     y2: float
-
-    def as_coords(self) -> list[float]:
-        """The box as [x1, y1, x2, y2] - the one place that defines this order."""
-        return [self.x1, self.y1, self.x2, self.y2]
 
     @classmethod
     def from_coords(cls, coords: typing.Any, raise_on_error: bool = True) -> "BoundingBox | None":
@@ -120,6 +120,14 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         description="A URI to the weight or model details, could be a public web URL or object store path.",
     )
     category_map: AlgorithmCategoryMapResponse | None = None
+    embedding_dimensions: int | None = pydantic.Field(
+        default=None,
+        gt=0,
+        description=(
+            "The length of the feature vectors this algorithm returns in detection embeddings. Required for any "
+            "algorithm that returns them: Antenna refuses vectors from an algorithm that does not declare it."
+        ),
+    )
 
     class Config:
         extra = "ignore"
@@ -173,19 +181,23 @@ class DetectionRequest(pydantic.BaseModel):
 
 
 class EmbeddingResponse(pydantic.BaseModel):
-    """A feature vector for one detection, and the algorithm whose backbone produced it.
+    """A feature vector for one detection, and the algorithm that produced it.
 
-    It is carried on the detection rather than on a classification, so storing it can never
-    add a prediction. Only vectors from the same algorithm are comparable.
+    Only vectors from the same algorithm are comparable, and they are stored in half precision.
     """
 
     features: list[float] = pydantic.Field(description="The feature vector.")
     algorithm: AlgorithmReference
 
     @pydantic.validator("features")
-    def _features_not_empty(cls, v):
+    def _features_storable(cls, v):
         if not v:
             raise ValueError("features must contain at least one value")
+        if not all(math.isfinite(value) and abs(value) <= HALF_PRECISION_MAX for value in v):
+            raise ValueError(
+                f"features must be finite numbers between -{HALF_PRECISION_MAX:g} and {HALF_PRECISION_MAX:g}, "
+                "the range of the half-precision values they are stored as"
+            )
         return v
 
 
@@ -204,6 +216,13 @@ class DetectionResponse(pydantic.BaseModel):
             "algorithm are comparable. See docs on how to support models that output multiple vectors."
         ),
     )
+
+    @pydantic.validator("embeddings")
+    def _one_embedding_per_algorithm(cls, v):
+        keys = [embedding.algorithm.key for embedding in v or []]
+        if len(keys) != len(set(keys)):
+            raise ValueError(f"embeddings must hold at most one vector per algorithm, got algorithms {keys}")
+        return v
 
 
 class PipelineRequestConfigParameters(dict):

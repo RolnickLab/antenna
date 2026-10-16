@@ -4,7 +4,7 @@ from ami.main.admin import AdminBase, ProjectPipelineConfigInline
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.algorithm_result import AlgorithmResult
-from .models.embedding import DetectionEmbedding, VectorDims
+from .models.embedding import DetectionEmbedding
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
 
@@ -127,7 +127,7 @@ class AlgorithmCategoryMapAdmin(AdminBase):
 
 @admin.register(DetectionEmbedding)
 class DetectionEmbeddingAdmin(admin.ModelAdmin):
-    """Read-only view of stored feature vectors: the vector is never loaded, only its length."""
+    """Read-only view of stored feature vectors: the vector itself is never loaded."""
 
     list_display = ["id", "detection_id", "algorithm", "vector_length", "job", "project", "timestamp"]
     list_select_related = ["algorithm", "job", "project"]
@@ -139,11 +139,11 @@ class DetectionEmbeddingAdmin(admin.ModelAdmin):
     show_full_result_count = False
 
     def get_queryset(self, request):
-        return super().get_queryset(request).defer("vector").annotate(vector_length=VectorDims("vector"))
+        return super().get_queryset(request).defer("vector")
 
     @admin.display(description="Vector length")
-    def vector_length(self, obj: DetectionEmbedding) -> int:
-        return obj.vector_length  # type: ignore[attr-defined] # Annotated in get_queryset
+    def vector_length(self, obj: DetectionEmbedding) -> int | None:
+        return obj.algorithm.embedding_dimensions
 
     def has_add_permission(self, request) -> bool:
         return False

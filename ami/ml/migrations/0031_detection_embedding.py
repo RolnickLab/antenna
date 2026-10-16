@@ -1,4 +1,4 @@
-# Additive: an empty table. The vector column is stored uncompressed out of
+# Additive: an empty table and a nullable column on Algorithm. The vector column is stored uncompressed out of
 # line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1462.
 
 import django.db.models.deletion
@@ -15,6 +15,19 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AddField(
+            model_name="algorithm",
+            name="embedding_dimensions",
+            field=models.PositiveIntegerField(
+                blank=True,
+                help_text=(
+                    "The length of the feature vectors this algorithm returns, as declared by its processing "
+                    "service. Vectors of any other length are refused, because vectors of different lengths "
+                    "cannot be compared."
+                ),
+                null=True,
+            ),
+        ),
         migrations.CreateModel(
             name="DetectionEmbedding",
             fields=[

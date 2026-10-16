@@ -1,57 +1,42 @@
 """Store the feature vectors a processing service returns with its detections."""
 
-import collections
-import contextlib
 import logging
-import zlib
-
-import numpy as np
-from django.db import connection, transaction
 
 from ami.main.models import Detection
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm
-from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
+from ami.ml.models.algorithm import Algorithm, get_known_algorithm
+from ami.ml.models.embedding import EMBEDDING_BATCH_SIZE, DetectionEmbedding
 from ami.ml.schemas import DetectionResponse
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddingDimensionMismatch(PipelineNotConfigured):
-    """A vector's length differs from the length its algorithm has produced before."""
+    """Raised when a vector's length is not the length its algorithm declares."""
 
 
-# The first number of the two-number advisory lock, so these locks cannot collide with others keyed by an id.
-_FIRST_WRITE_LOCK_SPACE = zlib.crc32(b"ml_detectionembedding first write") & 0x7FFFFFFF
-
-
-def _lock_first_write(algorithm: Algorithm) -> None:
-    """Serialise the first writers of one algorithm's vectors until the surrounding transaction ends."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [_FIRST_WRITE_LOCK_SPACE, algorithm.pk])
-
-
-def _check_embedding_dimensions(
-    lengths_by_algorithm: dict[Algorithm, set[int]], stored_by_algorithm: dict[Algorithm, int | None]
+def validate_detection_embeddings(
+    detection_responses: list[DetectionResponse], algorithms_known: dict[str, Algorithm]
 ) -> None:
-    """Refuse vectors whose length differs from the one already stored for their algorithm.
+    """Raise if any vector in the results cannot be stored.
 
-    Vectors of different lengths can never be compared, so each algorithm keeps one length.
-    With none stored yet, the batch must agree on one.
+    Each vector must come from an algorithm registered for the pipeline (else ``PipelineNotConfigured``)
+    that declares the length of its vectors, and must have that length (else ``EmbeddingDimensionMismatch``).
+    Vectors of different lengths can never be compared, so an algorithm has exactly one.
     """
-    for algorithm, lengths in lengths_by_algorithm.items():
-        stored = stored_by_algorithm[algorithm]
-        if stored is None and len(lengths) > 1:
-            raise EmbeddingDimensionMismatch(
-                f"Algorithm {algorithm.key} sent vectors of several lengths in one batch: {sorted(lengths)}"
-            )
-        expected = stored if stored is not None else next(iter(lengths))
-        wrong = lengths - {expected}
-        if wrong:
-            raise EmbeddingDimensionMismatch(
-                f"Algorithm {algorithm.key} produces {expected}-dimension vectors; "
-                f"refusing vectors of length {sorted(wrong)}."
-            )
+    for detection_resp in detection_responses:
+        for embedding_resp in detection_resp.embeddings or []:
+            algorithm = get_known_algorithm(algorithms_known, embedding_resp.algorithm.key, "Embedding")
+            if algorithm.embedding_dimensions is None:
+                raise EmbeddingDimensionMismatch(
+                    f"Algorithm {algorithm.key} sent a feature vector but declares no vector length. Its processing "
+                    "service must declare embedding_dimensions for it in /info, then register its pipelines again."
+                )
+            if len(embedding_resp.features) != algorithm.embedding_dimensions:
+                raise EmbeddingDimensionMismatch(
+                    f"Algorithm {algorithm.key} declares {algorithm.embedding_dimensions}-dimension vectors "
+                    f"but sent one of length {len(embedding_resp.features)}."
+                )
 
 
 def create_detection_embeddings(
@@ -59,76 +44,43 @@ def create_detection_embeddings(
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     job_id: int | None = None,
-) -> list[DetectionEmbedding]:
-    """
-    Store the feature vectors sent with each detection, one row per (detection, algorithm).
+) -> None:
+    """Store the feature vectors sent with each detection, one row per (detection, algorithm).
 
-    Each vector is stored on the detection its response was saved as, from the pairs
-    ``create_detections`` returns, so a vector can never land on another box (#1436). Writes are
-    insert-mostly (see ``DetectionEmbeddingQuerySet.store``): saving the same results twice
-    changes nothing, and a new vector from an algorithm replaces its old one. Only
-    ``DetectionEmbedding`` rows are written, never a classification, so no determination can
-    change. A vector with a value half precision cannot hold (NaN, infinity, beyond 65504) is
-    skipped with a warning. An algorithm key the pipeline has not registered raises
-    ``PipelineNotConfigured``, as it does for classifications, and a vector whose length differs
-    from its algorithm's raises ``EmbeddingDimensionMismatch``. ``job_id`` records the job whose
-    results stored each vector. Returns the embeddings that were sent to the store (written or
-    unchanged).
+    :param saved_detections: Each saved detection with the response it was saved from. The vectors in the
+        responses must already have passed ``validate_detection_embeddings``.
+    :param algorithms_known: The pipeline's registered algorithms, by key
+    :param job_id: The job whose results these are, recorded on each new row
+
+    The first vector stored for a detection and algorithm is kept, and a later one is not written, as
+    detections and classifications are never overwritten either. To store new vectors, delete the
+    detections, or register the new model as a new algorithm.
     """
-    embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
-    lengths_by_algorithm: dict[Algorithm, set[int]] = collections.defaultdict(set)
-    not_finite = repeated = 0
+    embeddings: list[DetectionEmbedding] = []
     for detection, detection_resp in saved_detections:
         if not detection_resp.embeddings:
             continue
-        for embedding_resp in detection_resp.embeddings:
-            try:
-                algorithm = algorithms_known[embedding_resp.algorithm.key]
-            except KeyError as err:
-                raise PipelineNotConfigured(
-                    f"Embedding algorithm {embedding_resp.algorithm.key} is not a known algorithm. "
-                    "The processing service must declare it in the /info endpoint. "
-                    f"Known algorithms: {list(algorithms_known.keys())}"
-                ) from err
-            if not np.isfinite(as_half_precision(embedding_resp.features)).all():
-                not_finite += 1
-                continue
-            lengths_by_algorithm[algorithm].add(len(embedding_resp.features))
-            row_key = (detection.pk, algorithm.pk)
-            # One row per (detection, algorithm): a second vector replaces the first.
-            repeated += row_key in embeddings
-            embeddings[row_key] = DetectionEmbedding(
+        project_id = detection.source_image.project_id
+        if project_id is None:
+            raise ValueError(
+                f"Capture #{detection.source_image_id} belongs to no project, "
+                "so the feature vectors of its detections cannot be stored."
+            )
+        embeddings += [
+            DetectionEmbedding(
                 detection=detection,
-                algorithm=algorithm,
+                algorithm=algorithms_known[embedding_resp.algorithm.key],
+                project_id=project_id,
                 vector=embedding_resp.features,
                 job_id=job_id,
             )
-
-    stored_by_algorithm = {
-        algorithm: DetectionEmbedding.objects.stored_length(algorithm.pk) for algorithm in lengths_by_algorithm
-    }
-    first_writes = [algorithm for algorithm, stored in stored_by_algorithm.items() if stored is None]
-
-    with contextlib.ExitStack() as stack:
-        if first_writes:
-            # Hold the lock until the vectors are committed, so a concurrent first writer sees them.
-            stack.enter_context(transaction.atomic())
-            # A fixed order, so two batches that share new algorithms cannot each hold one lock and wait for the other.
-            for algorithm in sorted(first_writes, key=lambda algorithm: algorithm.pk):
-                _lock_first_write(algorithm)
-                stored_by_algorithm[algorithm] = DetectionEmbedding.objects.stored_length(algorithm.pk)
-        _check_embedding_dimensions(lengths_by_algorithm, stored_by_algorithm)
-
-        if repeated:
-            logger.warning(
-                f"Skipped {repeated} vectors: an algorithm sent more than one vector for a detection, "
-                "and only the last one is kept."
-            )
-        if not_finite:
-            logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
-        if embeddings:
-            written, unchanged = DetectionEmbedding.objects.store(embeddings.values())
-            logger.info(
-                f"Stored {written} feature vectors ({unchanged} unchanged) for {len(saved_detections)} detections."
-            )
-    return list(embeddings.values())
+            for embedding_resp in detection_resp.embeddings
+        ]
+    # Insert in one fixed order, so two concurrent batches that share detections wait for each other
+    # instead of deadlocking.
+    embeddings.sort(key=lambda embedding: (embedding.detection_id, embedding.algorithm_id))
+    DetectionEmbedding.objects.bulk_create(embeddings, batch_size=EMBEDDING_BATCH_SIZE, ignore_conflicts=True)
+    logger.info(
+        f"Stored feature vectors for {len(saved_detections)} detections: {len(embeddings)} sent, "
+        "keeping any vector already stored for the same detection and algorithm."
+    )

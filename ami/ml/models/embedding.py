@@ -1,9 +1,11 @@
-"""Feature vectors for detections, stored next to the other model outputs in the ml app."""
+"""Feature vectors (embeddings) that models produce for detections, and later for captures and taxa.
+
+Vectors are compared only within one algorithm, and each algorithm declares one vector length
+(``Algorithm.embedding_dimensions``). See docs/claude/reference/feature-vectors.md.
+"""
 
 import typing
 
-import numpy as np
-import pgvector
 import pgvector.django
 from django.db import models
 from django.utils import timezone
@@ -15,141 +17,28 @@ from ami.main.models import Detection
 EMBEDDING_BATCH_SIZE = 200
 
 
-class VectorDims(models.Func):
-    """pgvector's ``vector_dims()``: the length of a vector or halfvec value."""
-
-    function = "vector_dims"
-    output_field = models.IntegerField()
-
-
-def as_half_precision(vector) -> np.ndarray:
-    """A vector as the half-precision array the ``halfvec`` column stores."""
-    if isinstance(vector, pgvector.HalfVector):
-        return vector.to_numpy()
-    # A value beyond half precision's range becomes infinity, which the writer then refuses.
-    with np.errstate(over="ignore"):
-        return np.asarray(vector, dtype=np.float16)
-
-
-def same_vector(stored, new) -> bool:
-    return bool(np.array_equal(as_half_precision(stored), as_half_precision(new)))
-
-
-def fill_embedding_project_ids(embeddings: list["DetectionEmbedding"]) -> None:
-    """Give each vector without a project its detection's capture's project, or the capture's station's.
-
-    Raises ``ValueError`` when neither has one: a vector must always be reachable by project.
-    """
-    missing = [embedding for embedding in embeddings if embedding.project_id is None]
-    if not missing:
-        return
-    projects = {
-        detection_id: capture_project_id or station_project_id
-        for detection_id, capture_project_id, station_project_id in Detection.objects.filter(
-            pk__in={embedding.detection_id for embedding in missing}
-        ).values_list("pk", "source_image__project_id", "source_image__deployment__project_id")
-    }
-    for embedding in missing:
-        embedding.project_id = projects.get(embedding.detection_id)
-        if embedding.project_id is None:
-            raise ValueError(
-                f"Detection #{embedding.detection_id} belongs to no project: neither its capture nor its "
-                "station has one, so its feature vector cannot be stored."
-            )
-
-
 class BaseEmbeddingQuerySet(BaseQuerySet):
-    """Reading and writing the vectors of one kind of target (detections, captures, taxa).
-
-    A subclass names its target foreign key in ``target_field``; everything else is shared.
-    """
-
-    target_field: typing.ClassVar[str]
-
     def for_algorithm(self, algorithm_id: int):
         """The vectors of one algorithm: the only set whose vectors may be compared."""
         return self.filter(algorithm_id=algorithm_id)
 
-    def stored_length(self, algorithm_id: int) -> int | None:
-        """The length of the vectors already stored for one algorithm, or None when there are none.
-
-        Reads the algorithm's first row (an indexed lookup on (algorithm, target) whether or not it
-        has rows), so a writer can hold each algorithm to one length without a stored field. The
-        ``order_by`` is what lets the planner walk that index instead of scanning the table until a row matches.
-        """
-        rows = (
-            self.for_algorithm(algorithm_id)
-            .order_by(f"{self.target_field}_id")
-            .annotate(dims=VectorDims("vector"))
-            .values_list("dims", flat=True)[:1]
-        )
-        return next(iter(rows), None)
-
-    def store(self, embeddings) -> tuple[int, int]:
-        """Write vectors insert-mostly; returns (written, unchanged).
-
-        A (target, algorithm) that already holds the same vector is left alone, so saving
-        the same results twice changes nothing. One holding another vector is updated in place
-        (ON CONFLICT DO UPDATE), which also keeps two writers of the same pair from losing a row.
-        """
-        embeddings = list(embeddings)
-        if not embeddings:
-            return 0, 0
-        target_id = f"{self.target_field}_id"
-        typing.cast(type["BaseEmbedding"], self.model).fill_project_ids(embeddings)
-        # Two __in filters select a cross product of ids and algorithms, but it is bounded by the batch.
-        stored = {
-            (target, algorithm_id): vector
-            for target, algorithm_id, vector in self.filter(
-                **{
-                    f"{target_id}__in": {getattr(embedding, target_id) for embedding in embeddings},
-                    "algorithm_id__in": {embedding.algorithm_id for embedding in embeddings},
-                }
-            )
-            .order_by()
-            .values_list(target_id, "algorithm_id", "vector")
-        }
-        to_write = []
-        for embedding in embeddings:
-            existing = stored.get((getattr(embedding, target_id), embedding.algorithm_id))
-            if existing is None or not same_vector(existing, embedding.vector):
-                to_write.append(embedding)
-        if to_write:
-            self.bulk_create(
-                to_write,
-                batch_size=EMBEDDING_BATCH_SIZE,
-                update_conflicts=True,
-                # A changed vector takes the new job, so "updated by job" finds it; unchanged ones are not written.
-                update_fields=["vector", "job", "timestamp", "updated_at"],
-                unique_fields=[self.target_field, "algorithm"],
-            )
-        return len(to_write), len(embeddings) - len(to_write)
-
-
-class DetectionEmbeddingQuerySet(BaseEmbeddingQuerySet):
-    target_field = "detection"
-
 
 class BaseEmbedding(BaseModel):
-    """The columns every kind of feature vector table shares; a subclass adds its target and its own Meta.
+    """The columns every feature vector table shares; a subclass adds its target and its own Meta.
 
-    Vectors are comparable only within one algorithm, so each algorithm holds at most one vector per
-    target; a model with several outputs registers one algorithm per output (see
-    docs/claude/reference/feature-vectors.md). The column is an unsized ``halfvec`` because extractors
-    differ in length; each algorithm keeps one length, enforced by the writer against an existing row.
-    A subclass adds its target foreign key, a ``fill_project_ids`` classmethod, a manager built
-    from a ``BaseEmbeddingQuerySet`` subclass, and a Meta with its own unique constraint and
-    indexes (see docs/claude/reference/feature-vectors.md, "Adding a sibling table").
+    Each algorithm stores at most one vector per target, and a model with several outputs registers
+    one algorithm per output. The column is an unsized ``halfvec`` so that models of different lengths
+    share one table. A subclass adds its target foreign key, a manager built from a
+    ``BaseEmbeddingQuerySet`` subclass, and a Meta with its unique constraint and indexes.
     """
 
-    # None of the foreign keys has a single-column index of its own: a subclass's unique constraint
-    # leads with its target, and its Meta indexes lead with algorithm, project and job. Extra
-    # single-column indexes would only cost writes and mislead the planner.
+    # A subclass's own indexes lead with each of these columns, so none has a single-column index.
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="%(class)ss", db_index=False)
     # The job whose results stored the vector. Deleting the job keeps the vector.
     job = models.ForeignKey(
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="%(class)ss", db_index=False
     )
+    # Copied from the target, so project-scoped queries need no join.
     project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="%(class)ss", db_index=False)
     vector = pgvector.django.HalfVectorField(help_text="The feature vector, in half precision.")
     timestamp = models.DateTimeField(default=timezone.now)
@@ -157,28 +46,21 @@ class BaseEmbedding(BaseModel):
     class Meta:
         abstract = True
 
-    @classmethod
-    def fill_project_ids(cls, embeddings: list) -> None:
-        """Give each vector without a project the project of its target; raise ``ValueError`` if it has none."""
-        raise NotImplementedError
 
-    def save(self, *args, **kwargs):
-        self.fill_project_ids([self])
-        super().save(*args, **kwargs)
+class DetectionEmbeddingQuerySet(BaseEmbeddingQuerySet):
+    pass
 
 
 @typing.final
 class DetectionEmbedding(BaseEmbedding):
     """A feature vector for one detection, used to compare detections by appearance.
 
-    Kept apart from classifications so every detection can have one, including those the
-    moth/non-moth filter rejected, without adding a prediction that could change a
-    determination. See #1462 and ``BaseEmbedding``.
+    Every detection can have one, including those the moth/non-moth filter rejected, and storing it
+    never adds a classification. Its project is the project of the detection's capture.
     """
 
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
-    # DetectionEmbedding declares its own related names (detection_embeddings, embeddings); new sibling
-    # tables use the base's %(class)ss names.
+    # Named detection_embeddings rather than the base's %(class)ss.
     algorithm = models.ForeignKey(
         "ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
     )
@@ -190,7 +72,6 @@ class DetectionEmbedding(BaseEmbedding):
         related_name="detection_embeddings",
         db_index=False,
     )
-    # Copied from the detection's capture (see fill_embedding_project_ids) so project queries need no join.
     project = models.ForeignKey(
         "main.Project", on_delete=models.CASCADE, related_name="detection_embeddings", db_index=False
     )
@@ -199,11 +80,11 @@ class DetectionEmbedding(BaseEmbedding):
 
     class Meta:
         indexes = [
-            # Project-scoped reads of one model: a project's vectors in detection order, and counts per model.
+            # A project's vectors from one model, in detection order, and counts per model.
             models.Index(fields=["project", "algorithm", "detection"], name="ml_detemb_proj_algo_det"),
-            # The writer's per-model length lookup: an algorithm's first row, by detection, with or without rows.
+            # One model's vectors across projects, and deleting an algorithm with its vectors.
             models.Index(fields=["algorithm", "detection"], name="ml_detemb_algo_det"),
-            # "Occurrences this job touched" looks up a job's vectors by job, then detection.
+            # A job's vectors, and clearing the job when it is deleted.
             models.Index(fields=["job", "detection"], name="ml_detemb_job_det", condition=models.Q(job__isnull=False)),
         ]
         constraints = [
@@ -215,6 +96,50 @@ class DetectionEmbedding(BaseEmbedding):
     def __str__(self) -> str:
         return f"#{self.pk} for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
 
-    @classmethod
-    def fill_project_ids(cls, embeddings: list["DetectionEmbedding"]) -> None:
-        fill_embedding_project_ids(embeddings)
+
+# The next vector tables follow the same pattern. Each needs its own migration, which must also set
+# the vector column's storage to EXTERNAL, as ml/0031 does for detections.
+#
+# class SourceImageEmbedding(BaseEmbedding):
+#     """A feature vector for a whole capture, for example to find similar nights or empty frames."""
+#
+#     source_image = models.ForeignKey(
+#         "main.SourceImage", on_delete=models.CASCADE, related_name="embeddings", db_index=False
+#     )
+#
+#     objects = BaseEmbeddingQuerySet.as_manager()
+#
+#     class Meta:
+#         indexes = [
+#             models.Index(fields=["project", "algorithm", "source_image"], name="ml_srcemb_proj_algo_src"),
+#             models.Index(fields=["algorithm", "source_image"], name="ml_srcemb_algo_src"),
+#             models.Index(
+#                 fields=["job", "source_image"], name="ml_srcemb_job_src", condition=models.Q(job__isnull=False)
+#             ),
+#         ]
+#         constraints = [
+#             models.UniqueConstraint(
+#                 fields=["source_image", "algorithm"], name="%(app_label)s_%(class)s_unique_source_image_algorithm"
+#             ),
+#         ]
+#
+#
+# class TaxonEmbedding(BaseEmbedding):
+#     """A feature vector for a taxon, for example a text embedding of its name or a mean of its verified
+#     detections. Its project is the project it was computed for."""
+#
+#     taxon = models.ForeignKey("main.Taxon", on_delete=models.CASCADE, related_name="embeddings", db_index=False)
+#
+#     objects = BaseEmbeddingQuerySet.as_manager()
+#
+#     class Meta:
+#         indexes = [
+#             models.Index(fields=["project", "algorithm", "taxon"], name="ml_taxemb_proj_algo_taxon"),
+#             models.Index(fields=["algorithm", "taxon"], name="ml_taxemb_algo_taxon"),
+#             models.Index(fields=["job", "taxon"], name="ml_taxemb_job_taxon", condition=models.Q(job__isnull=False)),
+#         ]
+#         constraints = [
+#             models.UniqueConstraint(
+#                 fields=["taxon", "algorithm"], name="%(app_label)s_%(class)s_unique_taxon_algorithm"
+#             ),
+#         ]

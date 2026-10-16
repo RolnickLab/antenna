@@ -1,1 +1,1 @@
-"""Reading and writing the feature vectors stored for detections (see ``DetectionEmbedding``)."""
+"""Storing the feature vectors that processing services return for detections (see ``DetectionEmbedding``)."""

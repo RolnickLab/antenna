@@ -22,7 +22,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService
+from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
@@ -1079,30 +1079,6 @@ class TestPipeline(TestCase):
         self.pipeline.algorithms.add(extractor)
 
         self.assertEqual(list(filter_processed_images([image], self.pipeline)), [])
-
-    def test_filter_processed_images_with_only_a_detector_and_an_extractor_waits_for_vectors(self):
-        """With no classifier, vectors are the pipeline's output: a capture is processed once each
-        real detection has one from every extractor, and is not reprocessed on every run."""
-        from ami.ml.models.algorithm import AlgorithmTaskType
-        from ami.ml.models.pipeline import filter_processed_images
-
-        image = self.test_images[0]
-        detector = self.algorithms["random-detector"]
-        extractor = Algorithm.objects.create(
-            name="Feature extractor", key="test-feature-extractor", task_type=AlgorithmTaskType.EMBEDDING.value
-        )
-        pipeline = Pipeline.objects.create(name="Detector and extractor")
-        pipeline.algorithms.set([detector, extractor])
-        detection = Detection.objects.create(
-            source_image=image, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4]
-        )
-
-        self.assertEqual(list(filter_processed_images([image], pipeline)), [image])
-
-        DetectionEmbedding.objects.create(
-            detection=detection, algorithm=extractor, project=self.project, vector=[0.5] * 4
-        )
-        self.assertEqual(list(filter_processed_images([image], pipeline)), [])
 
     def test_filter_processed_images_empty_input(self):
         """An empty iterable should yield nothing and run no per-image queries."""
