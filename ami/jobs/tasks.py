@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
-from cachalot.api import cachalot_disabled
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from redis.exceptions import RedisError
@@ -17,6 +16,7 @@ from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
+from ami.utils.query_cache import no_query_cache
 from config import celery_app
 
 if TYPE_CHECKING:
@@ -218,15 +218,12 @@ def _log_worker_availability(job) -> None:
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
-# Disable cachalot cache invalidation for this task. Each call writes
-# Detection/Classification rows and UPDATEs jobs_job; under concurrent
-# async_api load, cachalot's post-write invalidation added ~2.5s/task
-# (measured on demo, issue #1256 Path 4). This is a pure write path —
-# nothing inside benefits from the query cache — so skipping invalidation
-# is strictly a throughput win. Celery task decorator stack order matters:
-# @celery_app.task wraps the cachalot-wrapped function, so Celery sees the
-# cachalot context manager enter/exit on every task execution.
-@cachalot_disabled()
+# Reads inside this task bypass the cachalot query cache. Each call writes the
+# tables it reads, so cached reads would be invalidated right away. Writes
+# still invalidate cachalot's tables either way. Added for throughput under
+# async_api load (#1256); whether it is still needed is unmeasured. Keep it
+# below @celery_app.task so it is entered and exited on every execution.
+@no_query_cache()
 def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
     Process a single pipeline result asynchronously.

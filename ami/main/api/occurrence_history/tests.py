@@ -24,9 +24,9 @@ from ami.ml.models import Algorithm, AlgorithmResult
 from ami.ml.post_processing.class_masking import ClassMaskingResultData
 from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import create_captures, create_taxa, setup_test_project
-from ami.tests.fixtures.queries import no_query_cache
 from ami.users.models import User
 from ami.users.roles import BasicMember, ProjectManager
+from ami.utils.query_cache import no_query_cache
 
 # Measured: two savepoints, the project, the occurrence, the results with their algorithm and job,
 # their taxa, the classifications they created, the classifications those replaced, identifications,
