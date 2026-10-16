@@ -1227,13 +1227,6 @@ class Deployment(BaseModel):
                 )
             qs.update(project=self.project)
 
-        # Algorithm results copy their project from the occurrence and are filtered by it
-        # (``Algorithm.objects.used_in_project()``), so they follow the occurrence when it moves.
-        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
-        AlgorithmResult.objects.filter(occurrence__deployment=self).exclude(project=self.project).update(
-            project=self.project
-        )
-
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
 
