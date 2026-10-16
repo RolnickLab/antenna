@@ -200,8 +200,8 @@ class DetectionResponse(pydantic.BaseModel):
     embeddings: list[EmbeddingResponse] | None = pydantic.Field(
         default=None,
         description=(
-            "Feature vectors for this detection, at most one per algorithm, including detections "
-            "the moth/non-moth filter rejected. Only vectors from the same algorithm are comparable."
+            "Feature vectors for this detection, at most one per algorithm. Only vectors from the same "
+            "algorithm are comparable. See docs on how to support models that output multiple vectors."
         ),
     )
 

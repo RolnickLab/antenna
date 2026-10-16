@@ -9,7 +9,6 @@ import numpy as np
 from django.db import connection, transaction
 
 from ami.main.models import Detection
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
@@ -27,32 +26,35 @@ class EmbeddingDimensionMismatch(PipelineNotConfigured):
     """A vector's length differs from the length its algorithm has produced before."""
 
 
-def _lock_first_write(algorithm: Algorithm, key: str) -> None:
-    """Serialise first writers of one (algorithm, key) until the surrounding transaction ends."""
+# The first number of the two-number advisory lock, so these locks cannot collide with others keyed by an id.
+_FIRST_WRITE_LOCK_SPACE = zlib.crc32(b"ml_detectionembedding first write") & 0x7FFFFFFF
+
+
+def _lock_first_write(algorithm: Algorithm) -> None:
+    """Serialise the first writers of one algorithm's vectors until the surrounding transaction ends."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [algorithm.pk, zlib.crc32(key.encode()) & 0x7FFFFFFF])
+        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [_FIRST_WRITE_LOCK_SPACE, algorithm.pk])
 
 
 def _check_embedding_dimensions(
-    lengths_by_pair: dict[tuple[Algorithm, str], set[int]], stored_by_pair: dict[tuple[Algorithm, str], int | None]
+    lengths_by_algorithm: dict[Algorithm, set[int]], stored_by_algorithm: dict[Algorithm, int | None]
 ) -> None:
-    """Refuse vectors whose length differs from the one already stored for their (algorithm, key).
+    """Refuse vectors whose length differs from the one already stored for their algorithm.
 
-    Vectors of different lengths can never be compared, so each (algorithm, key) keeps one length.
+    Vectors of different lengths can never be compared, so each algorithm keeps one length.
     With none stored yet, the batch must agree on one.
     """
-    for (algorithm, key), lengths in lengths_by_pair.items():
-        stored = stored_by_pair[(algorithm, key)]
+    for algorithm, lengths in lengths_by_algorithm.items():
+        stored = stored_by_algorithm[algorithm]
         if stored is None and len(lengths) > 1:
             raise EmbeddingDimensionMismatch(
-                f"Algorithm {algorithm.key} sent vectors of several lengths under key '{key}' in one batch: "
-                f"{sorted(lengths)}"
+                f"Algorithm {algorithm.key} sent vectors of several lengths in one batch: {sorted(lengths)}"
             )
         expected = stored if stored is not None else next(iter(lengths))
         wrong = lengths - {expected}
         if wrong:
             raise EmbeddingDimensionMismatch(
-                f"Algorithm {algorithm.key} produces {expected}-dimension vectors under key '{key}'; "
+                f"Algorithm {algorithm.key} produces {expected}-dimension vectors; "
                 f"refusing vectors of length {sorted(wrong)}."
             )
 
@@ -65,10 +67,10 @@ def create_detection_embeddings(
     job_id: int | None = None,
 ) -> list[DetectionEmbedding]:
     """
-    Store the feature vectors sent with each detection, one row per (detection, algorithm, key).
+    Store the feature vectors sent with each detection, one row per (detection, algorithm).
 
     Writes are insert-mostly (see ``DetectionEmbeddingQuerySet.store``): saving the same results
-    twice changes nothing, and a new vector for a pair replaces the old one. Only
+    twice changes nothing, and a new vector from an algorithm replaces its old one. Only
     ``DetectionEmbedding`` rows are written, never a classification, so no determination can
     change. A vector with a value half precision cannot hold (NaN, infinity, beyond 65504) is
     skipped with a warning.
@@ -83,11 +85,16 @@ def create_detection_embeddings(
     """
     by_box: dict[tuple, list[Detection]] = collections.defaultdict(list)
     for detection in detections:
-        if detection.bbox is not None:
-            by_box[_box_key(detection.source_image_id, detection.bbox)].append(detection)
-    embeddings: dict[tuple[int, int, str], DetectionEmbedding] = {}
-    lengths_by_pair: dict[tuple[Algorithm, str], set[int]] = collections.defaultdict(set)
-    unmatched = not_finite = 0
+        if detection.bbox is None:
+            continue
+        candidates = by_box[_box_key(detection.source_image_id, detection.bbox)]
+        # A box the service returned twice comes back as the same stored detection twice; that is
+        # one detection, not two sharing a box. Unsaved instances compare by identity, so stay apart.
+        if detection not in candidates:
+            candidates.append(detection)
+    embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
+    lengths_by_algorithm: dict[Algorithm, set[int]] = collections.defaultdict(set)
+    unmatched = not_finite = repeated = 0
     for detection_resp in detection_responses:
         if detection_resp.bbox is None or not detection_resp.embeddings:
             continue
@@ -114,30 +121,39 @@ def create_detection_embeddings(
             if not np.isfinite(as_half_precision(embedding_resp.features)).all():
                 not_finite += 1
                 continue
-            lengths_by_pair[(algorithm, DEFAULT_EMBEDDING_KEY)].add(len(embedding_resp.features))
-            embeddings[(detection.pk, algorithm.pk, DEFAULT_EMBEDDING_KEY)] = DetectionEmbedding(
+            lengths_by_algorithm[algorithm].add(len(embedding_resp.features))
+            row_key = (detection.pk, algorithm.pk)
+            # One row per (detection, algorithm): a second vector replaces the first.
+            repeated += row_key in embeddings
+            embeddings[row_key] = DetectionEmbedding(
                 detection=detection,
                 algorithm=algorithm,
-                key=DEFAULT_EMBEDDING_KEY,
                 vector=embedding_resp.features,
                 job_id=job_id,
             )
 
-    stored_by_pair = {pair: DetectionEmbedding.objects.stored_length(pair[0].pk, pair[1]) for pair in lengths_by_pair}
-    first_writes = [pair for pair, stored in stored_by_pair.items() if stored is None]
+    stored_by_algorithm = {
+        algorithm: DetectionEmbedding.objects.stored_length(algorithm.pk) for algorithm in lengths_by_algorithm
+    }
+    first_writes = [algorithm for algorithm, stored in stored_by_algorithm.items() if stored is None]
 
     with contextlib.ExitStack() as stack:
         if first_writes:
             # Hold the lock until the vectors are committed, so a concurrent first writer sees them.
             stack.enter_context(transaction.atomic())
-            # A fixed order, so two batches that share new pairs cannot each hold one lock and wait for the other.
-            for algorithm, key in sorted(first_writes, key=lambda pair: (pair[0].pk, pair[1])):
-                _lock_first_write(algorithm, key)
-                stored_by_pair[(algorithm, key)] = DetectionEmbedding.objects.stored_length(algorithm.pk, key)
-        _check_embedding_dimensions(lengths_by_pair, stored_by_pair)
+            # A fixed order, so two batches that share new algorithms cannot each hold one lock and wait for the other.
+            for algorithm in sorted(first_writes, key=lambda algorithm: algorithm.pk):
+                _lock_first_write(algorithm)
+                stored_by_algorithm[algorithm] = DetectionEmbedding.objects.stored_length(algorithm.pk)
+        _check_embedding_dimensions(lengths_by_algorithm, stored_by_algorithm)
 
         if unmatched:
             logger.warning(f"Skipped the vectors of {unmatched} returned boxes that match no single stored detection.")
+        if repeated:
+            logger.warning(
+                f"Skipped {repeated} vectors: an algorithm sent more than one vector for a detection, "
+                "and only the last one is kept."
+            )
         if not_finite:
             logger.warning(f"Skipped {not_finite} vectors with values a half-precision vector cannot store.")
         if embeddings:

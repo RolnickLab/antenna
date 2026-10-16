@@ -1366,6 +1366,45 @@ class TestDuplicateFieldsOnChildren(TestCase):
         assert self.deployment.events.first().project == self.project_two
         assert self.deployment.occurrences.first().project == self.project_two
 
+    def test_change_project_moves_algorithm_results(self):
+        """Algorithm results copy their project from the occurrence, so a moved deployment takes them along."""
+        from ami.ml.models.algorithm import Algorithm
+
+        algorithm = Algorithm.objects.create(name="Moved Post-processor", version=1)
+        occurrence = self.deployment.occurrences.first()
+        result = AlgorithmResult.objects.record(
+            occurrence=occurrence, algorithm=algorithm, kind=SizeFilterResultData.kind, data={"relative_size": 0.001}
+        )
+        assert result.project == self.project_one
+
+        self.deployment.project = self.project_two
+        self.deployment.save()
+
+        result.refresh_from_db()
+        assert result.project == self.project_two
+
+    def test_change_project_moves_feature_vectors(self):
+        """Feature vectors copy their project from the detection's capture, so a moved deployment takes them along."""
+        from ami.ml.models.algorithm import Algorithm
+        from ami.ml.models.embedding import DetectionEmbedding
+
+        algorithm = Algorithm.objects.create(name="Moved Feature Extractor", version=1)
+        detection = self.deployment.occurrences.first().detections.first()
+        embedding = DetectionEmbedding.objects.create(detection=detection, algorithm=algorithm, vector=[0.1, 0.2])
+        assert embedding.project == self.project_one
+
+        self.deployment.project = self.project_two
+        self.deployment.save()
+
+        embedding.refresh_from_db()
+        assert embedding.project == self.project_two
+
+    def test_saving_a_deployment_that_did_not_move_leaves_feature_vectors_alone(self):
+        """Realigning vectors joins detections and captures, so a save that moves nothing skips it."""
+        with CaptureQueriesContext(connection) as queries:
+            self.deployment.save()
+        assert not any("ml_detectionembedding" in query["sql"] for query in queries.captured_queries)
+
     def test_delete_project(self):
         self.project_one.delete()
 
@@ -7407,6 +7446,30 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         excluded = self._pks(base.not_processed_by_algorithm(ids))
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
+
+    def test_filter_by_post_processing_algorithm_matches_its_algorithm_results(self):
+        """A post-processing algorithm that records a value rather than a label writes only an
+        algorithm result, so the filter must find it there too."""
+        from ami.ml.models.algorithm import Algorithm
+
+        post_processor = Algorithm.objects.create(name="Filter Post-processor", version=1)
+        recorded = self._make_occurrence(detector=self.other, classifiers=[])
+        AlgorithmResult.objects.record(
+            occurrence=recorded,
+            algorithm=post_processor,
+            kind=SizeFilterResultData.kind,
+            data={"relative_size": 0.001},
+        )
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([post_processor.pk])
+        self.assertEqual(self._pks(matched), {recorded.pk})
+
+    def test_algorithm_results_are_searched_only_when_the_algorithms_have_some(self):
+        """A second EXISTS joined by OR stops Postgres planning the first as a semi-join, so a
+        classifier with no algorithm results must get a single EXISTS."""
+        sql = str(Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk]).query)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertNotIn("ml_algorithmresult", sql)
+        self.assertNotIn("ml_detectionembedding", sql)
 
 
 class TestOccurrenceJobFilter(APITestCase):

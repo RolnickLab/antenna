@@ -14,7 +14,6 @@ from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
@@ -1684,9 +1683,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
 
     def get_embedding_algorithms(self, obj: Occurrence) -> list[dict]:
         """The algorithms with a feature vector on one of this occurrence's detections, one query."""
-        has_vector = DetectionEmbedding.objects.filter(
-            algorithm_id=OuterRef("pk"), key=DEFAULT_EMBEDDING_KEY, detection__occurrence_id=obj.pk
-        )
+        has_vector = DetectionEmbedding.objects.filter(algorithm_id=OuterRef("pk"), detection__occurrence_id=obj.pk)
         return list(Algorithm.objects.filter(Exists(has_vector)).order_by("pk").values("id", "name"))
 
     class Meta:

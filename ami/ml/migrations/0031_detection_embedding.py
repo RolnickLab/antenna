@@ -21,7 +21,6 @@ class Migration(migrations.Migration):
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                ("key", models.CharField(default="embedding", max_length=255)),
                 (
                     "vector",
                     pgvector.django.halfvec.HalfVectorField(help_text="The feature vector, in half precision."),
@@ -69,25 +68,17 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="detectionembedding",
-            constraint=models.CheckConstraint(
-                check=models.Q(("key", ""), _negated=True), name="ml_detectionembedding_key_not_empty"
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="detectionembedding",
             constraint=models.UniqueConstraint(
-                fields=("detection", "algorithm", "key"), name="ml_detectionembedding_unique_detection_algorithm_key"
+                fields=("detection", "algorithm"), name="ml_detectionembedding_unique_detection_algorithm"
             ),
         ),
         migrations.AddIndex(
             model_name="detectionembedding",
-            index=models.Index(
-                fields=["project", "algorithm", "key", "detection"], name="ml_detemb_proj_algo_key_det"
-            ),
+            index=models.Index(fields=["project", "algorithm", "detection"], name="ml_detemb_proj_algo_det"),
         ),
         migrations.AddIndex(
             model_name="detectionembedding",
-            index=models.Index(fields=["algorithm", "key", "detection"], name="ml_detemb_algo_key"),
+            index=models.Index(fields=["algorithm", "detection"], name="ml_detemb_algo_det"),
         ),
         migrations.AddIndex(
             model_name="detectionembedding",

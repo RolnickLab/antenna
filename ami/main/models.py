@@ -38,8 +38,10 @@ from ami.base.fields import DateStringField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
 from ami.main.models_future.filters import (
+    build_created_or_updated_by_job_q,
     build_occurrence_default_filters_q,
     build_occurrence_score_threshold_q,
+    build_processed_by_algorithm_q,
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
@@ -52,7 +54,6 @@ from ami.main.models_future.storage import (  # noqa: F401
     delete_source_image,
     upload_to_with_deployment,
 )
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -1205,28 +1206,42 @@ class Deployment(BaseModel):
 
     def update_children(self):
         """
-        Update all attribute on all child objects that should be equal to their deployment values.
+        Set the project of every row that keeps its own copy of this deployment's project.
 
-        e.g. Events, Occurrences, SourceImages must belong to same project as their deployment. But
-        they have their own copy of that attribute to reduce the number of joins required to query them.
+        Events, occurrences, captures, feature vectors and algorithm results copy their deployment's
+        project so that queries and permission checks need no join; this puts them back on the
+        deployment's project after it changes. Only the project is set: any other copied field is left
+        as it is. A deployment can move to another project; its captures never move to another deployment.
         """
 
-        # All the child models that have a foreign key to project
+        deployment_project = self.project
+
+        # Each table that keeps its own copy of the deployment's project, with the path from its rows to
+        # that project. More tables join this list as they gain a project column (#1453).
         child_models = [
-            "Event",
-            "Occurrence",
-            "SourceImage",
+            ("main.Event", "deployment__project"),
+            ("main.Occurrence", "deployment__project"),
+            ("main.SourceImage", "deployment__project"),
+            ("ml.DetectionEmbedding", "detection__source_image__deployment__project"),
+            ("ml.AlgorithmResult", "occurrence__deployment__project"),
         ]
-        for model_name in child_models:
-            model = apps.get_model("main", model_name)
-            qs = model.objects.filter(deployment=self).exclude(project=self.project)
+        # Shorter paths first. A table reached through other rows copies its project from them, so it is
+        # checked only when a table with a shorter path had rows to fix: its lookup joins several tables,
+        # and this runs on every deployment save.
+        moved_at_shorter_path = 0
+        for model_label, project_path in sorted(child_models, key=lambda child: child[1].count("__")):
+            deployment_path = project_path.removesuffix("__project")
+            if deployment_path != "deployment" and not moved_at_shorter_path:
+                continue
+            model = apps.get_model(model_label)
+            qs = model.objects.filter(**{deployment_path: self}).exclude(project=deployment_project)
             project_values = set(qs.values_list("project", flat=True).distinct())
-            if len(project_values):
+            if project_values:
                 logger.warning(
-                    f"Deployment {self} has alternate projects set on {model_name} "
+                    f"Deployment {self} has alternate projects set on {model_label} "
                     f"objects: {project_values}. Updating them!"
                 )
-            qs.update(project=self.project)
+            moved_at_shorter_path += qs.update(project=deployment_project)
 
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
@@ -3380,7 +3395,7 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
-    def with_visual_similarity(self, seed_vector, algorithm_id: int, key: str = DEFAULT_EMBEDDING_KEY):
+    def with_visual_similarity(self, seed_vector, algorithm_id: int):
         """Annotate ``visual_distance``: the cosine distance from ``seed_vector`` to each occurrence's vector.
 
         The occurrence's vector is its representative detection's (see
@@ -3393,51 +3408,35 @@ class OccurrenceQuerySet(BaseQuerySet):
         from ami.ml.embeddings.reader import representative_embeddings
 
         nearest = (
-            representative_embeddings(OuterRef("pk"), algorithm_id, key)
+            representative_embeddings(OuterRef("pk"), algorithm_id)
             .annotate(distance=pgvector.django.CosineDistance("vector", seed_vector))
             .values("distance")[:1]
         )
         return self.annotate(visual_distance=models.Subquery(nearest))
 
-    def _processed_by_algorithm_q(self, algorithm_ids) -> Q:
-        """Subquery matching occurrences with any result from the given algorithms, in any of the
-        output tables listed in ``ami.ml.model_outputs``: a detection made by one (detectors), a
-        classification from one (classifiers and post-processing algorithms such as class masking or
-        a size filter), an algorithm result, or a feature vector (embedding-only models). Runs one
-        small lookup (cached by cachalot) to find which of those tables hold rows."""
-        from ami.ml.model_outputs import occurrences_from_algorithms
-
-        return occurrences_from_algorithms(algorithm_ids)
-
     def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with at least one result from the given algorithms.
 
-        Matches every output table in ``ami.ml.model_outputs``, so every algorithm listed by
-        ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
-        form returns each occurrence once; a join through
-        ``detections__classifications`` returns one row per matching result, which
-        inflates pagination counts and duplicates rows across pages.
+        Matches detectors through their detections, classifiers and post-processing algorithms
+        through their classifications or algorithm results, so every algorithm listed by
+        ``Algorithm.objects.used_in_project()`` can match here. See ``build_processed_by_algorithm_q``.
         """
-        return self.filter(self._processed_by_algorithm_q(algorithm_ids))
+        return self.filter(build_processed_by_algorithm_q(algorithm_ids))
 
     def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with no result from any of the given algorithms."""
-        return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
+        return self.exclude(build_processed_by_algorithm_q(algorithm_ids))
 
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
 
-        An occurrence matches when the job wrote a row for it in any of the output tables listed in
-        ``ami.ml.model_outputs`` (a detection, a classification on one of its detections, an algorithm
-        result, or a feature vector for one of its detections), so several jobs can match the same
-        occurrence.
+        An occurrence matches when the job created one of its detections, a classification
+        on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
 
-        Identifications are not matched: people make them, not jobs. EXISTS subqueries return
-        each occurrence once, where a join would return one row per matching result.
+        Identifications are not matched: people make them, not jobs. See
+        ``build_created_or_updated_by_job_q``.
         """
-        from ami.ml.model_outputs import occurrences_from_job
-
-        return self.filter(occurrences_from_job(job_id))
+        return self.filter(build_created_or_updated_by_job_q(job_id))
 
     def with_timestamps(self):
         """

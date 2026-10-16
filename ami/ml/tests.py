@@ -1023,8 +1023,8 @@ class TestPipeline(TestCase):
     def test_filter_processed_images_does_not_wait_for_classifications_from_a_feature_extractor(self):
         """A feature extractor never classifies, so it must not make a classified image look unprocessed.
 
-        Missing vectors are backfilled without reprocessing; counting the extractor as a classifier
-        would send every capture through the whole pipeline again on every run.
+        Counting the extractor as a classifier would send every capture through the whole pipeline
+        again on every run, because it never writes a classification.
         """
         from ami.ml.models.algorithm import AlgorithmTaskType
         from ami.ml.models.pipeline import filter_processed_images
@@ -2333,6 +2333,19 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
         self._classify_in_project(masked_algo, self.project)
 
         self.assertIn("Class Masked Classifier", self._choice_names(self.project.pk))
+
+    def test_post_processing_algorithm_with_only_algorithm_results_is_a_choice(self):
+        """A post-processing algorithm that records a value rather than a label writes only
+        algorithm results; it must still be offered so its results can be filtered."""
+        from ami.ml.models.algorithm_result import AlgorithmResult
+        from ami.ml.post_processing.small_size_filter import SizeFilterResultData
+
+        size_filter = Algorithm.objects.create(name="Size Filter", version=1)
+        occurrence = Occurrence.objects.create(project=self.project)
+        AlgorithmResult.objects.record(
+            occurrence=occurrence, algorithm=size_filter, kind=SizeFilterResultData.kind, data={"relative_size": 0.001}
+        )
+        self.assertIn("Size Filter", self._choice_names(self.project.pk))
 
     def test_classifications_in_other_project_do_not_leak(self):
         """An algorithm whose classifications live in another project must not appear."""
