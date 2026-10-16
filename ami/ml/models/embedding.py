@@ -55,8 +55,7 @@ class DetectionEmbeddingQuerySet(BaseEmbeddingQuerySet):
 class DetectionEmbedding(BaseEmbedding):
     """A feature vector for one detection, used to compare detections by appearance.
 
-    Every detection can have one, including those the moth/non-moth filter rejected, and storing it
-    never adds a classification. Its project is the project of the detection's capture.
+    Its project is the project of the detection's capture.
     """
 
     detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
