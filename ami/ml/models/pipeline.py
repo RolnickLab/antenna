@@ -509,10 +509,10 @@ def get_or_create_algorithm_and_category_map(
         algo.embedding_dimensions = declared_dimensions
         algo_fields_updated.append("embedding_dimensions")
     elif declared_dimensions is not None and declared_dimensions != algo.embedding_dimensions:
-        # A different length means a different model, whose vectors cannot be compared with the stored ones.
+        # A different length means a different ML model, whose vectors cannot be compared with the stored ones.
         raise PipelineNotConfigured(
             f"Algorithm '{algo.key}' is registered with {algo.embedding_dimensions}-dimension feature vectors, "
-            f"but the processing service now declares {declared_dimensions}. Register the new model under a new "
+            f"but the processing service now declares {declared_dimensions}. Register the new ML model under a new "
             "algorithm key (for example one that includes the new version), or delete the registered algorithm, "
             "which also deletes its stored vectors, and register the pipelines again."
         )

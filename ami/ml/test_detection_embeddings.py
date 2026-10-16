@@ -92,7 +92,7 @@ class TestDeclaredVectorLength(TestCase):
         self.assertEqual(Algorithm.objects.get(key=SPECIES.key).embedding_dimensions, LENGTH)
 
     def test_a_different_length_for_a_registered_algorithm_refuses_registration(self):
-        """A new length is a new model, whose vectors could not be compared with the stored ones."""
+        """A new length is a new ML model, whose vectors could not be compared with the stored ones."""
         get_or_create_algorithm_and_category_map(SPECIES)
         with self.assertRaises(PipelineNotConfigured) as raised:
             get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": 1024}))
@@ -356,7 +356,7 @@ class TestReadingVectors(TestCase):
             self.assertEqual({v.shape for v in eight.values()}, {(8,)})
             self.assertEqual({v.dtype for v in eight.values()}, {np.dtype(np.float32)})
             self.assertEqual(float(eight[ids[1]][0]), 0.25)
-            # Detections without a vector from the other model are absent, never filled with another model's.
+            # Detections without a vector from the other algorithm are absent, never filled with another algorithm's.
             self.assertEqual(sorted(self._vectors(ids, self.four.pk)), ids[::2])
 
 

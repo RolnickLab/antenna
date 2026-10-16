@@ -80,9 +80,9 @@ PipelineChoice = typing.Literal[
 
 A detection can carry feature vectors in its `embeddings` list, at most one per algorithm. Antenna compares vectors only within one algorithm. Each algorithm that returns vectors must declare their length as `embedding_dimensions` in `/info`; Antenna refuses vectors from an algorithm that declares none, and vectors of any other length. Values must be finite and fit in half precision (within ±65,504), because that is how they are stored.
 
-To return several vectors from one model, for example from two layers, or an image vector and a projected one, register one algorithm per output in `/info` (such as `my-model-pooled` and `my-model-layer3`, with task type `embedding`) and send one `EmbeddingResponse` per output, each naming its own algorithm. Whether the outputs come from one forward pass or several makes no difference to Antenna.
+To return several vectors from one ML model, for example from two layers, or an image vector and a projected one, register one algorithm per output in `/info` (such as `my-model-pooled` and `my-model-layer3`, with task type `embedding`) and send one `EmbeddingResponse` per output, each naming its own algorithm. Whether the outputs come from one forward pass or several makes no difference to Antenna.
 
-A model that yields many vectors for one detection, such as one per image patch, has no place in this list: reduce them to a single vector first, for example by mean pooling.
+An ML model that yields many vectors for one detection, such as one per image patch, has no place in this list: reduce them to a single vector first, for example by mean pooling.
 
 ## Demo
 

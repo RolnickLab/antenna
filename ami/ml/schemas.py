@@ -217,7 +217,7 @@ class DetectionResponse(pydantic.BaseModel):
         default=None,
         description=(
             "Feature vectors for this detection, at most one per algorithm. Each algorithm must declare "
-            "embedding_dimensions in /info. To return several vectors from one model, register one algorithm "
+            "embedding_dimensions in /info. To return several vectors from one ML model, register one algorithm "
             "per output (see processing_services/README.md, 'Returning feature vectors')."
         ),
     )

@@ -53,7 +53,7 @@ def create_detection_embeddings(
     :param job_id: The job whose results these are, recorded on each new row
 
     The first vector stored for a detection and algorithm is kept; later ones are ignored. To replace
-    vectors, delete the detections, or register the new model as a new algorithm.
+    vectors, delete the detections, or register the new ML model as a new algorithm.
     """
     embeddings: list[DetectionEmbedding] = []
     for detection, detection_resp in saved_detections:
