@@ -22,6 +22,7 @@ canonical but was undocumented.
 | Query-count assertion | `ami/ml/tests.py:1006` | `assertNumQueries` example — pair with a multi-row fixture |
 | Permission matrix test | `ami/main/tests.py:1532-1590` | Template: owner / member / other-user tests asserting 200/403 per endpoint action |
 | Feature vectors (`DetectionEmbedding`) | `ami/ml/models/embedding.py` (`DetectionEmbeddingQuerySet.store()`), reader in `ami/ml/embeddings/reader.py` | One row per (detection, algorithm), written from `DetectionResponse.embeddings` by `create_detection_embeddings()` in `ami/ml/embeddings/writer.py`. Read with `vectors_for_detections(ids, algorithm_id)`; never compare vectors across algorithms. Full guide: `docs/claude/reference/feature-vectors.md` |
+| `build_processed_by_algorithm_q()`, `build_created_or_updated_by_job_q()` | `ami/main/models_future/filters.py` (usage: `OccurrenceQuerySet.processed_by_algorithm`, `created_or_updated_by_job`) | Occurrences an algorithm or a job left a result on. Both read the same output tables (detections, classifications, feature vectors, algorithm results); add a new output table to both and to `Algorithm.objects.used_in_project()` |
 | `update_calculated_fields()` | `ami/base/models.py:165` (usage: `ami/tests/fixtures/main.py:166`) | Refresh cached aggregates after related-data changes / bulk operations |
 
 ## Conventions

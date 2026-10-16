@@ -7408,11 +7408,35 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
 
+    def test_filter_by_post_processing_algorithm_matches_its_algorithm_results(self):
+        """A post-processing algorithm that records a value rather than a label writes only an
+        algorithm result, so the filter must find it there too."""
+        from ami.ml.models.algorithm import Algorithm
+
+        post_processor = Algorithm.objects.create(name="Filter Post-processor", version=1)
+        recorded = self._make_occurrence(detector=self.other, classifiers=[])
+        AlgorithmResult.objects.record(
+            occurrence=recorded,
+            algorithm=post_processor,
+            kind=SizeFilterResultData.kind,
+            data={"relative_size": 0.001},
+        )
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([post_processor.pk])
+        self.assertEqual(self._pks(matched), {recorded.pk})
+
+    def test_algorithm_results_are_searched_only_when_the_algorithms_have_some(self):
+        """A second EXISTS joined by OR stops Postgres planning the first as a semi-join, so a
+        classifier with no algorithm results must get a single EXISTS."""
+        sql = str(Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk]).query)
+        self.assertEqual(sql.count("EXISTS"), 1)
+        self.assertNotIn("ml_algorithmresult", sql)
+        self.assertNotIn("ml_detectionembedding", sql)
+
 
 class TestOccurrenceJobFilter(APITestCase):
     """
-    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification
-    or an algorithm result written by the given job. Each occurrence must appear once, however
+    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification, an
+    algorithm result or a feature vector written by the given job. Each occurrence must appear once, however
     many of its rows the job wrote, and a malformed id must be a 400, not a 500.
     """
 
@@ -7507,6 +7531,37 @@ class TestOccurrenceJobFilter(APITestCase):
         response = self._list("abc")
         self.assertEqual(response.status_code, 400)
         self.assertIn("job", response.json())
+
+    def test_vector_only_link_to_a_job_matches(self):
+        """A job that only stored feature vectors still finds its occurrences, and a vector from
+        another job does not match."""
+        from ami.ml.models import DetectionEmbedding
+
+        vector_job = Job.objects.create(project=self.project, name="Vector job")
+        # Detection and classification come from another job; only the vector links to vector_job.
+        only_vector = self._make_occurrence([(self.other_job, [self.other_job])])
+        other_vector = self._make_occurrence([(self.other_job, [self.other_job])])
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(
+                    detection=only_vector.detections.get(), algorithm=self.algorithm, vector=[0.5] * 4, job=vector_job
+                ),
+                DetectionEmbedding(
+                    detection=other_vector.detections.get(),
+                    algorithm=self.algorithm,
+                    vector=[0.5] * 4,
+                    job=self.other_job,
+                ),
+            ]
+        )
+        ids = {row["id"] for row in self._list(vector_job.pk).json()["results"]}
+        self.assertEqual(ids, {only_vector.pk})
+        queryset_ids = set(
+            Occurrence.objects.filter(project=self.project)
+            .created_or_updated_by_job(vector_job.pk)
+            .values_list("pk", flat=True)
+        )
+        self.assertEqual(queryset_ids, {only_vector.pk})
 
     def test_filter_stays_inside_the_occurrence_query(self):
         """The filter adds no queries of its own: one statement for the rows and one for the count,

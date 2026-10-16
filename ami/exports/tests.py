@@ -4,12 +4,16 @@ import logging
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
+from ami.exports.format_types import EXPORT_EXCLUDED_FIELDS, JSONExporter
 from ami.exports.models import DataExport
+from ami.exports.utils import get_data_in_batches
 from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
-from ami.ml.models import Algorithm
+from ami.ml.models import Algorithm, DetectionEmbedding
 from ami.tests.fixtures.main import (
     create_captures,
     create_occurrences,
@@ -156,6 +160,33 @@ class DataExportTest(TestCase):
     def test_json_export_record_count(self):
         """Test JSON export record count."""
         self.run_and_validate_export("occurrences_api_json")
+
+    def test_json_export_leaves_out_the_excluded_fields(self):
+        """Fields in ``EXPORT_EXCLUDED_FIELDS`` cost a query per occurrence, so exported rows never
+        carry them and their queries never run, even when the data exists."""
+        algorithm = Algorithm.objects.create(name="Export embedder", key="export-embedder", task_type="embedding")
+        DetectionEmbedding.objects.store(
+            [
+                DetectionEmbedding(detection=detection, algorithm=algorithm, vector=[0.5] * 4)
+                for detection in Detection.objects.filter(occurrence__project=self.project)
+            ]
+        )
+        data_export = DataExport.objects.create(
+            user=self.user, project=self.project, format="occurrences_api_json", filters={}, job=None
+        )
+        exporter = JSONExporter(data_export)
+
+        with CaptureQueriesContext(connection) as queries:
+            rows = [
+                row
+                for batch in get_data_in_batches(exporter.queryset, exporter.get_serializer_class())
+                for row in batch
+            ]
+
+        self.assertGreaterEqual(len(rows), 2)
+        for field in EXPORT_EXCLUDED_FIELDS:
+            self.assertTrue(all(field not in row for row in rows), field)
+        self.assertFalse(any("ml_detectionembedding" in query["sql"] for query in queries.captured_queries))
 
     def test_csv_export_has_detection_fields(self):
         """Test that CSV export includes best detection fields."""
