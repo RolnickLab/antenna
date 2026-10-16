@@ -1,4 +1,4 @@
-"""Feature vectors (embeddings) that models produce for detections, and later for captures and taxa.
+"""Feature vectors (embeddings) that algorithms produce for detections, and later for captures and taxa.
 
 Vectors are compared only within one algorithm, and each algorithm declares one vector length
 (``Algorithm.embedding_dimensions``). See docs/claude/reference/feature-vectors.md.
@@ -27,8 +27,8 @@ class BaseEmbedding(BaseModel):
     """The columns every feature vector table shares; a subclass adds its target and its own Meta.
 
     Each algorithm stores at most one vector per target, and a model with several outputs registers
-    one algorithm per output. The column is an unsized ``halfvec`` so that models of different lengths
-    share one table. A subclass adds its target foreign key, a manager built from a
+    one algorithm per output. The column is an unsized ``halfvec`` so that algorithms whose vectors differ in
+    length share one table. A subclass adds its target foreign key, a manager built from a
     ``BaseEmbeddingQuerySet`` subclass, and a Meta with its unique constraint and indexes.
     """
 
@@ -79,9 +79,9 @@ class DetectionEmbedding(BaseEmbedding):
 
     class Meta:
         indexes = [
-            # A project's vectors from one model, in detection order, and counts per model.
+            # A project's vectors from one algorithm, in detection order, and vector counts per algorithm.
             models.Index(fields=["project", "algorithm", "detection"], name="ml_detemb_proj_algo_det"),
-            # One model's vectors across projects, and deleting an algorithm with its vectors.
+            # One algorithm's vectors across all projects, and the cascade when an algorithm is deleted.
             models.Index(fields=["algorithm", "detection"], name="ml_detemb_algo_det"),
             # A job's vectors, and clearing the job when it is deleted.
             models.Index(fields=["job", "detection"], name="ml_detemb_job_det", condition=models.Q(job__isnull=False)),
