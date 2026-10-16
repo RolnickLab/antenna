@@ -1023,8 +1023,8 @@ class TestPipeline(TestCase):
     def test_filter_processed_images_does_not_wait_for_classifications_from_a_feature_extractor(self):
         """A feature extractor never classifies, so it must not make a classified image look unprocessed.
 
-        Missing vectors are backfilled without reprocessing; counting the extractor as a classifier
-        would send every capture through the whole pipeline again on every run.
+        Counting the extractor as a classifier would send every capture through the whole pipeline
+        again on every run, because it never writes a classification.
         """
         from ami.ml.models.algorithm import AlgorithmTaskType
         from ami.ml.models.pipeline import filter_processed_images
@@ -2340,26 +2340,6 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
         self._classify_in_project(other_masked_algo, self.other_project)
 
         self.assertNotIn("Other Project Masked", self._choice_names(self.project.pk))
-
-    def test_embedding_only_algorithm_is_a_choice(self):
-        """An embedding model authors neither detections nor classifications, only feature
-        vectors, so without its own lookup it could never be offered or filtered by."""
-        embedder = Algorithm.objects.create(name="Algo Embedder", version=1, task_type="embedding")
-        detection = Detection.objects.create(source_image=SourceImage.objects.create(project=self.project))
-        DetectionEmbedding.objects.store(
-            [DetectionEmbedding(detection=detection, algorithm=embedder, vector=[0.5] * 4)]
-        )
-
-        self.assertIn("Algo Embedder", self._choice_names(self.project.pk))
-
-    def test_vectors_in_other_project_do_not_leak(self):
-        embedder = Algorithm.objects.create(name="Other Project Embedder", version=1, task_type="embedding")
-        detection = Detection.objects.create(source_image=SourceImage.objects.create(project=self.other_project))
-        DetectionEmbedding.objects.store(
-            [DetectionEmbedding(detection=detection, algorithm=embedder, vector=[0.5] * 4)]
-        )
-
-        self.assertNotIn("Other Project Embedder", self._choice_names(self.project.pk))
 
     def test_project_id_is_required(self):
         """Choices are relative to a project; without one the request is rejected

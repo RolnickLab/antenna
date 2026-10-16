@@ -161,7 +161,7 @@ class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
     def test_only_detections_missing_a_vector_are_sent(self):
         collection = self._collection(captures=1, detections_per_capture=3)
         stored, *missing = list(Detection.objects.filter(source_image__collections=collection).order_by("pk"))
-        DetectionEmbedding.objects.create(detection=stored, algorithm=self.extractor, key="embedding", vector=VECTOR)
+        DetectionEmbedding.objects.create(detection=stored, algorithm=self.extractor, vector=VECTOR)
 
         self._run(collection)
 
@@ -175,9 +175,7 @@ class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
         collection = self._collection(captures=2)
         done, todo = list(collection.images.order_by("pk"))
         for detection in done.detections.all():
-            DetectionEmbedding.objects.create(
-                detection=detection, algorithm=self.extractor, key="embedding", vector=VECTOR
-            )
+            DetectionEmbedding.objects.create(detection=detection, algorithm=self.extractor, vector=VECTOR)
 
         job = self._run(collection)
 
@@ -356,9 +354,7 @@ class TestAddFeatureVectorsAdmin(FeatureVectorsFixture, TestCase):
     def test_it_enqueues_one_job_per_capture_set_with_the_config_on_the_job(self):
         first, second = self._collection(captures=1), self._collection(captures=1)
 
-        response = self._post(
-            [first, second], {"confirm": "1", "pipeline_id": self.pipeline.pk, "key": "embedding", "batch_size": 5}
-        )
+        response = self._post([first, second], {"confirm": "1", "pipeline_id": self.pipeline.pk, "batch_size": 5})
 
         self.assertEqual(response.status_code, 302)
         jobs = Job.objects.filter(job_type_key="post_processing", params__task="add_feature_vectors")
@@ -373,7 +369,7 @@ class TestAddFeatureVectorsAdmin(FeatureVectorsFixture, TestCase):
     def test_an_out_of_range_batch_size_is_shown_on_the_form_and_creates_no_job(self):
         response = self._post(
             [self._collection(captures=1)],
-            {"confirm": "1", "pipeline_id": self.pipeline.pk, "key": "embedding", "batch_size": 0},
+            {"confirm": "1", "pipeline_id": self.pipeline.pk, "batch_size": 0},
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Job.objects.filter(params__task="add_feature_vectors").count(), 0)

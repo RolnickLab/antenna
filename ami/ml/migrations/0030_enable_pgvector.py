@@ -1,4 +1,4 @@
-# First install of the pgvector extension, which stores feature vectors (DetectionEmbedding).
+# First install of the pgvector extension, which stores feature vectors.
 #
 # The extension package must already be installed on the PostgreSQL server (for example
 # the postgresql-16-pgvector package); CREATE EXTENSION only registers it in this database.
@@ -46,12 +46,24 @@ def update_pgvector_if_older(apps, schema_editor):
 
     ``ALTER EXTENSION ... UPDATE`` requires owning the extension even when there is nothing to
     update, so running it unconditionally fails where an administrator created the extension.
+    An old extension this role does not own stops with an instruction for the administrator.
     """
     with schema_editor.connection.cursor() as cursor:
-        cursor.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
-        (version,) = cursor.fetchone()
-        if _parse_version(version) < MINIMUM_VERSION:
-            cursor.execute("ALTER EXTENSION vector UPDATE")
+        cursor.execute(
+            "SELECT extversion, pg_has_role(current_user, extowner, 'USAGE') FROM pg_extension WHERE extname = 'vector'"
+        )
+        version, owns_extension = cursor.fetchone()
+        if _parse_version(version) >= MINIMUM_VERSION:
+            return
+        if not owns_extension:
+            minimum = ".".join(str(part) for part in MINIMUM_VERSION)
+            raise RuntimeError(
+                f"The pgvector extension in this database is version {version}, and this database role does not "
+                f"own it, so it cannot be upgraded here. Ask an administrator to run "
+                f"'ALTER EXTENSION vector UPDATE;' (pgvector {minimum} or later) in this database, then run this "
+                "migration again."
+            )
+        cursor.execute("ALTER EXTENSION vector UPDATE")
 
 
 class Migration(migrations.Migration):

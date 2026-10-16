@@ -7,7 +7,6 @@ import pydantic
 
 from ami.base.model_references import model_reference
 from ami.main.models import Detection, SourceImageCollection
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.embeddings.reader import detections_missing_vectors
 from ami.ml.embeddings.writer import save_embedding_results
 from ami.ml.exceptions import PipelineNotConfigured
@@ -22,11 +21,6 @@ class AddFeatureVectorsConfig(pydantic.BaseModel):
         ...,
         title="Pipeline",
         description="A pipeline with a feature extractor. Only detections that lack its vectors are sent.",
-    )
-    key: str = pydantic.Field(
-        DEFAULT_EMBEDDING_KEY,
-        title="Vector name",
-        description="The name the vectors are stored under. Keep the default unless the extractor has many outputs.",
     )
     batch_size: int = pydantic.Field(
         10,
@@ -52,15 +46,12 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
     name = "Add feature vectors"
     config_schema = AddFeatureVectorsConfig
 
-    def _missing_detections(self, collection: SourceImageCollection, pipeline: Pipeline, key: str):
+    def _missing_detections(self, collection: SourceImageCollection, pipeline: Pipeline):
         """Valid detections of the capture set that lack a vector from any of the pipeline's extractors."""
         detections = Detection.objects.valid().filter(source_image__collections=collection)
         return functools.reduce(
             operator.or_,
-            (
-                detections_missing_vectors(detections, extractor.pk, key)
-                for extractor in pipeline.embedding_algorithms()
-            ),
+            (detections_missing_vectors(detections, extractor.pk) for extractor in pipeline.embedding_algorithms()),
         )
 
     def run(self) -> None:
@@ -76,7 +67,7 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
             self.logger.error(msg)
             raise ValueError(msg)
 
-        missing = self._missing_detections(collection, pipeline, config.key)
+        missing = self._missing_detections(collection, pipeline)
         capture_ids = sorted(missing.order_by().values_list("source_image_id", flat=True).distinct())
         self.logger.info(
             f"=== Starting {self.name}: {len(capture_ids)} captures of capture set {collection.pk} "
@@ -111,7 +102,7 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
                 .order_by("source_image_id", "pk")
             )
             response = process_detections(pipeline, endpoint_url, batch, collection.project_id)
-            result = save_embedding_results(response, self.job, pipeline, config.key)
+            result = save_embedding_results(response, self.job, pipeline)
             totals["Captures"] += len({detection.source_image_id for detection in batch})
             totals["Detections sent"] += len(batch)
             totals["Vectors stored"] += result.written

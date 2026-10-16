@@ -130,12 +130,6 @@ export const OccurrenceDetails = ({
       label: translate(STRING.FIELD_LABEL_TIME),
       value: occurrence.timeLabel,
     },
-    {
-      label: translate(STRING.FIELD_LABEL_FEATURE_VECTORS),
-      value: occurrence.embeddingAlgorithms.length
-        ? occurrence.embeddingAlgorithms.map(({ name }) => name).join(', ')
-        : translate(STRING.FIELD_LABEL_NO_FEATURE_VECTORS),
-    },
   ]
 
   return (

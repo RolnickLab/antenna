@@ -23,11 +23,6 @@ class AddFeatureVectorsActionForm(BasePostProcessingActionForm):
         label=_FIELDS["pipeline_id"].field_info.title,
         help_text=_FIELDS["pipeline_id"].field_info.description,
     )
-    key = forms.CharField(
-        label=_FIELDS["key"].field_info.title,
-        initial=_FIELDS["key"].default,
-        help_text=_FIELDS["key"].field_info.description,
-    )
     batch_size = forms.IntegerField(
         label=_FIELDS["batch_size"].field_info.title,
         initial=_FIELDS["batch_size"].default,
@@ -47,6 +42,5 @@ class AddFeatureVectorsActionForm(BasePostProcessingActionForm):
     def to_config(self) -> dict:
         return {
             "pipeline_id": self.cleaned_data["pipeline_id"].pk,
-            "key": self.cleaned_data["key"],
             "batch_size": self.cleaned_data["batch_size"],
         }
