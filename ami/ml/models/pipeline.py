@@ -676,8 +676,8 @@ def create_detections(
 
     Detection.objects.bulk_create(new_detections)
     logger.info(
-        f"Created {len(new_detections)} new detections, updated {len(saved) - len(new_detections)} existing "
-        f"detections, for {len(source_image_ids)} source image(s)"
+        f"Created {len(new_detections)} new detections and matched {len(saved) - len(new_detections)} responses to "
+        f"existing detections, for {len(source_image_ids)} source image(s)"
     )
 
     return saved
@@ -862,17 +862,18 @@ def create_classification(
 
 
 def create_classifications(
-    detections: list[tuple[Detection, DetectionResponse]],
+    saved_detections: list[tuple[Detection, DetectionResponse]],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
     job_id: int | None = None,
 ) -> list[Classification]:
     """
-    Efficiently create multiple Classification objects from a list of ClassificationResponse objects,
-    grouped by detection.
+    Save the classifications in each detection response on that response's own detection, creating
+    new rows in bulk and reusing existing ones.
 
-    :param detections: Each saved detection with the response it came from, as ``create_detections`` returns them
+    :param saved_detections: Each saved detection with the response it came from, as ``create_detections``
+        returns them
     :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
 
     :return: A list of Classification objects
@@ -882,7 +883,7 @@ def create_classifications(
     existing_classifications: list[Classification] = []
     new_classifications: list[Classification] = []
 
-    for detection, detection_resp in detections:
+    for detection, detection_resp in saved_detections:
         for classification_resp in detection_resp.classifications:
             classification, created = create_classification(
                 detection=detection,
@@ -901,7 +902,7 @@ def create_classifications(
     Classification.objects.bulk_create(new_classifications)
     logger.info(
         f"Created {len(new_classifications)} new classifications, updated {len(existing_classifications)} existing "
-        f"classifications for {len(detections)} detections."
+        f"classifications for {len(saved_detections)} detection responses."
     )
 
     return existing_classifications + new_classifications
@@ -1087,7 +1088,7 @@ def save_results(
     detections = [detection for detection, _ in saved_detections]
 
     classifications = create_classifications(
-        detections=saved_detections,
+        saved_detections=saved_detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
         job_id=job.pk if job else None,

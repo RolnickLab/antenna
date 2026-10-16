@@ -691,18 +691,18 @@ class TestPipeline(TestCase):
         self.assertEqual(set(classifications.values_list("job_id", flat=True)), {first_job.pk})
 
     def test_each_classification_lands_on_its_own_detection_in_a_batch_of_new_and_existing_boxes(self):
-        """New detections are created in bulk after existing ones are found, and a response whose
-        capture is missing is skipped, so lining detections up with responses by position would give
-        each box another box's label. See #1436."""
+        """Each classification is saved on the detection its response came from, in a batch that
+        mixes a new box, an already-stored box and a box whose capture does not exist. See #1436."""
         image = self.test_images[0]
         first = self.fake_pipeline_results([image], self.pipeline)
         save_results(first)
 
         known = first.detections[0]
+        first_score = max(known.classifications[1].scores)
         new = known.copy(deep=True)
         new.bbox = BoundingBox(x1=2.0, y1=2.0, x2=3.0, y2=3.0)
         orphan = new.copy(deep=True)
-        orphan.source_image_id = "999999"
+        orphan.source_image_id = str(SourceImage.objects.order_by("-pk").values_list("pk", flat=True).first() + 1)
         new.classifications[1].scores = [0.111]
         known = known.copy(deep=True)
         known.classifications[1].scores = [0.999]
@@ -719,8 +719,7 @@ class TestPipeline(TestCase):
             for detection in image.detections.all()
         }
         self.assertEqual(scores_by_box[(2.0, 2.0, 3.0, 3.0)], {0.111})
-        self.assertIn(0.999, scores_by_box[(0.0, 0.0, 1.0, 1.0)])
-        self.assertNotIn(0.111, scores_by_box[(0.0, 0.0, 1.0, 1.0)])
+        self.assertEqual(scores_by_box[(0.0, 0.0, 1.0, 1.0)], {first_score, 0.999})
 
     def test_skip_existing_when_all_matching(self):
         """
