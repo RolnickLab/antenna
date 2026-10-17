@@ -20,9 +20,9 @@ from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Project, SourceImage
 from ami.ml.embeddings.writer import EmbeddingRefused, create_detection_embeddings, validate_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService
+from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map, save_results
-from ami.ml.schemas import AlgorithmConfigResponse, DetectionResponse, PipelineConfigResponse, PipelineResultsResponse
+from ami.ml.schemas import AlgorithmConfigResponse, DetectionResponse, PipelineResultsResponse
 from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.tests.fixtures.queries import no_query_cache
@@ -75,34 +75,14 @@ class TestDeclaredVectorLength(TestCase):
         get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": None}))
         self.assertEqual(Algorithm.objects.get(key=SPECIES.key).embedding_dimensions, LENGTH)
 
-    def test_a_different_length_for_a_registered_algorithm_refuses_registration(self):
-        """A new length is a new ML model, whose vectors could not be compared with the stored ones."""
+    def test_a_different_length_for_a_registered_algorithm_keeps_the_registered_one(self):
+        """A new length is a new ML model, whose vectors could not be compared with the stored ones, so the
+        registered length stays (with a warning) and vectors of the new length are refused when saved."""
         get_or_create_algorithm_and_category_map(SPECIES)
-        with self.assertRaises(PipelineNotConfigured) as raised:
+        with self.assertLogs("ami.ml.models.pipeline", level="WARNING") as logs:
             get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": 1024}))
-        self.assertIn("new algorithm key", str(raised.exception))
+        self.assertIn("new algorithm key", "\n".join(logs.output))
         self.assertEqual(Algorithm.objects.get(key=SPECIES.key).embedding_dimensions, LENGTH)
-
-    def test_a_refused_pipeline_leaves_the_other_pipelines_of_the_service_registered(self):
-        """The refusal is reported in the response (the endpoints answer 400), not raised, so a service whose
-        one pipeline changed an ML model can still register the rest, and new projects can still be created."""
-        get_or_create_algorithm_and_category_map(SPECIES)
-        with no_processing_service_http():
-            project, _ = setup_test_project(reuse=False)
-        service = ProcessingService.objects.create(name="Vector service", endpoint_url=None)
-        changed = SPECIES.copy(update={"embedding_dimensions": 1024})
-        response = service.create_pipelines(
-            pipeline_configs=[
-                PipelineConfigResponse(name="Changed", slug="changed", version=1, algorithms=[DETECTOR, changed]),
-                PipelineConfigResponse(name="Unchanged", slug="unchanged", version=1, algorithms=[DETECTOR, BINARY]),
-            ],
-            projects=Project.objects.filter(pk=project.pk),
-        )
-        self.assertFalse(response.success)
-        self.assertIn("Pipeline 'changed'", response.error or "")
-        self.assertEqual([pipeline.slug for pipeline in response.pipelines], ["unchanged"])
-        self.assertTrue(Pipeline.objects.filter(slug="unchanged").exists())
-        self.assertFalse(Pipeline.objects.filter(slug="changed").exists())
 
 
 class ClassifierPipelineMixin:

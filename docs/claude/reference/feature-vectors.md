@@ -36,11 +36,11 @@ image vector and a projected one) registers one algorithm per output; see `proce
 
 Each algorithm has one vector length, `Algorithm.embedding_dimensions`, declared by its processing
 service in `/info` and recorded at registration. An unsized column lets algorithms of different lengths
-share the table, and the declared length keeps one algorithm's vectors comparable. Registration refuses
-a different length for an algorithm that already has one, for that pipeline only (the registration
-endpoints answer 400 and register the service's other pipelines): register the new ML model under a
-new algorithm key. Do not delete the old algorithm to make room: its classifications and detections
-would lose their algorithm.
+share the table, and the declared length keeps one algorithm's vectors comparable. If a service later
+declares a different length for an algorithm that already has one, registration keeps the registered
+length and logs a warning, and vectors of the new length are refused when results are saved: register
+the new ML model under a new algorithm key. Do not delete the old algorithm to make room: its
+classifications and detections would lose their algorithm.
 
 ## Writing
 

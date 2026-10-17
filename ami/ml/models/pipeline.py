@@ -443,23 +443,6 @@ def collect_detections(
     return detection_requests
 
 
-def embedding_dimensions_conflicts(algorithm_configs: list[AlgorithmConfigResponse]) -> list[str]:
-    """Why each declared vector length differs from the length already registered for that algorithm.
-
-    A different length means a different ML model, whose vectors cannot be compared with the stored ones.
-    """
-    declared = {config.key: config.embedding_dimensions for config in algorithm_configs if config.embedding_dimensions}
-    registered = Algorithm.objects.filter(key__in=declared, embedding_dimensions__isnull=False).values_list(
-        "key", "embedding_dimensions"
-    )
-    return [
-        f"Algorithm '{key}' is registered with {length}-dimension feature vectors, but the processing service "
-        f"now declares {declared[key]}. Register the new ML model under a new algorithm key."
-        for key, length in registered
-        if length != declared[key]
-    ]
-
-
 def get_or_create_algorithm_and_category_map(
     algorithm_config: AlgorithmConfigResponse,
     logger: logging.Logger = logger,
@@ -522,11 +505,18 @@ def get_or_create_algorithm_and_category_map(
             else:
                 logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
 
-    if algorithm_config.embedding_dimensions is not None and algo.embedding_dimensions is None:
-        algo.embedding_dimensions = algorithm_config.embedding_dimensions
+    declared_dimensions = algorithm_config.embedding_dimensions
+    if declared_dimensions is not None and algo.embedding_dimensions is None:
+        algo.embedding_dimensions = declared_dimensions
         algo_fields_updated.append("embedding_dimensions")
-    elif conflicts := embedding_dimensions_conflicts([algorithm_config]):
-        raise PipelineNotConfigured(conflicts[0])
+    elif declared_dimensions is not None and declared_dimensions != algo.embedding_dimensions:
+        # The registered length stays, so stored vectors stay comparable; vectors of the new length are
+        # refused when results are saved.
+        logger.warning(
+            f"Algorithm '{algo.key}' is registered with {algo.embedding_dimensions}-dimension feature vectors, "
+            f"but the processing service now declares {declared_dimensions}; keeping "
+            f"{algo.embedding_dimensions}. Register the new ML model under a new algorithm key."
+        )
 
     # Update fields that may have changed in the processing service, with a warning
     # These are fields that we have added to the API since the algorithm was first created

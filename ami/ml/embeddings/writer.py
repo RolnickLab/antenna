@@ -52,8 +52,8 @@ def validate_detection_embeddings(
                 )
             if len(embedding_resp.features) != algorithm.embedding_dimensions:
                 raise EmbeddingRefused(
-                    f"Algorithm {algorithm.key} declares {algorithm.embedding_dimensions}-dimension vectors "
-                    f"but sent one of length {len(embedding_resp.features)}."
+                    f"Algorithm {algorithm.key} is registered with {algorithm.embedding_dimensions}-dimension "
+                    f"vectors but sent one of length {len(embedding_resp.features)}."
                 )
             values = np.asarray(embedding_resp.features, dtype=np.float64)
             if not (np.isfinite(values).all() and np.abs(values).max() <= HALF_PRECISION_MAX):
