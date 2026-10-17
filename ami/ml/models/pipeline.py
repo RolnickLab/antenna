@@ -38,8 +38,9 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.ml.embeddings.writer import create_detection_embeddings, validate_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType, get_known_algorithm
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -91,6 +92,10 @@ def filter_processed_images(
     4. Only null detections exist (bbox=None) — pipeline ran but found nothing
     5. Real detections exist and are fully classified by all pipeline classifiers
 
+    Algorithms with the "embedding" task type are not counted as classifiers, because they never
+    write a classification, so a capture that lacks only a vector is not reprocessed. A pipeline with no
+    classifier at all (a detector and feature extractors) reprocesses every capture, as a detector-only one does.
+
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
 
@@ -109,7 +114,8 @@ def filter_processed_images(
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
+    non_classifier_type_keys = detection_type_keys | {AlgorithmTaskType.EMBEDDING}
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in non_classifier_type_keys}
     if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
         # set().issubset(anything) is vacuously True, so without this short-circuit
@@ -461,6 +467,7 @@ def get_or_create_algorithm_and_category_map(
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
             "category_map": None,
+            "embedding_dimensions": algorithm_config.embedding_dimensions,
         },
     )
     if _created:
@@ -497,6 +504,19 @@ def get_or_create_algorithm_and_category_map(
                 raise PipelineNotConfigured(msg)
             else:
                 logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
+
+    declared_dimensions = algorithm_config.embedding_dimensions
+    if declared_dimensions is not None and algo.embedding_dimensions is None:
+        algo.embedding_dimensions = declared_dimensions
+        algo_fields_updated.append("embedding_dimensions")
+    elif declared_dimensions is not None and declared_dimensions != algo.embedding_dimensions:
+        # The registered length stays, so stored vectors stay comparable; vectors of the new length are
+        # refused when results are saved.
+        logger.warning(
+            f"Algorithm '{algo.key}' is registered with {algo.embedding_dimensions}-dimension feature vectors, "
+            f"but the processing service now declares {declared_dimensions}; keeping "
+            f"{algo.embedding_dimensions}. Register the new ML model under a new algorithm key."
+        )
 
     # Update fields that may have changed in the processing service, with a warning
     # These are fields that we have added to the API since the algorithm was first created
@@ -541,7 +561,7 @@ def get_or_create_detection(
     get_was_processed(algorithm_key=...) returns correct per-algorithm processed status.
     """
     if detection_resp.bbox is not None:
-        serialized_bbox = list(detection_resp.bbox.dict().values())
+        serialized_bbox = detection_resp.bbox.as_coords()
     else:
         serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
@@ -557,14 +577,7 @@ def get_or_create_detection(
         # response has no bbox to match on, so without .null_markers() the (image, algorithm) filter
         # would also return real detections, and .first() could reuse one as if it were the sentinel.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-        try:
-            detection_algo = algorithms_known[detection_resp.algorithm.key]
-        except KeyError as err:
-            raise PipelineNotConfigured(
-                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-                "The processing service must declare it in the /info endpoint. "
-                f"Known algorithms: {list(algorithms_known.keys())}"
-            ) from err
+        detection_algo = get_known_algorithm(algorithms_known, detection_resp.algorithm.key, "Detection")
         existing_detection = (
             Detection.objects.filter(
                 source_image=source_image,
@@ -591,6 +604,8 @@ def get_or_create_detection(
         crop_url = None
 
     if existing_detection:
+        # Reuse the capture already loaded here, so reading detection.source_image costs no query.
+        existing_detection.source_image = source_image
         if not existing_detection.path:
             existing_detection.path = crop_url
             existing_detection.save()
@@ -601,14 +616,7 @@ def get_or_create_detection(
         # Resolve algorithm for creation (null detections already resolved above)
         if serialized_bbox is not None:
             assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-            try:
-                detection_algo = algorithms_known[detection_resp.algorithm.key]
-            except KeyError as err:
-                raise PipelineNotConfigured(
-                    f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-                    "The processing service must declare it in the /info endpoint. "
-                    f"Known algorithms: {list(algorithms_known.keys())}"
-                ) from err
+            detection_algo = get_known_algorithm(algorithms_known, detection_resp.algorithm.key, "Detection")
 
         new_detection = Detection(
             source_image=source_image,
@@ -777,14 +785,7 @@ def create_classification(
     ), f"No classification algorithm was specified for classification {classification_resp}"
     logger.debug(f"Processing classification {classification_resp}")
 
-    try:
-        classification_algo = algorithms_known[classification_resp.algorithm.key]
-    except KeyError:
-        raise PipelineNotConfigured(
-            f"Classification algorithm {classification_resp.algorithm.key} is not a known algorithm. "
-            "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_known.keys())}"
-        )
+    classification_algo = get_known_algorithm(algorithms_known, classification_resp.algorithm.key, "Classification")
 
     if not classification_algo.category_map:
         logger.warning(
@@ -1078,6 +1079,9 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
+    # Before anything is saved, so a batch with a vector that cannot be stored writes nothing.
+    validate_detection_embeddings(results.detections, algorithms_known)
+
     # New rows record the job that wrote them; rows that already existed keep theirs.
     saved_detections = create_detections(
         detections=results.detections,
@@ -1086,6 +1090,13 @@ def save_results(
         job_id=job.pk if job else None,
     )
     detections = [detection for detection, _ in saved_detections]
+
+    create_detection_embeddings(
+        saved_detections=saved_detections,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+        job_id=job.pk if job else None,
+    )
 
     classifications = create_classifications(
         saved_detections=saved_detections,

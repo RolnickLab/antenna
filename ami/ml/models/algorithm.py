@@ -14,6 +14,7 @@ from django.db import models
 from django.utils.text import slugify
 
 from ami.base.models import BaseModel, BaseQuerySet
+from ami.ml.exceptions import PipelineNotConfigured
 
 
 @typing.final
@@ -260,6 +261,14 @@ class Algorithm(BaseModel):
         related_name="algorithms",
         default=None,
     )
+    embedding_dimensions = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The length of the feature vectors this algorithm returns, as declared by its processing service. "
+            "Vectors of any other length are refused, because vectors of different lengths cannot be compared."
+        ),
+    )
 
     # api_base_url = models.URLField(blank=True)
     # api = models.CharField(max_length=255, blank=True)
@@ -311,3 +320,19 @@ class Algorithm(BaseModel):
             and (self.category_map.data is not None)
             and (len(self.category_map.data) > 0)
         )
+
+
+def get_known_algorithm(algorithms_known: dict[str, Algorithm], key: str, role: str) -> Algorithm:
+    """The pipeline's registered algorithm with this key, for saving one of its results.
+
+    Raises ``PipelineNotConfigured`` when the processing service sent a result from an algorithm it
+    never declared in its /info endpoint. ``role`` names the kind of result in the message.
+    """
+    try:
+        return algorithms_known[key]
+    except KeyError as err:
+        raise PipelineNotConfigured(
+            f"{role} algorithm {key} is not a known algorithm. "
+            "The processing service must declare it in the /info endpoint. "
+            f"Known algorithms: {list(algorithms_known.keys())}"
+        ) from err

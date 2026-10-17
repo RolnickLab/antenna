@@ -1,9 +1,11 @@
+import contextlib
 import datetime
 import logging
 import os
 import pathlib
 import random
 import uuid
+from unittest import mock
 
 from django.db import transaction
 from django.utils import timezone
@@ -37,6 +39,13 @@ def update_site_settings(**kwargs):
         setattr(site, key, value)
     site.save()
     return site
+
+
+@contextlib.contextmanager
+def no_processing_service_http():
+    """Skip the status check and pipeline registration that fixtures send to the test processing service."""
+    with mock.patch.object(ProcessingService, "get_status"), mock.patch.object(ProcessingService, "create_pipelines"):
+        yield
 
 
 def create_processing_service(project: Project, name: str = "Test Processing Service") -> ProcessingService:
