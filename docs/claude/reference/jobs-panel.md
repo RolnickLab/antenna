@@ -27,7 +27,7 @@ the Job's columns so the jobs list can filter on them.
 | `params` validation on create | `ami/jobs/serializers.py` (`JobSerializer.validate`) |
 | The gated `types` action | `ami/jobs/views.py` (`JobViewSet.types`) |
 | Per-task feature flags | `ami/main/models.py` (`ProjectFeatureFlags`), `BasePostProcessingTask.feature_flag` |
-| `run_post_processing_job` for ML data managers | `ami/users/roles.py`, `ami/main/migrations/0096_grant_run_post_processing_to_ml_data_manager.py` |
+| `run_post_processing_job` for ML data managers | `ami/users/roles.py`, `ami/main/migrations/0100_grant_run_post_processing_to_ml_data_manager.py` |
 | Form mapping and payload | `ui/src/components/form/schema-form/` (`schema-to-fields.ts`, `build-job-payload.ts`) |
 
 ## Making a job type creatable

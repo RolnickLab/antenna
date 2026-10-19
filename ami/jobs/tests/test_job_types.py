@@ -76,7 +76,7 @@ class TestJobTypesEndpoint(JobTypesTestBase):
         self.assertTrue(post_processing["allowed"])
         self.assertEqual([v["key"] for v in post_processing["variants"]], ["class_masking"])
         properties = post_processing["variants"][0]["config_schema"]["properties"]
-        self.assertEqual(properties["taxa_list_id"]["title"], "Taxa list to keep")
+        self.assertEqual(properties["taxa_list_id"]["title"], "Species list")
         self.assertEqual(properties["source_image_collection_id"]["ami_entity"], "captures/collections")
         self.assertEqual(properties["occurrence_id"]["ami_widget"], "hidden")
 

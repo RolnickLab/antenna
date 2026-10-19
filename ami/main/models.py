@@ -3,6 +3,7 @@ import contextlib
 import datetime
 import functools
 import logging
+import operator
 import textwrap
 import time
 import typing
@@ -20,11 +21,9 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.functions import Coalesce
-from django.db.models.signals import pre_delete
-from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
@@ -42,6 +41,15 @@ from ami.main.models_future.filters import (
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.projects import ProjectSettingsMixin
+
+# These models must be re-exported so that they are referenced as models.*
+# for compatibility with migrations existing before this change.
+from ami.main.models_future.storage import (  # noqa: F401
+    S3StorageSource,
+    SourceImageUpload,
+    delete_source_image,
+    upload_to_with_deployment,
+)
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -223,12 +231,121 @@ def get_or_create_default_project(user: User) -> "Project":
     return project
 
 
+def _per_project(queryset: models.QuerySet, aggregate) -> Subquery:
+    """One aggregate over the rows of `queryset` that belong to the outer project, for a Project annotation."""
+    return Subquery(
+        queryset.filter(project=OuterRef("pk"))
+        .order_by()
+        .values("project")
+        .annotate(value=aggregate)
+        .values("value")[:1]
+    )
+
+
+def add_taxa_counts(projects: list["Project"]) -> None:
+    """
+    Set `taxa_observed_count` on each project: its distinct taxa after its own default filters,
+    the number the project summary shows.
+
+    Each project has its own filters, so this is one grouped query over a page of projects
+    rather than an annotation, and the count cannot be sorted on.
+    """
+    from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+    if not projects:
+        return
+    models.prefetch_related_objects(projects, "default_filters_include_taxa", "default_filters_exclude_taxa")
+    in_scope = functools.reduce(
+        operator.or_, (Q(project=project) & build_occurrence_default_filters_q(project) for project in projects)
+    )
+    # The same conditions as OccurrenceQuerySet.unique_taxa().
+    counts = dict(
+        Occurrence.objects.filter(in_scope, determination__isnull=False, event__isnull=False)
+        .values("project")
+        .annotate(taxa=models.Count("determination", distinct=True))
+        .values_list("project", "taxa")
+    )
+    for project in projects:
+        project.taxa_observed_count = counts.get(project.pk, 0)
+
+
 class ProjectQuerySet(BaseQuerySet):
+    # Annotated by with_overview_counts() and with_recent_activity(). The projects API sorts and
+    # serializes by these names.
+    OVERVIEW_COUNT_FIELDS = ("deployments_count", "captures_count", "occurrences_count", "members_count")
+    RECENT_ACTIVITY_FIELDS = ("last_capture_timestamp", "last_occurrence_updated_at", "last_job_updated_at")
+    # Annotated by with_location().
+    LOCATION_FIELDS = ("centroid_latitude", "centroid_longitude")
+
     def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
         """
         return self.filter(members=user)
+
+    def with_overview_counts(self, user: User | AnonymousUser) -> "ProjectQuerySet":
+        """
+        Annotate the totals shown in the projects table, named in OVERVIEW_COUNT_FIELDS.
+
+        Totals are summed from the cached counts on each deployment, so they are only as fresh as
+        `Deployment.update_calculated_fields()`. `members_count` is null on projects whose team list
+        the user may not open, the same check as `UserProjectMembership.check_permission()`.
+        """
+        from guardian.shortcuts import get_objects_for_user
+
+        can_view_team = get_objects_for_user(
+            user,
+            Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP,
+            klass=Project,
+            accept_global_perms=False,
+        )
+        members_count = models.Case(
+            models.When(
+                pk__in=can_view_team.values("pk"),
+                then=Coalesce(_per_project(UserProjectMembership.objects.all(), models.Count("pk")), 0),
+            ),
+            default=None,
+        )
+
+        return self.annotate(
+            deployments_count=Coalesce(_per_project(Deployment.objects.all(), models.Count("pk")), 0),
+            captures_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("captures_count")), 0),
+            occurrences_count=Coalesce(_per_project(Deployment.objects.all(), models.Sum("occurrences_count")), 0),
+            members_count=members_count,
+        )
+
+    def with_recent_activity(self) -> "ProjectQuerySet":
+        """
+        Annotate when each project last received a capture, an occurrence update and a job update,
+        named in RECENT_ACTIVITY_FIELDS. Each is read live from a (project, time) index.
+        """
+        from ami.jobs.models import Job
+
+        def latest(queryset: models.QuerySet, field: str) -> Subquery:
+            return Subquery(queryset.filter(project=OuterRef("pk")).order_by(f"-{field}").values(field)[:1])
+
+        return self.annotate(
+            # timestamp is nullable and DESC sorts NULLs first, so undated captures are excluded.
+            last_capture_timestamp=latest(SourceImage.objects.filter(timestamp__isnull=False), "timestamp"),
+            last_occurrence_updated_at=latest(Occurrence.objects.all(), "updated_at"),
+            last_job_updated_at=latest(Job.objects.all(), "updated_at"),
+        )
+
+    def with_location(self) -> "ProjectQuerySet":
+        """
+        Annotate LOCATION_FIELDS: the centroid of the project's stations, as the mean of their coordinates.
+
+        Stations without coordinates, or at (0, 0) where default stations are created, are left
+        out; a project with none of its own gets nulls. A plain mean is wrong for stations on
+        both sides of the antimeridian.
+        """
+        located = Deployment.objects.filter(latitude__isnull=False, longitude__isnull=False).exclude(
+            latitude=0, longitude=0
+        )
+        return self.annotate(
+            centroid_latitude=_per_project(located, models.Avg("latitude")),
+            centroid_longitude=_per_project(located, models.Avg("longitude")),
+        )
 
 
 class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
@@ -1197,6 +1314,9 @@ class EventManager(models.Manager.from_queryset(EventQuerySet)):
 class Event(BaseModel):
     """A monitoring session"""
 
+    reference_type = "session"
+    reference_name_field = "name"
+
     objects: EventManager = EventManager()
     group_by = models.CharField(
         max_length=255,
@@ -1838,115 +1958,6 @@ def sample_events(deployment: Deployment, day_interval: int = 3) -> typing.Gener
                 last_event = event
 
 
-@final
-class S3StorageSource(BaseModel):
-    """
-    Per-deployment configuration for an S3 bucket.
-    """
-
-    name = models.CharField(max_length=255)
-    bucket = models.CharField(max_length=255)
-    region = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        help_text="AWS region (e.g., 'us-east-1', 'eu-west-1'). Leave blank for Swift/MinIO storage.",
-    )
-    prefix = models.CharField(max_length=255, blank=True)
-    access_key = models.TextField()
-    secret_key = models.TextField()
-    endpoint_url = models.CharField(max_length=255, blank=True, null=True)
-    public_base_url = models.CharField(max_length=255, blank=True, null=True)
-    total_size = models.BigIntegerField(null=True, blank=True)
-    total_files = models.BigIntegerField(null=True, blank=True)
-    last_checked = models.DateTimeField(null=True, blank=True)
-    # last_check_duration = models.DurationField(null=True, blank=True)
-    # use_signed_urls = models.BooleanField(default=False)
-    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="storage_sources")
-    # @TODO allow multiple projects to share the same S3StorageSource
-
-    deployments: models.QuerySet["Deployment"]
-
-    @property
-    def config(self) -> ami.utils.s3.S3Config:
-        return ami.utils.s3.S3Config(
-            bucket_name=self.bucket,
-            region=self.region,
-            prefix=self.prefix,
-            access_key_id=self.access_key,
-            secret_access_key=self.secret_key,
-            endpoint_url=self.endpoint_url,
-            public_base_url=self.public_base_url,
-        )
-
-    def deployments_count(self) -> int:
-        return self.deployments.count()
-
-    def total_files_indexed(self) -> int:
-        return self.deployments.aggregate(total_files=models.Sum("data_source_total_files"))["total_files"]
-
-    @functools.cache
-    def total_size_indexed(self) -> int:
-        return self.deployments.aggregate(total_size=models.Sum("data_source_total_size"))["total_size"]
-
-    def total_size_indexed_display(self) -> str:
-        return filesizeformat(self.total_size_indexed())
-
-    def total_captures_indexed(self) -> int:
-        return self.deployments.aggregate(total_captures=models.Sum("captures_count"))["total_captures"]
-
-    def list_files(self, limit=None):
-        """Recursively list files in the bucket/prefix."""
-
-        return ami.utils.s3.list_files_paginated(self.config, limit=limit)
-
-    def count_files(self):
-        """Count & save the number of files in the bucket/prefix."""
-
-        count = ami.utils.s3.count_files_paginated(self.config)
-        self.total_files = count
-        self.save()
-        return count
-
-    def calculate_size(self):
-        """Calculate the total size and count of all files in the bucket/prefix."""
-
-        sizes = [obj["Size"] for obj, _num_files_checked in self.list_files() if obj]  # type: ignore
-        size = sum(sizes)
-        count = len(sizes)
-        self.total_size = size
-        self.total_files = count
-        self.save()
-        return size
-
-    def uri(self, path: str | None = None):
-        """Return the full URI for the given path."""
-
-        full_path = "/".join(str(part).strip("/") for part in [self.bucket, self.prefix, path] if part)
-        return f"s3://{full_path}"
-
-    def public_url(self, path: str):
-        """Return the public URL for the given path."""
-
-        return ami.utils.s3.public_url(self.config, path)
-
-    def test_connection(
-        self, subdir: str | None = None, regex_filter: str | None = None
-    ) -> ami.utils.s3.ConnectionTestResult:
-        """Test the connection to the S3 bucket."""
-
-        return ami.utils.s3.test_connection(self.config, subdir=subdir, regex_filter=regex_filter)
-
-    def save(self, *args, **kwargs):
-        # If public_base_url has changed, update the urls for all source images
-        if self.pk:
-            old = S3StorageSource.objects.get(pk=self.pk)
-            if old.public_base_url != self.public_base_url:
-                for deployment in self.deployments.all():
-                    ami.tasks.update_public_urls.delay(deployment.pk, self.public_base_url)
-        super().save(*args, **kwargs)
-
-
 def validate_filename_timestamp(filename: str) -> None:
     # Ensure filename has a timestamp
     timestamp = ami.utils.dates.get_image_timestamp_from_filename(filename)
@@ -2016,49 +2027,6 @@ def create_source_image_from_upload(
 
         process_single_source_image(source_image=source_image)
     return source_image
-
-
-def upload_to_with_deployment(instance, filename: str) -> str:
-    """Nest uploads under subdir for a deployment."""
-    return f"example_captures/{instance.deployment.pk}/{filename}"
-
-
-@final
-class SourceImageUpload(BaseModel):
-    """
-    A manually uploaded image that has not yet been imported.
-
-    The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
-    """
-
-    project_accessor = "deployment__project"
-    image = models.ImageField(upload_to=upload_to_with_deployment)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
-    source_image = models.OneToOneField(
-        "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
-    )
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-        self.deployment.save()
-
-
-@receiver(pre_delete, sender=SourceImageUpload)
-def delete_source_image(sender, instance, **kwargs):
-    """
-    A SourceImageUpload are automatically deleted when deleting a SourceImage because of the CASCADE setting.
-    However the SourceImage needs to be deleted using a signal when deleting a SourceImageUpload.
-    """
-    if instance.source_image:
-        # Disconnect the SourceImage from the upload to prevent recursion error
-        source_image = instance.source_image
-        instance.source_image = None
-        instance.save()
-        source_image.delete()
-    # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-    instance.deployment.save()
 
 
 class SourceImageQuerySet(BaseQuerySet):
@@ -2967,7 +2935,12 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 
 @final
 class Classification(BaseModel):
-    """The output of a classifier"""
+    """A taxon classification of one detection: the taxon a classifier or a post-processing run assigned it.
+
+    ``job`` records the run that wrote it, when there was one. ``algorithm_result`` is the
+    post-processing result the row was created for, so the occurrence history can show a run
+    with the classifications it produced; classifications from a pipeline leave it empty.
+    """
 
     project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
@@ -2999,7 +2972,25 @@ class Classification(BaseModel):
         null=True,
         related_name="classifications",
     )
-    # job = models.CharField(max_length=255, null=True)
+    # The job that created this row. A later job that returns the same result reuses the row and
+    # does not change it. Indexed by the partial index in Meta, not by the foreign key's own index.
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classifications",
+        db_index=False,
+    )
+    # Indexed by the partial index in Meta, not by the foreign key's own index.
+    algorithm_result = models.ForeignKey(
+        "ml.AlgorithmResult",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="classifications",
+        db_index=False,
+    )
     applied_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -3019,6 +3010,20 @@ class Classification(BaseModel):
 
     class Meta:
         ordering = ["-created_at", "-score"]
+        indexes = [
+            # Serves the ?job= occurrence filter with an index-only scan. Partial, because rows
+            # written before jobs were recorded have no job. See #1471 for the measurements.
+            models.Index(
+                fields=["job", "detection"], name="cls_job_detection_idx", condition=models.Q(job__isnull=False)
+            ),
+            # Deleting a result looks up its classifications. Partial, because pipeline
+            # classifications never have a result.
+            models.Index(
+                fields=["algorithm_result"],
+                name="cls_algorithm_result_idx",
+                condition=models.Q(algorithm_result__isnull=False),
+            ),
+        ]
 
     def __str__(self) -> str:
         terminal = "Terminal" if self.terminal else "Intermediate"
@@ -3193,11 +3198,16 @@ class Detection(BaseModel):
     # @TODO not sure if this detection score is ever used
     # I think it was intended to be the score of the detection algorithm (bbox score)
     detection_score = models.FloatField(null=True, blank=True)
-    # detection_job = models.ForeignKey(
-    #     "Job",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    # )
+    # The job that created this row. A later job that returns the same box reuses the row and
+    # does not change it. Indexed by the partial index in Meta, not by the foreign key's own index.
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="detections",
+        db_index=False,
+    )
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
@@ -3279,6 +3289,11 @@ class Detection(BaseModel):
             # Supports the "last processed" subquery on the captures list: the
             # latest detection created_at per source image (index scan, top 1).
             models.Index(fields=["source_image", "-created_at"], name="det_srcimg_created_idx"),
+            # Serves the ?job= occurrence filter with an index-only scan. Partial, because rows
+            # written before jobs were recorded have no job. See #1471 for the measurements.
+            models.Index(
+                fields=["job", "occurrence"], name="det_job_occurrence_idx", condition=models.Q(job__isnull=False)
+            ),
         ]
 
     def best_classification(self):
@@ -3391,6 +3406,22 @@ class OccurrenceQuerySet(BaseQuerySet):
     def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with no result from any of the given algorithms."""
         return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
+
+    def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
+        """Occurrences created or updated by the given job.
+
+        An occurrence matches when the job created one of its detections, a classification
+        on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
+
+        Identifications are not matched: people make them, not jobs. EXISTS subqueries return
+        each occurrence once, where a join would return one row per matching result.
+        """
+        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
+        return self.filter(
+            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+        )
 
     def with_timestamps(self):
         """
@@ -3619,6 +3650,9 @@ class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
 @final
 class Occurrence(BaseModel):
     """An occurrence of a taxon, a sequence of one or more detections"""
+
+    reference_type = "occurrence"
+    reference_name_field = None
 
     # @TODO change Determination to a nested field with a Taxon, User, Identification, etc like the serializer
     # this could be a OneToOneField to a Determination model or a JSONField validated by a Pydantic model
@@ -4783,6 +4817,9 @@ class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
 class TaxaList(BaseModel):
     """A checklist of taxa"""
 
+    reference_type = "taxa_list"
+    reference_name_field = "name"
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
@@ -4966,6 +5003,9 @@ class SourceImageCollection(BaseModel):
     Collections are saved so that they can be reviewed or re-used later.
 
     """
+
+    reference_type = "capture_set"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)

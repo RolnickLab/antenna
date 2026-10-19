@@ -42,9 +42,11 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.algorithm_result import AlgorithmResult
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.small_size_filter import SizeFilterResultData
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
@@ -2335,6 +2337,171 @@ class TestProjectOwnerAutoAssignment(APITestCase):
         self.client.post(project_endpoint, request)
         project = Project.objects.filter(name=request["name"]).first()
         self.assertEqual(self.user_1.id, project.owner.id)
+
+
+class TestProjectListSearch(APITestCase):
+    """The project list `search` parameter matches name and description, and never reveals drafts."""
+
+    endpoint = "/api/v2/projects/"
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.owner = User.objects.create_user(email="search-owner@insectai.org")
+        cls.moth_project = Project.objects.create(name="Moths of Quebec", owner=cls.owner)
+        cls.beetle_project = Project.objects.create(
+            name="Field station", description="Night beetle survey", owner=cls.owner
+        )
+        cls.draft_project = Project.objects.create(name="Draft moths", owner=cls.owner, draft=True)
+
+    def _search(self, term: str) -> set[int]:
+        response = self.client.get(self.endpoint, {"search": term})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["id"] for row in response.json()["results"]}
+
+    def test_search_matches_name_and_description(self):
+        self.assertEqual(self._search("moths"), {self.moth_project.pk})
+        self.assertEqual(self._search("beetle"), {self.beetle_project.pk})
+
+
+class TestProjectListOverviewCounts(APITestCase):
+    """The projects table gets per-project totals and activity dates, sortable, at a fixed query cost."""
+
+    endpoint = "/api/v2/projects/"
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.owner = User.objects.create_user(email="overview-owner@insectai.org")
+        cls.member = User.objects.create_user(email="overview-member@insectai.org")
+        cls.busy = Project.objects.create(name="Busy project", owner=cls.owner, create_defaults=False)
+        cls.busy.members.add(cls.member)
+        cls.empty = Project.objects.create(name="Empty project", owner=cls.owner, create_defaults=False)
+        last_capture = datetime.datetime(2026, 6, 1, 23, 0)
+        for name, captures, occurrences, timestamp in [
+            ("Station A", 100, 10, last_capture),
+            ("Station B", 50, 5, last_capture - datetime.timedelta(days=3)),
+        ]:
+            deployment = Deployment.objects.create(name=name, project=cls.busy)
+            SourceImage.objects.create(deployment=deployment, project=cls.busy, timestamp=timestamp, path=name)
+            # Set after create, which recalculates the cached counts from (no) captures.
+            Deployment.objects.filter(pk=deployment.pk).update(captures_count=captures, occurrences_count=occurrences)
+        cls.last_capture = last_capture
+
+    def _rows(self, user: User | None = None, **params) -> list[dict]:
+        self.client.force_authenticate(user)
+        response = self.client.get(self.endpoint, {"with_counts": "true", **params})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["results"]
+
+    def test_counts_are_rolled_up_from_deployments(self):
+        rows = {row["id"]: row for row in self._rows(self.owner)}
+        busy, empty = rows[self.busy.pk], rows[self.empty.pk]
+        self.assertEqual(
+            (busy["deployments_count"], busy["captures_count"], busy["occurrences_count"], busy["members_count"]),
+            (2, 150, 15, 2),
+        )
+        self.assertEqual(busy["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
+        self.assertEqual(
+            (empty["deployments_count"], empty["captures_count"], empty["occurrences_count"], empty["members_count"]),
+            (0, 0, 0, 1),
+        )
+        self.assertIsNone(empty["last_capture_timestamp"])
+        self.assertIsNone(empty["last_occurrence_updated_at"])
+        self.assertIsNone(empty["last_job_updated_at"])
+
+    def test_taxa_observed_count_follows_each_projects_default_filters(self):
+        """Distinct taxa above the project's score threshold, as on the project summary."""
+        station = Deployment.objects.filter(project=self.busy).first()
+        event = Event.objects.create(
+            project=self.busy, deployment=station, group_by="2026-06-01", start=self.last_capture
+        )
+        moth, beetle, unsure = (Taxon.objects.create(name=f"Overview {name}") for name in ("moth", "beetle", "unsure"))
+        for taxon, score in [(moth, 0.9), (moth, 0.8), (beetle, 0.9), (unsure, 0.1)]:
+            Occurrence.objects.create(
+                project=self.busy, deployment=station, event=event, determination=taxon, determination_score=score
+            )
+        rows = {row["id"]: row for row in self._rows(self.owner)}
+        self.assertEqual(
+            (rows[self.busy.pk]["taxa_observed_count"], rows[self.empty.pk]["taxa_observed_count"]), (2, 0)
+        )
+
+    def test_team_size_is_only_shown_to_those_who_can_see_the_team(self):
+        """members_count follows the permission to open the team list, whether held through a role or directly."""
+        superuser = User.objects.create_superuser(email="overview-admin@insectai.org", password="unused")
+        # Granted the team list on one project without joining it.
+        outsider = User.objects.create_user(email="overview-outsider@insectai.org")
+        assign_perm(Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP, outsider, self.busy)
+        for user, expected in [
+            (None, (None, None)),
+            (outsider, (2, None)),
+            (self.member, (2, None)),
+            (self.owner, (2, 1)),
+            (superuser, (2, 1)),
+        ]:
+            rows = {row["id"]: row for row in self._rows(user)}
+            with self.subTest(user=user):
+                self.assertEqual((rows[self.busy.pk]["members_count"], rows[self.empty.pk]["members_count"]), expected)
+
+    def test_totals_are_left_out_unless_asked_for(self):
+        """The gallery gets the activity dates but none of the totals, apart from the station count."""
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(row for row in response.json()["results"] if row["id"] == self.busy.pk)
+        self.assertEqual(row["deployments_count"], 2)
+        self.assertEqual(row["last_capture_timestamp"][:16], self.last_capture.isoformat()[:16])
+        for field in ["captures_count", "members_count", "taxa_observed_count", "location"]:
+            self.assertNotIn(field, row)
+
+    def test_location_ignores_stations_without_real_coordinates(self):
+        stations = list(Deployment.objects.filter(project=self.busy).order_by("name"))
+        Deployment.objects.filter(pk=stations[0].pk).update(latitude=45.0, longitude=-73.0)
+        Deployment.objects.filter(pk=stations[1].pk).update(latitude=47.0, longitude=-71.0)
+        Deployment.objects.create(name="Placeholder", project=self.busy, latitude=0, longitude=0)
+        Deployment.objects.create(name="Unknown", project=self.busy)
+
+        # The map asks for locations without the totals.
+        response = self.client.get(self.endpoint, {"with_location": "true"})
+        rows = {row["id"]: row for row in response.json()["results"]}
+        busy, empty = rows[self.busy.pk], rows[self.empty.pk]
+        self.assertNotIn("captures_count", busy)
+        self.assertAlmostEqual(busy["location"]["latitude"], 46.0)
+        self.assertAlmostEqual(busy["location"]["longitude"], -72.0)
+        self.assertIsNone(empty["location"])
+
+    def test_sorting_by_a_total_works_without_asking_for_totals(self):
+        """A sort carried over from the table to the gallery still gets the totals it orders by."""
+        response = self.client.get(self.endpoint, {"ordering": "-captures_count"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"][0]["id"], self.busy.pk)
+
+    def test_counts_are_read_inside_the_list_query(self):
+        """The tables behind the totals and dates are only read by the one list query, never once per project.
+
+        The per-row permission lookups the list serializer already makes are outside this check.
+        Cachalot is off so every query is seen.
+        """
+        from cachalot.api import cachalot_disabled
+
+        for i in range(5):
+            project = Project.objects.create(name=f"Extra {i}", owner=self.owner, create_defaults=False)
+            Deployment.objects.create(name=f"Extra station {i}", project=project)
+        disabled = cachalot_disabled()
+        disabled.__enter__()
+        try:
+            with CaptureQueriesContext(connection) as queries:
+                rows = self._rows()
+        finally:
+            # cachalot_disabled() does not restore itself when the block raises.
+            disabled.__exit__(None, None, None)
+        self.assertGreaterEqual(len(rows), 7)
+        tables = ['"main_deployment"', '"main_userprojectmembership"', '"main_sourceimage"', '"jobs_job"']
+        rollup_queries = [q["sql"] for q in queries if any(table in q["sql"] for table in tables)]
+        self.assertEqual(len(rollup_queries), 1, rollup_queries)
+        # Taxa are counted for the whole page in one grouped query, with each project's taxa filters prefetched.
+        for marker in [
+            'COUNT(DISTINCT "main_occurrence"."determination_id")',
+            '"main_project_default_filters_include_taxa"',
+        ]:
+            self.assertEqual(sum(marker in q["sql"] for q in queries), 1, marker)
 
 
 class TestProjectPermissions(APITestCase):
@@ -7252,6 +7419,123 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         excluded = self._pks(base.not_processed_by_algorithm(ids))
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
+
+
+class TestOccurrenceJobFilter(APITestCase):
+    """
+    Covers the ``?job=`` occurrence filter: occurrences with a detection, a classification
+    or an algorithm result written by the given job. Each occurrence must appear once, however
+    many of its rows the job wrote, and a malformed id must be a 400, not a 500.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Job Filter Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occ-job-filter.jpg",
+        )
+        self.taxon = Taxon.objects.create(name="Occurrence Job Filter Taxon")
+        self.algorithm = Algorithm.objects.create(name="Job Filter Algorithm", version=1, task_type="classification")
+        self.job = Job.objects.create(project=self.project, name="Job under test")
+        self.other_job = Job.objects.create(project=self.project, name="Other job")
+
+        # The job wrote the detection only.
+        self.occ_detected = self._make_occurrence([(self.job, [None])])
+        # The job wrote a classification on another job's detection.
+        self.occ_classified = self._make_occurrence([(self.other_job, [self.job])])
+        # The job wrote three detections and their classifications: the duplicate-row trap.
+        self.occ_multi = self._make_occurrence([(self.job, [self.job, self.job])] * 3)
+        # Only the other job, and no job at all, must not match.
+        self.occ_other = self._make_occurrence([(self.other_job, [self.other_job])])
+        self.occ_none = self._make_occurrence([(None, [None])])
+        # The job wrote only an algorithm result, as a post-processing run that changes no prediction does.
+        self.occ_result = self._make_occurrence([(None, [None])])
+        AlgorithmResult.objects.record(
+            occurrence=self.occ_result,
+            algorithm=self.algorithm,
+            job=self.job,
+            kind=SizeFilterResultData.kind,
+            data={"relative_size": 0.001},
+        )
+
+    def _make_occurrence(self, detections) -> Occurrence:
+        """``detections`` is a list of (detection job, [classification jobs])."""
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+            determination_score=0.9,
+        )
+        for detection_job, classification_jobs in detections:
+            detection = Detection.objects.create(
+                source_image=self.source_image,
+                bbox=[0.0, 0.0, 1.0, 1.0],
+                occurrence=occ,
+                job=detection_job,
+            )
+            for classification_job in classification_jobs:
+                detection.classifications.create(
+                    taxon=self.taxon,
+                    algorithm=self.algorithm,
+                    score=0.9,
+                    timestamp=datetime.datetime.now(),
+                    job=classification_job,
+                )
+        return occ
+
+    def _list(self, job_param):
+        return self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&job={job_param}&limit=50")
+
+    def test_returns_each_occurrence_the_job_wrote_once(self):
+        response = self._list(self.job.pk)
+        self.assertEqual(response.status_code, 200)
+        ids = [row["id"] for row in response.json()["results"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(
+            set(ids), {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk}
+        )
+        self.assertEqual(response.json()["count"], 4)
+
+    def test_other_job_matches_only_its_own_occurrences(self):
+        response = self._list(self.other_job.pk)
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(ids, {self.occ_classified.pk, self.occ_other.pk})
+
+    def test_non_integer_job_is_a_bad_request(self):
+        response = self._list("abc")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("job", response.json())
+
+    def test_filter_stays_inside_the_occurrence_query(self):
+        """The filter adds no queries of its own: one statement for the rows and one for the count,
+        with no ids read into Python first and no query per occurrence. Cachalot is off so every
+        query counts."""
+        from ami.tests.fixtures.queries import no_query_cache
+
+        def filtered():
+            return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)
+
+        with no_query_cache():
+            with self.assertNumQueries(1):
+                ids = {occurrence.pk for occurrence in filtered()}
+            with self.assertNumQueries(1):
+                count = filtered().count()
+        self.assertEqual(ids, {self.occ_detected.pk, self.occ_classified.pk, self.occ_multi.pk, self.occ_result.pk})
+        self.assertEqual(count, 4)
 
 
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):

@@ -523,6 +523,7 @@ def get_or_create_detection(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Detection, bool]:
     """
     Create a Detection object from a DetectionResponse, or update an existing one.
@@ -616,6 +617,7 @@ def get_or_create_detection(
             path=crop_url,
             detection_time=detection_resp.timestamp,
             detection_algorithm=detection_algo,
+            job_id=job_id,
         )
         if save:
             new_detection.save()
@@ -633,22 +635,25 @@ def create_detections(
     detections: list[DetectionResponse],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
-) -> list[Detection]:
+    job_id: int | None = None,
+) -> list[tuple[Detection, DetectionResponse]]:
     """
-    Efficiently create multiple Detection objects from a list of DetectionResponse objects, grouped by source image.
-    Using bulk create.
+    Save the detections in a results response, creating new rows in bulk and reusing existing ones.
+
+    Returns each detection together with the response it came from, in response order, so the
+    classifications and other per-detection results in a response are saved on that response's
+    own detection. Callers must use these pairs rather than lining detections up with responses
+    by position: new and existing rows are not created in the same order, and a response whose
+    capture is missing is skipped. See #1436.
 
     :param detections: A list of DetectionResponse objects
     :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
-    :param created_objects: A list to store created objects
-
-    :return: A list of Detection objects
     """
     source_image_ids = {detection.source_image_id for detection in detections}
     source_images = SourceImage.objects.filter(pk__in=source_image_ids)
     source_image_map = {str(source_image.pk): source_image for source_image in source_images}
 
-    existing_detections: list[Detection] = []
+    saved: list[tuple[Detection, DetectionResponse]] = []
     new_detections: list[Detection] = []
 
     for detection_resp in detections:
@@ -663,20 +668,19 @@ def create_detections(
             algorithms_known=algorithms_known,
             save=False,
             logger=logger,
+            job_id=job_id,
         )
         if created:
             new_detections.append(detection)
-        else:
-            existing_detections.append(detection)
+        saved.append((detection, detection_resp))
 
     Detection.objects.bulk_create(new_detections)
-    # logger.info(f"Created {len(new_detections)} new detections for {len(source_image_ids)} source image(s)")
     logger.info(
-        f"Created {len(new_detections)} new detections, updated {len(existing_detections)} existing detections, "
-        f"for {len(source_image_ids)} source image(s)"
+        f"Created {len(new_detections)} new detections and matched {len(saved) - len(new_detections)} responses to "
+        f"existing detections, for {len(source_image_ids)} source image(s)"
     )
 
-    return existing_detections + new_detections
+    return saved
 
 
 def create_category_map_for_classification(
@@ -756,6 +760,7 @@ def create_classification(
     algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
+    job_id: int | None = None,
 ) -> tuple[Classification, bool]:
     """
     Create a Classification object from a ClassificationResponse, or update an existing one.
@@ -843,6 +848,7 @@ def create_classification(
             scores=classification_resp.scores,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
+            job_id=job_id,
         )
         classification = new_classification
 
@@ -856,18 +862,18 @@ def create_classification(
 
 
 def create_classifications(
-    detections: list[Detection],
-    detection_responses: list[DetectionResponse],
+    saved_detections: list[tuple[Detection, DetectionResponse]],
     algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
+    job_id: int | None = None,
 ) -> list[Classification]:
     """
-    Efficiently create multiple Classification objects from a list of ClassificationResponse objects,
-    grouped by detection.
+    Save the classifications in each detection response on that response's own detection, creating
+    new rows in bulk and reusing existing ones.
 
-    :param detection: A Detection object
-    :param classifications: A list of ClassificationResponse objects
+    :param saved_detections: Each saved detection with the response it came from, as ``create_detections``
+        returns them
     :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
 
     :return: A list of Classification objects
@@ -877,7 +883,7 @@ def create_classifications(
     existing_classifications: list[Classification] = []
     new_classifications: list[Classification] = []
 
-    for detection, detection_resp in zip(detections, detection_responses):
+    for detection, detection_resp in saved_detections:
         for classification_resp in detection_resp.classifications:
             classification, created = create_classification(
                 detection=detection,
@@ -885,6 +891,7 @@ def create_classifications(
                 algorithms_known=algorithms_known,
                 save=False,
                 logger=logger,
+                job_id=job_id,
             )
             if created:
                 new_classifications.append(classification)
@@ -895,7 +902,7 @@ def create_classifications(
     Classification.objects.bulk_create(new_classifications)
     logger.info(
         f"Created {len(new_classifications)} new classifications, updated {len(existing_classifications)} existing "
-        f"classifications for {len(detections)} detections."
+        f"classifications for {len(saved_detections)} detection responses."
     )
 
     return existing_classifications + new_classifications
@@ -1071,17 +1078,20 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
-    detections = create_detections(
+    # New rows record the job that wrote them; rows that already existed keep theirs.
+    saved_detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
+    detections = [detection for detection, _ in saved_detections]
 
     classifications = create_classifications(
-        detections=detections,
-        detection_responses=results.detections,
+        saved_detections=saved_detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     # Create a new occurrence for each detection (no tracking yet)
@@ -1123,6 +1133,7 @@ def save_results(
         detections=null_detection_responses,
         algorithms_known=algorithms_known,
         logger=job_logger,
+        job_id=job.pk if job else None,
     )
 
     total_time = time.time() - start_time

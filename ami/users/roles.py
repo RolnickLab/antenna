@@ -2,7 +2,7 @@ import logging
 
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from guardian.shortcuts import assign_perm, get_perms, remove_perm
+from guardian.models import GroupObjectPermission
 
 from ami.main.models import Project
 
@@ -215,28 +215,60 @@ class ProjectManager(Role):
 
 
 def create_roles_for_project(project):
-    """Creates role-based permission groups for a given project."""
+    """Creates role-based permission groups for a given project, or resets them to the role definitions.
+
+    Runs for every new project and for every project after each migration, so it uses a constant number of
+    queries and writes only the permissions that differ from the role definitions.
+    """
     project_ct = ContentType.objects.get_for_model(Project)
 
+    codenames = set().union(*(role_class.permissions for role_class in Role.__subclasses__()))
+    permissions = {p.codename: p for p in Permission.objects.filter(content_type=project_ct, codename__in=codenames)}
+    missing = codenames - permissions.keys()
+    if missing:
+        Permission.objects.bulk_create(
+            [
+                Permission(codename=codename, content_type=project_ct, name=f"Can {codename.replace('_', ' ')}")
+                for codename in missing
+            ],
+            ignore_conflicts=True,
+        )
+        permissions = {
+            p.codename: p for p in Permission.objects.filter(content_type=project_ct, codename__in=codenames)
+        }
+
+    groups = {}
     for role_class in Role.__subclasses__():
-        role_name = f"{project.pk}_{project.name}_{role_class.__name__}"
-        permissions = role_class.permissions
-        group, created = Group.objects.get_or_create(name=role_name)
+        group, created = Group.objects.get_or_create(name=role_class.get_group_name(project))
         if created:
             logger.debug(f"Role created {role_class} for project {project}")
-        else:
-            # Reset permissions to make sure permissions are updated
-            # every time we call this function
-            group.permissions.clear()
-            assigned_perms = get_perms(group, project)
-            for perm_codename in assigned_perms:
-                remove_perm(perm_codename, group, project)
-        for perm_codename in permissions:
-            permission, perm_created = Permission.objects.get_or_create(
-                codename=perm_codename,
-                content_type=project_ct,
-                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
-            )
+        # set() writes only the difference, so re-running for an unchanged role writes nothing.
+        group.permissions.set([permissions[codename] for codename in role_class.permissions])
+        groups[group.pk] = role_class
 
-            group.permissions.add(permission)  # Assign the permission group to the project
-            assign_perm(perm_codename, group, project)
+    object_pk = str(project.pk)
+    existing = {
+        (group_id, permission_id): pk
+        for pk, group_id, permission_id in GroupObjectPermission.objects.filter(
+            group_id__in=groups, content_type=project_ct, object_pk=object_pk
+        ).values_list("pk", "group_id", "permission_id")
+    }
+    wanted = {
+        (group_id, permissions[codename].pk)
+        for group_id, role_class in groups.items()
+        for codename in role_class.permissions
+    }
+    stale = [pk for key, pk in existing.items() if key not in wanted]
+    if stale:
+        GroupObjectPermission.objects.filter(pk__in=stale).delete()
+    missing_object_permissions = wanted - existing.keys()
+    if missing_object_permissions:
+        GroupObjectPermission.objects.bulk_create(
+            [
+                GroupObjectPermission(
+                    group_id=group_id, permission_id=permission_id, content_type=project_ct, object_pk=object_pk
+                )
+                for group_id, permission_id in missing_object_permissions
+            ],
+            ignore_conflicts=True,
+        )

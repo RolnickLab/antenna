@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections.abc import Callable
 
 import numpy as np
@@ -8,10 +9,16 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from ami.base.model_references import model_reference
 from ami.jobs.schemas import JobGroup
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.results.schemas import DeterminationSnapshot
+from ami.ml.results.writer import AlgorithmResultWriter
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +28,29 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = pydantic.Field(
+    source_image_collection_id: int | None = model_reference(
+        "capture_set",
         None,
         title=_("Capture set"),
         ami_widget="entity",
         ami_entity="captures/collections",
     )
     # The admin's single-occurrence path; not offered in the Create Job dialog.
-    occurrence_id: int | None = pydantic.Field(None, ami_widget="hidden", ami_entity="occurrences")
-    taxa_list_id: int = pydantic.Field(
+    occurrence_id: int | None = model_reference(
+        "occurrence", None, title=_("Occurrence"), ami_widget="hidden", ami_entity="occurrences"
+    )
+    taxa_list_id: int = model_reference(
+        "taxa_list",
         ...,
-        title=_("Taxa list to keep"),
+        title=_("Species list"),
         description=_("Classes outside this list are masked out."),
         ami_widget="entity",
         ami_entity="taxa/lists",
     )
-    algorithm_id: int = pydantic.Field(
+    algorithm_id: int = model_reference(
+        "algorithm",
         ...,
-        title=_("Source classifier"),
+        title=_("Classifier"),
         description=_("Its terminal predictions are the ones re-scored."),
         ami_widget="entity",
         ami_entity="ml/algorithms",
@@ -46,7 +58,7 @@ class ClassMaskingConfig(pydantic.BaseModel):
     )
     reweight: bool = pydantic.Field(
         True,
-        title=_("Reweight scores"),
+        title=_("Re-weighted scores"),
         description=_(
             "Renormalise the kept classes to sum to 1. Off keeps raw absolute scores; "
             "the chosen species is the same either way."
@@ -64,6 +76,18 @@ class ClassMaskingConfig(pydantic.BaseModel):
         extra = "forbid"
 
 
+class ClassMaskingResultData(DeterminationSnapshot):
+    """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
+
+    kind: typing.ClassVar[str] = "class_masking"
+    value_field: typing.ClassVar[str | None] = "excluded_probability"
+
+    # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
+    excluded_probability: float
+    # Where the class that wins after masking ranked before it; 1 means it was already the top.
+    new_winner_original_rank: int | None = None
+
+
 def make_classifications_filtered_by_taxa_list(
     classifications: QuerySet[Classification],
     taxa_list: TaxaList,
@@ -75,6 +99,7 @@ def make_classifications_filtered_by_taxa_list(
     task_logger: logging.Logger = logger,
     on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
@@ -96,6 +121,14 @@ def make_classifications_filtered_by_taxa_list(
 
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
+
+    New classifications record ``job`` as the run that wrote them.
+
+    Every occurrence with a re-scored classification gets one algorithm result, written in
+    the same transaction as the batch that changes it, and its new classifications point at
+    that result (see ``AlgorithmResultWriter``). The result records the probability the list excluded
+    for the occurrence's winning detection; the original top prediction is the classification
+    the winning one replaced (``applied_to``).
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
@@ -139,6 +172,12 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
+    results = AlgorithmResultWriter(
+        kind=ClassMaskingResultData.kind,
+        algorithm=new_algorithm,
+        job=job,
+        timestamp=timestamp,
+    )
 
     # Sizing the scope and expanding the category map both take time on a large
     # classifier, so report before touching a row.
@@ -203,6 +242,7 @@ def make_classifications_filtered_by_taxa_list(
                     terminal=True,
                     timestamp=classification.timestamp,
                     applied_to=classification,
+                    job=job,
                     created_at=timestamp,
                     updated_at=timestamp,
                 )
@@ -213,6 +253,16 @@ def make_classifications_filtered_by_taxa_list(
                 detection = classification.detection
                 if detection is not None and detection.occurrence is not None:
                     occurrences_to_update.add(detection.occurrence)
+                    # The occurrence's result carries the figures of its winning detection:
+                    # the one whose masked classification scores highest (see AlgorithmResultWriter).
+                    results.note(
+                        detection.occurrence,
+                        {
+                            "excluded_probability": float(1.0 - kept_sum),
+                            "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                        },
+                        rank=score,
+                    )
 
         # Flush every batch_size items and at the final item. The flush fires even
         # when nothing was accumulated so the job health-check sees a heartbeat during
@@ -221,6 +271,7 @@ def make_classifications_filtered_by_taxa_list(
             with transaction.atomic():
                 if classifications_to_demote:
                     Classification.objects.bulk_update(classifications_to_demote, ["terminal", "updated_at"])
+                results.start_batch(occurrences_to_update, classifications_to_add)
                 if classifications_to_add:
                     Classification.objects.bulk_create(classifications_to_add)
                 # Count an occurrence only when saving its new terminal classification
@@ -232,6 +283,7 @@ def make_classifications_filtered_by_taxa_list(
                     occurrence.save(update_determination=True)
                     if occurrence.pk is not None and occurrence.determination_id != prev:
                         changed_occurrence_ids.add(occurrence.pk)
+                results.finish_batch(occurrences_to_update)
 
             classifications_to_demote.clear()
             classifications_to_add.clear()
@@ -268,6 +320,7 @@ class ClassMaskingTask(BasePostProcessingTask):
         "what remains. The original classification is kept and demoted."
     )
     config_schema = ClassMaskingConfig
+    result_models = (ClassMaskingResultData,)
 
     def _get_or_create_masking_algorithm(
         self, source_algorithm: Algorithm, taxa_list: TaxaList, *, reweight: bool
@@ -398,6 +451,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             task_logger=self.logger,
             on_setup=_on_setup,
             on_batch=_on_batch,
+            job=self.job,
         )
         self.report_stage_metrics(metrics)
         self.logger.info(f"=== Completed {self.name} ===")

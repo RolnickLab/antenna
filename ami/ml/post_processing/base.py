@@ -9,6 +9,7 @@ import pydantic
 from ami.jobs.schemas import JobGroup
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
+from ami.ml.results.schemas import AlgorithmResultData
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -38,6 +39,9 @@ class BasePostProcessingTask(abc.ABC):
     feature_flag: str
     # Help text under the method select (wrap in gettext_lazy); left empty, the docstring is used.
     description: str = ""
+    # The result data models (ami/ml/results/schemas.py) of the algorithm results the task writes;
+    # empty for a task that writes none. Its config is declared by ``config_schema``.
+    result_models: tuple[type[AlgorithmResultData], ...] = ()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
