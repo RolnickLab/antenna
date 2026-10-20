@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import numpy as np
 import pydantic
+from cachalot.api import cachalot_disabled
 from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
@@ -109,12 +110,10 @@ def make_classifications_filtered_by_taxa_list(
 
     taxa_in_list = set(taxa_list.taxa.all())
 
-    # Resolve the scope to a list of ids up front, then read the rows one batch at a
-    # time. Fetching the whole scope through a single cursor makes the time to the
-    # first row scale with the size of the scope rather than with ``batch_size``
-    # (measured: 4.65s at 200 rows, 61.09s at 2,798), and the first progress report
-    # comes after that, so a large run is revoked as stalled having reported nothing.
-    # See #1376.
+    # Resolve the scope to ids up front, then read one batch per query. Do not go back
+    # to ``.iterator()``: the query cache reads an iterator to the end before yielding
+    # its first row, so the first progress report waited on the whole scope and wide
+    # runs were revoked as stalled (or killed for memory). See #1404.
     scope_ids = list(classifications.order_by().values_list("pk", flat=True))
     total = len(scope_ids)
     task_logger.info(f"Found {total} terminal classifications with scores to re-score.")
@@ -168,9 +167,13 @@ def make_classifications_filtered_by_taxa_list(
 
     i = 0
     for start in range(0, total, batch_size):
-        # Read one batch at a time. ``scores`` is never read while masking and is as
-        # large as ``logits``, so deferring it halves what each batch transfers and parses.
-        batch = list(classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by().defer("scores"))
+        # ``scores`` is never read while masking and is as large as ``logits``. The
+        # query cache is bypassed because each batch is read once, and caching it would
+        # leave tens of megabytes per batch in Redis.
+        with cachalot_disabled():
+            batch = list(
+                classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by().defer("scores")
+            )
 
         for classification in batch:
             i += 1
