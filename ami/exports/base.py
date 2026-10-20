@@ -40,7 +40,8 @@ class BaseExporter(ABC):
         return self.serializer_class
 
     def get_filter_backends(self):
-        # Exports accept the same scope params as the occurrence list. See #763.
+        # Exports can be scoped by capture set or occurrence set, through the same filter backends
+        # the occurrence list uses. Other occurrence-list params are ignored. See #763.
         from ami.main.api.views import OccurrenceCollectionFilter, OccurrenceSetFilter
 
         return [OccurrenceCollectionFilter, OccurrenceSetFilter]

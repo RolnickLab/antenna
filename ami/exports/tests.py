@@ -623,8 +623,15 @@ class ExportOccurrenceSetTest(TestCase):
 
     def test_a_set_the_project_cannot_use_is_refused(self):
         other_set = make_set("Other set", [self.other_project], [make_listed_occurrence(self.other_project)])
-        for value in (other_set.pk, 999_999, "abc"):
+        cases = [
+            (other_set.pk, "Occurrence set does not exist in the selected project."),
+            (999_999, "Occurrence set does not exist in the selected project."),
+            ("abc", "Occurrence set id must be a positive integer."),
+        ]
+        for value, message in cases:
             with self.subTest(occurrence_set_id=value):
                 response = self.post_export({"occurrence_set_id": value})
                 self.assertEqual(response.status_code, 400, response.data)
+                # A non-field error is what the export form shows; it has no `filters` field.
+                self.assertEqual(response.data, {"non_field_errors": [message]})
                 self.assertFalse(DataExport.objects.exists())

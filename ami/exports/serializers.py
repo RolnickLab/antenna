@@ -63,7 +63,12 @@ class DataExportSerializer(DefaultSerializer):
         return value
 
     def validate(self, attrs):
-        """Refuse an occurrence set the export's project cannot use: another project's set."""
+        """
+        Refuse an occurrence set the export's project cannot use: another project's set, or one that is gone.
+
+        The refusal is a non-field error because the export form has no `filters` field to attach it to,
+        so a nested error would never reach the user.
+        """
         attrs = super().validate(attrs)
         filters = attrs.get("filters") or {}
         if "occurrence_set_id" not in filters:
@@ -71,13 +76,11 @@ class DataExportSerializer(DefaultSerializer):
         field = serializers.IntegerField(min_value=1)
         try:
             occurrence_set_id = field.run_validation(filters["occurrence_set_id"])
-        except serializers.ValidationError as e:
-            raise serializers.ValidationError({"filters": {"occurrence_set_id": e.detail}})
+        except serializers.ValidationError:
+            raise serializers.ValidationError("Occurrence set id must be a positive integer.") from None
         project = attrs.get("project") or getattr(self.instance, "project", None)
         if not OccurrenceSet.objects.for_project(project).filter(pk=occurrence_set_id).exists():
-            raise serializers.ValidationError(
-                {"filters": {"occurrence_set_id": ["Occurrence set does not exist in the selected project."]}}
-            )
+            raise serializers.ValidationError("Occurrence set does not exist in the selected project.")
         attrs["filters"] = {**filters, "occurrence_set_id": occurrence_set_id}
         return attrs
 
