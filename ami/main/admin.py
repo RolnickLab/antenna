@@ -28,6 +28,7 @@ from .models import (
     Device,
     Event,
     Occurrence,
+    OccurrenceSet,
     Project,
     S3StorageSource,
     Site,
@@ -870,6 +871,36 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
+
+
+@admin.register(OccurrenceSet)
+class OccurrenceSetAdmin(admin.ModelAdmin[OccurrenceSet]):
+    """
+    Admin for ``OccurrenceSet``. This is the only place a public set, one with no project, is made.
+    """
+
+    list_display = ("name", "project_count", "occurrences_count", "created_at", "updated_at")
+    list_filter = ("projects",)
+    search_fields = ("name",)
+    autocomplete_fields = ("projects",)
+    # A select widget would load every occurrence in the database.
+    raw_id_fields = ("occurrences",)
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return (
+            super()
+            .get_queryset(request)
+            .with_occurrences_count()
+            .annotate(project_count=models.Count("projects", distinct=True))
+        )
+
+    @admin.display(description="Projects", ordering="project_count")
+    def project_count(self, obj) -> int:
+        return obj.project_count
+
+    @admin.display(description="Occurrences", ordering="occurrences_count")
+    def occurrences_count(self, obj) -> int:
+        return obj.occurrences_count
 
 
 @admin.register(Tag)
