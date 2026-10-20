@@ -29,7 +29,12 @@ from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, Threshold
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
+from ami.base.permissions import (
+    IsActiveStaffOrReadOnly,
+    IsProjectMemberOrReadOnly,
+    ObjectPermission,
+    OccurrenceSetPermission,
+)
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
@@ -52,6 +57,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectQuerySet,
@@ -88,6 +94,8 @@ from .serializers import (
     ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
+    OccurrenceSetNestedSerializer,
+    OccurrenceSetSerializer,
     PageListSerializer,
     PageSerializer,
     ProjectListSerializer,
@@ -939,6 +947,76 @@ class ChoicesPagination(LimitOffsetPaginationWithPermissions):
 
     default_limit = 100
     max_limit = 100
+
+
+class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
+    """
+    Named, fixed lists of occurrences, so the same ones can be used again later.
+
+    Occurrences are chosen when a set is created; there is no endpoint to add or remove
+    one afterwards, and ``occurrence_ids`` is refused on update. Deleting or merging an
+    occurrence still removes it from every set. A public set, one with no project, is
+    offered to every project but cannot be read in detail or changed here, because no
+    project's permissions govern it. Public sets are made in the Django admin. See #763.
+    """
+
+    queryset = OccurrenceSet.objects.all()
+    serializer_class = OccurrenceSetSerializer
+    permission_classes = [OccurrenceSetPermission]
+    # No PUT: a full replace would carry the occurrences with it.
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    ordering_fields = ["id", "created_at", "updated_at", "name", "occurrences_count"]
+    # Recently updated first, as for capture sets.
+    ordering = ["-updated_at"]
+    search_fields = ["name"]
+    # Without a project the list would answer with every set on the platform. A detail
+    # route names one set, which carries its own project, and create reads the project
+    # from the payload.
+    require_project_for_list = True
+
+    def get_queryset(self) -> QuerySet["OccurrenceSet"]:
+        if self.action == "choices":
+            self.require_project = True
+        # visible_for_user() (in super) hides sets of draft projects the caller cannot see.
+        # Projects are prefetched for the per-row permission check in the serializer.
+        qs = super().get_queryset().prefetch_related("projects")
+        if self.action in ("list", "choices"):
+            # Detail actions are checked against the set's own project instead.
+            qs = qs.for_project(self.get_active_project())
+        if self.action == "choices":
+            # Choices are names, so skip the count.
+            return qs
+        return qs.with_occurrences_count()
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create without ``DefaultViewSet``'s check on an unsaved instance.
+
+        That check builds ``Model(**validated_data)``, which cannot hold a set's project
+        and occurrences because both are many-to-many. ``OccurrenceSetPermission`` makes
+        the same check earlier, against the project the payload names.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=OccurrenceSetNestedSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for occurrence set filters and pickers.
+
+        Follows ``SourceImageCollectionViewSet.choices``: only what is needed to name a
+        set, most recently updated first, and enough of them that a dropdown never pages.
+        """
+        # Sorting by the count would fail here, since it is never annotated.
+        self.ordering_fields = ["id", "created_at", "updated_at", "name"]
+        queryset = self.filter_queryset(self.get_queryset())
+        paginator = ChoicesPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = OccurrenceSetNestedSerializer(page, many=True, context=self.get_serializer_context())
+        return paginator.get_paginated_response(serializer.data)
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):

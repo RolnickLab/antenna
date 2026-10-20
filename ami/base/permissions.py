@@ -198,6 +198,42 @@ class ProjectPipelineConfigPermission(ObjectPermission):
         return super().has_permission(request, view)
 
 
+class OccurrenceSetPermission(ObjectPermission):
+    """
+    Permission for the occurrence set route, where create has no saved object to check.
+
+    Creating a set is gated on ``create_occurrenceset`` in the project the payload names.
+    Every other action falls through to the object check, which refuses a public set
+    because it has no project to check against. Listing needs no check here: the queryset
+    already hides sets of draft projects the caller cannot see.
+    """
+
+    def has_permission(self, request, view):
+        if view.action != "create":
+            return super().has_permission(request, view)
+
+        from rest_framework import serializers
+
+        from ami.base.serializers import SingleParamSerializer
+        from ami.main.models import Project
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        # Read from the body only, never the query string, so the project checked here is
+        # the one the serializer adds the set to.
+        data = request.data if isinstance(request.data, dict) else {}
+        project_id = SingleParamSerializer[int].clean(
+            param_name="project_id",
+            field=serializers.IntegerField(required=True, min_value=1),
+            data=data,
+        )
+        project = Project.objects.filter(pk=project_id).first()
+        if project is None:
+            raise serializers.ValidationError({"project_id": [f"Project {project_id} does not exist."]})
+        return request.user.has_perm(Project.Permissions.CREATE_OCCURRENCE_SET, project)
+
+
 class UserMembershipPermission(ObjectPermission):
     """
     Custom permission for UserProjectMembershipViewSet.
