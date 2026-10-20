@@ -40,9 +40,10 @@ class BaseExporter(ABC):
         return self.serializer_class
 
     def get_filter_backends(self):
-        from ami.main.api.views import OccurrenceCollectionFilter
+        # Exports accept the same scope params as the occurrence list. See #763.
+        from ami.main.api.views import OccurrenceCollectionFilter, OccurrenceSetFilter
 
-        return [OccurrenceCollectionFilter]
+        return [OccurrenceCollectionFilter, OccurrenceSetFilter]
 
     def update_export_stats(self, file_temp_path=None):
         """

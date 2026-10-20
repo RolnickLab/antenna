@@ -73,7 +73,11 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
         data_export.save()
         data_export.update_record_count()
 
-        job_name = f"Export occurrences{f' for capture set {collection.pk}' if collection else ''}"
+        job_name = "Export occurrences"
+        if collection:
+            job_name += f" for capture set {collection.pk}"
+        if filters.get("occurrence_set_id"):
+            job_name += f" in occurrence set {filters['occurrence_set_id']}"
         job = Job.objects.create(
             name=job_name,
             project=project,
