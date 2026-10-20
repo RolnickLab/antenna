@@ -853,28 +853,41 @@ class TestPostProcessingClassMasking(TestCase):
 
     def test_detection_is_not_queried_once_per_row(self):
         """``classification.detection`` and ``detection.occurrence`` are read for every
-        masked row, so both arrive with the batch instead of costing a query each. The
-        per-occurrence queries that ``occurrence.save()`` issues during the flush are a
-        separate cost and are not covered here."""
+        masked row, so the task's scope brings both with each batch instead of costing a
+        query per row. The per-occurrence queries that ``occurrence.save()`` issues during
+        the flush are a separate cost and are not covered here."""
         taxa_list, pks = self._make_scope(4, "Select related list")
-        scope = Classification.objects.filter(pk__in=pks, terminal=True)
+        task = ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        )
+        masking_algorithm = task._get_or_create_masking_algorithm(
+            self.algorithm, taxa_list, reweight=task.config.reweight
+        )
+        scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
 
         with CaptureQueriesContext(connection) as ctx:
             make_classifications_filtered_by_taxa_list(
-                classifications=scope,
+                classifications=scoped.filter(pk__in=pks),
                 taxa_list=taxa_list,
                 algorithm=self.algorithm,
-                new_algorithm=self._masking_algorithm("masked_related"),
+                new_algorithm=masking_algorithm,
                 batch_size=4,
             )
 
+        # A lazy foreign-key load selects the whole row by id. The flush's narrower
+        # per-occurrence reads (e.g. of ``determination_id``) start differently.
         per_row_lookups = [
             q["sql"]
             for q in ctx.captured_queries
-            if 'FROM "main_detection" WHERE "main_detection"."id" = ' in q["sql"]
+            if any(
+                q["sql"].startswith(f'SELECT "{table}"."id", ') and f'WHERE "{table}"."id" = ' in q["sql"]
+                for table in ("main_detection", "main_occurrence")
+            )
         ]
         self.assertEqual(
             per_row_lookups,
             [],
-            f"{len(per_row_lookups)} per-row detection lookups; expected detection to come with the batch",
+            f"{len(per_row_lookups)} per-row detection/occurrence lookups; expected both to come with the batch",
         )

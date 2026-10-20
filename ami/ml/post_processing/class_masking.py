@@ -166,15 +166,8 @@ def make_classifications_filtered_by_taxa_list(
     i = 0
     for start in range(0, total, batch_size):
         # Read one batch at a time. ``scores`` is never read while masking and is as
-        # large as ``logits``, so deferring it halves what each batch transfers and
-        # parses; ``detection`` and its ``occurrence`` are read for every masked row,
-        # so they arrive with the batch instead of costing two queries each.
-        batch = list(
-            classifications.filter(pk__in=scope_ids[start : start + batch_size])
-            .order_by()
-            .defer("scores")
-            .select_related("detection", "detection__occurrence")
-        )
+        # large as ``logits``, so deferring it halves what each batch transfers and parses.
+        batch = list(classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by().defer("scores"))
 
         for classification in batch:
             i += 1
