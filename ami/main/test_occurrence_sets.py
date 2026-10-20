@@ -346,6 +346,23 @@ class TestListingSets(OccurrenceSetAPITestCase):
                 row = self.client.get(SETS_URL, {"project_id": self.project.pk}).data["results"][0]
                 self.assertEqual(set(row["user_permissions"]), expected)
 
+    def test_choices_offer_create_only_to_users_who_may_create_a_set(self):
+        """The UI shows its "Create set" button only when this response says ``create``."""
+        cases = [
+            (self.owner, ["create"]),
+            (self.curator, ["create"]),
+            (self.superuser, ["create"]),
+            (self.member, []),
+            (self.outsider, []),
+            (None, []),
+        ]
+        for user, expected in cases:
+            with self.subTest(user=user):
+                self.client.force_authenticate(user=user)
+                response = self.client.get(f"{SETS_URL}choices/", {"project_id": self.project.pk})
+                self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+                self.assertEqual(sorted(response.data["user_permissions"]), expected)
+
     def test_choices_are_most_recently_updated_first(self):
         make_set("Newer set", [self.project])
         self.set.save()  # now the most recently updated
