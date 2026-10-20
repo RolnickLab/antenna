@@ -4,6 +4,62 @@ from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
 
+# Django's auto-generated table name for the implicit Project.members M2M.
+OLD_THROUGH_TABLE = "main_project_members"
+
+
+def forwards(apps, schema_editor):
+    """
+    Copy memberships out of the legacy implicit M2M table before it is dropped.
+
+    Carried over by hand from 0080_userprojectmembership, which this migration replaces.
+    It must not be marked elidable: the rows live in a table created back in 0039, so a
+    database that enters the history at this squash still holds them and the DROP TABLE
+    below would delete every non-owner membership with no way back. See #1526.
+
+    This is only needed if the DB is at 0074 when this sqush is run.
+    """
+    UserProjectMembership = apps.get_model("main", "UserProjectMembership")
+
+    # Read from the old implicit M2M table (raw SQL - the table is not in the ORM state)
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(f"SELECT project_id, user_id FROM {OLD_THROUGH_TABLE}")
+        rows = cursor.fetchall()
+
+    if not rows:
+        return
+
+    for project_id, user_id in rows:
+        UserProjectMembership.objects.get_or_create(
+            project_id=project_id,
+            user_id=user_id,
+        )
+
+
+def backwards(apps, schema_editor):
+    """Recreate the old implicit M2M table and copy the memberships back into it."""
+    UserProjectMembership = apps.get_model("main", "UserProjectMembership")
+
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {OLD_THROUGH_TABLE} (
+                id serial PRIMARY KEY,
+                project_id integer NOT NULL REFERENCES main_project(id) ON DELETE CASCADE,
+                user_id integer NOT NULL REFERENCES users_user(id) ON DELETE CASCADE,
+                UNIQUE (project_id, user_id)
+            )
+            """
+        )
+
+    memberships = UserProjectMembership.objects.all()
+    with schema_editor.connection.cursor() as cursor:
+        for m in memberships:
+            cursor.execute(
+                f"INSERT INTO {OLD_THROUGH_TABLE} (project_id, user_id) VALUES (%s, %s)",
+                [m.project_id, m.user_id],
+            )
+
 
 class Migration(migrations.Migration):
     replaces = [
@@ -117,6 +173,9 @@ class Migration(migrations.Migration):
                 to="main.classification",
             ),
         ),
+        # Keep this between the CreateModel above and the DROP TABLE below: it is the only
+        # thing that carries existing memberships onto the new table. See #1526.
+        migrations.RunPython(forwards, backwards),
         migrations.RunSQL(
             sql="DROP TABLE IF EXISTS main_project_members;",
             reverse_sql="DROP TABLE IF EXISTS main_project_members;",
