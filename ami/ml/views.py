@@ -497,7 +497,7 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
                 # None means every verified occurrence in the project, which is what a run
                 # without a set does.
                 "occurrence_set": ({"id": occurrence_set.pk, "name": occurrence_set.name} if occurrence_set else None),
-                "dimensions": DetectionEmbedding.objects.stored_length(algorithm.pk),
+                "dimensions": algorithm.embedding_dimensions,
                 "rows": sum(counts.values()),
                 "occurrences": len(occurrences),
                 "classes": len(counts),
