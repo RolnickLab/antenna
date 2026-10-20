@@ -154,6 +154,10 @@ class MLDataManager(Role):
         Project.Permissions.UPDATE_COLLECTION,
         Project.Permissions.DELETE_COLLECTION,
         Project.Permissions.POPULATE_COLLECTION,
+        # Curating the occurrences a model is measured on sits with curating capture sets.
+        Project.Permissions.CREATE_OCCURRENCE_SET,
+        Project.Permissions.UPDATE_OCCURRENCE_SET,
+        Project.Permissions.DELETE_OCCURRENCE_SET,
     }
 
 
