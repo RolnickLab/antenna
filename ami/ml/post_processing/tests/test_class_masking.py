@@ -891,3 +891,17 @@ class TestPostProcessingClassMasking(TestCase):
             [],
             f"{len(per_row_lookups)} per-row detection/occurrence lookups; expected both to come with the batch",
         )
+
+    def test_non_positive_batch_size_is_rejected(self):
+        """A batch size of zero or less would skip the loop and report every row as
+        checked while masking none, so it is refused up front."""
+        taxa_list, pks = self._make_scope(1, "Batch size guard list")
+        for batch_size in (0, -1):
+            with self.subTest(batch_size=batch_size), self.assertRaises(ValueError):
+                make_classifications_filtered_by_taxa_list(
+                    classifications=Classification.objects.filter(pk__in=pks),
+                    taxa_list=taxa_list,
+                    algorithm=self.algorithm,
+                    new_algorithm=self._masking_algorithm(f"masked_guard_{abs(batch_size)}"),
+                    batch_size=batch_size,
+                )

@@ -104,6 +104,9 @@ def make_classifications_filtered_by_taxa_list(
 
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be positive, got {batch_size}")
+
     taxa_in_list = set(taxa_list.taxa.all())
 
     # Resolve the scope to a list of ids up front, then read the rows one batch at a
