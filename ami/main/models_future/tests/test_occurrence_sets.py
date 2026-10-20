@@ -59,14 +59,23 @@ class OccurrenceSetQuerySetTestCase(TestCase):
                 self.assertEqual(visible, {"own", "other", "draft", "public"})
 
     def test_occurrences_count_is_not_multiplied_by_shared_projects(self):
+        # visible_for_user() joins every project a set belongs to, which repeats its members.
         self.own_set.occurrences.set(make_occurrences(self.project, 3))
         self.own_set.projects.add(self.other_project)
         counts = dict(
-            OccurrenceSet.objects.for_project(self.project)
+            OccurrenceSet.objects.visible_for_user(self.outsider)
             .with_occurrences_count()
             .values_list("name", "occurrences_count")
         )
-        self.assertEqual(counts, {"own": 3, "public": 0})
+        self.assertEqual(counts, {"own": 3, "other": 0, "public": 0})
+
+    def test_deleting_a_project_deletes_its_sets_instead_of_making_them_public(self):
+        shared_set = make_set("shared", [self.draft_project, self.project])
+        self.draft_project.delete()
+        self.assertFalse(OccurrenceSet.objects.filter(pk=self.draft_set.pk).exists())
+        self.assertTrue(OccurrenceSet.objects.filter(pk=shared_set.pk).exists())
+        visible = set(OccurrenceSet.objects.visible_for_user(AnonymousUser()).values_list("name", flat=True))
+        self.assertEqual(visible, {"own", "other", "shared", "public"})
 
 
 class OccurrenceSetModelTestCase(TestCase):
@@ -132,3 +141,16 @@ class OccurrenceSetAdminTestCase(TestCase):
         rows = {row.name: row for row in response.context["cl"].result_list}
         self.assertEqual((rows["shared"].project_count, rows["shared"].occurrences_count), (2, 3))
         self.assertEqual((rows["public"].project_count, rows["public"].occurrences_count), (0, 0))
+
+    def test_occurrences_can_be_chosen_when_adding_but_not_when_changing(self):
+        owner = User.objects.create_user(email="owner@example.com")
+        project = Project.objects.create(name="Project", owner=owner)
+        occurrence_set = make_set("own", [project], make_occurrences(project, 2))
+        self.client.force_login(User.objects.create_superuser(email="admin@example.com", password="x"))
+
+        add_form = self.client.get(reverse("admin:main_occurrenceset_add")).context["adminform"].form
+        change_url = reverse("admin:main_occurrenceset_change", args=[occurrence_set.pk])
+        change_form = self.client.get(change_url).context["adminform"].form
+
+        self.assertIn("occurrences", add_form.fields)
+        self.assertNotIn("occurrences", change_form.fields)
