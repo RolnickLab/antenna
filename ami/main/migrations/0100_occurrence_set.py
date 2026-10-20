@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0097_detection_and_classification_job_indexes"),
+        ("main", "0099_classification_algorithm_result_index"),
     ]
 
     operations = [

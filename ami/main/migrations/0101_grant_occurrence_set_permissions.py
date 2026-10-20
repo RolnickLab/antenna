@@ -91,7 +91,7 @@ def revoke(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0098_occurrence_set"),
+        ("main", "0100_occurrence_set"),
         ("guardian", "0002_generic_permissions_index"),
     ]
 
