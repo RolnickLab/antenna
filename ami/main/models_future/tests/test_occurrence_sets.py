@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
+from django.urls import reverse
 
 from ami.main.models import Occurrence, OccurrenceSet, Project
 from ami.users.models import User
@@ -113,3 +114,21 @@ class OccurrenceSetPermissionTestCase(TestCase):
             for permission in permissions:
                 with self.subTest(role=role.__name__, permission=permission):
                     self.assertEqual(user.has_perm(permission, self.project), expected)
+
+
+class OccurrenceSetAdminTestCase(TestCase):
+    def test_changelist_shows_counts_for_project_and_public_sets(self):
+        owner = User.objects.create_user(email="owner@example.com")
+        project = Project.objects.create(name="Project", owner=owner)
+        other_project = Project.objects.create(name="Other project", owner=owner)
+        make_set("shared", [project, other_project], make_occurrences(project, 3))
+        make_set("public", [])
+        superuser = User.objects.create_superuser(email="admin@example.com", password="x")
+        self.client.force_login(superuser)
+
+        response = self.client.get(reverse("admin:main_occurrenceset_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        rows = {row.name: row for row in response.context["cl"].result_list}
+        self.assertEqual((rows["shared"].project_count, rows["shared"].occurrences_count), (2, 3))
+        self.assertEqual((rows["public"].project_count, rows["public"].occurrences_count), (0, 0))
