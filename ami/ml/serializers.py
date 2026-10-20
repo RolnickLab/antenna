@@ -45,6 +45,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "task_type",
             "category_map",
             "category_count",
+            "embedding_dimensions",
             "created_at",
             "updated_at",
         ]
