@@ -11,6 +11,7 @@ export const FILTERS_TO_OCCURRENCES = [
   'verified',
   'verified_by_me',
   'collection',
+  'occurrence_set_id',
   'date_start',
   'date_end',
   'deployment',

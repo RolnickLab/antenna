@@ -143,6 +143,7 @@ export enum STRING {
   FIELD_LABEL_NAME,
   FIELD_LABEL_NEW_PASSWORD,
   FIELD_LABEL_NUM_PIPELINES_REGISTERED,
+  FIELD_LABEL_OCCURRENCE_SET,
   FIELD_LABEL_OCCURRENCES,
   FIELD_LABEL_PASSWORD_CURRENT,
   FIELD_LABEL_PASSWORD_NEW,
@@ -292,6 +293,7 @@ export enum STRING {
   TOOLTIP_JOB,
   TOOLTIP_LATEST_JOB_STATUS,
   TOOLTIP_OCCURRENCE,
+  TOOLTIP_OCCURRENCE_SET,
   TOOLTIP_PIPELINE,
   TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_SCORE,
@@ -534,6 +536,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
   [STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED]: 'Pipelines registered',
+  [STRING.FIELD_LABEL_OCCURRENCE_SET]: 'Occurrence set',
   [STRING.FIELD_LABEL_OCCURRENCES]: 'Occurrences',
   [STRING.FIELD_LABEL_PASSWORD_CURRENT]: 'Current password',
   [STRING.FIELD_LABEL_PASSWORD_NEW]: 'New password',
@@ -744,6 +747,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A job is a task that requires time to complete and runs in the background. This shows the status of the latest job for each {{type}}. Hover the status label for more details about the job type.',
   [STRING.TOOLTIP_OCCURRENCE]:
     'An occurrence refers to when an individual is detected in a sequence of one or more captures with no time interruption.',
+  [STRING.TOOLTIP_OCCURRENCE_SET]:
+    'An occurrence set is a named list of occurrences, saved so the same ones can be looked at again. Nothing is added to a set after it is created.',
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_PROCESSING_SERVICE]:

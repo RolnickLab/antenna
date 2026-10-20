@@ -1,0 +1,17 @@
+import { API_ROUTES } from 'data-services/constants'
+import { EntityPicker } from 'nova-ui-kit'
+import { FilterProps } from './types'
+
+export const OccurrenceSetFilter = ({ onAdd, onClear, value }: FilterProps) => (
+  <EntityPicker
+    collection={API_ROUTES.OCCURRENCE_SET_CHOICES}
+    onValueChange={(value) => {
+      if (value) {
+        onAdd(value)
+      } else {
+        onClear()
+      }
+    }}
+    value={value}
+  />
+)
