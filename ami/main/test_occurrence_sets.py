@@ -245,6 +245,15 @@ class TestPublicSets(OccurrenceSetAPITestCase):
                 response = self.client.get(SETS_URL, {"project_id": project.pk})
                 self.assertIn("Public set", [row["name"] for row in response.data["results"]])
 
+    def test_anyone_can_read_a_public_set(self):
+        url = f"{SETS_URL}{self.public_set.pk}/"
+        for user in (self.superuser, self.curator, self.outsider, None):
+            with self.subTest(user=user):
+                self.client.force_authenticate(user=user)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+                self.assertEqual(response.data["user_permissions"], [])
+
     def test_a_public_set_cannot_be_changed_through_the_api(self):
         """No project's permissions govern it, so not even a superuser changes it here."""
         self.client.force_authenticate(user=self.superuser)
@@ -254,6 +263,42 @@ class TestPublicSets(OccurrenceSetAPITestCase):
         self.assertEqual(self.client.delete(url).status_code, 403)
         self.public_set.refresh_from_db()
         self.assertEqual(self.public_set.name, "Public set")
+
+
+class TestSharedSets(OccurrenceSetAPITestCase):
+    """
+    A set used by two projects (only the Django admin can share one) is edited under the
+    project named in the request, so the actions a list row offers are the ones allowed.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.shared = make_set("Shared set", [self.project, self.other_project], self.occurrences)
+        self.other_curator = User.objects.create_user(email="other-curator@example.com")
+        MLDataManager.assign_user(self.other_curator, self.other_project)
+
+    def rename(self, user: User, project: Project | None) -> int:
+        self.client.force_authenticate(user=user)
+        query = f"?project_id={project.pk}" if project else ""
+        return self.client.patch(f"{SETS_URL}{self.shared.pk}/{query}", {"name": "Renamed"}, format="json").status_code
+
+    def test_a_curator_can_edit_it_under_their_own_project(self):
+        self.client.force_authenticate(user=self.other_curator)
+        row = self.client.get(SETS_URL, {"project_id": self.other_project.pk}).data["results"][0]
+        self.assertEqual(set(row["user_permissions"]), {"update", "delete"})
+
+        self.assertEqual(self.rename(self.other_curator, self.other_project), status.HTTP_200_OK)
+
+    def test_a_curator_cannot_edit_it_under_a_project_they_do_not_curate(self):
+        for user, project in [(self.other_curator, self.project), (self.curator, self.other_project)]:
+            with self.subTest(user=user, project=project):
+                self.assertEqual(self.rename(user, project), status.HTTP_403_FORBIDDEN)
+
+    def test_a_project_the_set_does_not_belong_to_grants_nothing(self):
+        third = Project.objects.create(name="Third project", owner=self.owner, create_defaults=False)
+        MLDataManager.assign_user(self.outsider, third)
+
+        self.assertEqual(self.rename(self.outsider, third), status.HTTP_403_FORBIDDEN)
 
 
 class TestListingSets(OccurrenceSetAPITestCase):

@@ -956,8 +956,8 @@ class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
     Occurrences are chosen when a set is created; there is no endpoint to add or remove
     one afterwards, and ``occurrence_ids`` is refused on update. Deleting or merging an
     occurrence still removes it from every set. A public set, one with no project, is
-    offered to every project but cannot be read in detail or changed here, because no
-    project's permissions govern it. Public sets are made in the Django admin. See #763.
+    offered to every project and can be read by anyone, but cannot be changed here,
+    because no project's roles govern it. Public sets are made in the Django admin. See #763.
     """
 
     queryset = OccurrenceSet.objects.all()

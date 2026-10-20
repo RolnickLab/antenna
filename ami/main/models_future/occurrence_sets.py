@@ -81,9 +81,10 @@ class OccurrenceSet(BaseModel):
 
     def get_project(self) -> "Project | None":
         """
-        The first of the set's projects governs its permissions; None for a public set.
+        The set's first project, or None for a public set.
 
-        ``BaseModel.check_permission`` refuses every action without a project, including
-        retrieve, so a public set cannot be read in detail or changed through the API.
+        ``BaseModel.check_permission`` refuses every action without a project, so a public
+        set cannot be changed through the API. ``OccurrenceSetPermission`` lets anyone read
+        one, and checks an edit against the request's project when the set belongs to it.
         """
         return self.projects.first()

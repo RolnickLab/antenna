@@ -203,10 +203,13 @@ class OccurrenceSetPermission(ObjectPermission):
     Permission for the occurrence set route, where create has no saved object to check.
 
     Creating a set is gated on ``create_occurrenceset`` in the project the payload names.
-    Every other action falls through to the object check, which refuses a public set
-    because it has no project to check against. Listing needs no check here: the queryset
-    already hides sets of draft projects the caller cannot see.
+    Reading needs no check here: the queryset already hides sets of draft projects the
+    caller cannot see, and a public set may be read by anyone. Editing a public set is
+    refused, because no project's roles govern it.
     """
+
+    # Detail actions that change a set, and the permission each needs in its project.
+    EDIT_PERMISSIONS = {"update": "update", "partial_update": "update", "destroy": "delete"}
 
     def has_permission(self, request, view):
         if view.action != "create":
@@ -232,6 +235,18 @@ class OccurrenceSetPermission(ObjectPermission):
         if project is None:
             raise serializers.ValidationError({"project_id": [f"Project {project_id} does not exist."]})
         return request.user.has_perm(Project.Permissions.CREATE_OCCURRENCE_SET, project)
+
+    def has_object_permission(self, request, view, obj):
+        if view.action == "retrieve":
+            return True
+        # A set shared by several projects is governed by the project in the request when
+        # it belongs to that project, so this check agrees with the user_permissions on its
+        # row in that project's list. Otherwise the set's own project governs. See #1120.
+        verb = self.EDIT_PERMISSIONS.get(view.action)
+        project = view.get_active_project() if verb else None
+        if project is not None and obj.projects.filter(pk=project.pk).exists():
+            return request.user.has_perm(f"{verb}_{obj._meta.model_name}", project)
+        return super().has_object_permission(request, view, obj)
 
 
 class UserMembershipPermission(ObjectPermission):
