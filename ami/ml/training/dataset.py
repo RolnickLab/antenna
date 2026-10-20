@@ -18,15 +18,15 @@ import typing
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pgvector
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db.models import QuerySet
 from django.utils.text import slugify
 
 from ami.main.models import Identification, Project
-from ami.ml.embeddings import DEFAULT_EMBEDDING_KEY
 from ami.ml.models.algorithm import Algorithm
-from ami.ml.models.embedding import DetectionEmbedding, as_half_precision
+from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import NamedReference, TrainedAlgorithmReference, TrainingDatasetMetadata, TrainingDatasetSettings
 
 if TYPE_CHECKING:
@@ -34,6 +34,13 @@ if TYPE_CHECKING:
     from ami.main.models import OccurrenceSet, TaxaList
 
 logger = logging.getLogger(__name__)
+
+
+def _vector_as_array(vector) -> np.ndarray:
+    """A stored halfvec value as a float16 array, whether pgvector hands it back as a HalfVector or a list."""
+    if isinstance(vector, pgvector.HalfVector):
+        return vector.to_numpy()
+    return np.asarray(vector, dtype=np.float16)
 
 
 DEFAULT_SPLIT_SALT = "antenna-head-v1"
@@ -93,7 +100,6 @@ def verified_training_rows(
     return (
         DetectionEmbedding.objects.filter(
             algorithm=algorithm,
-            key=DEFAULT_EMBEDDING_KEY,
             detection__occurrence_id__in=verified_occurrence_ids(project, occurrence_set),
             detection__occurrence__determination__isnull=False,
         )
@@ -151,7 +157,7 @@ def row_as_dict(
         "split": split_for(occurrence.pk, salt, test_fraction) if occurrence else None,
     }
     if include_features:
-        row["features"] = as_half_precision(embedding.vector).tolist()
+        row["features"] = _vector_as_array(embedding.vector).tolist()
     return row
 
 
@@ -216,9 +222,9 @@ def build_training_dataset(
     rows = verified_training_rows(project, algorithm, occurrence_set)
     total = rows.count()
 
-    # Asked rather than assumed: a vector's width belongs to the model that produced it, and
-    # the column is unsized so two algorithms may differ.
-    dimensions = DetectionEmbedding.objects.stored_length(algorithm.pk)
+    # Declared on the algorithm itself, by the processing service that produced the vectors;
+    # None when the service never declared one.
+    dimensions = algorithm.embedding_dimensions
     if dimensions is None:
         raise NotEnoughVerifiedData(
             f"No detection has a feature vector from '{algorithm.key}' yet, so there is nothing to train on."
@@ -237,7 +243,7 @@ def build_training_dataset(
         name = occurrence.determination.name
         if name not in class_index:
             continue
-        features[kept] = as_half_precision(embedding.vector).astype(DATASET_DTYPE)
+        features[kept] = _vector_as_array(embedding.vector).astype(DATASET_DTYPE)
         labels[kept] = class_index[name]
         detection_ids[kept] = embedding.detection_id
         occurrence_ids[kept] = occurrence.pk

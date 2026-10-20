@@ -53,7 +53,9 @@ class TrainingSetFixture(TestCase):
         self.event = Event.objects.create(deployment=self.deployment, project=self.project, start=night)
         self.night = night
 
-        self.algorithm = Algorithm.objects.create(name="Backbone", key="backbone", trainable=True)
+        self.algorithm = Algorithm.objects.create(
+            name="Backbone", key="backbone", trainable=True, embedding_dimensions=VECTOR_LENGTH
+        )
         self.taxa = [
             Taxon.objects.create(name=f"Trainus {name}", rank=TaxonRank.SPECIES.name) for name in ("alpha", "beta")
         ]
@@ -146,8 +148,8 @@ class TestTheSetDecidesWhatIsLearnedFrom(TrainingSetFixture):
                 project=self.project, algorithm=self.algorithm, min_per_species=1, occurrence_set=empty
             )
 
-    def test_the_vector_width_comes_from_the_stored_vectors(self):
-        """Nothing assumes a width: a backbone of another size is read, not truncated."""
+    def test_the_vector_width_comes_from_the_algorithms_declared_dimensions(self):
+        """The dataset's width is the algorithm's declared embedding_dimensions, not inferred from stored vectors."""
         occurrences = [self.make_occurrence(self.taxa[0]) for _ in range(6)]
         occurrence_set = self.make_set("Spring review", occurrences)
 
