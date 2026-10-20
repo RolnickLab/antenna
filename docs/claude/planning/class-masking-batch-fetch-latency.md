@@ -5,7 +5,7 @@ Follow-up to #1376. A production job over a 70,000-row scope was still revoked a
 
 ## What #1376 fixed, and what it missed
 
-#1376's mechanisms all fired in production. From the job log:
+PR #1376's mechanisms all fired in production. From the job log:
 
 | time | event |
 |---|---|
@@ -32,11 +32,27 @@ algorithm 11 (29,176 classes, `logits` and `scores` ~140 kB each):
 ~22 ms/row, unchanged by `chunk_size`. `Job.STALLED_JOBS_MAX_MINUTES` is 10, so a scope of
 this width cannot reach its first heartbeat before the reaper revokes it.
 
-Probable mechanism is Django declaring a `WITH HOLD` cursor in autocommit
-(`django/db/backends/postgresql/base.py`: `withhold=self.connection.autocommit`), which
-Postgres materialises at commit. **Not isolated** — re-running inside `transaction.atomic()`
-(`WITHOUT HOLD`) still took 55–56 s over three runs. The size-scaling is measured; the
-mechanism is inferred.
+**Mechanism (measured 2026-10-19, superseding the earlier `WITH HOLD` theory):** the query
+cache. django-cachalot 2.6.3 wraps `SQLCompiler.execute_sql`; for a chunked fetch that call
+returns a generator, and cachalot's `_get_result_or_execute_query` calls `list(result)` on it
+so it can pickle the result into Redis. `.iterator()` therefore reads, parses and pickles the
+whole scope before the loop sees its first row. This is why `transaction.atomic()` did not
+help. Read-path benchmark, local prod copy, algorithm 11, project 18, batch 200
+(throwaway script, not committed):
+
+| path | cache | scope | first batch | total | peak RSS | left in Redis |
+|---|---|---|---|---|---|---|
+| `.iterator()` | on | 500 | 12.2 s | 12.6 s | 1.58 GB | 257 MB |
+| `.iterator()` | on | 1,000 | 23.0 s | 23.9 s | 3.09 GB | 513 MB |
+| `.iterator()` | on | 2,000 | 45.2 s | 46.5 s | 5.78 GB | 0 (SET failed silently) |
+| `.iterator()` | off | 4,530 | 9.1 s | 96.3 s | 1.37 GB | 0 |
+| pk batches | on | 4,530 | 2.25 s | 49.5 s | 0.82 GB | 1,313 MB |
+| pk batches | off | 4,530 | 2.18 s | 45.3 s | 0.67 GB | 0 |
+
+With the cache on, peak memory grows ~2.8 MB per row, which would put a 70,000-row scope far
+past any worker's memory and is the likely cause of the run killed with `SIGKILL`. The batched
+read also bypasses the cache (`cachalot_disabled()`), otherwise each batch leaves ~60 MB in
+Redis that nothing reads again.
 
 This is consistent with the job history: 3,643 rows (07-06) and 11,906 rows (07-02) both
 cleared first-row inside the cutoff and succeeded; every run at 42k+ has been revoked, and

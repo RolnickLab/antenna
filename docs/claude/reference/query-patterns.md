@@ -309,9 +309,10 @@ images = SourceImage.objects.annotate(det_count=Count('detections'))
 
 **❌ DON'T: Rely on `.iterator(chunk_size=N)` to produce a first row quickly**
 
-`chunk_size` bounds memory, not latency. Time-to-first-row scales with the size of the
-whole scope, so a loop that reports progress after its first batch reports nothing for
-that entire ramp. On `Classification` rows carrying `logits` and `scores` (~140 kB each
+In this project, django-cachalot turns `.iterator()` into a full read: it calls `list()` on
+the chunked result so it can store it in Redis, so the whole scope is fetched, parsed and
+pickled before the first row is yielded, and `chunk_size` bounds neither memory nor latency.
+A loop that reports progress after its first batch reports nothing for that entire ramp. On `Classification` rows carrying `logits` and `scores` (~140 kB each
 for a 29,176-class algorithm) this measured 4.65 s at 200 rows, 22.06 s at 1,000, and
 61.09 s at 2,798 — roughly 22 ms per row regardless of `chunk_size`. Jobs whose stage
 never crosses `Job.STALLED_JOBS_MAX_MINUTES` (10 minutes) get revoked by the reaper
@@ -331,7 +332,8 @@ for start in range(0, len(ids), BATCH):
             .select_related("fk", "fk__nested"))
 ```
 Each batch is its own short query, so memory stays bounded and every batch is a natural
-progress heartbeat. Measured on the same 2,798-row scope: first batch 3.22 s instead of
+progress heartbeat. Read the batches inside `cachalot_disabled()` when each is read only once:
+cached, a 200-row batch of wide rows leaves tens of megabytes in Redis. Measured on the same 2,798-row scope: first batch 3.22 s instead of
 61.58 s, and 91 rows/s instead of ~3.5 rows/s.
 
 **⚠️ `EXPLAIN (ANALYZE)` cannot see this.** It executes the plan but never returns rows
