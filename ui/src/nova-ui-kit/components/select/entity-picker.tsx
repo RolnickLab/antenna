@@ -1,14 +1,17 @@
 import { useEntities } from 'data-services/hooks/entities/useEntities'
-import { Select } from 'nova-ui-kit'
+import { XIcon } from 'lucide-react'
+import { Button, Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 // TODO: Move to src/components, this is not a design system component
 export const EntityPicker = ({
+  clearable,
   collection,
   value: _value,
   onValueChange,
 }: {
+  clearable?: boolean
   collection: string
   value?: string
   onValueChange: (value?: string) => void
@@ -19,7 +22,7 @@ export const EntityPicker = ({
   })
   const value = entities.some((e) => e.id === _value) ? _value : ''
 
-  return (
+  const select = (
     <Select.Root
       key={value}
       disabled={isLoading || entities.length === 0}
@@ -37,5 +40,26 @@ export const EntityPicker = ({
         ))}
       </Select.Content>
     </Select.Root>
+  )
+
+  if (!clearable) {
+    return select
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      {select}
+      {_value && (
+        <Button
+          aria-label={translate(STRING.CLEAR)}
+          className="shrink-0 text-muted-foreground"
+          onClick={() => onValueChange()}
+          size="icon"
+          variant="ghost"
+        >
+          <XIcon className="w-4 h-4" />
+        </Button>
+      )}
+    </div>
   )
 }

@@ -6,8 +6,9 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
+import { API_ROUTES } from 'data-services/constants'
 import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
-import { InputContent, SaveButton, Select } from 'nova-ui-kit'
+import { EntityPicker, InputContent, SaveButton, Select } from 'nova-ui-kit'
 import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
@@ -18,7 +19,8 @@ import { DetailsFormProps, FormValues } from './types'
 
 type ExportFormValues = FormValues & {
   type: string
-  sourceImages: string
+  sourceImages?: string
+  occurrenceSet?: string
 }
 
 const config: FormConfig = {
@@ -30,6 +32,9 @@ const config: FormConfig = {
   },
   sourceImages: {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+  },
+  occurrenceSet: {
+    label: translate(STRING.FIELD_LABEL_OCCURRENCE_SET),
   },
 }
 
@@ -44,6 +49,7 @@ export const ExportDetailsForm = ({
     control,
     handleSubmit,
     setError: setFieldError,
+    setValue,
   } = useForm<ExportFormValues>({
     mode: 'onChange',
   })
@@ -59,6 +65,7 @@ export const ExportDetailsForm = ({
             format: values.type,
             filters: {
               collection_id: values.sourceImages,
+              occurrence_set_id: values.occurrenceSet,
             },
           },
         })
@@ -114,7 +121,36 @@ export const ExportDetailsForm = ({
             >
               <CaptureSetPicker
                 clearable
-                onValueChange={field.onChange}
+                onValueChange={(value) => {
+                  field.onChange(value)
+                  if (value) {
+                    setValue('occurrenceSet', undefined)
+                  }
+                }}
+                value={field.value}
+              />
+            </InputContent>
+          )}
+        />
+        <FormController
+          name="occurrenceSet"
+          control={control}
+          config={config.occurrenceSet}
+          render={({ field, fieldState }) => (
+            <InputContent
+              label={config[field.name].label}
+              error={fieldState.error?.message}
+              tooltip={{ text: translate(STRING.TOOLTIP_OCCURRENCE_SET) }}
+            >
+              <EntityPicker
+                clearable
+                collection={API_ROUTES.OCCURRENCE_SET_CHOICES}
+                onValueChange={(value) => {
+                  field.onChange(value)
+                  if (value) {
+                    setValue('sourceImages', undefined)
+                  }
+                }}
                 value={field.value}
               />
             </InputContent>
