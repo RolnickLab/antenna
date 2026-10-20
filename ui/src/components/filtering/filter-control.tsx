@@ -9,6 +9,7 @@ import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
 import { DeviceFilter } from './filters/device-filter'
 import { ImageFilter } from './filters/image-filter'
+import { OccurrenceSetFilter } from './filters/occurrence-set-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { SessionFilter } from './filters/session-filter'
 import { SiteFilter } from './filters/site-filter'
@@ -44,6 +45,7 @@ const ComponentMap: {
   not_algorithm: NotAlgorithmFilter,
   not_tag_id: TagFilter,
   not_taxa_list_id: TaxaListFilter,
+  occurrence_set: OccurrenceSetFilter,
   pipeline: PipelineFilter,
   source_image_collection: CaptureSetFilter,
   source_image_single: ImageFilter,
