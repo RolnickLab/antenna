@@ -1,20 +1,24 @@
 import { XIcon } from 'lucide-react'
 import { Button, InfoTooltip } from 'nova-ui-kit'
+import { useId } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { BooleanFilter } from './filters/boolean-filter'
 import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
+import { DeviceFilter } from './filters/device-filter'
 import { ImageFilter } from './filters/image-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { SessionFilter } from './filters/session-filter'
+import { SiteFilter } from './filters/site-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
 import { TagFilter } from './filters/tag-filter'
 import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
+import { JobFilter } from './filters/job-filter'
 import { FilterProps } from './filters/types'
 import { ProcessingStatusFilter } from './filters/processing-status-filter'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
@@ -29,10 +33,13 @@ const ComponentMap: {
   date_end: DateFilter,
   date_start: DateFilter,
   deployment: StationFilter,
+  deployment__device: DeviceFilter,
+  deployment__research_site: SiteFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
   processed: ProcessingStatusFilter,
   include_unobserved: BooleanFilter,
+  job: JobFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,
   not_tag_id: TagFilter,
@@ -63,6 +70,7 @@ export const FilterControl = ({
 }: FilterControlProps) => {
   const { filters, addFilter, clearFilter } = useFilters()
   const filter = filters.find((filter) => filter.field === field)
+  const labelId = useId()
   const FilterComponent = ComponentMap[field]
 
   if (!filter || !FilterComponent) {
@@ -76,12 +84,20 @@ export const FilterControl = ({
   return (
     <div>
       <div className="min-h-8 flex items-center gap-1">
-        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+        <span
+          id={labelId}
+          className="text-muted-foreground body-overline-small font-bold pt-0.5"
+        >
           {filter.label}
         </span>
         {filter.tooltip ? <InfoTooltip {...filter.tooltip} /> : null}
       </div>
-      <div className="flex items-center justify-between gap-2">
+      {/* Names the control and its clear button for screen readers (WCAG technique ARIA17). */}
+      <div
+        aria-labelledby={labelId}
+        className="flex items-center justify-between gap-2"
+        role="group"
+      >
         <FilterComponent
           data={data}
           error={filter.error}

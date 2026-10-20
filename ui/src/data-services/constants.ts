@@ -2,6 +2,7 @@ export const API_URL = '/api/v2'
 
 export const API_ROUTES = {
   ALGORITHM: 'ml/algorithms',
+  CAPTURE_SET_CHOICES: 'captures/collections/choices',
   CAPTURE_SETS: 'captures/collections',
   CAPTURES: 'captures',
   CLASSIFICATIONS: 'classifications',
@@ -10,10 +11,12 @@ export const API_ROUTES = {
   EXPORTS: 'exports',
   IDENTIFICATIONS: 'identifications',
   JOBS: 'jobs',
+  JOB_CHOICES: 'jobs/choices',
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',
   ME: 'users/me',
   MEMBERS: (projectId: string) => `projects/${projectId}/members`,
+  OCCURRENCE_ALGORITHMS: 'occurrences/algorithms',
   OCCURRENCES: 'occurrences',
   PAGES: 'pages',
   PIPELINES: 'ml/pipelines',

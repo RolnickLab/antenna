@@ -19,6 +19,8 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 - Focus on optimizing cold queries first before adding caching
 - When ordering by annotated fields, pagination COUNT queries include those annotations - use `.values('pk')` to strip them
 - For large tables (>10k rows), consider fuzzy counting using PostgreSQL's pg_class.reltuples
+- **Run `EXPLAIN (ANALYZE)` before claiming anything about a query plan.** Do not describe a query as "uses the index", "stays off the table", or "only touches N rows" from reading the ORM expression — verify it. A filter that looks bounded can still trigger a `Seq Scan`: an anti-join such as `pipelines__isnull=True` hides the candidate ids at plan time, so Postgres scans the whole table despite an index being available. Materializing the ids first and filtering on `field__in=[literal ids]` is what lets the planner use the index.
+- **Measure on the largest project in the local database, and survey several project sizes.** The local DB is a copy of production — use it. A small or empty project routinely hides the defect. If a query's cost does not move with project size, it is bound by total table size and will degrade as the platform grows regardless of tenant. Wrap timing loops in `cachalot_disabled()` and rebuild the queryset each iteration, or a reused queryset serves from `_result_cache` and reports a fake ~0 ms.
 
 **Git Commit Guidelines:**
 - Do NOT include "Generated with Claude Code" in commit messages
@@ -44,6 +46,16 @@ Every PR body opens with:
 
 1. **`## Summary`** — a short, plain-language paragraph stating the purpose of the change and its effect for the user, operator, or system. Written so the whole team can read it; implementation detail belongs in `## Detailed Description` below.
 2. **`### List of Changes`** — a numbered list or a table. Each change has, at minimum, a plain user-effect description. Optionally add a column for the technical/implementation detail, plus any other helpful columns (affected area, risk, migration). Lead with the user-effect; do not reduce it to a bare list of class or method names.
+
+### Screenshots: attach them with `gh --attach`
+
+UI changes get screenshots in the PR body. GitHub CLI 2.99 and later uploads them directly, so there is no need to host images on a branch, a fork, or a bucket:
+
+1. Write the body with a relative reference where each image belongs: `![The job filter, open](./03-job-filter.png)`.
+2. From the directory holding the screenshots, run `gh pr edit <N> --body-file body.md --attach './03-job-filter.png'`, repeating `--attach` for each file. Each referenced file is uploaded and its reference is rewritten in place to a `github.com/user-attachments/assets/...` URL; files the body does not reference are appended at the end. The same flag works on `gh pr create`, `gh pr comment`, and the `gh issue` commands.
+3. Check the result: no `](./` references should remain in the body, and each asset URL should load.
+
+This repository is public. Before attaching, look at each screenshot for real project, station, or job names from production data, and prefer a test project; an uploaded asset stays reachable by its URL even after the reference is removed.
 
 ### Examples
 
@@ -180,27 +192,27 @@ Two routes — bind-mount worktree subdirs into the main stack (code-only change
 
 Run tests:
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 Run specific test pattern:
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 Run tests with debugger on failure:
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 Speed up test development (reuse database):
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 Run pytest (alternative test runner):
 ```bash
-docker compose run --rm django pytest --ds=config.settings.test --reuse-db
+docker compose -f docker-compose.ci.yml run --rm django pytest --ds=config.settings.test --reuse-db
 ```
 
 Django shell:
@@ -408,6 +420,22 @@ Always-on rules (the most common review findings in this repo's history):
 - **Never materialize unbounded querysets** (`list(qs)`, Python-side aggregation over rows). Use SQL-side `aggregate()`, annotations, or subqueries — production projects have >100k occurrences.
 - **No queries inside loops.** Batch with `__in`, `prefetch_related`, or subqueries.
 
+## Code hygiene: look for opportunities
+
+Several people and agent sessions add features here in parallel. Keep half an eye out while working, and say what you find. Whatever this change itself left behind is this PR's job, not future work: a ticket is for debt you found but did not create, or a cleanup genuinely too large to ride along. A branch filing several tickets for its own leftovers is not finished. The established practice behind each line, the measured hotspots, the module precedents and the scan commands that work here are in `docs/claude/reference/code-hygiene.md`.
+
+- **DRY, at the rule of three.** A constant, label, threshold or helper defined twice drifts; by the third, extract. Search for the behaviour, not the name: the duplicate helper is called something else, which is also why one concept deserves one word across the repo, and a rename when the concept changes. DRY is about knowledge, not characters: two blocks that look alike but encode different decisions stay apart, and the wrong abstraction costs more than the duplication.
+- **Don't let spaghetti start.** `if`-chains on repeated string keys want an enum or small registry (precedent: `ami/ml/post_processing/registry.py`). Several ways to do one action want an inventory and one survivor. A shared component taking a feature-specific prop wants the feature's own component or flag.
+- **Find the existing home** before adding a module, map, list or doc section, and grep the whole repo for it, not just the sibling files. But a 5,000-line module is not a home (`ami/main/models.py` is one): when a new module or subpackage is the right answer, propose it, with a name that says what it owns and a boundary that matches how large Django apps are usually split. `ami.main` models do not import `ami.ml` or `ami.jobs`; the current exceptions are listed in the reference doc.
+- **Design it twice.** When a PR introduces a model, module, API shape or UI component, sketch two or three layouts (where each piece lives, what it is called, which way imports run, which existing component it extends) and pick one for maintainability and for how pleasant it will be to work in, not for how close it is to the first draft. Redo this at the end of review against `main`: after several rounds a branch treats its own layout as fixed, but to `main` all of it is new, and moving it later costs every stacked branch a rebase.
+- **Watch what is getting long:** a file that has stopped having one subject, a PR that outgrew its title. Split at a real seam, or ticket it; don't force one.
+- **Tests earn their place at merge, not while writing.** Cut what another test already proves at the same layer, and rewrite the ones whose name overclaims. Measure before blaming count: per-test fixtures, real network calls and `TransactionTestCase` are what grow this suite (#1481).
+- **Comments: the rule, the one reason, and a link** (`See #NNNN` or a doc path). Short, not terse. Write them against `main`, not against round three of the PR: a shouted `NOT` is usually arguing with a version only this branch ever had.
+- **Don't let newest win.** A new feature is another note in the chord: slot it into the existing order, default off or collapsed, rather than at the top of a surface that serves several others.
+- **Is a failure being swallowed?** An `except: pass`, a silent `continue` or an empty `catch` turns a bug into "nothing happens": a delete that fails silently looks like a button that does nothing. Surface the error, or say in one line why ignoring it is safe.
+- **Measure, don't eyeball.** Before calling an area clean, run the cheap scans (largest files, duplicate blocks, dead code, new code with no caller) rather than judging from the files you happened to open.
+- **Leave it cleaner than you found it,** without gold-plating: dead code and stale comments go now; understand something before deleting it; a cleanup big enough to stand alone gets its own PR. Deployment-specific values belong in `config/settings/` via `env(...)` with a default, never hard-coded.
+
 ## Definition of Done — Checklists
 
 These map 1:1 to the most frequent review findings across this repo's history. Run through the matching checklist before opening a PR.
@@ -420,6 +448,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 - [ ] No PII in serializers: nested user serializers expose name/image only — never `email`.
 - [ ] Every query param parsed via `SingleParamSerializer` (`ami/base/serializers.py`) or `url_boolean_param` (`ami/utils/fields.py`) so invalid input returns 400, not 500. Test the `?param=abc` case.
 - [ ] Aggregation happens in SQL. Add an `assertNumQueries` test with a **multi-row** fixture — single-row fixtures cannot catch N+1 (example: `ami/ml/tests.py:1006`). Use strict `==` counts in assertions.
+- [ ] Per-row permissions: `DefaultSerializer` resolves the user's object permissions for **every row** it serializes (a project lookup, Guardian `get_perms`, and custom job permissions), so a new list, nested, or dropdown serializer silently costs several queries per row. A serializer that does not need permissions overrides `get_permissions` to return an empty list (`ClassificationNestedSerializer`); one that does caches them once per request (`TaxaListSerializer.get_permissions`). Cachalot hides the repeats in manual testing, so pin it with a test, with cachalot disabled, that the query count is the same at two list sizes (example: `test_query_count_does_not_grow_with_the_number_of_jobs` in `ami/jobs/tests/test_jobs.py`, added in #1471).
 - [ ] Reuse existing patterns before writing new ones — see `docs/claude/reference/canonical-patterns.md`.
 
 ### Any model change
@@ -435,6 +464,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 ### Before requesting review (any PR)
 
 - [ ] Self-review the full diff: no WIP debris (commented-out code, stale `noqa`/TODOs, duplicated conditions, typos).
+- [ ] The "Code hygiene" lines above checked over the whole branch diffed against `main`, not just the last commit, including the tests the PR adds and any comment written against an earlier round of this PR.
 - [ ] Linters pass with the repo's pinned configs (pre-commit hooks; `cd ui && yarn lint` for frontend).
 - [ ] PR title and description follow the conventions above — and are refreshed if scope changed during review.
 - [ ] Feature spans FE+BE? Agree on the API contract (fields, nesting, lookup keys) in the issue *before* implementing. Mid-review contract renegotiation is the main cause of months-long PRs in this repo.
@@ -466,7 +496,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 
 Run an end-to-end ML job test:
 ```bash
-docker compose run --rm django python manage.py test_ml_job_e2e \
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test_ml_job_e2e \
   --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
 ```
 
@@ -480,13 +510,13 @@ Unit tests for the async result handler do not exercise `autoretry_for`, real Ce
 
 ```bash
 # Run specific test class
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
 
 # Run specific test method
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
 
 # Run with pattern matching
-docker compose run --rm django python manage.py test -k test_detection
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k test_detection
 ```
 
 ### Pre-commit Hooks
@@ -528,7 +558,7 @@ npm run build                    # Production build
 
 ## Important File Locations
 
-- `ami/main/models.py` (~3700 lines) - Core domain models
+- `ami/main/models.py` (~5,500 lines) - Core domain models
 - `ami/main/models_future/filters.py` - Core filtering utilities (build_occurrence_default_filters_q)
 - `ami/ml/models/pipeline.py` - ML pipeline orchestration
 - `ami/ml/orchestration/processing.py` - Image processing workflow
@@ -543,6 +573,7 @@ npm run build                    # Production build
 
 - `docs/claude/INDEX.md` - Index of all agent docs (reference, runbooks, plans)
 - `docs/claude/reference/canonical-patterns.md` - Existing helpers/patterns to reuse, with file:line refs
+- `docs/claude/reference/code-hygiene.md` - Measured hotspots, module precedents to follow when splitting them, import direction, where configuration lives, the measured causes of the slow test suite, and scan commands that work here
 - `docs/claude/reference/query-patterns.md` - DB schema table, indexes, prefetch patterns, QuerySet method catalog
 - `.agents/DATABASE_SCHEMA.md` - Visual ERD (Mermaid)
 - `.agents/USER_PERMISSION_ROLES.md` - Permission roles reference
@@ -556,7 +587,7 @@ npm run build                    # Production build
 
 ## Known Technical Debt & Areas for Improvement
 
-1. **Model File Size** - `ami/main/models.py` is very large (~3700 lines) containing model definitions, business logic, processing orchestration, and helper functions. Consider splitting into separate modules.
+1. **Model File Size** - `ami/main/models.py` is very large (~5,500 lines, with `ami/main/tests.py` at ~8,700) containing model definitions, business logic, processing orchestration, and helper functions. Splitting it is wanted; `docs/claude/reference/code-hygiene.md` lists the subpackage arrangements already used elsewhere in the repo.
 
 2. **Processing Logic Extraction** - Functions like `process_single_source_image()` and `group_images_into_events()` should be moved from models to dedicated service modules (e.g., `ami/ml/orchestration/`, `ami/main/services/`).
 
