@@ -1364,6 +1364,27 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
             return queryset
 
 
+class OccurrenceSetFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences to the members of one occurrence set.
+
+    Only narrows the list: the project scope and default filters still apply, so a set
+    never shows an occurrence the list would otherwise hide.
+    """
+
+    query_param = "occurrence_set_id"
+
+    def filter_queryset(self, request, queryset, view):
+        occurrence_set_id = SingleParamSerializer[int].clean(
+            param_name=self.query_param,
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=request.query_params,
+        )
+        if occurrence_set_id is None:
+            return queryset
+        return queryset.filter(occurrence_sets=occurrence_set_id)
+
+
 class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
     """
     Filter occurrences by any algorithm that produced a result on them.
@@ -1536,6 +1557,7 @@ class OccurrenceJobFilter(filters.BaseFilterBackend):
 OCCURRENCE_FILTER_BACKENDS = (
     CustomOccurrenceDeterminationFilter,
     OccurrenceCollectionFilter,
+    OccurrenceSetFilter,
     OccurrenceAlgorithmFilter,
     OccurrenceJobFilter,
     OccurrenceDateFilter,
@@ -1647,6 +1669,12 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="collection_id",
                 description="Filter occurrences by the capture set their detections' captures belong to.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="occurrence_set_id",
+                description="Filter occurrences to the members of an occurrence set.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),

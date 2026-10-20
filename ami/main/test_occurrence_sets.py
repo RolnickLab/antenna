@@ -1,27 +1,73 @@
 """
-Occurrence sets through the API: creating, listing and choosing them. Most of these
-tests are about what the API refuses, because a set is only useful if its list of
-occurrences does not move. See #763.
+Occurrence sets through the API: creating, listing and choosing them, and filtering the
+occurrence list by one. Most of these tests are about what the API refuses, because a
+set is only useful if its list of occurrences does not move. See #763.
 """
 
+import datetime
 import re
+import uuid
 
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from ami.main.models import Occurrence, OccurrenceSet, Project
+from ami.main.models import (
+    Classification,
+    Deployment,
+    Detection,
+    Event,
+    Occurrence,
+    OccurrenceSet,
+    Project,
+    S3StorageSource,
+    SourceImage,
+    Taxon,
+    TaxonRank,
+)
 from ami.tests.fixtures.queries import no_query_cache
 from ami.users.models import User
 from ami.users.roles import BasicMember, MLDataManager
 
 SETS_URL = "/api/v2/occurrences/sets/"
+OCCURRENCES_URL = "/api/v2/occurrences/"
 
 
 def make_bare_occurrences(project: Project, count: int) -> list[Occurrence]:
     # Enough for create and listing, which only need rows to point at.
     return Occurrence.objects.bulk_create([Occurrence(project=project) for _ in range(count)])
+
+
+def make_listed_occurrence(project: Project, score: float = 0.9) -> Occurrence:
+    """
+    One occurrence the occurrence list will return: it has a real detection and a
+    determination.
+
+    Built directly rather than through the capture fixtures, which time images from the
+    current clock and read image dimensions from storage, so their failures land at
+    random on whichever test ran first.
+    """
+    storage = S3StorageSource.objects.create(name=f"source {uuid.uuid4().hex[:6]}", project=project, bucket="test")
+    deployment = Deployment.objects.create(
+        name=f"station {uuid.uuid4().hex[:6]}", project=project, data_source=storage
+    )
+    night = datetime.datetime(2026, 6, 1, 22, 0, 0)
+    event = Event.objects.create(deployment=deployment, project=project, start=night)
+    image = SourceImage.objects.create(
+        deployment=deployment,
+        project=project,
+        event=event,
+        timestamp=night,
+        path=f"test/{uuid.uuid4().hex[:8]}.jpg",
+    )
+    taxon = Taxon.objects.create(name=f"Testus {uuid.uuid4().hex[:6]}", rank=TaxonRank.SPECIES.name)
+    taxon.projects.add(project)
+    detection = Detection.objects.create(source_image=image, timestamp=night, bbox=[0.1, 0.1, 0.2, 0.2])
+    Classification.objects.create(detection=detection, taxon=taxon, score=score, timestamp=night)
+    occurrence = detection.associate_new_occurrence()
+    occurrence.refresh_from_db()
+    return occurrence
 
 
 def make_set(name: str, projects: list[Project], occurrences: list[Occurrence] | None = None) -> OccurrenceSet:
@@ -275,3 +321,43 @@ class TestListingSets(OccurrenceSetAPITestCase):
                 for i in range(2):
                     make_set(f"Extra {url} {i}", [self.project], self.occurrences)
                 self.assertEqual(queries_to_list(url), one)
+
+
+class TestFilteringOccurrencesBySet(OccurrenceSetAPITestCase):
+    """The occurrence list can be narrowed to one set, which is how a set is reviewed."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.listed = [make_listed_occurrence(self.project) for _ in range(3)]
+        self.set = make_set("Blind set", [self.project], self.listed[:2])
+        self.client.force_authenticate(user=self.curator)
+
+    def ids(self, project: Project | None = None, **params) -> set[int]:
+        project = project or self.project
+        response = self.client.get(OCCURRENCES_URL, {"project_id": project.pk, **params})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        return {row["id"] for row in response.data["results"]}
+
+    def test_only_the_sets_occurrences_come_back(self):
+        self.assertEqual(self.ids(occurrence_set_id=self.set.pk), {o.pk for o in self.listed[:2]})
+
+    def test_an_id_that_is_not_an_integer_is_refused(self):
+        response = self.client.get(OCCURRENCES_URL, {"project_id": self.project.pk, "occurrence_set_id": "abc"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_the_list_stays_scoped_to_the_active_project(self):
+        """A set holding another project's occurrence (made in the admin) does not leak it."""
+        foreign = make_listed_occurrence(self.other_project)
+        self.set.occurrences.add(foreign)
+
+        self.assertNotIn(foreign.pk, self.ids(occurrence_set_id=self.set.pk))
+
+    def test_the_projects_default_filters_still_apply(self):
+        low_score = make_listed_occurrence(self.project, score=0.1)
+        self.set.occurrences.add(low_score)
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+
+        self.assertNotIn(low_score.pk, self.ids(occurrence_set_id=self.set.pk))
+        self.assertIn(low_score.pk, self.ids(occurrence_set_id=self.set.pk, apply_defaults="false"))
