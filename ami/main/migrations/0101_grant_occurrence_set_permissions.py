@@ -1,17 +1,10 @@
 """
-Grant the new occurrence-set permissions to the roles that already curate a project's data.
+Give the occurrence set permissions to the roles that manage a project's ML data.
 
-``create_roles_for_project`` gives new projects their role permissions, and a
-``post_migrate`` signal re-syncs every project on migrate, so this backfill is belt and
-braces. It is kept so the grant is explicit rather than a side effect of a signal, and so
-the reverse is written down.
-
-Guardian reads **object-level** rows: ``get_perms(user, project)`` and
-``user.has_perm("create_occurrenceset", project)`` both look at
-``GroupObjectPermission``. Adding the permission to ``group.permissions`` alone would not
-show up there, so each project gets a row per role group.
-
-``ProjectManager`` inherits ``MLDataManager``'s permissions, so both groups are covered.
+New projects get these permissions from ``create_roles_for_project``. This migration adds
+them to existing projects. Guardian checks object-level rows (``GroupObjectPermission``),
+so each project gets one row per role group, not only a group-level permission.
+``ProjectManager`` inherits from ``MLDataManager``, so both groups get the rows.
 """
 
 from django.db import migrations
