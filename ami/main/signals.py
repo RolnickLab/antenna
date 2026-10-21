@@ -119,10 +119,10 @@ def delete_project_groups(sender, instance, **kwargs):
 @receiver(pre_delete, sender=Project)
 def delete_occurrence_sets_only_in_project(sender, instance, **kwargs):
     """
-    Delete the occurrence sets that belong to no other project.
+    Delete the occurrence sets that belong only to the deleted project.
 
-    A set with no project counts as public, so without this a set from a draft project would
-    become visible to everyone once its project is deleted. Shared sets are kept. See #763.
+    A set with no project is public. Without this, a set from a deleted draft project would
+    become visible to everyone. Sets shared with another project are kept. See #763.
     """
     OccurrenceSet.objects.filter(pk__in=instance.occurrence_sets.values("pk")).annotate(
         project_count=models.Count("projects")

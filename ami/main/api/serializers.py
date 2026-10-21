@@ -1485,8 +1485,11 @@ class OccurrenceSetNestedSerializer(DefaultSerializer):
 
 class OccurrenceSetSerializer(OccurrenceSetNestedSerializer):
     """
-    A fixed list of occurrences. ``project_id`` and ``occurrence_ids`` are accepted only
-    when the set is created; afterwards only the name and description can change.
+    An occurrence set, with the project and occurrences it is created with.
+
+    ``project_id`` and ``occurrence_ids`` are accepted on create only. After that, the
+    API changes the name and description. Editing a set's occurrences comes with curated
+    sets (#1538); until then a different group of occurrences is a new set.
     """
 
     project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True)
@@ -1517,12 +1520,12 @@ class OccurrenceSetSerializer(OccurrenceSetNestedSerializer):
 
     def validate(self, attrs):
         if self.instance is not None:
-            # Results recorded against a set were measured on these occurrences, so the
-            # list stays as it was created. A different list is a new set. See #763.
-            frozen = [field for field in ("project_id", "occurrence_ids") if field in attrs]
-            if frozen:
+            # The API sets the project and occurrences on create only. A scoring run must
+            # not see its set change under it, so edits wait for curated sets (#1538).
+            create_only = [field for field in ("project_id", "occurrence_ids") if field in attrs]
+            if create_only:
                 raise serializers.ValidationError(
-                    {field: "This cannot be changed after the set is created." for field in frozen}
+                    {field: "Chosen when a set is created. Create a new set instead." for field in create_only}
                 )
             return attrs
 
