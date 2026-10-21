@@ -39,7 +39,7 @@ export const CreateOccurrenceSet = ({
           />
         </div>
         <span className="block mb-8 body-small text-muted-foreground">
-          {translate(STRING.MESSAGE_OCCURRENCE_SET_IS_FIXED, {
+          {translate(STRING.MESSAGE_CREATE_OCCURRENCE_SET, {
             count: `${occurrenceIds.length}`,
           })}
         </span>

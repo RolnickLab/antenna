@@ -219,7 +219,7 @@ export enum STRING {
   MESSAGE_NO_RESULTS_FOR_PAGE,
   MESSAGE_NO_RESULTS_TO_SHOW,
   MESSAGE_NO_RESULTS,
-  MESSAGE_OCCURRENCE_SET_IS_FIXED,
+  MESSAGE_CREATE_OCCURRENCE_SET,
   MESSAGE_PASSWORD_FORMAT,
   MESSAGE_PASSWORD_UPDATED,
   MESSAGE_PERMISSIONS_MISSING,
@@ -656,8 +656,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'There are no results to show for the current page.',
   [STRING.MESSAGE_NO_RESULTS_TO_SHOW]: 'There are no results to show here yet.',
   [STRING.MESSAGE_NO_RESULTS]: 'No results',
-  [STRING.MESSAGE_OCCURRENCE_SET_IS_FIXED]:
-    'Saves the {{count}} selected occurrence(s) on this page as a new set. Nothing is added to the set afterwards.',
+  [STRING.MESSAGE_CREATE_OCCURRENCE_SET]:
+    'Saves the {{count}} selected occurrence(s) on this page as a new set. Changing your filters later does not change the set.',
   [STRING.MESSAGE_PASSWORD_FORMAT]:
     'The password must contain at least 8 characters and cannot be entirely numeric.',
   [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
@@ -753,7 +753,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_OCCURRENCE]:
     'An occurrence refers to when an individual is detected in a sequence of one or more captures with no time interruption.',
   [STRING.TOOLTIP_OCCURRENCE_SET]:
-    'An occurrence set is a named list of occurrences, saved so the same ones can be looked at again. Nothing is added to a set after it is created.',
+    'An occurrence set is a named group of occurrences that a project keeps, so it can review, export or score models on the same occurrences again.',
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_PROCESSING_SERVICE]:
