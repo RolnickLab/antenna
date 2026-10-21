@@ -583,6 +583,10 @@ DEFAULT_PROCESSING_SERVICE_ENDPOINT = env(
     "DEFAULT_PROCESSING_SERVICE_ENDPOINT", default=None  # type: ignore[no-untyped-call]
 )
 DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None)  # type: ignore[no-untyped-call]
+# Base for the exponential wait between retried HTTP requests to processing services:
+# urllib3 waits 0, 2x and 4x this many seconds. Tests set it to 0 so unreachable hosts fail at once.
+HTTP_RETRY_BACKOFF_FACTOR = env.float("HTTP_RETRY_BACKOFF_FACTOR", default=2)  # type: ignore[no-untyped-call]
+
 # Default taxa filters
 DEFAULT_INCLUDE_TAXA = env.list("DEFAULT_INCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
 DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
