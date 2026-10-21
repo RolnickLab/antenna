@@ -622,16 +622,18 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
 
         logging.info(f"Updated parents for {len(bulk_update_data)} taxa")
 
-    def with_children(self):
-        qs = self.get_queryset()
-        # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
+    # This function is said to be an example for a future feature, but the issue or other asset to create
+    # that feature is unknown.
+    # def with_children(self):
+    #     qs = self.get_queryset()
+    #     # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
 
-        # example for single taxon:
-        taxon = Taxon.objects.get(pk=1)
-        taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
-        # add them to the queryset
-        qs = qs.annotate(children=models.Subquery(taxa.values("id")))
-        return qs
+    #     # example for single taxon:
+    #     taxon = Taxon.objects.get(pk=1)
+    #     taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
+    #     # add them to the queryset
+    #     qs = qs.annotate(children=models.Subquery(taxa.values("id")))
+    #     return qs
 
     def with_occurrence_counts(self) -> models.QuerySet:
         """

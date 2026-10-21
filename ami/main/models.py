@@ -43,6 +43,7 @@ from ami.main.models_future.filters import (
     build_occurrence_score_threshold_q,
     build_taxa_recursive_filter_q,
 )
+from ami.main.models_future.identifications import Identification  # noqa: F401
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.main.models_future.storage import (  # noqa: F401
     S3StorageSource,
@@ -2724,130 +2725,6 @@ class SourceImageThumbnail(BaseModel):
         indexes = [
             models.Index(fields=["source_image", "label"]),
         ]
-
-
-@final
-class Identification(BaseModel):
-    """A classification of an occurrence by a human."""
-
-    project_accessor = "occurrence__project"
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="identifications",
-    )
-    taxon = models.ForeignKey(
-        "Taxon",
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="identifications",
-    )
-    occurrence = models.ForeignKey(
-        "Occurrence",
-        on_delete=models.CASCADE,
-        related_name="identifications",
-    )
-    withdrawn = models.BooleanField(default=False)
-    agreed_with_identification = models.ForeignKey(
-        "Identification",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="agreed_identifications",
-    )
-    agreed_with_prediction = models.ForeignKey(
-        "Classification",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="agreed_identifications",
-    )
-    score = 1.0  # Always 1 for humans, at this time
-    comment = models.TextField(blank=True)
-
-    class Meta:
-        ordering = [
-            "-created_at",
-        ]
-
-    def save(self, *args, **kwargs):
-        """
-        If this is a new identification:
-        - Set previous identifications by this user to withdrawn
-        - Set the determination of the occurrence to the taxon of this identification if it is primary
-
-        # @TODO Add tests
-        """
-
-        if not self.pk and not self.withdrawn and self.user:
-            # This is a new identification and it has not been explicitly withdrawn
-            # so set all other identifications of this user to withdrawn.
-            Identification.objects.filter(
-                occurrence=self.occurrence,
-                user=self.user,
-            ).exclude(
-                pk=self.pk
-            ).update(withdrawn=True)
-
-        super().save(*args, **kwargs)
-
-        update_occurrence_determination(self.occurrence)
-
-    def delete(self, *args, **kwargs):
-        """
-        If this is the current identification for the occurrence, set the determination to the next best ID.
-        and un-withdraw the previous ID by the same user.
-
-        @TODO Add tests
-        """
-        current_best: Identification | None = self.occurrence.best_identification
-        if current_best and current_best == self:
-            # Invalidate the cached property so it will be re-calculated
-            del self.occurrence.best_identification
-            if self.user:
-                previous_id = (
-                    Identification.objects.filter(
-                        occurrence=self.occurrence,
-                        user=self.user,
-                        withdrawn=True,
-                    )
-                    .exclude(pk=self.pk)
-                    # The "next best" ID by the same user is just the most recent one.
-                    # but this could be more complex in the future.
-                    .order_by("-created_at")
-                    .first()
-                )
-                if previous_id:
-                    previous_id.withdrawn = False
-                    previous_id.save()
-
-        super().delete(*args, **kwargs)
-
-        # Allow the update_occurrence_determination to determine the next best ID
-        update_occurrence_determination(self.occurrence, current_determination=self.taxon)
-
-    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """
-        Custom permission check logic for Identification model.
-
-        The "create" branch depends only on the occurrence's project. The bulk
-        endpoint relies on that to check once per batch instead of once per
-        occurrence — revisit it if this path gains per-occurrence logic. See #1371.
-        """
-        import ami.users.roles as roles
-
-        project = self.get_project()
-        if not project:
-            return False
-
-        if action == "destroy":
-            # Allow if user is superuser, project manager, or owner of the identification
-            return user.is_superuser or roles.ProjectManager.has_role(user, project) or self.user == user
-
-        # Fallback to base class permission checks
-        return super().check_permission(user, action)
 
 
 @final
