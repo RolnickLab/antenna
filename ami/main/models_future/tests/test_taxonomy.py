@@ -134,7 +134,8 @@ class TaxonManagerTestCase(TestCase):
     def test_display_names_are_recalculated_for_every_taxon(self):
         # NULL rather than "", so clearing them does not trip the unique constraint.
         Taxon.objects.all().update(display_name=None)
-        Taxon.objects.update_display_names()
+        queryset = Taxon.objects.all()
+        Taxon.objects.update_display_names(queryset)
 
         self.assertEqual(
             self.our_display_names(),
