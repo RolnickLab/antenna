@@ -321,6 +321,20 @@ class Algorithm(BaseModel):
             and (len(self.category_map.data) > 0)
         )
 
+    @property
+    def writes_classifications(self) -> bool:
+        """Whether every detection this algorithm sees should get a classification from it."""
+        return self.task_type not in {*self.detection_task_types, AlgorithmTaskType.EMBEDDING}
+
+    @property
+    def writes_embeddings(self) -> bool:
+        """Whether every detection this algorithm sees should get a feature vector from it.
+
+        A declared vector length is the processing service's promise to send a vector for every detection,
+        whatever the algorithm's task type: a species classifier can also return its backbone's vectors.
+        """
+        return self.embedding_dimensions is not None
+
 
 def get_known_algorithm(algorithms_known: dict[str, Algorithm], key: str, role: str) -> Algorithm:
     """The pipeline's registered algorithm with this key, for saving one of its results.

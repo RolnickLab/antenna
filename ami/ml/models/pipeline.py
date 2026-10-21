@@ -40,7 +40,8 @@ from ami.main.models import (
 )
 from ami.ml.embeddings.writer import create_detection_embeddings, validate_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType, get_known_algorithm
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, get_known_algorithm
+from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -92,9 +93,10 @@ def filter_processed_images(
     4. Only null detections exist (bbox=None) — pipeline ran but found nothing
     5. Real detections exist and are fully classified by all pipeline classifiers
 
-    Algorithms with the "embedding" task type are not counted as classifiers, because they never
-    write a classification, so a capture that lacks only a vector is not reprocessed. A pipeline with no
-    classifier at all (a detector and feature extractors) reprocesses every capture, as a detector-only one does.
+    Feature vectors are checked the same way as classifications: an image is processed again when a real
+    detection lacks a vector from any pipeline algorithm that declares a vector length
+    (``Algorithm.writes_embeddings``), so a normal job fills in vectors that are missing. The writer keeps
+    vectors that are already stored.
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
@@ -114,9 +116,9 @@ def filter_processed_images(
     has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
     if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    non_classifier_type_keys = detection_type_keys | {AlgorithmTaskType.EMBEDDING}
-    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in non_classifier_type_keys}
-    if not pipeline_classifier_ids:
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.writes_classifications}
+    pipeline_embedding_ids = {a.id for a in pipeline_algorithms if a.writes_embeddings}
+    if not pipeline_classifier_ids and not pipeline_embedding_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
         # set().issubset(anything) is vacuously True, so without this short-circuit
         # every image with existing detections gets skipped by the subset check
@@ -163,6 +165,14 @@ def filter_processed_images(
             for detection_id, algorithm_id in classification_rows:
                 classifier_ids_per_detection[detection_id].add(algorithm_id)
 
+        embedding_ids_per_detection: dict[int, set[int]] = collections.defaultdict(set)
+        if real_pipeline_detection_ids and pipeline_embedding_ids:
+            embedding_rows = DetectionEmbedding.objects.filter(
+                detection_id__in=real_pipeline_detection_ids, algorithm_id__in=pipeline_embedding_ids
+            ).values_list("detection_id", "algorithm_id")
+            for detection_id, algorithm_id in embedding_rows:
+                embedding_ids_per_detection[detection_id].add(algorithm_id)
+
         for image in batch:
             image_id = image.pk
 
@@ -176,6 +186,21 @@ def filter_processed_images(
             real_det_ids = real_pipeline_detections_per_image.get(image_id)
             if not real_det_ids:
                 task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
+                continue
+
+            if pipeline_embedding_ids and any(
+                not pipeline_embedding_ids.issubset(embedding_ids_per_detection[detection_id])
+                for detection_id in real_det_ids
+            ):
+                task_logger.debug(
+                    f"Image {image} needs processing: has detections without a feature vector from every "
+                    f"algorithm of pipeline {pipeline} that returns them"
+                )
+                yield image
+                continue
+
+            if not pipeline_classifier_ids:
+                task_logger.debug(f"Image {image} has feature vectors from pipeline {pipeline}, skipping!")
                 continue
 
             if any(detection_id not in classifier_ids_per_detection for detection_id in real_det_ids):

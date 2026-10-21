@@ -53,11 +53,24 @@ written, when a vector:
   value half precision cannot store (NaN, infinity, beyond ±65,504), repeats an algorithm on one
   detection, sits on a detection without a bounding box, or belongs to a capture without a project.
 
-In the async path each image's results are saved by their own task, so a refusal fails only that image.
+A refusal fails the job, on both paths: it means the pipeline's registration and the processing service
+disagree, and every retry would fail the same way. In the async path `process_nats_pipeline_result`
+(`ami/jobs/tasks.py`) acks the message and fails the job rather than letting NATS redeliver it. Fix the
+service or its registration, or run the job with a pipeline that has no embedding algorithm.
 
 The first vector stored for a (detection, algorithm) is kept: later ones are not written
 (`INSERT … ON CONFLICT DO NOTHING`). To store new vectors, delete the detections or register the new ML
 model as a new algorithm.
+
+## Filling in missing vectors
+
+There is no separate embedding pipeline. Any pipeline algorithm that declares a vector length
+(`Algorithm.writes_embeddings`, whatever its task type: a species classifier can also return its
+backbone's vectors) is treated like a classifier by `filter_processed_images`: a capture is processed again
+while one of its real detections lacks a vector from that algorithm. The detections are matched to the
+existing ones and the writer adds only the missing vectors. A declared length is therefore a promise to
+send a vector for every detection on every request; a service that declares one and sends none makes its
+captures reprocess on every job.
 
 Concurrent writers: the writer takes no lock of its own. Its one `bulk_create` runs its INSERTs of up to
 200 rows in a single transaction, so the inserted rows stay locked until the last INSERT finishes. Rows
@@ -104,7 +117,7 @@ Capture and taxon vectors get their own tables of the same shape, not a polymorp
 on this one, so foreign keys, cascades and indexes stay exact. `ami/ml/models/embedding.py` has
 commented-out `SourceImageEmbedding` and `TaxonEmbedding` to start from:
 
-1. Subclass `BaseEmbedding` (algorithm, job, project, vector, timestamp) and add the target foreign
+1. Subclass `BaseEmbedding` (algorithm, job, project, vector) and add the target foreign
    key with `db_index=False`.
 2. Use a `BaseEmbeddingQuerySet` subclass as the manager.
 3. In the Meta, set `indexes, constraints = embedding_table_options("<target>", prefix=..., short_target=...)`:
