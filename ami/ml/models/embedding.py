@@ -9,7 +9,6 @@ import typing
 
 import pgvector.django
 from django.db import models
-from django.utils import timezone
 
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main.models import Detection
@@ -65,7 +64,6 @@ class BaseEmbedding(BaseModel):
     # Copied from the target, so project-scoped queries need no join.
     project = models.ForeignKey("main.Project", on_delete=models.CASCADE, related_name="%(class)ss", db_index=False)
     vector = pgvector.django.HalfVectorField(help_text="The feature vector, in half precision.")
-    timestamp = models.DateTimeField(default=timezone.now)
 
     class Meta:
         abstract = True

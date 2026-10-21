@@ -32,6 +32,8 @@ class AlgorithmAdmin(AdminBase):
         "pipelines",
         "task_type",
     ]
+    # Recorded from the processing service at registration; see Algorithm.embedding_dimensions.
+    readonly_fields = ["embedding_dimensions"]
 
 
 @admin.register(AlgorithmResult)
@@ -129,11 +131,11 @@ class AlgorithmCategoryMapAdmin(AdminBase):
 class DetectionEmbeddingAdmin(admin.ModelAdmin):
     """Read-only view of stored feature vectors: the vector itself is never loaded."""
 
-    list_display = ["id", "detection_id", "algorithm", "vector_length", "job", "project", "timestamp"]
+    list_display = ["id", "detection_id", "algorithm", "vector_length", "job", "project", "created_at"]
     list_select_related = ["algorithm", "job", "project"]
     list_filter = ["algorithm"]
     raw_id_fields = ["detection"]
-    fields = ("detection", "algorithm", "vector_length", "job", "project", "timestamp")
+    fields = ("detection", "algorithm", "vector_length", "job", "project", "created_at")
     readonly_fields = fields
     ordering = ["-id"]
     show_full_result_count = False

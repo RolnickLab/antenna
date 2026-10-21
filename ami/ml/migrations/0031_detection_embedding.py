@@ -2,7 +2,6 @@
 # line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1462.
 
 import django.db.models.deletion
-import django.utils.timezone
 import pgvector.django.halfvec
 from django.db import migrations, models
 
@@ -22,8 +21,8 @@ class Migration(migrations.Migration):
                 blank=True,
                 help_text=(
                     "The length of the feature vectors this algorithm returns, as declared by its processing "
-                    "service. Vectors of any other length are refused, because vectors of different lengths "
-                    "cannot be compared."
+                    "service and recorded when the service first registers it. Vectors of any other length are "
+                    "refused, because vectors of different lengths cannot be compared."
                 ),
                 null=True,
             ),
@@ -38,7 +37,6 @@ class Migration(migrations.Migration):
                     "vector",
                     pgvector.django.halfvec.HalfVectorField(help_text="The feature vector, in half precision."),
                 ),
-                ("timestamp", models.DateTimeField(default=django.utils.timezone.now)),
                 (
                     "algorithm",
                     models.ForeignKey(

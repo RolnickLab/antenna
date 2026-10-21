@@ -49,6 +49,9 @@ class AlgorithmSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
         ]
+        # Recorded from the processing service at registration. Changing it would make the stored vectors
+        # disagree with the length the service sends, so it is not editable here.
+        read_only_fields = ["embedding_dimensions"]
 
 
 class AlgorithmNestedSerializer(DefaultSerializer):

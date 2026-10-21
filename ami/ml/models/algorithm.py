@@ -265,8 +265,9 @@ class Algorithm(BaseModel):
         null=True,
         blank=True,
         help_text=(
-            "The length of the feature vectors this algorithm returns, as declared by its processing service. "
-            "Vectors of any other length are refused, because vectors of different lengths cannot be compared."
+            "The length of the feature vectors this algorithm returns, as declared by its processing service and "
+            "recorded when the service first registers it. Vectors of any other length are refused, because vectors "
+            "of different lengths cannot be compared."
         ),
     )
 
