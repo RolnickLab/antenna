@@ -487,12 +487,12 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
 
         return updated
 
-    def update_display_names(self, queryset: models.QuerySet | None = None):
-        """Update the display names of all taxa."""
+    def update_display_names(self, queryset: models.QuerySet):
+        """Update the display names of all taxa in queryset."""
 
         taxa = []
 
-        for taxon in queryset or self.get_queryset():
+        for taxon in queryset:
             taxon.display_name = taxon.get_display_name()
             taxa.append(taxon)
 
