@@ -43,6 +43,7 @@ class DataExport(BaseModel):
         related_models = {
             "collection_id": "main.SourceImageCollection",
             "taxa_list_id": "main.TaxaList",
+            "occurrence_set_id": "main.OccurrenceSet",
         }
         filters = self.filters or {}
         filters_display = {}

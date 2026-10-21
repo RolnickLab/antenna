@@ -8,7 +8,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
-from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
+from ami.main.models import Detection, Identification, Occurrence, Project, SourceImageCollection, Taxon
+from ami.main.test_occurrence_sets import make_listed_occurrence, make_set
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import (
     create_captures,
@@ -17,6 +18,8 @@ from ami.tests.fixtures.main import (
     group_images_into_events,
     setup_test_project,
 )
+from ami.users.models import User
+from ami.users.roles import Researcher
 
 logger = logging.getLogger(__name__)
 
@@ -551,3 +554,84 @@ class ExportNewFieldsTest(TestCase):
         ]
         for field in expected_fields:
             self.assertIn(field, headers, f"Missing CSV field: {field}")
+
+
+class ExportOccurrenceSetTest(TestCase):
+    """
+    An export scoped by an occurrence set holds exactly the set's members, in every format,
+    and only a set the export's project can use may be chosen. See #763.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="owner@example.com")
+        self.researcher = User.objects.create_user(email="researcher@example.com")
+        self.project = Project.objects.create(name="Export project", owner=self.owner, create_defaults=False)
+        self.other_project = Project.objects.create(name="Other project", owner=self.owner, create_defaults=False)
+        Researcher.assign_user(self.researcher, self.project)
+
+        self.members = [make_listed_occurrence(self.project) for _ in range(3)]
+        self.non_member = make_listed_occurrence(self.project)
+        self.occurrence_set = make_set("Evaluation set", [self.project], self.members)
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.researcher)
+
+    def exported_ids(self, format_type: str, filters: dict) -> list[int]:
+        data_export = DataExport.objects.create(
+            user=self.researcher, project=self.project, format=format_type, filters=filters
+        )
+        file_path = data_export.run_export().replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            if format_type == "occurrences_simple_csv":
+                ids = [int(row["id"]) for row in csv.DictReader(f)]
+            else:
+                ids = [row["id"] for row in json.load(f)]
+        default_storage.delete(file_path)
+        return ids
+
+    def post_export(self, filters: dict):
+        return self.client.post(
+            "/api/v2/exports/",
+            {"project": self.project.pk, "format": "occurrences_simple_csv", "filters": filters},
+            format="json",
+        )
+
+    def test_the_export_holds_exactly_the_sets_members(self):
+        expected = sorted(occurrence.pk for occurrence in self.members)
+        for format_type in ("occurrences_simple_csv", "occurrences_api_json"):
+            with self.subTest(format=format_type):
+                ids = self.exported_ids(format_type, {"occurrence_set_id": self.occurrence_set.pk})
+                self.assertEqual(sorted(ids), expected)
+
+    def test_the_export_names_the_set_it_was_scoped_by(self):
+        response = self.post_export({"occurrence_set_id": self.occurrence_set.pk})
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            response.data["filters_display"],
+            {"occurrence_set": {"id": self.occurrence_set.pk, "name": "Evaluation set"}},
+        )
+        self.assertEqual(response.data["record_count"], len(self.members))
+
+    def test_a_public_set_can_be_exported(self):
+        public_set = make_set("Public set", [], self.members[:1])
+
+        response = self.post_export({"occurrence_set_id": public_set.pk})
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["record_count"], 1)
+
+    def test_a_set_the_project_cannot_use_is_refused(self):
+        other_set = make_set("Other set", [self.other_project], [make_listed_occurrence(self.other_project)])
+        cases = [
+            (other_set.pk, "Occurrence set does not exist in the selected project."),
+            (999_999, "Occurrence set does not exist in the selected project."),
+            ("abc", "Occurrence set id must be a positive integer."),
+        ]
+        for value, message in cases:
+            with self.subTest(occurrence_set_id=value):
+                response = self.post_export({"occurrence_set_id": value})
+                self.assertEqual(response.status_code, 400, response.data)
+                # A non-field error is what the export form shows; it has no `filters` field.
+                self.assertEqual(response.data, {"non_field_errors": [message]})
+                self.assertFalse(DataExport.objects.exists())

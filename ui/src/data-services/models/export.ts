@@ -12,6 +12,13 @@ export type ServerExportType = (typeof SERVER_EXPORT_TYPES)[number]
 
 export type ServerExport = any // TODO: Update this type
 
+// A filter on a related object is shown by name, for example a capture set.
+type ServerFilterDisplayValue =
+  | { id: number | string; name: string }
+  | string
+  | number
+  | null
+
 export class Export extends Entity {
   public readonly job?: Job
 
@@ -43,10 +50,12 @@ export class Export extends Entity {
     return this._data.file_size_display
   }
   get filtersLabels(): string[] {
-    const filtersObj = this._data.filters || {}
+    const filtersObj: { [key: string]: ServerFilterDisplayValue } =
+      this._data.filters_display || this._data.filters || {}
 
     return Object.entries(filtersObj).map(([_key, _value]) => {
-      const value = _value as string
+      const value =
+        _value !== null && typeof _value === 'object' ? _value.name : _value
       const key = _key.replace('collection', 'capture set') // TODO: Temporary fix until backend terminology is updated
 
       return `${snakeCaseToSentenceCase(key)}: ${value}`
