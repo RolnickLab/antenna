@@ -886,12 +886,6 @@ class OccurrenceSetAdmin(admin.ModelAdmin[OccurrenceSet]):
     # A select widget would load every occurrence in the database.
     raw_id_fields = ("occurrences",)
 
-    def get_exclude(self, request: HttpRequest, obj: OccurrenceSet | None = None):
-        # Occurrences are chosen when a set is created and not changed afterwards. See #763.
-        if obj is not None:
-            return ("occurrences",)
-        return super().get_exclude(request, obj)
-
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return (
             super()

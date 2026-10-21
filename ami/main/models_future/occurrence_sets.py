@@ -1,5 +1,5 @@
 """
-Occurrence sets: a named, fixed list of occurrences, and its queryset.
+Occurrence sets: named groups of occurrences that projects keep and use again.
 
 The model is declared here but stays in the ``main`` app. Related models are referenced by
 string label so this module never imports ``ami.main.models`` at import time, since
@@ -20,45 +20,42 @@ if TYPE_CHECKING:
 
 class OccurrenceSetQuerySet(BaseQuerySet):
     def for_project(self, project: "Project") -> "OccurrenceSetQuerySet":
-        """Sets this project can use: its own, plus public sets that belong to no project."""
+        """Return the sets a project can use: its own sets and the public sets."""
         return self.filter(models.Q(projects=project) | models.Q(projects__isnull=True)).distinct()
 
     def visible_for_user(self, user: User | AnonymousUser) -> "OccurrenceSetQuerySet":
         """
-        Project sets follow their project's visibility; public sets are visible to everyone.
+        Return the sets this user may see.
 
-        The inherited filter keeps a row only if it reaches a project the user may see, which
-        a set with no project never does, so without this a public set would be hidden from
-        everyone except superusers.
+        A project set is visible when its project is visible to the user. A public set has
+        no project and is visible to everyone. The base queryset keeps only rows linked to a
+        visible project, so it would hide every public set; this adds them back. See #1424.
         """
         visible = super().visible_for_user(user)
         return self.filter(models.Q(pk__in=visible.values("pk")) | models.Q(projects__isnull=True)).distinct()
 
     def with_occurrences_count(self) -> "OccurrenceSetQuerySet":
-        # distinct=True because visible_for_user() joins through projects, which repeats each
-        # membership row once per project the set belongs to.
+        # Count distinct occurrences: the filters for public sets join the projects table,
+        # which repeats each row once for each project of the set.
         return self.annotate(occurrences_count=models.Count("occurrences", distinct=True))
 
 
 @final
 class OccurrenceSet(BaseModel):
     """
-    A named, fixed list of occurrences, kept so the same ones can be used again later.
+    A named group of occurrences that a project keeps and uses again.
 
-    Membership is stored rather than described by a filter, because a filter answers
-    differently as data arrives. Anything that compares results over time, such as scoring
-    two classifiers, is only meaningful if both saw the same occurrences.
+    A set can narrow the occurrence list, scope an export, or be the data a classifier is
+    scored or trained on. Its members are stored, one row per occurrence, so a set can be
+    used later without repeating the work of choosing them. See #763 for the kinds of set
+    that are planned, such as sets people edit by hand and sets made from saved filters.
 
-    Occurrences are chosen when a set is created; neither the API nor the Django admin adds
-    any afterwards. Deleting or merging an occurrence does remove it from every set, through
-    the many-to-many cascade (for example the ``cleanup_null_only_occurrences`` command, or
-    merging tracks). What to do about that is left to a follow-up ticket under #763.
-
-    A set with no projects is public and can be used by every project, following how
-    ``TaxaList`` treats a list with no project. Public sets are created in the Django admin.
-    Deleting a project deletes the sets that belonged only to it, so they never become public
-    (see ``ami.main.signals``).
+    A set belongs to one or more projects. A set with no project is public and every
+    project can use it, as with taxa lists. Only the Django admin makes public sets.
     """
+
+    reference_type = "occurrence_set"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -67,7 +64,7 @@ class OccurrenceSet(BaseModel):
         "main.Project",
         related_name="occurrence_sets",
         blank=True,
-        help_text="Projects this set belongs to. A set with none is available everywhere.",
+        help_text="Projects that use this set. A set with no project is public and every project can use it.",
     )
 
     objects = OccurrenceSetQuerySet.as_manager()
@@ -81,9 +78,10 @@ class OccurrenceSet(BaseModel):
 
     def get_project(self) -> "Project | None":
         """
-        The first of the set's projects governs its permissions; None for a public set.
+        Return the project whose permissions apply to this set, or None for a public set.
 
-        ``BaseModel.check_permission`` refuses every action without a project, including
-        retrieve, so a public set cannot be read in detail or changed through the API.
+        A set shared by several projects uses the one that was created first. Without a
+        project, ``BaseModel.check_permission`` refuses every action, so the API cannot
+        change a public set.
         """
-        return self.projects.first()
+        return self.projects.order_by("pk").first()
