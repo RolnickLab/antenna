@@ -1,7 +1,6 @@
 """
 Occurrence sets through the API: creating, listing and choosing them, and filtering the
-occurrence list by one. Most of these tests are about what the API refuses, because a
-set is only useful if its list of occurrences does not move. See #763.
+occurrence list by one. See #763.
 """
 
 import datetime
@@ -183,14 +182,14 @@ class TestMembershipIsFrozen(OccurrenceSetAPITestCase):
         self.set = make_set("Blind set", [self.project], self.occurrences)
         self.detail_url = f"{SETS_URL}{self.set.pk}/"
 
-    def test_the_occurrences_cannot_be_changed(self):
+    def test_patch_does_not_change_the_occurrences(self):
         self.client.force_authenticate(user=self.curator)
         response = self.client.patch(self.detail_url, {"occurrence_ids": [self.occurrences[0].pk]}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(self.set.occurrences.count(), 3)
 
-    def test_the_project_cannot_be_changed(self):
+    def test_patch_does_not_change_the_project(self):
         MLDataManager.assign_user(self.curator, self.other_project)
         self.client.force_authenticate(user=self.curator)
         response = self.client.patch(self.detail_url, {"project_id": self.other_project.pk}, format="json")
@@ -199,7 +198,7 @@ class TestMembershipIsFrozen(OccurrenceSetAPITestCase):
         self.assertEqual(list(self.set.projects.all()), [self.project])
 
     def test_there_is_no_put(self):
-        """A full replace would carry the occurrences with it."""
+        """A full replace would send the occurrences, which are set on create only."""
         self.client.force_authenticate(user=self.curator)
         response = self.client.put(self.detail_url, {"name": "Replaced"}, format="json")
 

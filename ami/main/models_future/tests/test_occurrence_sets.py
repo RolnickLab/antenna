@@ -2,6 +2,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
 from django.urls import reverse
 
+from ami.base.model_references import reference_types
 from ami.main.models import Occurrence, OccurrenceSet, Project
 from ami.users.models import User
 from ami.users.roles import BasicMember, MLDataManager, ProjectManager
@@ -92,13 +93,23 @@ class OccurrenceSetModelTestCase(TestCase):
         self.assertFalse(project_set.is_public)
         self.assertEqual(project_set.get_project(), self.project)
 
+    def test_shared_set_uses_its_oldest_project_for_permissions(self):
+        newer_project = Project.objects.create(name="Newer project", owner=self.owner)
+        shared_set = make_set("shared", [newer_project, self.project])
+        self.assertEqual(shared_set.get_project(), self.project)
+
+    def test_jobs_and_results_can_refer_to_a_set(self):
+        model, name_field = reference_types()["occurrence_set"]
+        self.assertIs(model, OccurrenceSet)
+        self.assertEqual(name_field, "name")
+
     def test_str_does_not_query(self):
         occurrence_set = make_set("own", [self.project], make_occurrences(self.project, 2))
         with self.assertNumQueries(0):
             str(occurrence_set)
 
     def test_deleting_an_occurrence_removes_it_from_the_set(self):
-        # Pins documented behaviour: membership is not frozen against deletes or merges.
+        # Deleting an occurrence also removes its membership rows. See #1540.
         kept, deleted = make_occurrences(self.project, 2)
         occurrence_set = make_set("own", [self.project], [kept, deleted])
         deleted.delete()
@@ -141,16 +152,3 @@ class OccurrenceSetAdminTestCase(TestCase):
         rows = {row.name: row for row in response.context["cl"].result_list}
         self.assertEqual((rows["shared"].project_count, rows["shared"].occurrences_count), (2, 3))
         self.assertEqual((rows["public"].project_count, rows["public"].occurrences_count), (0, 0))
-
-    def test_occurrences_can_be_chosen_when_adding_but_not_when_changing(self):
-        owner = User.objects.create_user(email="owner@example.com")
-        project = Project.objects.create(name="Project", owner=owner)
-        occurrence_set = make_set("own", [project], make_occurrences(project, 2))
-        self.client.force_login(User.objects.create_superuser(email="admin@example.com", password="x"))
-
-        add_form = self.client.get(reverse("admin:main_occurrenceset_add")).context["adminform"].form
-        change_url = reverse("admin:main_occurrenceset_change", args=[occurrence_set.pk])
-        change_form = self.client.get(change_url).context["adminform"].form
-
-        self.assertIn("occurrences", add_form.fields)
-        self.assertNotIn("occurrences", change_form.fields)

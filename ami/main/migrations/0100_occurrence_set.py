@@ -89,7 +89,7 @@ class Migration(migrations.Migration):
                     "projects",
                     models.ManyToManyField(
                         blank=True,
-                        help_text="Projects this set belongs to. A set with none is available everywhere.",
+                        help_text="Projects that use this set. A set with no project is public and every project can use it.",
                         related_name="occurrence_sets",
                         to="main.project",
                     ),

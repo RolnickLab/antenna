@@ -951,19 +951,20 @@ class ChoicesPagination(LimitOffsetPaginationWithPermissions):
 
 class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
     """
-    Named, fixed lists of occurrences, so the same ones can be used again later.
+    Occurrence sets: named groups of occurrences that a project uses again.
 
-    Occurrences are chosen when a set is created; there is no endpoint to add or remove
-    one afterwards, and ``occurrence_ids`` is refused on update. Deleting or merging an
-    occurrence still removes it from every set. A public set, one with no project, is
-    offered to every project and can be read by anyone, but cannot be changed here,
-    because no project's roles govern it. Public sets are made in the Django admin. See #763.
+    A set is created from a list of occurrence ids in one project. After that, the API
+    changes its name and description, and deletes it. Adding and removing occurrences comes
+    with curated sets (#1538), and sets made from saved filters with #1539.
+
+    A public set has no project. Every project is offered it and anyone can read it, but
+    the API cannot change it, because no project's roles apply to it. See #763.
     """
 
     queryset = OccurrenceSet.objects.all()
     serializer_class = OccurrenceSetSerializer
     permission_classes = [OccurrenceSetPermission]
-    # No PUT: a full replace would carry the occurrences with it.
+    # No PUT: a full replace would send the occurrences, which are set on create only.
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     ordering_fields = ["id", "created_at", "updated_at", "name", "occurrences_count"]
     # Recently updated first, as for capture sets.
