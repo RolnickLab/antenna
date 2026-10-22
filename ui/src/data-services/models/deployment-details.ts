@@ -15,6 +15,8 @@ export interface DeploymentFieldValues {
   dataSourceRegex?: string | null
   description: string
   deviceId?: string
+  frameLongSideMm?: number | null
+  frameShortSideMm?: number | null
   name: string
   image?: File | null
   latitude: number
@@ -74,6 +76,14 @@ export class DeploymentDetails extends Deployment {
 
   get dataSourceRegex(): string | null {
     return this._deployment.data_source_regex
+  }
+
+  get frameLongSideMm(): number | undefined {
+    return this._deployment.frame_long_side_mm ?? undefined
+  }
+
+  get frameShortSideMm(): number | undefined {
+    return this._deployment.frame_short_side_mm ?? undefined
   }
 
   get site(): Entity | undefined {
