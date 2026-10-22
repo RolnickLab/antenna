@@ -198,57 +198,6 @@ class ProjectPipelineConfigPermission(ObjectPermission):
         return super().has_permission(request, view)
 
 
-class OccurrenceSetPermission(ObjectPermission):
-    """
-    Permission for the occurrence set route, where create has no saved object to check.
-
-    Creating a set is gated on ``create_occurrenceset`` in the project the payload names.
-    Reading needs no check here: the queryset already hides sets of draft projects the
-    caller cannot see, and a public set may be read by anyone. Editing a public set is
-    refused, because no project's roles govern it.
-    """
-
-    # Detail actions that change a set, and the permission each needs in its project.
-    EDIT_PERMISSIONS = {"update": "update", "partial_update": "update", "destroy": "delete"}
-
-    def has_permission(self, request, view):
-        if view.action != "create":
-            return super().has_permission(request, view)
-
-        from rest_framework import serializers
-
-        from ami.base.serializers import SingleParamSerializer
-        from ami.main.models import Project
-
-        if not request.user or not request.user.is_authenticated:
-            return False
-
-        # Read from the body only, never the query string, so the project checked here is
-        # the one the serializer adds the set to.
-        data = request.data if isinstance(request.data, dict) else {}
-        project_id = SingleParamSerializer[int].clean(
-            param_name="project_id",
-            field=serializers.IntegerField(required=True, min_value=1),
-            data=data,
-        )
-        project = Project.objects.filter(pk=project_id).first()
-        if project is None:
-            raise serializers.ValidationError({"project_id": [f"Project {project_id} does not exist."]})
-        return request.user.has_perm(Project.Permissions.CREATE_OCCURRENCE_SET, project)
-
-    def has_object_permission(self, request, view, obj):
-        if view.action == "retrieve":
-            return True
-        # A set shared by several projects is governed by the project in the request when
-        # it belongs to that project, so this check agrees with the user_permissions on its
-        # row in that project's list. Otherwise the set's own project governs. See #1120.
-        verb = self.EDIT_PERMISSIONS.get(view.action)
-        project = view.get_active_project() if verb else None
-        if project is not None and obj.projects.filter(pk=project.pk).exists():
-            return request.user.has_perm(f"{verb}_{obj._meta.model_name}", project)
-        return super().has_object_permission(request, view, obj)
-
-
 class UserMembershipPermission(ObjectPermission):
     """
     Custom permission for UserProjectMembershipViewSet.

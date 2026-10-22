@@ -7,6 +7,7 @@ from rest_framework_nested import routers
 from ami.exports import views as export_views
 from ami.jobs import views as job_views
 from ami.labelstudio import views as labelstudio_views
+from ami.main.api import occurrence_set as occurrence_set_views
 from ami.main.api import views
 from ami.ml import views as ml_views
 from ami.users.api.views import RolesAPIView, UserProjectMembershipViewSet
@@ -42,7 +43,7 @@ router.register(r"detections", views.DetectionViewSet)
 # Register before r"occurrences" — see docs/claude/reference/api-stats-pattern.md (guarded by regression test).
 router.register(r"occurrences/stats", views.OccurrenceStatsViewSet, basename="occurrence-stats")
 # Also before r"occurrences", or its detail route would take "sets" as a pk.
-router.register(r"occurrences/sets", views.OccurrenceSetViewSet)
+router.register(r"occurrences/sets", occurrence_set_views.OccurrenceSetViewSet)
 router.register(r"occurrences", views.OccurrenceViewSet)
 router.register(r"taxa/lists", views.TaxaListViewSet)
 # NESTED: /taxa/lists/{taxalist_id}/taxa/

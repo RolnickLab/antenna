@@ -1,7 +1,6 @@
 import collections
 import datetime
 
-from django.db import transaction
 from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
@@ -28,7 +27,6 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
-    OccurrenceSet,
     Page,
     Project,
     ProjectQuerySet,
@@ -1452,104 +1450,6 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
         data = super().to_representation(instance)
         # Don't return the kwargs if they are empty
         return {key: value for key, value in data.items() if value is not None}
-
-
-class OccurrenceSetNestedSerializer(DefaultSerializer):
-    """
-    What a picker needs to name an occurrence set.
-
-    A set can belong to several projects, so permissions are resolved against the
-    project in the request, as for taxa lists. A set read without ``project_id`` uses
-    its own project, as ``check_permission`` does, so a public set offers no actions.
-    """
-
-    class Meta:
-        model = OccurrenceSet
-        fields = ["id", "details", "name"]
-
-    def get_permissions(self, instance, instance_data):
-        request = self.context["request"]
-        # One child serializer serves every row of a list, so the project and the
-        # caller's permissions on it are looked up once per request, not per row.
-        if not hasattr(self, "_active_project"):
-            self._active_project = get_active_project(request=request)
-            self._project_perms = None
-            if self._active_project is not None and not request.user.is_superuser:
-                self._project_perms = set(get_perms(request.user, self._active_project))
-        if self._active_project is None:
-            return add_m2m_object_permissions(request.user, instance, instance.get_project(), instance_data)
-        return add_m2m_object_permissions(
-            request.user, instance, self._active_project, instance_data, project_perms=self._project_perms
-        )
-
-
-class OccurrenceSetSerializer(OccurrenceSetNestedSerializer):
-    """
-    An occurrence set, with the project and occurrences it is created with.
-
-    ``project_id`` and ``occurrence_ids`` are accepted on create only. After that, the
-    API changes the name and description. Editing a set's occurrences comes with curated
-    sets (#1538); until then a different group of occurrences is a new set.
-    """
-
-    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), write_only=True)
-    # Plain integers rather than PrimaryKeyRelatedField(many=True), which runs one query
-    # per id. They are checked against the project in one query in validate().
-    occurrence_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), allow_empty=False, write_only=True
-    )
-    occurrences_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = OccurrenceSet
-        fields = [
-            "id",
-            "details",
-            "name",
-            "description",
-            "project_id",
-            "occurrence_ids",
-            "occurrences_count",
-            "created_at",
-            "updated_at",
-        ]
-
-    def get_occurrences_count(self, obj) -> int:
-        count = getattr(obj, "occurrences_count", None)
-        return count if count is not None else obj.occurrences.count()
-
-    def validate(self, attrs):
-        if self.instance is not None:
-            # The API sets the project and occurrences on create only. A scoring run must
-            # not see its set change under it, so edits wait for curated sets (#1538).
-            create_only = [field for field in ("project_id", "occurrence_ids") if field in attrs]
-            if create_only:
-                raise serializers.ValidationError(
-                    {field: "Chosen when a set is created. Create a new set instead." for field in create_only}
-                )
-            return attrs
-
-        project = attrs["project_id"]
-        requested = set(attrs["occurrence_ids"])
-        found = set(Occurrence.objects.filter(project=project, pk__in=requested).values_list("pk", flat=True))
-        missing = sorted(requested - found)
-        if missing:
-            raise serializers.ValidationError(
-                {"occurrence_ids": f"Not occurrences in project {project.pk}: {missing[:10]}"}
-            )
-        attrs["occurrence_ids"] = sorted(requested)
-        return attrs
-
-    @transaction.atomic
-    def create(self, validated_data):
-        project = validated_data.pop("project_id")
-        occurrence_ids = validated_data.pop("occurrence_ids")
-        occurrence_set = OccurrenceSet.objects.create(**validated_data)
-        occurrence_set.projects.add(project)
-        occurrence_set.occurrences.add(*occurrence_ids)
-        # Saves a COUNT when the response is rendered; these ids were all just added.
-        occurrence_set.occurrences_count = len(occurrence_ids)
-        return occurrence_set
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
