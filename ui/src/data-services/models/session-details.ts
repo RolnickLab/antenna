@@ -23,6 +23,14 @@ export class SessionDetails extends Session {
     return this._firstCapture
   }
 
+  get deviceLabel(): string | undefined {
+    return this._event.deployment.device?.name
+  }
+
+  get researchSiteLabel(): string | undefined {
+    return this._event.deployment.research_site?.name
+  }
+
   get detectionsMaxCount() {
     return this._event.stats.detections_max_count
   }

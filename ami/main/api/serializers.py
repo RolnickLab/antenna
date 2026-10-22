@@ -272,6 +272,31 @@ class DeploymentNestedSerializer(DefaultSerializer):
         ]
 
 
+class DeviceReferenceSerializer(DeviceNestedSerializer):
+    # A read-only reference, so skip the per-object permission queries.
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+
+class SiteReferenceSerializer(SiteNestedSerializer):
+    # A read-only reference, so skip the per-object permission queries.
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+
+class DeploymentNestedSerializerWithDeviceAndSite(DeploymentNestedSerializer):
+    device = DeviceReferenceSerializer(read_only=True)
+    research_site = SiteReferenceSerializer(read_only=True)
+
+    class Meta(DeploymentNestedSerializer.Meta):
+        fields = DeploymentNestedSerializer.Meta.fields + [
+            "device",
+            "research_site",
+        ]
+
+
 class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
     class Meta:
         model = Deployment
@@ -1701,7 +1726,7 @@ class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):
 
 
 class EventSerializer(DefaultSerializer):
-    deployment = DeploymentNestedSerializer(
+    deployment = DeploymentNestedSerializerWithDeviceAndSite(
         read_only=True,
     )
     deployment_id = serializers.PrimaryKeyRelatedField(

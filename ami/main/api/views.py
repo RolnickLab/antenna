@@ -473,7 +473,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             duration=models.F("end") - models.F("start"),
-        ).select_related("deployment", "project")
+        ).select_related("deployment", "deployment__device", "deployment__research_site", "project")
 
         if self.action == "list":
             num_example_captures = 1

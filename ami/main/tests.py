@@ -2360,6 +2360,45 @@ class TestCapturesStationAndDateFilters(APITestCase):
         )
 
 
+class TestSessionDetailStationDeviceAndSite(APITestCase):
+    """The session detail names its station's device type and research site, or null when unset."""
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(self.deployment, num_nights=1, images_per_night=2)
+        self.user = User.objects.create_user(email="session-station@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def _station(self) -> tuple[dict, int]:
+        """Return the session detail's station and the number of queries the request made."""
+        from cachalot.api import cachalot_disabled
+        from django.test.utils import CaptureQueriesContext
+
+        event = self.deployment.events.get()
+        with cachalot_disabled(), CaptureQueriesContext(connection) as queries:
+            response = self.client.get(f"/api/v2/events/{event.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["deployment"], len(queries)
+
+    def test_device_and_site_on_session_detail(self):
+        self.deployment.device = None
+        self.deployment.research_site = None
+        self.deployment.save()
+        station, queries_without = self._station()
+        self.assertIsNone(station["device"])
+        self.assertIsNone(station["research_site"])
+
+        self.deployment.device = Device.objects.create(name="Device A", project=self.project)
+        self.deployment.research_site = Site.objects.create(name="Site A", project=self.project)
+        self.deployment.save()
+        station, queries_with = self._station()
+        self.assertEqual(station["device"]["name"], "Device A")
+        self.assertEqual(station["research_site"]["name"], "Site A")
+        # Device and site come from joins on the session query, not extra queries.
+        self.assertEqual(queries_with, queries_without)
+
+
 class TestCapturesLastProcessed(APITestCase):
     """
     The captures list annotates and can order by ``last_processed`` — the most
