@@ -101,3 +101,24 @@ class TestUtils(TestCase):
 
         _, kwargs = mocked.call_args
         self.assertEqual(kwargs["timeout"], (2.0, 10.0))
+
+
+class TestNoQueryCache(TestCase):
+    def test_previous_query_cache_state_is_restored_after_an_exception(self):
+        from cachalot.api import LOCAL_STORAGE
+
+        from ami.utils.query_cache import no_query_cache
+
+        @no_query_cache()
+        def failing_task():
+            self.assertFalse(LOCAL_STORAGE.cachalot_enabled)
+            raise RuntimeError("task failed")
+
+        self.addCleanup(setattr, LOCAL_STORAGE, "cachalot_enabled", getattr(LOCAL_STORAGE, "cachalot_enabled", True))
+        # The previous state comes back in both directions, so nested use leaves an outer block's cache off.
+        for previous in (True, False):
+            with self.subTest(previous=previous):
+                LOCAL_STORAGE.cachalot_enabled = previous
+                with self.assertRaises(RuntimeError):
+                    failing_task()
+                self.assertEqual(LOCAL_STORAGE.cachalot_enabled, previous)
