@@ -1,10 +1,5 @@
 """
 The Identification model and any managers/querysets associated with it.
-
-Models are declared here but remain in the ``main`` app. Related models are
-referenced by string label, or imported inside the method that needs them, so
-this module never imports ``ami.main.models`` at import time — ``main.models``
-imports this one.
 """
 
 import logging
