@@ -2293,6 +2293,73 @@ class TestCapturesProcessedFilter(APITestCase):
         self.assertEqual(self._count("&has_detections=false"), 2)
 
 
+class TestCapturesStationAndDateFilters(APITestCase):
+    """
+    The captures list filters by the station's device type (``deployment__device``),
+    by its research site (``deployment__research_site``) and by capture date
+    (``date_start`` / ``date_end``, both inclusive, in the station's local time).
+
+    Fixture: station A (device A, site A) has captures at 2024-06-01 23:30 and
+    2024-06-02 00:30; station B (device B, no site) has one at 2024-06-03 22:00.
+    """
+
+    def setUp(self) -> None:
+        self.project, deployment_a = setup_test_project(reuse=False)
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.unused_device = Device.objects.create(name="Unused device", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.unused_site = Site.objects.create(name="Unused site", project=self.project)
+        deployment_a.device = self.device_a
+        deployment_a.research_site = self.site_a
+        deployment_a.save()
+        deployment_b = Deployment.objects.create(
+            name="Station B", project=self.project, device=self.device_b, data_source=deployment_a.data_source
+        )
+        for deployment, timestamp in [
+            (deployment_a, datetime.datetime(2024, 6, 1, 23, 30)),
+            (deployment_a, datetime.datetime(2024, 6, 2, 0, 30)),
+            (deployment_b, datetime.datetime(2024, 6, 3, 22, 0)),
+        ]:
+            SourceImage.objects.create(deployment=deployment, timestamp=timestamp, path=f"{timestamp:%Y%m%d%H%M}.jpg")
+        self.user = User.objects.create_user(email="device-date-filter@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _get(self, query: str):
+        return self.client.get(f"{self.list_url}{query}")
+
+    def _count(self, query: str) -> int:
+        response = self._get(query)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return response.json()["count"]
+
+    def test_device_filter(self):
+        self.assertEqual(self._count(f"&deployment__device={self.device_a.pk}"), 2)
+        self.assertEqual(self._count(f"&deployment__device={self.device_b.pk}"), 1)
+        self.assertEqual(self._count(f"&deployment__device={self.unused_device.pk}"), 0)
+        self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_research_site_filter(self):
+        self.assertEqual(self._count(f"&deployment__research_site={self.site_a.pk}"), 2)
+        self.assertEqual(self._count(f"&deployment__research_site={self.unused_site.pk}"), 0)
+        self.assertEqual(self._get("&deployment__research_site=abc").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_date_range_filter_includes_both_end_dates(self):
+        # The end date includes captures up to midnight; the start date excludes the evening before.
+        self.assertEqual(self._count("&date_end=2024-06-01"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-02"), 2)
+        self.assertEqual(self._count("&date_start=2024-06-02&date_end=2024-06-02"), 1)
+        self.assertEqual(self._count("&date_start=2025-01-01"), 0)
+
+    def test_date_range_filter_rejects_invalid_dates(self):
+        self.assertEqual(self._get("&date_start=not-a-date").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self._get("&date_start=2024-06-03&date_end=2024-06-01").status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+
 class TestCapturesLastProcessed(APITestCase):
     """
     The captures list annotates and can order by ``last_processed`` — the most

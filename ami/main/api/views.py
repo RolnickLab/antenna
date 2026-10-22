@@ -600,6 +600,28 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+class SourceImageDateFilter(filters.BaseFilterBackend):
+    """
+    Filter captures to a range of capture dates, both ends inclusive.
+
+    Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
+    A half-open timestamp range, rather than ``timestamp__date``, keeps the timestamp indexes usable.
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        cleaned_data = DateRangeFilterSerializer(data=request.query_params).clean()
+        start_date = cleaned_data.get("date_start")
+        end_date = cleaned_data.get("date_end")
+
+        if start_date:
+            queryset = queryset.filter(timestamp__gte=datetime.datetime.combine(start_date, datetime.time.min))
+        if end_date:
+            next_day = end_date + datetime.timedelta(days=1)
+            queryset = queryset.filter(timestamp__lt=datetime.datetime.combine(next_day, datetime.time.min))
+
+        return queryset
+
+
 class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
@@ -615,9 +637,12 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
+    filter_backends = DefaultViewSetMixin.filter_backends + [SourceImageDateFilter]
     filterset_fields = [
         "event",
         "deployment",
+        "deployment__device",
+        "deployment__research_site",
         "deployment__project",
         "collections",
         "project",

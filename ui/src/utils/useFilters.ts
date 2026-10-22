@@ -90,7 +90,7 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     },
   },
   {
-    label: 'Device',
+    label: translate(STRING.FIELD_LABEL_DEVICE),
     field: 'deployment__device',
   },
   {

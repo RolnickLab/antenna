@@ -65,8 +65,12 @@ export const Captures = () => {
       <div className="space-y-6">
         <FilterSection defaultOpen>
           <FilterControl field="deployment" />
+          <FilterControl field="deployment__device" />
+          <FilterControl field="deployment__research_site" />
           <FilterControl field="collections" />
           <FilterControl field="processed" />
+          <FilterControl field="date_start" />
+          <FilterControl field="date_end" />
         </FilterSection>
       </div>
       <div className="w-full overflow-hidden">
