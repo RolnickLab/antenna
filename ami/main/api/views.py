@@ -30,7 +30,7 @@ from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
-from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
+from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
 from ami.main.api.occurrence_history.timeline import occurrence_timeline
@@ -38,6 +38,7 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.main.occurrence_filters import OccurrenceFilterSet
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.fields import url_boolean_param
@@ -1244,251 +1245,6 @@ class CustomTaxonFilter(filters.BaseFilterBackend):
             return queryset
 
 
-class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
-    """
-    Find an occurrence that was determined to be a taxon or andy of the taxon's children.
-    """
-
-    # "determination" is what we are filtering by, but "taxon" is also a valid query param for convenience
-    # and consistency with the TaxonViewSet.
-    query_params = ["determination", "taxon"]
-
-    def filter_queryset(self, request, queryset, view):
-        taxon = self.get_filter_taxon(request, query_params=self.query_params)
-        if taxon:
-            # Here the queryset is the Occurrence queryset.
-            # The literal parents_json containment (constant RHS) is what the GIN index from
-            # migration 0087 serves — this hierarchical taxon filter is the index's main consumer.
-            return queryset.filter(
-                models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.pk}])
-            )
-        else:
-            return queryset
-
-
-class OccurrenceCollectionFilter(filters.BaseFilterBackend):
-    """
-    Filter occurrences by the capture set their detections' captures belong to.
-    """
-
-    query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
-
-    def filter_queryset(self, request, queryset, view):
-        collection_id = None
-        for param in self.query_params:
-            collection_id = IntegerField(required=False).clean(request.query_params.get(param))
-            if collection_id:
-                break
-        if collection_id:
-            # Here the queryset is the Occurrence queryset
-            return queryset.filter(detections__source_image__collections=collection_id)
-        else:
-            return queryset
-
-
-class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
-    """
-    Filter occurrences by any algorithm that produced a result on them.
-
-    Matches an occurrence when one of its detections was made by the given
-    algorithm (detectors) or one of its classifications came from it
-    (classifiers and post-processing algorithms), so every algorithm listed
-    by ``Algorithm.objects.used_in_project()`` can be filtered here.
-
-    Accepts a list of algorithm ids to filter by (``algorithm``) or exclude
-    by (``not_algorithm``). Both are supported and may be combined.
-    """
-
-    query_param = "algorithm"
-    query_param_exclusive = f"not_{query_param}"
-
-    def filter_queryset(self, request, queryset, view):
-        algorithm_ids = request.query_params.getlist(self.query_param)
-        algorithm_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
-
-        if algorithm_ids:
-            queryset = queryset.processed_by_algorithm(algorithm_ids)
-        if algorithm_ids_exclusive:
-            queryset = queryset.not_processed_by_algorithm(algorithm_ids_exclusive)
-
-        return queryset
-
-
-class OccurrenceVerified(filters.BaseFilterBackend):
-    """
-    Filter occurrences that have been or not been identified by any user.
-    """
-
-    query_param = "verified"
-
-    def filter_queryset(self, request, queryset, view):
-        # Check presence of the query param before attempting to cast None to a boolean
-        if self.query_param in request.query_params:
-            verified = BooleanField(required=False).clean(request.query_params.get(self.query_param))
-            if verified:
-                queryset = queryset.filter(identifications__isnull=False)
-            else:
-                queryset = queryset.filter(identifications__isnull=True)
-
-        return queryset
-
-
-class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
-    """
-    Filter occurrences that have been or not been identified by the current user.
-    """
-
-    query_param = "verified_by_me"
-
-    def filter_queryset(self, request: Request, queryset, view):
-        if self.query_param in request.query_params and request.user and request.user.is_authenticated:
-            verified_by_me = BooleanField(required=False).clean(request.query_params.get(self.query_param))
-            if verified_by_me:
-                queryset = queryset.filter(identifications__user=request.user)
-            else:
-                queryset = queryset.exclude(identifications__user=request.user)
-
-        return queryset
-
-
-class DateRangeFilterSerializer(FilterParamsSerializer):
-    date_start = serializers.DateField(required=False)
-    date_end = serializers.DateField(required=False)
-
-    def validate(self, data):
-        """
-        Additionally validate that the start date is before the end date.
-        """
-        start_date = data.get("date_start")
-        end_date = data.get("date_end")
-        if start_date and end_date and start_date > end_date:
-            raise api_exceptions.ValidationError({"date_start": "Start date must be before end date"})
-        return data
-
-
-class OccurrenceDateFilter(filters.BaseFilterBackend):
-    """
-    Filter occurrences within a date range that their detections were observed.
-    """
-
-    def filter_queryset(self, request, queryset, view):
-        # Validate and clean the query params. They should be in ISO format.
-        cleaned_data = DateRangeFilterSerializer(data=request.query_params).clean()
-
-        # Access the validated dates
-        start_date = cleaned_data.get("date_start")
-        end_date = cleaned_data.get("date_end")
-
-        if start_date:
-            queryset = queryset.filter(detections__timestamp__date__gte=start_date)
-        if end_date:
-            queryset = queryset.filter(detections__timestamp__date__lte=end_date)
-
-        return queryset
-
-
-class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
-    """
-    Filters occurrences based on a TaxaList.
-
-    Queries for all occurrences where the determination taxon is either:
-    - Directly in the requested TaxaList.
-    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
-
-    """
-
-    query_param = "taxa_list_id"
-    query_param_exclusive = f"not_{query_param}"
-
-    def filter_queryset(self, request, queryset, view):
-        taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
-        taxalist_id_exclusive = IntegerField(required=False).clean(
-            request.query_params.get(self.query_param_exclusive)
-        )
-
-        if taxalist_id:
-            taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
-            if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
-
-                # Filter by the exact determination
-                query_filter = Q(determination__in=taxa)
-
-                # Filter by the taxon's children
-                for taxon in taxa:
-                    query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
-
-                queryset = queryset.filter(query_filter)
-
-        if taxalist_id_exclusive:
-            taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
-            if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
-
-                # Filter by the exact determination
-                query_filter = Q(determination__in=taxa)
-
-                # Filter by the taxon's children
-                for taxon in taxa:
-                    query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
-
-                queryset = queryset.exclude(query_filter)
-
-        return queryset
-
-
-class OccurrenceJobFilter(filters.BaseFilterBackend):
-    """
-    Filter occurrences created or updated by a job.
-    """
-
-    query_param = "job"
-
-    def filter_queryset(self, request, queryset, view):
-        job_id = SingleParamSerializer[int].clean(
-            param_name=self.query_param,
-            field=serializers.IntegerField(required=False, min_value=1),
-            data=request.query_params,
-        )
-        if job_id is None:
-            return queryset
-        return queryset.created_or_updated_by_job(job_id)
-
-
-OCCURRENCE_FILTER_BACKENDS = (
-    CustomOccurrenceDeterminationFilter,
-    OccurrenceCollectionFilter,
-    OccurrenceAlgorithmFilter,
-    OccurrenceJobFilter,
-    OccurrenceDateFilter,
-    OccurrenceVerified,
-    OccurrenceVerifiedByMeFilter,
-    OccurrenceTaxaListFilter,
-)
-
-OCCURRENCE_FILTERSET_FIELDS = (
-    "event",
-    "deployment",
-    "deployment__device",
-    "deployment__research_site",
-    "determination__rank",
-    "detections__source_image",
-)
-
-
-class OccurrenceFilterSet(FilterSet):
-    """Shared by the occurrence list and stats viewsets.
-
-    Declared so the browsable API form does not enumerate the source image table.
-    """
-
-    detections__source_image = RelatedIdFilter()
-
-    class Meta:
-        model = Occurrence
-        fields = list(OCCURRENCE_FILTERSET_FIELDS)
-
-
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1498,7 +1254,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
     filterset_class = OccurrenceFilterSet
     ordering_fields = [
         "created_at",
@@ -1558,25 +1313,6 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 description="Filter occurrences by minimum determination score.",
                 required=False,
                 type=OpenApiTypes.FLOAT,
-            ),
-            OpenApiParameter(
-                name="taxon",
-                description="Filter occurrences by determination taxon ID. Shows occurrences determined as this taxon "
-                "or any of its child taxa.",
-                required=False,
-                type=OpenApiTypes.INT,
-            ),
-            OpenApiParameter(
-                name="collection_id",
-                description="Filter occurrences by the capture set their detections' captures belong to.",
-                required=False,
-                type=OpenApiTypes.INT,
-            ),
-            OpenApiParameter(
-                name="job",
-                description="Filter occurrences created or updated by a job.",
-                required=False,
-                type=OpenApiTypes.INT,
             ),
         ]
     )
@@ -1662,7 +1398,7 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
     # Filter machinery for actions that opt into `self.filter_queryset(...)`.
     # `top_identifiers` doesn't call it, so its behavior is unchanged.
     queryset = Occurrence.objects.none()
-    filter_backends = [DjangoFilterBackend, *OCCURRENCE_FILTER_BACKENDS]
+    filter_backends = [DjangoFilterBackend]
     filterset_class = OccurrenceFilterSet
 
     @extend_schema(

@@ -165,23 +165,6 @@ class SingleParamSerializer(serializers.Serializer, typing.Generic[T]):
         self.fields[param_name] = field
 
 
-class FilterParamsSerializer(serializers.Serializer):
-    """
-    Serializer for validating query parameters in DRF views.
-    Typically in filters for list views.
-
-    A normal serializer with one helpful method to:
-    1) run .is_valid()
-    2) raise any validation exceptions
-    3) then return the cleaned data.
-    """
-
-    def clean(self) -> dict[str, typing.Any]:
-        if self.is_valid(raise_exception=True):
-            return self.validated_data
-        raise api_exceptions.ValidationError("Invalid filter parameters")
-
-
 class ModelRefSerializer(serializers.Serializer):
     """A record a stored value names (see ``ami.base.model_references``). ``name`` is null when it no longer exists."""
 

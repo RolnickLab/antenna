@@ -1,7 +1,70 @@
+from django import forms
+from django.core.exceptions import ValidationError
 from django.db.models import F, OrderBy
 from django.forms import FloatField, IntegerField
-from django_filters.rest_framework import NumberFilter
+from django_filters import filters as base_filters
+from django_filters.rest_framework import MultipleChoiceFilter, NumberFilter
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
+
+
+class IntegerListField(forms.Field):
+    """Whole numbers from a repeated query parameter (``?algorithm=1&algorithm=2``) or a JSON list.
+
+    A single value is read as a list of one. Blank values are skipped; anything else that is not a
+    whole number is refused, so the API answers 400 rather than failing in the database.
+    """
+
+    widget = forms.MultipleHiddenInput  # Reads every value of a repeated parameter.
+
+    def to_python(self, value):
+        if value in self.empty_values:
+            return []
+        items = value if isinstance(value, (list, tuple)) else [value]
+        number = IntegerField()
+        return [number.clean(item) for item in items if item not in ("", None)]
+
+
+class QueryBooleanField(forms.Field):
+    """A true or false query parameter that refuses any other value.
+
+    Accepts ``true``/``false`` and ``1``/``0`` in any case, or a JSON boolean. A parameter that is
+    present with an empty value (``?verified=``) means false, as Django's ``BooleanField`` reads it;
+    an absent parameter is None, so the filter is not applied.
+    """
+
+    TRUE_VALUES = ("true", "1")
+    FALSE_VALUES = ("false", "0", "")
+
+    def to_python(self, value):
+        if value is None or isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in self.TRUE_VALUES:
+                return True
+            if text in self.FALSE_VALUES:
+                return False
+        raise ValidationError("Enter true or false.", code="invalid")
+
+
+class IntegerListFilter(MultipleChoiceFilter):
+    """A filter on several ids, given by repeating the parameter, with no list of choices.
+
+    Based on ``MultipleChoiceFilter`` so the OpenAPI schema shows a repeatable parameter typed from
+    the model field at ``field_name``. Use it with ``method=``.
+    """
+
+    field_class = IntegerListField
+
+
+class QueryBooleanFilter(base_filters.BooleanFilter):
+    """A filter that takes ``true`` or ``false`` and answers 400 for any other value.
+
+    Based on django-filter's own ``BooleanFilter``, not the REST framework one, whose widget turns
+    unknown values into "no filter" before this field can refuse them.
+    """
+
+    field_class = QueryBooleanField
 
 
 class RelatedIdFilter(NumberFilter):

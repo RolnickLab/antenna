@@ -653,6 +653,9 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
 class Taxon(BaseModel):
     """A taxonomic classification"""
 
+    reference_type = "taxon"
+    reference_name_field = "name"
+
     name = models.CharField(max_length=255, unique=True)
     display_name = models.CharField("Cached display name", max_length=255, null=True, blank=True, unique=True)
     rank = models.CharField(max_length=255, choices=TaxonRank.choices(), default=TaxonRank.SPECIES.name)

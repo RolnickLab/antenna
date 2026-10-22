@@ -58,20 +58,6 @@ def generate_fake_request(
     return fake_request
 
 
-def apply_filters(queryset, filters, filter_backends):
-    """
-    Apply filtering backends to the given queryset using the provided filter query params.
-    """
-    request = generate_fake_request(query_params=filters)
-    logger.debug(f"Queryset count before filtering : {queryset.count()}")
-    logger.debug(f"Filter values : {filters}")
-    logger.debug(f"Filter backends : {filter_backends}")
-    for backend in filter_backends:
-        queryset = backend().filter_queryset(request, queryset, None)  # `view` is None since we are not using ViewSet
-    logger.debug(f"Queryset count after filtering : {queryset.count()}")
-    return queryset
-
-
 def get_data_in_batches(QuerySet: models.QuerySet, Serializer: type[serializers.Serializer], batch_size=100):
     """
     Yield batches of serialized data from a queryset efficiently.
