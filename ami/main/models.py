@@ -737,6 +737,9 @@ class Device(BaseModel):
     If project is null then this is a public device that can be used by any project.
     """
 
+    reference_type = "device"
+    reference_name_field = "name"
+
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="devices")
@@ -750,6 +753,9 @@ class Device(BaseModel):
 @final
 class Site(BaseModel):
     """Research site with multiple deployments"""
+
+    reference_type = "site"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
@@ -861,6 +867,9 @@ class Deployment(BaseModel):
     """
     Class that describes a deployment of a device (camera & hardware) at a research site.
     """
+
+    reference_type = "deployment"
+    reference_name_field = "name"
 
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)

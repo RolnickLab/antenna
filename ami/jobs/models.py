@@ -1021,6 +1021,9 @@ def get_job_type_by_inferred_key(job: "Job") -> type[JobType] | None:
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
+    reference_type = "job"
+    reference_name_field = "name"
+
     # UI/API: hide failed jobs older than this from listings (display filter only).
     FAILED_JOBS_DISPLAY_MAX_HOURS = 24 * 3
     # Reaper: revoke jobs in :meth:`JobState.running_states` whose ``updated_at``
