@@ -627,7 +627,7 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
     # def with_children(self):
     #     qs = self.get_queryset()
     #     # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
-
+    #
     #     # example for single taxon:
     #     taxon = Taxon.objects.get(pk=1)
     #     taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
