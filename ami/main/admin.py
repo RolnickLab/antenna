@@ -875,28 +875,16 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
 @admin.register(OccurrenceSet)
 class OccurrenceSetAdmin(admin.ModelAdmin[OccurrenceSet]):
-    """
-    Admin for ``OccurrenceSet``. This is the only place a public set, one with no project, is made.
-    """
-
-    list_display = ("name", "project_count", "occurrences_count", "created_at", "updated_at")
-    list_filter = ("projects",)
+    list_display = ("name", "project", "method", "occurrences_count", "frozen_at", "updated_at")
+    list_filter = ("project", "method", ("frozen_at", admin.EmptyFieldListFilter))
     search_fields = ("name",)
-    autocomplete_fields = ("projects",)
-    # A select widget would load every occurrence in the database.
-    raw_id_fields = ("occurrences",)
+    # The occurrence picker would render every occurrence in the database.
+    exclude = ("occurrences",)
+    # Freeze and copy set these, and keep the rules for frozen sets.
+    readonly_fields = ("populated_at", "frozen_at", "frozen_by", "copied_from")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return (
-            super()
-            .get_queryset(request)
-            .with_occurrences_count()
-            .annotate(project_count=models.Count("projects", distinct=True))
-        )
-
-    @admin.display(description="Projects", ordering="project_count")
-    def project_count(self, obj) -> int:
-        return obj.project_count
+        return super().get_queryset(request).select_related("project").with_occurrences_count()
 
     @admin.display(description="Occurrences", ordering="occurrences_count")
     def occurrences_count(self, obj) -> int:

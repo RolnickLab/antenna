@@ -166,8 +166,8 @@ class ProjectManager(Role):
     display_name = "Project manager"
     description = (
         "Project managers have full administrative access. This includes all permissions from other roles, "
-        "plus the ability to manage project settings, members, stations, capture sets, storage, "
-        "and all other project resources."
+        "plus the ability to manage project settings, members, stations, capture sets, occurrence sets, "
+        "storage, and all other project resources."
     )
     permissions = (
         BasicMember.permissions

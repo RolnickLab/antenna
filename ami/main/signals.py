@@ -2,12 +2,12 @@ import logging
 
 from django.contrib.auth.models import Group
 from django.core.files.storage import default_storage
-from django.db import models, transaction
+from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.main.models import OccurrenceSet, Project, SourceImageThumbnail
+from ami.main.models import Project, SourceImageThumbnail
 from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
@@ -114,19 +114,6 @@ def delete_project_groups(sender, instance, **kwargs):
     prefix = f"{instance.pk}_"
     # Find and delete all groups that start with {project_id}_
     Group.objects.filter(name__startswith=prefix).delete()
-
-
-@receiver(pre_delete, sender=Project)
-def delete_occurrence_sets_only_in_project(sender, instance, **kwargs):
-    """
-    Delete the occurrence sets that belong only to the deleted project.
-
-    A set with no project is public. Without this, a set from a deleted draft project would
-    become visible to everyone. Sets shared with another project are kept. See #763.
-    """
-    OccurrenceSet.objects.filter(pk__in=instance.occurrence_sets.values("pk")).annotate(
-        project_count=models.Count("projects")
-    ).filter(project_count=1).delete()
 
 
 @receiver(pre_delete, sender=SourceImageThumbnail)
