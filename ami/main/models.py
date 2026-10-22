@@ -43,7 +43,7 @@ from ami.main.models_future.filters import (
     build_occurrence_score_threshold_q,
     build_taxa_recursive_filter_q,
 )
-from ami.main.models_future.occurrence_sets import OccurrenceSet, OccurrenceSetQuerySet  # noqa: F401
+from ami.main.models_future.occurrence_set import OccurrenceSet  # noqa: F401
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.main.models_future.storage import (  # noqa: F401
     S3StorageSource,
@@ -647,7 +647,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("regroup_sessions_deployment", "Can regroup deployment captures into sessions"),
             # Occurrence set permissions
             ("create_occurrenceset", "Can create an occurrence set"),
-            ("update_occurrenceset", "Can rename or describe an occurrence set"),
+            ("update_occurrenceset", "Can update, freeze, and add or remove the occurrences of an occurrence set"),
             ("delete_occurrenceset", "Can delete an occurrence set"),
             # Collection permissions
             ("create_sourceimagecollection", "Can create a collection"),
