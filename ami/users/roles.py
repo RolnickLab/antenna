@@ -154,6 +154,11 @@ class MLDataManager(Role):
         Project.Permissions.UPDATE_COLLECTION,
         Project.Permissions.DELETE_COLLECTION,
         Project.Permissions.POPULATE_COLLECTION,
+        # Occurrence sets feed ML work such as scoring and training data, so they go
+        # with the capture set permissions.
+        Project.Permissions.CREATE_OCCURRENCE_SET,
+        Project.Permissions.UPDATE_OCCURRENCE_SET,
+        Project.Permissions.DELETE_OCCURRENCE_SET,
     }
 
 
@@ -161,8 +166,8 @@ class ProjectManager(Role):
     display_name = "Project manager"
     description = (
         "Project managers have full administrative access. This includes all permissions from other roles, "
-        "plus the ability to manage project settings, members, stations, capture sets, storage, "
-        "and all other project resources."
+        "plus the ability to manage project settings, members, stations, capture sets, occurrence sets, "
+        "storage, and all other project resources."
     )
     permissions = (
         BasicMember.permissions

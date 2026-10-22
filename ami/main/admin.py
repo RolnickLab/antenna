@@ -28,6 +28,7 @@ from .models import (
     Device,
     Event,
     Occurrence,
+    OccurrenceSet,
     Project,
     S3StorageSource,
     Site,
@@ -870,6 +871,24 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)
+
+
+@admin.register(OccurrenceSet)
+class OccurrenceSetAdmin(admin.ModelAdmin[OccurrenceSet]):
+    list_display = ("name", "project", "method", "occurrences_count", "updated_at")
+    list_filter = ("project", "method")
+    search_fields = ("name",)
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("project").with_occurrences_count()
+
+    def get_readonly_fields(self, request: HttpRequest, obj: OccurrenceSet | None = None):
+        # The members belong to the set's project, and only one method exists so far.
+        return ("project", "method", "occurrences_count") if obj else ()
+
+    @admin.display(description="Occurrences", ordering="occurrences_count")
+    def occurrences_count(self, obj) -> int:
+        return obj.occurrences_count
 
 
 @admin.register(Tag)
