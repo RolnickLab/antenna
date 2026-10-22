@@ -27,6 +27,7 @@ import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
+import { CreateOccurrenceSetPopover } from './create-occurrence-set/create-occurrence-set-popover'
 import { columns } from './occurrence-columns'
 import { OccurrenceDetailsDialog } from './occurrence-details-dialog'
 import { OccurrenceGallery } from './occurrence-gallery'
@@ -110,6 +111,7 @@ export const Occurrences = () => {
             defaultOpen={someActive(
               [
                 'collection',
+                'occurrence_set_id',
                 'deployment',
                 'deployment__device',
                 'deployment__research_site',
@@ -123,6 +125,7 @@ export const Occurrences = () => {
             <FilterControl field="date_start" />
             <FilterControl field="date_end" />
             <FilterControl field="collection" />
+            <FilterControl field="occurrence_set_id" />
             <FilterControl field="deployment" />
             <FilterControl field="deployment__device" />
             <FilterControl field="deployment__research_site" />
@@ -163,6 +166,9 @@ export const Occurrences = () => {
               <DownloadIcon className="w-4 h-4" />
               <span>Export</span>
             </Link>
+            {selectedItems.length > 0 && (
+              <CreateOccurrenceSetPopover occurrenceIds={selectedItems} />
+            )}
             <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
               columns={tableColumns}
