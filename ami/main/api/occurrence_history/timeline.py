@@ -52,6 +52,8 @@ class OccurrenceTimelineEntry:
     determination_before: Taxon | None = None
     determination_after: Taxon | None = None
     classifications: list[CreatedClassification] = dataclasses.field(default_factory=list)
+    # Other results of the same run, brought here by merging occurrences; see ``_one_entry_per_run``.
+    results_merged_in: int = 0
     # --- Identification and prediction
     details: dict = dataclasses.field(default_factory=dict)
 
@@ -77,22 +79,31 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
     )
     created_by_result = _classifications_created_by(results, occurrence)
     created_ids = {c.classification.pk for created in created_by_result.values() for c in created}
-    entries = [
-        OccurrenceTimelineEntry(
-            type="algorithm_result",
-            id=result.pk,
-            timestamp=result.timestamp,
-            algorithm=result.algorithm,
-            job=result.job,
-            value=result.value,
-            kind=result.kind,
-            data=result.data,
-            determination_before=taxa.get(result.data.get("determination_before_id")),
-            determination_after=taxa.get(result.data.get("determination_after_id")),
-            classifications=created_by_result.get(result.pk, []),
+    entries = []
+    for result, merged_in in _one_entry_per_run(results):
+        classifications = [c for r in (result, *merged_in) for c in created_by_result.get(r.pk, [])]
+        if merged_in:
+            # Best score first, as for one result's classifications.
+            classifications.sort(
+                key=lambda c: (c.classification.score is not None, c.classification.score or 0, c.classification.pk),
+                reverse=True,
+            )
+        entries.append(
+            OccurrenceTimelineEntry(
+                type="algorithm_result",
+                id=result.pk,
+                timestamp=result.timestamp,
+                algorithm=result.algorithm,
+                job=result.job,
+                value=result.value,
+                kind=result.kind,
+                data=result.data,
+                determination_before=taxa.get(result.data.get("determination_before_id")),
+                determination_after=taxa.get(result.data.get("determination_after_id")),
+                classifications=classifications,
+                results_merged_in=len(merged_in),
+            )
         )
-        for result in results
-    ]
 
     identifications = Identification.objects.filter(occurrence=occurrence).select_related("user", "taxon")
     entries.extend(
@@ -131,6 +142,25 @@ def occurrence_timeline(occurrence: Occurrence) -> list[OccurrenceTimelineEntry]
             entry.job_config = config_fields[entry.job.pk]
     entries.sort(key=lambda entry: (entry.timestamp, entry.id), reverse=True)
     return entries
+
+
+def _one_entry_per_run(results: list[AlgorithmResult]) -> list[tuple[AlgorithmResult, list[AlgorithmResult]]]:
+    """Each run's newest result on the occurrence, with its other results there, keeping the results' order.
+
+    A run records one result per occurrence, so more than one of a job, kind and algorithm means merged
+    occurrences brought theirs along. They show as one entry until results can name detections (#1412).
+    The entry carries the newest result's figures and determination, which may describe an absorbed
+    occurrence, so the card shows only the count and the classifications of such an entry. A result with
+    no job is its own entry.
+    """
+    runs: dict[tuple, tuple[AlgorithmResult, list[AlgorithmResult]]] = {}
+    for result in results:
+        key = (result.job_id, result.kind, result.algorithm_id) if result.job_id is not None else ("result", result.pk)
+        if key in runs:
+            runs[key][1].append(result)
+        else:
+            runs[key] = (result, [])
+    return list(runs.values())
 
 
 def _by_id(model, ids: set) -> dict:
