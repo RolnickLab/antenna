@@ -2,28 +2,39 @@
 Occurrence sets: named groups of occurrences that a project keeps and uses again.
 
 Models are declared here but remain in the ``main`` app. Related models are
-referenced by string label, or imported inside the method that needs them, so
-this module never imports ``ami.main.models`` at import time — ``main.models``
-imports this one.
+referenced by string label, so this module never imports ``ami.main.models`` at
+import time — ``main.models`` imports this one.
 """
 
 import typing
 from typing import final
 
-from django.db import connection, models, transaction
+from django.db import models
 
 from ami.base.models import BaseModel, BaseQuerySet
-from ami.main.models_future.saved_set import SavedSetMixin
+from ami.base.sets.models import SavedSetMixin, SetRefused
+
+if typing.TYPE_CHECKING:
+    from ami.main.models import Project
 
 
 class OccurrenceSetMethod(models.TextChoices):
     """How the members of an occurrence set are produced."""
 
     # By hand: flags, favourites, a script or a backend task.
-    MANUAL = "manual", "Manual"
+    CURATED = "curated", "Manually curated"
+    # Upcoming methods, see #1548:
+    # FILTERS = "filters", "Populated from occurrence-list filters"
+    # RANDOM = "random", "Random sample"
+    # STRATIFIED = "stratified", "Balanced sample across stations, sites and times of night"
+    # COPY = "copy", "Copy of another set"
 
 
 class OccurrenceSetQuerySet(BaseQuerySet):
+    def for_project(self, project: "Project") -> "OccurrenceSetQuerySet":
+        """The sets that can be used in this project: its own."""
+        return self.filter(project=project)
+
     def with_occurrences_count(self) -> "OccurrenceSetQuerySet":
         # distinct: visible_for_user() joins project members, which repeats each row.
         return self.annotate(occurrences_count=models.Count("occurrences", distinct=True))
@@ -34,34 +45,22 @@ class OccurrenceSetManager(models.Manager.from_queryset(OccurrenceSetQuerySet)):
 
 
 @final
-class OccurrenceSet(SavedSetMixin, BaseModel):
+class OccurrenceSet(BaseModel, SavedSetMixin):
     """
     A named group of occurrences that a project keeps and uses again.
 
-    People and jobs use a set to review its occurrences in the occurrence list, to
-    export them, to see which taxa they contain, to score a classifier against their
-    human identifications, and to include or exclude them in occurrence stats
-    (``occurrence_set_id`` and ``not_occurrence_set_id``). A set belongs to one
-    project, as its occurrences do. Jobs and results refer to a set by its
-    ``reference_type``.
+    A set can narrow the occurrence list, be exported, narrow the taxa list, be the data a
+    model is scored on, and be included in or excluded from occurrence stats. It belongs to
+    one project, as its occurrences do. Jobs and results refer to it by its ``reference_type``.
 
-    Every set is described by the same properties, not by a type:
-
-    - ``method`` says how the members are produced, and ``kwargs`` holds its
-      arguments, as for capture sets. Today the only method is ``manual``: people,
-      scripts and jobs add and remove members by hand, and ``kwargs`` is empty.
-    - ``occurrences`` holds the stored members. Every use reads them; there is no
-      live mode.
-    - The freeze, the copy and ``populated_at`` come from ``SavedSetMixin``. A frozen
-      set cannot change its members; to change it, copy it.
-
-    Next, a ``filters`` method will produce the members from occurrence-list filters
-    saved in ``kwargs``: populate (in a job, setting ``populated_at``), compare (what
-    populating again would change) and convert to manual. Samplers will follow.
+    For now every set is manually curated: people, scripts and jobs add and remove its
+    occurrences. Sets populated from occurrence-list filters come next, then frozen sets
+    and copies. See #1548.
     """
 
     reference_type = "occurrence_set"
     reference_name_field = "name"
+    members_field = "occurrences"
 
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -73,62 +72,62 @@ class OccurrenceSet(SavedSetMixin, BaseModel):
     method = models.CharField(
         max_length=255,
         choices=OccurrenceSetMethod.choices,
-        default=OccurrenceSetMethod.MANUAL,
-        help_text="How the members are produced. Only by hand (manual) for now.",
+        default=OccurrenceSetMethod.CURATED,
+        help_text="How the members are produced.",
     )
-    kwargs = models.JSONField(
-        "Arguments",
+    # kwargs = models.JSONField(default=dict, blank=True)  # arrives with the filters method, see #1548
+    occurrences = models.ManyToManyField(
+        "Occurrence",
+        through="OccurrenceSetMember",
+        related_name="occurrence_sets",
         blank=True,
-        default=dict,
-        help_text="Arguments for the method (JSON object). Empty for a manual set.",
     )
-    occurrences = models.ManyToManyField("Occurrence", related_name="occurrence_sets", blank=True)
-
-    copy_fields = ("project_id", "description", "method", "kwargs")
-    state_fields = SavedSetMixin.state_fields + ("method", "kwargs")
 
     objects: OccurrenceSetManager = OccurrenceSetManager()
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # Remember the stored project, so save() can refuse a change of project.
+        instance._stored_project_id = instance.__dict__.get("project_id")
+        return instance
+
+    def save(self, *args, **kwargs):
+        stored_project_id = getattr(self, "_stored_project_id", None)
+        if stored_project_id is not None and stored_project_id != self.project_id:
+            # The members belong to the stored project.
+            raise SetRefused("The project of an occurrence set cannot change.")
+        super().save(*args, **kwargs)
+        self._stored_project_id = self.project_id
+
+    def member_queryset(self, ids: typing.Collection[int]) -> models.QuerySet:
+        from ami.main.models import Occurrence
+
+        return Occurrence.objects.filter(project_id=self.project_id, pk__in=ids)
 
     def occurrences_count(self) -> int | None:
         # Annotated by OccurrenceSetQuerySet.with_occurrences_count()
         return None
 
     def check_custom_permission(self, user, action: str) -> bool:
-        # Hand edits and freezing are edits of the set. A copy is a new set.
-        action = {"add": "update", "remove": "update", "freeze": "update", "copy": "create"}.get(action, action)
+        # Adding and removing occurrences is an edit of the set.
+        action = {"add": "update", "remove": "update"}.get(action, action)
         return super().check_custom_permission(user, action)
 
-    def check_editable_by_hand(self):
-        """Raise ``SetRefused`` (from ``saved_set``) unless members can be added or removed by hand."""
-        self.refuse_if_frozen("edited")
 
-    def add_occurrences(self, occurrence_ids: typing.Iterable[int]):
-        """Add members by hand. The caller checks that the occurrences belong to the project."""
-        with transaction.atomic():
-            self._start_hand_edit()
-            self.occurrences.add(*occurrence_ids)
+@final
+class OccurrenceSetMember(models.Model):
+    """One occurrence in one occurrence set, and when it was added."""
 
-    def remove_occurrences(self, occurrence_ids: typing.Iterable[int]):
-        """Remove members by hand. Occurrences that are not members are ignored."""
-        with transaction.atomic():
-            self._start_hand_edit()
-            self.occurrences.remove(*occurrence_ids)
+    occurrence_set = models.ForeignKey(OccurrenceSet, on_delete=models.CASCADE, related_name="memberships")
+    occurrence = models.ForeignKey(
+        "Occurrence",
+        on_delete=models.CASCADE,
+        related_name="occurrence_set_memberships",
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
 
-    def _start_hand_edit(self):
-        self.lock()
-        self.check_editable_by_hand()
-        self.save(update_fields=["updated_at"])
-
-    def copy_members_to(self, copy: "OccurrenceSet"):
-        """Copy the members in one statement, so a set of any size is never loaded into Python."""
-        membership = OccurrenceSet.occurrences.through
-        quote = connection.ops.quote_name
-        set_column = quote(membership._meta.get_field("occurrenceset").column)
-        occurrence_column = quote(membership._meta.get_field("occurrence").column)
-        table = quote(membership._meta.db_table)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"INSERT INTO {table} ({set_column}, {occurrence_column}) "
-                f"SELECT %s, {occurrence_column} FROM {table} WHERE {set_column} = %s",
-                [copy.pk, self.pk],
-            )
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["occurrence_set", "occurrence"], name="unique_occurrence_set_member"),
+        ]

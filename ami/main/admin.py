@@ -875,16 +875,16 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
 @admin.register(OccurrenceSet)
 class OccurrenceSetAdmin(admin.ModelAdmin[OccurrenceSet]):
-    list_display = ("name", "project", "method", "occurrences_count", "frozen_at", "updated_at")
-    list_filter = ("project", "method", ("frozen_at", admin.EmptyFieldListFilter))
+    list_display = ("name", "project", "method", "occurrences_count", "updated_at")
+    list_filter = ("project", "method")
     search_fields = ("name",)
-    # The occurrence picker would render every occurrence in the database.
-    exclude = ("occurrences",)
-    # Freeze and copy set these, and keep the rules for frozen sets.
-    readonly_fields = ("populated_at", "frozen_at", "frozen_by", "copied_from")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).select_related("project").with_occurrences_count()
+
+    def get_readonly_fields(self, request: HttpRequest, obj: OccurrenceSet | None = None):
+        # The members belong to the set's project, and only one method exists so far.
+        return ("project", "method", "occurrences_count") if obj else ()
 
     @admin.display(description="Occurrences", ordering="occurrences_count")
     def occurrences_count(self, obj) -> int:

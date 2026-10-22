@@ -13,7 +13,7 @@ from django.db.models import Q
 
 PERMISSIONS = {
     "create_occurrenceset": "Can create an occurrence set",
-    "update_occurrenceset": "Can update, freeze, and add or remove the occurrences of an occurrence set",
+    "update_occurrenceset": "Can update an occurrence set and add or remove its occurrences",
     "delete_occurrenceset": "Can delete an occurrence set",
 }
 ROLE_GROUPS = Q(name__endswith="_MLDataManager") | Q(name__endswith="_ProjectManager")
