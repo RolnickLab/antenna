@@ -72,6 +72,12 @@ existing ones and the writer adds only the missing vectors. A declared length is
 send a vector for every detection on every request; a service that declares one and sends none makes its
 captures reprocess on every job.
 
+A fill-in runs the whole pipeline again, and two costs follow (measured in the async end-to-end run on
+#1462). Classifiers run again, and their scores vary by about 0.00005 between GPU runs, so the exact-score
+duplicate check stores a repeat classification for most detections. Detector boxes can also move by one
+pixel, so exact-box matching saves a near-duplicate detection, and the original stays without a vector until
+a later job reproduces its box.
+
 Concurrent writers: the writer takes no lock of its own. Its one `bulk_create` runs its INSERTs of up to
 200 rows in a single transaction, so the inserted rows stay locked until the last INSERT finishes. Rows
 are inserted in (detection, algorithm) order, because two writers that insert shared rows in different
