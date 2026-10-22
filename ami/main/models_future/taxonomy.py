@@ -487,12 +487,12 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
 
         return updated
 
-    def update_display_names(self, queryset: models.QuerySet | None = None):
-        """Update the display names of all taxa."""
+    def update_display_names(self, queryset: models.QuerySet):
+        """Update the display names of all taxa in queryset."""
 
         taxa = []
 
-        for taxon in queryset or self.get_queryset():
+        for taxon in queryset:
             taxon.display_name = taxon.get_display_name()
             taxa.append(taxon)
 
@@ -627,7 +627,7 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
     # def with_children(self):
     #     qs = self.get_queryset()
     #     # Add Taxon that are children of this Taxon using parents_json field (not direct_children)
-
+    #
     #     # example for single taxon:
     #     taxon = Taxon.objects.get(pk=1)
     #     taxa = Taxon.objects.filter(parents_json__contains=[{"id": taxon.id}])
