@@ -18,9 +18,14 @@ const convertToServerFieldValues = (fieldValues: JobFieldValues) => ({
   delay: fieldValues.delay ?? 0,
   name: fieldValues.name,
   project_id: fieldValues.projectId,
-  pipeline_id: fieldValues.pipeline,
-  source_image_collection_id: fieldValues.sourceImages,
-  source_image_single_id: fieldValues.sourceImage,
+  job_type_key: 'ml',
+  params: {
+    config: {
+      pipeline_id: fieldValues.pipeline || undefined,
+      source_image_collection_id: fieldValues.sourceImages || undefined,
+      source_image_single_id: fieldValues.sourceImage || undefined,
+    },
+  },
 })
 
 export const useCreateJob = (onSuccess?: (id: string) => void) => {

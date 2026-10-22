@@ -4,8 +4,10 @@ import pydantic
 from django.db import transaction
 from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from ami.base.model_references import model_reference
+from ami.jobs.schemas import JobGroup
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.results.schemas import DeterminationSnapshot
@@ -18,9 +20,24 @@ class SmallSizeFilterConfig(pydantic.BaseModel):
     # set is the bulk path; a single occurrence is the spot/dev path (fast feedback
     # while tuning a filter). This discriminated-scope shape is the pattern other
     # post-processing tasks copy when they gain per-occurrence / per-event triggers.
-    source_image_collection_id: int | None = model_reference("capture_set", None, title="Capture set")
-    occurrence_id: int | None = model_reference("occurrence", None, title="Occurrence")
-    size_threshold: float = pydantic.Field(0.0008, title="Size threshold")
+    source_image_collection_id: int | None = model_reference(
+        "capture_set",
+        None,
+        title=_("Capture set"),
+        ami_widget="entity",
+        ami_entity="captures/collections",
+    )
+    # The admin's single-occurrence path; not offered in the Create Job dialog.
+    occurrence_id: int | None = model_reference(
+        "occurrence", None, title=_("Occurrence"), ami_widget="hidden", ami_entity="occurrences"
+    )
+    size_threshold: float = pydantic.Field(
+        0.0008,
+        title=_("Size threshold"),
+        description=_("Detections smaller than this fraction of the image area are marked as not identifiable."),
+        gt=0.0,
+        lt=1.0,
+    )
 
     @pydantic.validator("size_threshold")
     def _threshold_in_unit_interval(cls, v: float) -> float:
@@ -52,6 +69,10 @@ class SizeFilterResultData(DeterminationSnapshot):
 class SmallSizeFilterTask(BasePostProcessingTask):
     key = "small_size_filter"
     name = "Small size filter"
+    label = _("Mark detections too small to identify")
+    group = JobGroup.REFINE_RESULTS
+    feature_flag = "small_size_filter"
+    description = _("Marks detections that are too small to identify, so they stop counting towards species totals.")
     config_schema = SmallSizeFilterConfig
     result_models = (SizeFilterResultData,)
 

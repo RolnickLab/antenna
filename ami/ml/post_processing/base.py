@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 import pydantic
 
+from ami.jobs.schemas import JobGroup
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.results.schemas import AlgorithmResultData
@@ -26,8 +27,18 @@ class BasePostProcessingTask(abc.ABC):
 
     # Each task must override these
     key: str
+    # A fixed internal name. It identifies the task's Algorithm row, so renaming it starts a new one.
     name: str
+    # What users see in the Create Job picker and the jobs list, as an action (wrap in gettext_lazy).
+    label: str
+    # The Create Job picker heading the task is listed under.
+    group: JobGroup
     config_schema: type[pydantic.BaseModel]
+    # The ProjectFeatureFlags field that offers this task in the Create Job dialog. While it is
+    # off the task is hidden and its jobs cannot be started or re-run, except by a superuser.
+    feature_flag: str
+    # Help text under the method select (wrap in gettext_lazy); left empty, the docstring is used.
+    description: str = ""
     # The result data models (ami/ml/results/schemas.py) of the algorithm results the task writes;
     # empty for a task that writes none. Its config is declared by ``config_schema``.
     result_models: tuple[type[AlgorithmResultData], ...] = ()
@@ -39,7 +50,7 @@ class BasePostProcessingTask(abc.ABC):
         # defer key/name/config_schema to its concrete subclasses.
         if inspect.isabstract(cls):
             return
-        required_attrs = ["key", "name", "config_schema"]
+        required_attrs = ["key", "name", "config_schema", "feature_flag", "label", "group"]
         for attr in required_attrs:
             if not hasattr(cls, attr) or getattr(cls, attr) is None:
                 raise TypeError(f"{cls.__name__} must define '{attr}' class attribute")

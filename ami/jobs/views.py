@@ -12,7 +12,7 @@ from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import NotAuthenticated, NotFound, PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
@@ -41,8 +41,14 @@ from ami.main.api.views import ChoicesPagination, DefaultViewSet
 from ami.main.models import Project
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobDispatchMode, JobState, MLJob, PostProcessingJob
-from .serializers import JobChoiceSerializer, JobListSerializer, JobSerializer, MinimalJobSerializer
+from .models import Job, JobDispatchMode, JobState, MLJob, PostProcessingJob, describe_job_groups, describe_job_types
+from .serializers import (
+    JobChoiceSerializer,
+    JobListSerializer,
+    JobSerializer,
+    JobTypesResponseSerializer,
+    MinimalJobSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +263,34 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 data=self.request.query_params,
             )
         return context
+
+    @extend_schema(parameters=[project_id_doc_param], responses=JobTypesResponseSerializer)
+    @action(detail=False, methods=["get"], name="types")
+    def types(self, request):
+        """
+        List the job types the Create Job dialog can offer for a project, each with a JSON Schema
+        of its settings (``config_schema``), and the picker headings (``groups``) they are listed under.
+
+        Only members of the project may read it. See docs/claude/reference/jobs-panel.md.
+        """
+        # ObjectPermission.has_permission allows every request, and a list-style action never
+        # reaches the object check, so this action gates itself.
+        if not request.user.is_authenticated:
+            raise NotAuthenticated()
+        self.require_project = True
+        project = self.get_active_project()
+        if project is None:  # get_active_project already raises 400/404 when required
+            raise ValidationError({"project_id": "This parameter is required."})
+        user = request.user
+        if not (user.is_superuser or project.owner_id == user.pk or project.members.filter(pk=user.pk).exists()):
+            raise PermissionDenied("Only members of this project can list its job types.")
+        job_types = describe_job_types(project, user)
+        return Response(
+            {
+                "groups": [group.dict() for group in describe_job_groups(job_types)],
+                "results": [job_type.dict() for job_type in job_types],
+            }
+        )
 
     @extend_schema(parameters=[project_id_doc_param], responses=JobChoiceSerializer(many=True))
     @action(detail=False, methods=["get"], name="choices")

@@ -9,6 +9,7 @@ import styles from './job-details.module.scss'
 
 const CLOSE_TIMEOUT = 1000
 
+// Fallback used by CreateJobDialog when the job types request fails.
 export const NewJobDialog = () => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)

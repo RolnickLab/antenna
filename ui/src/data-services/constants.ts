@@ -10,6 +10,7 @@ export const API_ROUTES = {
   DEVICES: 'deployments/devices',
   EXPORTS: 'exports',
   IDENTIFICATIONS: 'identifications',
+  JOB_TYPES: 'jobs/types',
   JOBS: 'jobs',
   JOB_CHOICES: 'jobs/choices',
   LOGIN: 'auth/token/login',

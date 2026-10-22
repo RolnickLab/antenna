@@ -11,6 +11,7 @@ in `src/design-system/` — check there before writing a new component.
 - All user-facing strings go through the translation layer: `translate(STRING.KEY)` from
   `src/utils/language.ts`. Add new keys to the `STRING` enum and `ENGLISH_STRINGS` map.
   Never hardcode UI copy in components.
+- Exception: labels and help text in server-provided schemas (the Create job dialog's settings fields and job type descriptions) are rendered as received. The server translates them with Django's i18n (`gettext_lazy` on the pydantic `Field`), so they need no `STRING` key.
 - UI copy uses sentence case: "Taxa list", not "Taxa List".
 
 ## Data services & types
