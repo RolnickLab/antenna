@@ -1,14 +1,22 @@
 import csv
 import json
 import logging
+from unittest import mock
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.test import TestCase
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APITestCase
 
 from ami.exports.models import DataExport
+from ami.jobs.models import Job
 from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
+from ami.main.models_future.tests.test_occurrence_filters import (
+    LIST_QUERIES,
+    build_filter_fixture,
+    saved_filters_from_query,
+)
+from ami.main.occurrence_filters import clean_saved_filters
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import (
     create_captures,
@@ -551,3 +559,114 @@ class ExportNewFieldsTest(TestCase):
         ]
         for field in expected_fields:
             self.assertIn(field, headers, f"Missing CSV field: {field}")
+
+
+class ExportFiltersTest(APITestCase):
+    """An export selects the occurrences that the occurrence list shows for the same filters."""
+
+    formats = ["occurrences_simple_csv", "occurrences_api_json"]
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.fx = build_filter_fixture()
+
+    def setUp(self):
+        self.client.force_authenticate(self.fx.user)
+
+    def _list_labels(self, query: str) -> set[str]:
+        response = self.client.get(f"/api/v2/occurrences/?project_id={self.fx.project.pk}&limit=100&{query}")
+        self.assertEqual(response.status_code, 200, response.content)
+        return {self.fx.labels[row["id"]] for row in response.json()["results"]}
+
+    def _export_labels(self, data_export: DataExport) -> list[str]:
+        return [self.fx.labels[pk] for pk in data_export.get_exporter().queryset.values_list("pk", flat=True)]
+
+    def _create(self, filters):
+        with mock.patch.object(Job, "enqueue"):
+            return self.client.post(
+                "/api/v2/exports/",
+                {"project": self.fx.project.pk, "format": "occurrences_simple_csv", "filters": filters},
+                format="json",
+            )
+
+    def test_export_selects_what_the_list_shows(self):
+        for query, expected in LIST_QUERIES.items():
+            if "verified_by_me" in query:
+                continue
+            filters = clean_saved_filters(saved_filters_from_query(self.fx.query(query)))
+            for format_type in self.formats:
+                with self.subTest(query=query, format=format_type):
+                    data_export = DataExport.objects.create(
+                        user=self.fx.user, project=self.fx.project, format=format_type, filters=filters
+                    )
+                    labels = self._export_labels(data_export)
+                    self.assertEqual(len(labels), len(set(labels)), "an occurrence is exported twice")
+                    self.assertEqual(set(labels), expected)
+
+    def test_csv_export_file_holds_the_filtered_occurrences(self):
+        query = self.fx.query("taxon={genus}&date_start={day_2}")
+        response = self._create(saved_filters_from_query(query))
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["record_count"], 2)
+
+        # Run without the job the API queued, whose progress stages only exist once it starts.
+        data_export = DataExport.objects.create(
+            user=self.fx.user,
+            project=self.fx.project,
+            format="occurrences_simple_csv",
+            filters=response.json()["filters"],
+        )
+        file_path = data_export.run_export().replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            exported = {self.fx.labels[int(row["id"])] for row in csv.DictReader(f)}
+        default_storage.delete(file_path)
+        self.assertEqual(exported, self._list_labels(query))
+        self.assertEqual(exported, {"o3", "o6"})
+
+    def test_create_stores_filters_in_normal_form(self):
+        refs = self.fx.refs
+        response = self._create({"collection": str(refs["capture_set_2"]), "date_start": refs["day_2"]})
+        self.assertEqual(response.status_code, 201, response.content)
+        data_export = DataExport.objects.get(pk=response.json()["id"])
+        self.assertEqual(
+            data_export.filters,
+            {"collection_id": refs["capture_set_2"], "date_start": refs["day_2"], "apply_defaults": True},
+        )
+        self.assertEqual(
+            data_export.filters_display["collection"],
+            {"type": "capture_set", "id": refs["capture_set_2"], "name": "Filters capture set 2"},
+        )
+        self.assertEqual(data_export.job.source_image_collection_id, refs["capture_set_2"])
+
+        response = self._create(None)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(DataExport.objects.get(pk=response.json()["id"]).filters, {"apply_defaults": True})
+
+    def test_create_refuses_bad_filters_with_400(self):
+        for filters, key in [
+            ({"collection_id": "abc"}, "collection_id"),
+            ({"date_start": "2024-02-01", "date_end": "2024-01-01"}, "date_start"),
+            ({"taxon": 999999999}, "taxon"),
+            ({"limit": 10}, "limit"),
+            ({"verified_by_me": True}, "verified_by_me"),
+        ]:
+            with self.subTest(filters=filters):
+                response = self._create(filters)
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertIn(key, response.json()["filters"])
+        self.assertFalse(DataExport.objects.exists())
+
+    def test_export_saved_before_validation_runs_as_before(self):
+        """Such an export applied only its capture set filter, without the project's default filters."""
+        refs = self.fx.refs
+        filters = {"collection_id": str(refs["capture_set_2"]), "date_start": refs["day_1"], "verified": "true"}
+        data_export = DataExport.objects.create(
+            user=self.fx.user, project=self.fx.project, format="occurrences_simple_csv", filters=filters
+        )
+        expected = self._list_labels(f"collection_id={refs['capture_set_2']}&apply_defaults=false")
+        self.assertEqual(expected, {"o3", "o4", "o6"})
+        self.assertEqual(set(self._export_labels(data_export)), expected)
+        data_export.update_record_count()
+        data_export.refresh_from_db()
+        self.assertEqual(data_export.filters, filters)
+        self.assertEqual(data_export.record_count, 3)
