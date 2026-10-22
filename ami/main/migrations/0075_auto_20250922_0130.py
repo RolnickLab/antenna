@@ -15,5 +15,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(refresh_deployment_counts, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(refresh_deployment_counts, reverse_code=migrations.RunPython.noop, elidable=True),
     ]

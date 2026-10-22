@@ -18,5 +18,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(lowercase_emails),
+        migrations.RunPython(lowercase_emails, elidable=True),
     ]
