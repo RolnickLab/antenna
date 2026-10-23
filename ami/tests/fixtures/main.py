@@ -12,7 +12,6 @@ from ami.main.models import (
     Deployment,
     Detection,
     Occurrence,
-    Project,
     SourceImage,
     SourceImageCollection,
     TaxaList,
@@ -20,6 +19,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.main.models_future.projects import Project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images

@@ -276,7 +276,9 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
 
 
+# This is only used by a migration and this module as of this comment.
 def get_default_feature_flags() -> ProjectFeatureFlags:
+    """Return an instance of ProjectFeatureFlags."""
     return ProjectFeatureFlags()
 
 
