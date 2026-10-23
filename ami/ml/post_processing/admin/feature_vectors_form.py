@@ -3,7 +3,6 @@ from __future__ import annotations
 from django import forms
 
 from ami.ml.models import Pipeline
-from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
 from ami.ml.post_processing.feature_vectors import AddFeatureVectorsConfig
 
@@ -31,7 +30,7 @@ class AddFeatureVectorsActionForm(BasePostProcessingActionForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        pipelines = Pipeline.objects.filter(algorithms__task_type=AlgorithmTaskType.EMBEDDING.value)
+        pipelines = Pipeline.objects.filter(algorithms__embedding_dimensions__isnull=False)
         if self.scope_queryset is not None:
             project_ids = set(self.scope_queryset.values_list("project_id", flat=True))
             pipelines = pipelines.filter(

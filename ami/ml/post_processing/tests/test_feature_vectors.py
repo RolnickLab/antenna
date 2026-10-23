@@ -84,7 +84,10 @@ class FeatureVectorsFixture:
             cls.project, cls.deployment = setup_test_project(reuse=False)
             cls.detector = get_or_create_algorithm_and_category_map(DETECTOR)
             cls.extractor = Algorithm.objects.create(
-                name="Extractor", key="extractor", task_type=AlgorithmTaskType.EMBEDDING.value
+                name="Extractor",
+                key="extractor",
+                task_type=AlgorithmTaskType.EMBEDDING.value,
+                embedding_dimensions=LENGTH,
             )
             cls.pipeline = Pipeline.objects.create(name="Feature pipeline")
             cls.pipeline.algorithms.set([cls.extractor])
@@ -161,7 +164,9 @@ class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
     def test_only_detections_missing_a_vector_are_sent(self):
         collection = self._collection(captures=1, detections_per_capture=3)
         stored, *missing = list(Detection.objects.filter(source_image__collections=collection).order_by("pk"))
-        DetectionEmbedding.objects.create(detection=stored, algorithm=self.extractor, vector=VECTOR)
+        DetectionEmbedding.objects.create(
+            detection=stored, algorithm=self.extractor, project=self.project, vector=VECTOR
+        )
 
         self._run(collection)
 
@@ -175,7 +180,9 @@ class TestAddFeatureVectorsTask(FeatureVectorsFixture, TestCase):
         collection = self._collection(captures=2)
         done, todo = list(collection.images.order_by("pk"))
         for detection in done.detections.all():
-            DetectionEmbedding.objects.create(detection=detection, algorithm=self.extractor, vector=VECTOR)
+            DetectionEmbedding.objects.create(
+                detection=detection, algorithm=self.extractor, project=self.project, vector=VECTOR
+            )
 
         job = self._run(collection)
 

@@ -4,15 +4,27 @@ import typing
 from urllib.parse import urljoin
 
 import pydantic
+from django.db.models import Exists, OuterRef, QuerySet
 
 from ami.base.model_references import model_reference
 from ami.main.models import Detection, SourceImageCollection
-from ami.ml.embeddings.reader import detections_missing_vectors
 from ami.ml.embeddings.writer import save_embedding_results
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models import Pipeline
+from ami.ml.models import DetectionEmbedding, Pipeline
 from ami.ml.models.pipeline import process_detections
 from ami.ml.post_processing.base import BasePostProcessingTask
+
+
+def detections_missing_vectors(detections: QuerySet[Detection], algorithm_id: int) -> QuerySet[Detection]:
+    """The given detections that have no vector yet from one algorithm.
+
+    Adds a NOT EXISTS on the unique index (detection, algorithm) to the caller's queryset, so the
+    caller keeps its own scope and the filter adds no query of its own.
+    """
+    has_vector = DetectionEmbedding.objects.for_algorithm(algorithm_id).filter(detection_id=OuterRef("pk"))
+    # exclude(), not filter(~Exists(...)): django-cachalot 2.6 does not see the tables inside a
+    # negated Exists, so writes to the vector table would not invalidate a cached result.
+    return detections.exclude(Exists(has_vector))
 
 
 class AddFeatureVectorsConfig(pydantic.BaseModel):
@@ -63,7 +75,10 @@ class AddFeatureVectorsTask(BasePostProcessingTask):
             self.logger.error(str(err))
             raise ValueError(str(err)) from err
         if not pipeline.embedding_algorithms().exists():
-            msg = f'Pipeline "{pipeline.name}" has no algorithm that produces feature vectors (task type "embedding").'
+            msg = (
+                f'Pipeline "{pipeline.name}" has no algorithm that produces feature vectors '
+                "(one that declares a vector length)."
+            )
             self.logger.error(msg)
             raise ValueError(msg)
 

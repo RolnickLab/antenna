@@ -1360,8 +1360,8 @@ class Pipeline(BaseModel):
         )
 
     def embedding_algorithms(self) -> models.QuerySet[Algorithm]:
-        """The algorithms of this pipeline that produce feature vectors."""
-        return self.algorithms.filter(task_type=AlgorithmTaskType.EMBEDDING.value)
+        """The algorithms of this pipeline that produce feature vectors: those that declare a vector length."""
+        return self.algorithms.filter(embedding_dimensions__isnull=False)
 
     def is_embedding_only(self) -> bool:
         """True when every algorithm of the pipeline produces feature vectors, and there is at least one.
