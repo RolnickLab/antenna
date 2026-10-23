@@ -195,6 +195,17 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     field: 'not_tag_id',
   },
   {
+    label: translate(STRING.FIELD_LABEL_SIMILAR_TO),
+    field: 'similar_to',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_SIMILAR_TO),
+    },
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_SIMILARITY_MODEL),
+    field: 'similarity_algorithm',
+  },
+  {
     label: 'Taxon',
     field: 'taxon',
   },
@@ -279,6 +290,14 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const clearFilter = (field: string) => {
     if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.delete(field)
+
+      // The similarity sort needs its seed, so clearing the seed ends the sort too.
+      if (field === 'similar_to') {
+        searchParams.delete('similarity_algorithm')
+        if (searchParams.get('ordering')?.endsWith('visual_similarity')) {
+          searchParams.delete('ordering')
+        }
+      }
 
       // Reset page param if set, when filters are updated
       if (searchParams.has(SEARCH_PARAM_KEY_PAGE)) {

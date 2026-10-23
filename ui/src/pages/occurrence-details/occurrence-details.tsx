@@ -28,6 +28,7 @@ import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
 import { OccurrenceTimeline } from './history/occurrence-timeline'
+import { MoreActions } from './more-actions/more-actions'
 import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
@@ -177,6 +178,11 @@ export const OccurrenceDetails = ({
               />
             </BasicTooltip>
           ) : null}
+          <MoreActions
+            embeddingAlgorithms={occurrence.embeddingAlgorithms}
+            occurrenceId={occurrence.id}
+            projectId={projectId as string}
+          />
           {canUpdate && (
             <>
               <Agree

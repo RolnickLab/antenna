@@ -33,6 +33,12 @@ export class Occurrence {
     return new Date(this._occurrence.updated_at)
   }
 
+  // Cosine similarity to the seed of a similarity-sorted list: undefined when the list is not
+  // sorted that way, null when this occurrence has no vector to compare.
+  get visualSimilarity(): number | null | undefined {
+    return this._occurrence.visual_similarity
+  }
+
   get dateLabel(): string {
     return getFormatedDateString({
       date: new Date(this.firstAppearanceTimestamp),

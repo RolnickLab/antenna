@@ -21,6 +21,10 @@ class RelatedIdFilter(NumberFilter):
 
 class NullsLastOrderingFilter(OrderingFilter):
     def get_ordering(self, request, queryset, view):
+        # A view lists orderings it applies itself (they are not in ordering_fields). Without this
+        # the filter drops them and applies the view's default ordering over the view's own.
+        if request.query_params.get(self.ordering_param) in getattr(view, "self_applied_orderings", ()):
+            return None
         values = super().get_ordering(request, queryset, view)
         if not values:
             return values

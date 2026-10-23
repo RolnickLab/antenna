@@ -20,6 +20,7 @@ from rest_framework.test import APITestCase
 
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Occurrence, Project, SourceImage
+from ami.ml.embeddings.reader import algorithm_with_most_vectors, vector_counts_by_algorithm
 from ami.ml.embeddings.writer import EmbeddingRefused, create_detection_embeddings, validate_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
@@ -360,6 +361,14 @@ class TestReadingVectors(TestCase):
             self.assertEqual(float(eight[ids[1]][0]), 0.25)
             # Detections without a vector from the other algorithm are absent, never filled with another algorithm's.
             self.assertEqual(sorted(self._vectors(ids, self.four.pk)), ids[::2])
+
+    def test_counts_are_per_algorithm_and_the_default_is_the_algorithm_with_most_vectors(self):
+        self.assertEqual(vector_counts_by_algorithm(self.project.pk), {self.eight.pk: 12, self.four.pk: 6})
+        self.assertEqual(algorithm_with_most_vectors(self.project), self.eight.pk)
+
+    def test_the_default_algorithm_breaks_ties_by_lowest_id(self):
+        DetectionEmbedding.objects.filter(algorithm=self.eight, detection__in=self.detections[1::2]).delete()
+        self.assertEqual(algorithm_with_most_vectors(self.project), min(self.four.pk, self.eight.pk))
 
 
 class TestEmbeddingColumn(TestCase):

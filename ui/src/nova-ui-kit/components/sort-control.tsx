@@ -59,8 +59,8 @@ export const SortControl = ({ columns, setSort, sort }: SortControlProps) => {
                 className={classNames(
                   'w-4 h-4 transition-transform duration-300',
                   {
-                    '-rotate-180': sort.order !== 'asc',
-                    'rotate-0': sort.order === 'asc',
+                    'rotate-180': sort.order === 'asc',
+                    'rotate-0': sort.order !== 'asc',
                   }
                 )}
               />
