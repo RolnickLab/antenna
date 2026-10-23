@@ -68,7 +68,7 @@ from ami.utils.requests import get_apply_default_filters_flag, get_default_class
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-    from ami.ml.models import Pipeline, ProcessingService
+    from ami.ml.models import DetectionEmbedding, Pipeline, ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -3156,6 +3156,7 @@ class Detection(BaseModel):
 
     # For type hints
     classifications: models.QuerySet["Classification"]
+    embeddings: models.QuerySet["DetectionEmbedding"]
     source_image_id: int
     detection_algorithm_id: int
 

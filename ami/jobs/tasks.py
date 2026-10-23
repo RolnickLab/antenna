@@ -13,6 +13,7 @@ from django.db import transaction
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
+from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
@@ -408,6 +409,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         # Celery's autoretry_for handles the transient rather than this broad
         # except swallowing it.
         raise
+    except PipelineNotConfigured as e:
+        # The pipeline's registration and the processing service disagree, so every delivery would fail the
+        # same way. Fail the job, so the configuration gets fixed, instead of redelivering. See #1462.
+        _ack_task_via_nats(reply_subject, job.logger)
+        _fail_job(job_id, f"The results do not match the registered pipeline: {e}")
     except Exception as e:
         error = f"Error processing pipeline result for job {job_id}: {e}"
         if not acked:
