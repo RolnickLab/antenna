@@ -17,12 +17,12 @@ from ami.main.models import (
     Event,
     Identification,
     Occurrence,
-    Project,
     SourceImage,
     SourceImageCollection,
     get_media_url,
 )
 from ami.main.models_future.enums import TaxonRank
+from ami.main.models_future.projects import Project
 from ami.main.models_future.taxonomy import TaxaList, Taxon, TaxonParent, verified_taxon_counts
 from ami.users.models import User
 
