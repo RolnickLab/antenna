@@ -97,6 +97,9 @@ realistic data before calling a query cheap. `TestReadingVectors` shows the basi
 | Which algorithms have vectors in a project, and how many | `GROUP BY algorithm_id` within a project | the same index, index-only; 36 ms for 359k rows, when the planner scanned the table because one project held most of it |
 | Detections still lacking a vector from an algorithm | `NOT EXISTS` on (detection, algorithm), added to the caller's detection queryset | (algorithm, detection), index-only; 138 ms over a 179k-detection project (parallel hash anti-join) |
 | Occurrences ordered by similarity to one occurrence | a representative detection's vector per occurrence, then cosine distance | (algorithm, detection), probed once per occurrence; exact scans measured at 16-19 ms per 1,000 candidates |
+| Which algorithms stored vectors in a project (choices for the occurrence algorithm filter) | `SELECT DISTINCT algorithm_id WHERE project_id = P` in `Algorithm.objects.used_in_project(project)`, next to its detection and classification lookups | one project's range of (project, algorithm, detection); not measured |
+| Which algorithms have a vector for one occurrence (`embedding_algorithms` on the occurrence detail, `OccurrenceSerializer.get_embedding_algorithms`) | `EXISTS` per algorithm on the occurrence's detections, one query | (algorithm, detection) probed through the detection's occurrence; not measured |
+| Occurrences with a vector from given algorithms (the `algorithm` and `not_algorithm` filters, `OccurrenceQuerySet.processed_by_algorithm()`) | `build_processed_by_algorithm_q()` in `ami/main/models_future/filters.py` ORs in the vector `EXISTS` only when the algorithms have vectors | (algorithm, detection); not measured |
 
 Measured on a copy of production data in October 2026, on an earlier version of this table. Nearest-neighbour (HNSW) indexes are not created; #1500 tracks when to add them.
 
