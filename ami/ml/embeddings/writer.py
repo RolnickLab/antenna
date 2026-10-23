@@ -1,6 +1,11 @@
 """Validate and store the feature vectors that processing services return in pipeline results."""
 
+from __future__ import annotations
+
+import collections
+import dataclasses
 import logging
+import typing
 
 import numpy as np
 
@@ -8,7 +13,11 @@ from ami.main.models import Detection, SourceImage
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, get_known_algorithm
 from ami.ml.models.embedding import EMBEDDING_BATCH_SIZE, DetectionEmbedding
-from ami.ml.schemas import DetectionResponse
+from ami.ml.schemas import DetectionResponse, PipelineResultsResponse
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
+    from ami.ml.models.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +120,73 @@ def create_detection_embeddings(
         f"Sent {len(embeddings)} feature vectors to be stored; any detection that already had a vector from "
         "the same algorithm keeps it."
     )
+
+
+@dataclasses.dataclass
+class EmbeddingStoreResult:
+    """What one feature-only response did: the vectors written, those already stored, and the boxes unmatched."""
+
+    written: int = 0
+    unchanged: int = 0
+    unmatched: int = 0
+
+
+def _box_key(source_image_id, coordinates) -> tuple:
+    """Exact coordinates, the identity ``get_or_create_detection`` reuses detections by."""
+    return (str(source_image_id), tuple(float(value) for value in coordinates))
+
+
+def save_embedding_results(
+    response: PipelineResultsResponse,
+    job: Job | None,
+    pipeline: Pipeline,
+) -> EmbeddingStoreResult:
+    """Store only the vectors of a feature-only response, on detections that already exist.
+
+    A feature-only processing service returns the detections it was sent, unchanged and still
+    naming the detector that made them, with an embedding attached and no classifications. Each
+    returned detection is matched by capture and exact box to a stored valid detection; nothing else
+    is written: no detection, classification or occurrence is created, and the echoed detector
+    reference is ignored. A returned box that matches no stored detection, or more than one, is
+    counted in ``unmatched`` and logged, never created or guessed. The matched vectors must pass
+    ``validate_detection_embeddings``, which raises ``EmbeddingRefused`` before anything is stored.
+    """
+    capture_ids = {int(detection.source_image_id) for detection in response.detections}
+    by_box: dict[tuple, list[Detection]] = collections.defaultdict(list)
+    stored = Detection.objects.valid().filter(source_image_id__in=capture_ids).select_related("source_image")
+    for detection in stored:
+        if detection.bbox is not None:
+            by_box[_box_key(detection.source_image_id, detection.bbox)].append(detection)
+    saved_detections: list[tuple[Detection, DetectionResponse]] = []
+    unmatched = 0
+    for detection_resp in response.detections:
+        if detection_resp.bbox is None or not detection_resp.embeddings:
+            continue
+        candidates = by_box.get(_box_key(detection_resp.source_image_id, detection_resp.bbox.as_coords()), [])
+        if len(candidates) == 1:
+            saved_detections.append((candidates[0], detection_resp))
+        else:
+            unmatched += 1
+
+    job_logger = job.logger if job else logger
+    if unmatched:
+        job_logger.warning(f"Skipped the vectors of {unmatched} returned boxes that match no single stored detection.")
+    algorithms_known = {algorithm.key: algorithm for algorithm in pipeline.algorithms.all()}
+    validate_detection_embeddings([detection_resp for _, detection_resp in saved_detections], algorithms_known)
+
+    sent = sum(len(detection_resp.embeddings) for _, detection_resp in saved_detections)
+    # The writer keeps a vector that is already stored, so count those before writing to report them apart.
+    unchanged = (
+        DetectionEmbedding.objects.filter(
+            detection_id__in=[detection.pk for detection, _ in saved_detections],
+            algorithm__key__in={
+                embedding_resp.algorithm.key
+                for _, detection_resp in saved_detections
+                for embedding_resp in detection_resp.embeddings
+            },
+        ).count()
+        if saved_detections
+        else 0
+    )
+    create_detection_embeddings(saved_detections, algorithms_known, job_logger, job.pk if job else None)
+    return EmbeddingStoreResult(written=sent - unchanged, unchanged=unchanged, unmatched=unmatched)
