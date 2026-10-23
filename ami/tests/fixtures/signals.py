@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 
-from ami.main.models import Project
+from ami.main.models_future.projects import Project
 
 from .main import create_complete_test_project, create_local_admin_user, update_site_settings
 

@@ -15,7 +15,8 @@ from typing import TYPE_CHECKING
 
 from django.db.models import Count, OuterRef, Prefetch, Q, QuerySet, Subquery
 
-from ami.main.models import Project, TaxonRank, User
+from ami.main.models import TaxonRank, User
+from ami.main.models_future.projects import Project
 from ami.utils.stats import cohens_kappa, wilson_interval
 
 if TYPE_CHECKING:
