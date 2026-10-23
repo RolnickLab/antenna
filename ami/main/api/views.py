@@ -1455,9 +1455,37 @@ class OccurrenceJobFilter(filters.BaseFilterBackend):
         return queryset.created_or_updated_by_job(job_id)
 
 
+class OccurrenceSetFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences that are members of an occurrence set (``occurrence_set_id``),
+    or that are not (``not_occurrence_set_id``). Both may be combined.
+
+    Only narrows the list: the project scope and default filters still apply.
+    """
+
+    query_param = "occurrence_set_id"
+    query_param_exclusive = f"not_{query_param}"
+
+    def filter_queryset(self, request, queryset, view):
+        include_id, exclude_id = (
+            SingleParamSerializer[int].clean(
+                param_name=param,
+                field=serializers.IntegerField(required=False, min_value=1),
+                data=request.query_params,
+            )
+            for param in (self.query_param, self.query_param_exclusive)
+        )
+        if include_id is not None:
+            queryset = queryset.filter(occurrence_sets=include_id)
+        if exclude_id is not None:
+            queryset = queryset.exclude(occurrence_sets=exclude_id)
+        return queryset
+
+
 OCCURRENCE_FILTER_BACKENDS = (
     CustomOccurrenceDeterminationFilter,
     OccurrenceCollectionFilter,
+    OccurrenceSetFilter,
     OccurrenceAlgorithmFilter,
     OccurrenceJobFilter,
     OccurrenceDateFilter,
@@ -1575,6 +1603,18 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="job",
                 description="Filter occurrences created or updated by a job.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="occurrence_set_id",
+                description="Filter occurrences to the members of an occurrence set.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="not_occurrence_set_id",
+                description="Leave out the members of an occurrence set.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),

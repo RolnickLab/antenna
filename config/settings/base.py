@@ -560,6 +560,9 @@ SPECTACULAR_SETTINGS = {
         "AlgorithmResultEntryTypeEnum": ["algorithm_result"],
         "IdentificationEntryTypeEnum": ["identification"],
         "PredictionEntryTypeEnum": ["prediction"],
+        # Capture sets and occurrence sets both have a "method" field with different choices.
+        "MethodEnum": "ami.main.models._SOURCE_IMAGE_SAMPLING_METHODS",
+        "OccurrenceSetMethodEnum": "ami.main.models_future.occurrence_set.OccurrenceSetMethod",
     },
 }
 # Your stuff...
