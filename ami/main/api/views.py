@@ -435,6 +435,49 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datetime.datetime | None]:
+    """
+    Turn ``date_start`` / ``date_end`` (both inclusive) into a half-open ``[start, end)`` datetime range.
+
+    Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
+    Comparing against datetimes, rather than casting with ``__date``, keeps the timestamp indexes usable.
+    """
+    cleaned_data = DateRangeFilterSerializer(data=query_params).clean()
+    start_date = cleaned_data.get("date_start")
+    end_date = cleaned_data.get("date_end")
+    start = datetime.datetime.combine(start_date, datetime.time.min) if start_date else None
+    end = datetime.datetime.combine(end_date + datetime.timedelta(days=1), datetime.time.min) if end_date else None
+    return start, end
+
+
+class SourceImageDateFilter(filters.BaseFilterBackend):
+    """Filter captures taken within a range of dates."""
+
+    def filter_queryset(self, request, queryset, view):
+        start, end = get_date_range_bounds(request.query_params)
+        if start:
+            queryset = queryset.filter(timestamp__gte=start)
+        if end:
+            queryset = queryset.filter(timestamp__lt=end)
+        return queryset
+
+
+class EventDateFilter(filters.BaseFilterBackend):
+    """
+    Filter sessions that overlap a range of dates.
+
+    A night that runs past midnight matches both of its dates. A session without an end is treated as a single moment.
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        start, end = get_date_range_bounds(request.query_params)
+        if start:
+            queryset = queryset.filter(models.Q(end__gte=start) | models.Q(end__isnull=True, start__gte=start))
+        if end:
+            queryset = queryset.filter(start__lt=end)
+        return queryset
+
+
 class EventViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows events to be viewed or edited.
@@ -442,7 +485,8 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    filterset_fields = ["deployment"]
+    filter_backends = DefaultViewSetMixin.filter_backends + [EventDateFilter]
+    filterset_fields = ["deployment", "deployment__device", "deployment__research_site"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -600,28 +644,6 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class SourceImageDateFilter(filters.BaseFilterBackend):
-    """
-    Filter captures to a range of capture dates, both ends inclusive.
-
-    Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
-    A half-open timestamp range, rather than ``timestamp__date``, keeps the timestamp indexes usable.
-    """
-
-    def filter_queryset(self, request, queryset, view):
-        cleaned_data = DateRangeFilterSerializer(data=request.query_params).clean()
-        start_date = cleaned_data.get("date_start")
-        end_date = cleaned_data.get("date_end")
-
-        if start_date:
-            queryset = queryset.filter(timestamp__gte=datetime.datetime.combine(start_date, datetime.time.min))
-        if end_date:
-            next_day = end_date + datetime.timedelta(days=1)
-            queryset = queryset.filter(timestamp__lt=datetime.datetime.combine(next_day, datetime.time.min))
-
-        return queryset
-
-
 class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
@@ -695,6 +717,8 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 "event",
                 "deployment",
                 "deployment__data_source",
+                "deployment__device",
+                "deployment__research_site",
                 "project",  # SourceImageThumbnailSerializer reads project.thumbnails_enabled per row
             )
             # with_thumbnails prefetches the rows SourceImage.thumbnail_urls needs for warm storage URLs.

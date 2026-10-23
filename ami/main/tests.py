@@ -2293,6 +2293,17 @@ class TestCapturesProcessedFilter(APITestCase):
         self.assertEqual(self._count("&has_detections=false"), 2)
 
 
+def list_with_query_count(client, url: str) -> tuple[list[dict], int]:
+    """Return a list endpoint's rows and how many queries the request made, with the query cache off."""
+    from cachalot.api import cachalot_disabled
+    from django.test.utils import CaptureQueriesContext
+
+    with cachalot_disabled(), CaptureQueriesContext(connection) as queries:
+        response = client.get(url)
+    assert response.status_code == status.HTTP_200_OK, response.content
+    return response.json()["results"], len(queries)
+
+
 class TestCapturesStationAndDateFilters(APITestCase):
     """
     The captures list filters by the station's device type (``deployment__device``),
@@ -2341,6 +2352,17 @@ class TestCapturesStationAndDateFilters(APITestCase):
         self.assertEqual(self._count(f"&deployment__device={self.unused_device.pk}"), 0)
         self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_rows_name_device_and_site_without_extra_queries(self):
+        rows, queries_with = list_with_query_count(self.client, self.list_url)
+        station_a_rows = [r for r in rows if r["deployment"]["device"]["name"] == "Device A"]
+        self.assertEqual(len(station_a_rows), 2)
+        self.assertEqual(station_a_rows[0]["deployment"]["research_site"]["name"], "Site A")
+
+        Deployment.objects.filter(project=self.project).update(device=None, research_site=None)
+        rows, queries_without = list_with_query_count(self.client, self.list_url)
+        self.assertIsNone(rows[0]["deployment"]["device"])
+        self.assertEqual(queries_with, queries_without)
+
     def test_research_site_filter(self):
         self.assertEqual(self._count(f"&deployment__research_site={self.site_a.pk}"), 2)
         self.assertEqual(self._count(f"&deployment__research_site={self.unused_site.pk}"), 0)
@@ -2355,6 +2377,81 @@ class TestCapturesStationAndDateFilters(APITestCase):
 
     def test_date_range_filter_rejects_invalid_dates(self):
         self.assertEqual(self._get("&date_start=not-a-date").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self._get("&date_start=2024-06-03&date_end=2024-06-01").status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+
+class TestSessionsStationAndDateFilters(APITestCase):
+    """
+    The sessions list filters by the station's device type and research site, and by
+    date range. A session matches a date range when any part of it falls inside the
+    range, so a night that runs past midnight matches both of its dates.
+
+    Fixture: station A (device A, site A) has a session from 2024-06-01 21:00 to
+    2024-06-02 04:00. Station B (device B) has one on 2024-06-03 22:00-23:00 and one
+    starting 2024-06-05 21:00 with no end.
+    """
+
+    def setUp(self) -> None:
+        self.project, deployment_a = setup_test_project(reuse=False)
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        deployment_a.device = self.device_a
+        deployment_a.research_site = self.site_a
+        deployment_a.save()
+        deployment_b = Deployment.objects.create(
+            name="Station B", project=self.project, device=self.device_b, data_source=deployment_a.data_source
+        )
+        for deployment, start, end in [
+            (deployment_a, datetime.datetime(2024, 6, 1, 21, 0), datetime.datetime(2024, 6, 2, 4, 0)),
+            (deployment_b, datetime.datetime(2024, 6, 3, 22, 0), datetime.datetime(2024, 6, 3, 23, 0)),
+            (deployment_b, datetime.datetime(2024, 6, 5, 21, 0), None),
+        ]:
+            Event.objects.create(deployment=deployment, project=self.project, start=start, end=end)
+        self.user = User.objects.create_user(email="session-filters@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/events/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _get(self, query: str):
+        return self.client.get(f"{self.list_url}{query}")
+
+    def _count(self, query: str) -> int:
+        response = self._get(query)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return response.json()["count"]
+
+    def test_device_and_site_filters(self):
+        self.assertEqual(self._count(f"&deployment__device={self.device_a.pk}"), 1)
+        self.assertEqual(self._count(f"&deployment__device={self.device_b.pk}"), 2)
+        self.assertEqual(self._count(f"&deployment__research_site={self.site_a.pk}"), 1)
+        self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rows_name_device_and_site_without_extra_queries(self):
+        rows, queries_with = list_with_query_count(self.client, self.list_url)
+        names = sorted(
+            (r["deployment"]["device"]["name"], (r["deployment"]["research_site"] or {}).get("name")) for r in rows
+        )
+        self.assertEqual(names, [("Device A", "Site A"), ("Device B", None), ("Device B", None)])
+
+        Deployment.objects.filter(project=self.project).update(device=None, research_site=None)
+        rows, queries_without = list_with_query_count(self.client, self.list_url)
+        self.assertIsNone(rows[0]["deployment"]["device"])
+        self.assertEqual(queries_with, queries_without)
+
+    def test_date_range_matches_overlapping_sessions(self):
+        # The overnight session matches the day it started and the day it ended.
+        self.assertEqual(self._count("&date_end=2024-06-01"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-02&date_end=2024-06-02"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-03"), 2)
+        # A session without an end matches on its start date only.
+        self.assertEqual(self._count("&date_start=2024-06-05"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-04&date_end=2024-06-04"), 0)
+
+    def test_date_range_rejects_invalid_dates(self):
+        self.assertEqual(self._get("&date_end=not-a-date").status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
             self._get("&date_start=2024-06-03&date_end=2024-06-01").status_code, status.HTTP_400_BAD_REQUEST
         )

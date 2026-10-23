@@ -476,7 +476,7 @@ class SourceImageQuickListSerializer(DefaultSerializer):
 
 
 class EventListSerializer(DefaultSerializer):
-    deployment = DeploymentNestedSerializer(
+    deployment = DeploymentNestedSerializerWithDeviceAndSite(
         read_only=True,
     )
     example_captures = ExampleSourceImageNestedSerializer(many=True, read_only=True)
@@ -1340,7 +1340,7 @@ class DetectionSerializer(DefaultSerializer):
 class SourceImageListSerializer(SourceImageThumbnailSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
-    deployment = DeploymentNestedSerializer(read_only=True)
+    deployment = DeploymentNestedSerializerWithDeviceAndSite(read_only=True)
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # Annotated in SourceImageViewSet.get_queryset (latest detection created_at).

@@ -38,6 +38,14 @@ export class Session {
     return `${this._event.deployment.id}`
   }
 
+  get deviceLabel(): string | undefined {
+    return this._event.deployment.device?.name
+  }
+
+  get researchSiteLabel(): string | undefined {
+    return this._event.deployment.research_site?.name
+  }
+
   get durationLabel(): string {
     return this._event.duration_label
   }
