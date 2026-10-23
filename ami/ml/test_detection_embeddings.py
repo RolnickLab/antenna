@@ -1,48 +1,46 @@
-"""How detection feature vectors are stored and read back.
+"""How detection feature vectors are validated, stored and read back.
 
-These pin that a vector is stored once per detection and algorithm on the detection it
-was sent with, never as a classification; that its project is copied from the detection's
-capture; that writes are insert-mostly; and that readers return one algorithm at a time.
+These pin that a vector is stored once per detection and algorithm, on the detection it was sent
+with, never as a classification; that the first vector stored is kept; that a vector which cannot be
+stored stops the batch before anything is written; and that concurrent writers neither fail nor
+store two vectors for one detection and algorithm.
 """
 
-import contextlib
 import datetime
+import random
+import threading
 
 import numpy as np
 import pydantic
 from django.db import connection
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Deployment, Detection, SourceImage
-from ami.ml.embeddings.reader import (
-    detections_missing_vectors,
-    project_vectors,
-    vector_counts_by_algorithm,
-    vectors_for_detections,
-)
-from ami.ml.embeddings.writer import EmbeddingDimensionMismatch, create_detection_embeddings
+from ami.main.models import Classification, Detection, Project, SourceImage
+from ami.ml.embeddings.writer import EmbeddingRefused, create_detection_embeddings, validate_detection_embeddings
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline
 from ami.ml.models.pipeline import get_or_create_algorithm_and_category_map, save_results
-from ami.ml.schemas import DetectionResponse, PipelineResultsResponse
+from ami.ml.schemas import AlgorithmConfigResponse, DetectionResponse, PipelineResultsResponse
 from ami.tests.fixtures.main import no_processing_service_http, setup_test_project
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
+from ami.tests.fixtures.queries import no_query_cache
 from ami.users.models import User
 
-DETECTOR = ALGORITHM_CHOICES["random-detector"]
-BINARY = ALGORITHM_CHOICES["random-binary-classifier"]  # labels: "Moth", "Not a moth"
-SPECIES = ALGORITHM_CHOICES["random-species-classifier"]
 LENGTH = 2048
+DETECTOR = ALGORITHM_CHOICES["random-detector"]
+# Labels "Moth" and "Not a moth"; it also returns 8-dimension vectors in these tests.
+BINARY = ALGORITHM_CHOICES["random-binary-classifier"].copy(update={"embedding_dimensions": 8})
+SPECIES = ALGORITHM_CHOICES["random-species-classifier"].copy(update={"embedding_dimensions": LENGTH})
 
 
-def _embedding_payload(vector: list[float], algorithm=SPECIES) -> list[dict]:
+def _embedding_payload(vector: list[float], algorithm: AlgorithmConfigResponse = SPECIES) -> list[dict]:
     return [{"algorithm": {"name": algorithm.name, "key": algorithm.key}, "features": vector}]
 
 
 class TestEmbeddingSchema(SimpleTestCase):
-    """The per-detection ``embeddings`` field of the processing-service results schema."""
+    """The ``embeddings`` field of the results schema and the declared length of an algorithm."""
 
     def _detection(self, **extra) -> dict:
         return {
@@ -53,14 +51,38 @@ class TestEmbeddingSchema(SimpleTestCase):
             **extra,
         }
 
-    def test_the_field_is_optional_and_refuses_an_empty_vector(self):
-        """Any length parses (extractors differ; each algorithm's length is checked on save), but not none,
-        and a service that sends no embeddings still parses."""
+    def test_embeddings_are_optional(self):
         self.assertIsNone(DetectionResponse.parse_obj(self._detection()).embeddings)
         parsed = DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([0.5] * 512)))
         self.assertEqual(len(parsed.embeddings or []), 1)
+
+    def test_a_declared_vector_length_must_be_positive(self):
         with self.assertRaises(pydantic.ValidationError):
-            DetectionResponse.parse_obj(self._detection(embeddings=_embedding_payload([])))
+            AlgorithmConfigResponse.parse_obj({**SPECIES.dict(), "embedding_dimensions": 0})
+
+
+class TestDeclaredVectorLength(TestCase):
+    """Registration records the vector length a processing service declares for each algorithm."""
+
+    def test_a_new_algorithm_records_its_declared_length(self):
+        self.assertEqual(get_or_create_algorithm_and_category_map(SPECIES).embedding_dimensions, LENGTH)
+
+    def test_an_existing_algorithm_without_a_length_takes_the_declared_one(self):
+        undeclared = get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": None}))
+        self.assertIsNone(undeclared.embedding_dimensions)
+        self.assertEqual(get_or_create_algorithm_and_category_map(SPECIES).embedding_dimensions, LENGTH)
+        # A service that stops declaring the length leaves the stored one in place.
+        get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": None}))
+        self.assertEqual(Algorithm.objects.get(key=SPECIES.key).embedding_dimensions, LENGTH)
+
+    def test_a_different_length_for_a_registered_algorithm_keeps_the_registered_one(self):
+        """A new length is a new ML model, whose vectors could not be compared with the stored ones, so the
+        registered length stays (with a warning) and vectors of the new length are refused when saved."""
+        get_or_create_algorithm_and_category_map(SPECIES)
+        with self.assertLogs("ami.ml.models.pipeline", level="WARNING") as logs:
+            get_or_create_algorithm_and_category_map(SPECIES.copy(update={"embedding_dimensions": 1024}))
+        self.assertIn("new algorithm key", "\n".join(logs.output))
+        self.assertEqual(Algorithm.objects.get(key=SPECIES.key).embedding_dimensions, LENGTH)
 
 
 class ClassifierPipelineMixin:
@@ -143,37 +165,32 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
     """Storing the feature vector a processing service sends with each detection.
 
     The vector is what similarity search and tracking compare, and it arrives for every
-    detection, including those the moth/non-moth filter rejected. What these pin is that it
-    is stored once per detection and algorithm, on the detection it was sent with, and that
-    storing it never adds a classification or moves a determination.
+    detection, including those the moth/non-moth filter rejected. It must be stored once per
+    detection and algorithm, on the detection it was sent with, and storing it must never add a
+    classification or move a determination.
     """
 
     @classmethod
     def setUpTestData(cls) -> None:
         cls._set_up_pipeline()
 
-    def test_every_detection_stores_its_vector_including_a_rejected_crop(self):
-        """Including the rejected crop, which has no species classification that could carry one."""
+    def test_every_detection_stores_its_vector_with_its_captures_project(self):
+        """Including the rejected crop, which has no species classification that could carry one. The
+        capture's project differs from its station's here, so a fallback to the station would fail."""
         image = self._image()
+        other_project = Project.objects.create(name="Capture's own project", owner=self.project.owner)
+        SourceImage.objects.filter(pk=image.pk).update(project=other_project)
         self._save(
             self._moth(image, _embedding_payload(self.LOW)),
             self._rejected(image, _embedding_payload(self.HIGH), box=100.0),
         )
         self.assertEqual(self._stored(image), {(0.0, SPECIES.key): self.LOW, (100.0, SPECIES.key): self.HIGH})
-        self.assertEqual(set(DetectionEmbedding.objects.values_list("project_id", flat=True)), {self.project.pk})
+        self.assertEqual(set(DetectionEmbedding.objects.values_list("project_id", flat=True)), {other_project.pk})
 
     def test_two_models_store_their_vectors_side_by_side_on_one_detection(self):
-        """Each model keeps its own row and its own length on the same detection."""
         image = self._image()
         self._save(self._moth(image, _embedding_payload(self.LOW) + _embedding_payload([0.5] * 8, algorithm=BINARY)))
         self.assertEqual(self._stored(image), {(0.0, SPECIES.key): self.LOW, (0.0, BINARY.key): [0.5] * 8})
-
-    def test_two_vectors_from_one_model_on_one_detection_keep_the_last_and_warn(self):
-        image = self._image()
-        with self.assertLogs(level="WARNING") as logs:
-            self._save(self._moth(image, _embedding_payload(self.LOW) + _embedding_payload(self.HIGH)))
-        self.assertEqual(self._stored(image), {(0.0, SPECIES.key): self.HIGH})
-        self.assertIn("more than one vector", "\n".join(logs.output))
 
     def test_a_vector_adds_no_classification_and_moves_no_determination(self):
         """The rejected crop's binary label is non-terminal, so a species classification sent in
@@ -188,27 +205,25 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
             self.assertEqual(detection.classifications.count(), 1)
         self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=treated).count(), 1)
 
-    def test_each_row_records_the_job_that_saved_it_and_outlives_the_job(self):
+    def test_the_first_vector_and_its_job_are_kept(self):
+        """A later run of the same algorithm writes nothing, so the row keeps the vector and job that
+        stored it first. Deleting that job keeps the vector."""
         image = self._image()
-        first, second, third = (
-            Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline)
-            for n in (1, 2, 3)
+        first, second = (
+            Job.objects.create(project=self.project, name=f"Embedding job {n}", pipeline=self.pipeline) for n in (1, 2)
         )
         self._save(self._moth(image, _embedding_payload(self.LOW)), job_id=first.pk)
+        stored = DetectionEmbedding.objects.get()
         self._save(self._moth(image, _embedding_payload(self.HIGH)), job_id=second.pk)
 
-        detection = Detection.objects.get(source_image=image)
-        embedding = DetectionEmbedding.objects.get(detection=detection)
-        self.assertEqual(embedding.job_id, second.pk, "A replaced vector records the job that replaced it")
+        kept = DetectionEmbedding.objects.get()
+        self.assertEqual((kept.pk, list(kept.vector), kept.job_id), (stored.pk, self.LOW, first.pk))
+        self.assertEqual(kept.updated_at, stored.updated_at)
 
-        self._save(self._moth(image, _embedding_payload(self.HIGH)), job_id=third.pk)
-        embedding.refresh_from_db()
-        self.assertEqual(embedding.job_id, second.pk, "An unchanged vector keeps the job that stored it")
-
-        second.delete()
-        embedding.refresh_from_db()
-        self.assertIsNone(embedding.job_id)
-        self.assertEqual(list(embedding.vector), self.HIGH)
+        first.delete()
+        kept.refresh_from_db()
+        self.assertIsNone(kept.job_id)
+        self.assertEqual(list(kept.vector), self.LOW)
 
     def test_a_vector_lands_on_its_own_detection_when_some_detections_already_exist(self):
         """Detection creation returns existing detections ahead of new ones, so pairing responses
@@ -221,288 +236,122 @@ class TestDetectionEmbeddings(ClassifierPipelineMixin, TestCase):
         )
         self.assertEqual(self._stored(image), {(0.0, SPECIES.key): self.LOW, (100.0, SPECIES.key): self.HIGH})
 
-    def test_a_vector_from_an_unregistered_algorithm_stops_the_batch_like_a_classification(self):
-        """It raises where an unregistered classification algorithm does: after detections are
-        saved and before any classification is."""
+    def test_an_existing_box_returned_twice_stores_one_vector(self):
+        """Both copies of a repeated box are saved as the one stored detection, so one insert holds the
+        same (detection, algorithm) twice; the first is kept and the insert does not fail."""
         image = self._image()
-        unregistered = {"algorithm": {"name": "Unregistered", "key": "unregistered-embedder"}, "features": self.LOW}
-        with self.assertRaises(PipelineNotConfigured):
-            self._save(self._rejected(image, [unregistered]))
+        self._save(self._rejected(image, box=5.0))
+        self._save(
+            self._rejected(image, _embedding_payload(self.LOW), box=5.0),
+            self._rejected(image, _embedding_payload(self.HIGH), box=5.0),
+        )
+        self.assertEqual(DetectionEmbedding.objects.filter(detection__source_image=image).count(), 1)
+        self.assertEqual(self._stored(image), {(5.0, SPECIES.key): self.LOW})
+
+    def test_a_vector_that_cannot_be_stored_stops_the_batch_before_anything_is_saved(self):
+        """Each reason a vector is refused raises before any detection or classification of the batch is
+        written, so a retry starts from a clean capture."""
+        undeclared = get_or_create_algorithm_and_category_map(
+            AlgorithmConfigResponse(name="Undeclared extractor", key="undeclared-extractor", task_type="embedding")
+        )
+        self.pipeline.algorithms.add(undeclared)
+        unregistered = AlgorithmConfigResponse(name="Unregistered", key="unregistered-embedder")
+        nan, inf, too_large = ([value] + [0.5] * (LENGTH - 1) for value in (float("nan"), float("inf"), 1e6))
+        cases = {
+            "unregistered algorithm": (PipelineNotConfigured, _embedding_payload(self.LOW, algorithm=unregistered)),
+            "wrong length": (EmbeddingRefused, _embedding_payload([0.5] * 512)),
+            "no declared length": (EmbeddingRefused, _embedding_payload([0.5], algorithm=undeclared)),
+            "not a number": (EmbeddingRefused, _embedding_payload(nan)),
+            "infinite": (EmbeddingRefused, _embedding_payload(inf)),
+            "beyond half precision": (EmbeddingRefused, _embedding_payload(too_large)),
+            "two from one algorithm": (EmbeddingRefused, _embedding_payload(self.LOW) + _embedding_payload(self.HIGH)),
+            "no bounding box": (EmbeddingRefused, _embedding_payload(self.LOW)),
+            "capture without a project": (EmbeddingRefused, _embedding_payload(self.LOW)),
+        }
+        for reason, (error, embeddings) in cases.items():
+            image = self._image()
+            detection = self._moth(image, embeddings)
+            if reason == "no bounding box":
+                detection["bbox"] = None
+            if reason == "capture without a project":
+                SourceImage.objects.filter(pk=image.pk).update(project=None)
+            with self.subTest(reason):
+                with self.assertRaises(error):
+                    self._save(detection, self._moth(image, box=100.0))
+                self.assertFalse(Detection.objects.filter(source_image=image).exists())
+                self.assertFalse(Classification.objects.filter(detection__source_image=image).exists())
         self.assertFalse(DetectionEmbedding.objects.exists())
-        self.assertFalse(Classification.objects.filter(detection__source_image=image).exists())
 
-    def test_saving_the_same_results_twice_changes_nothing_and_a_new_vector_replaces_the_row(self):
-        image = self._image()
-        self._save(self._moth(image, _embedding_payload(self.LOW)))
-        first = DetectionEmbedding.objects.get()
-
-        self._save(self._moth(image, _embedding_payload(self.LOW)))
-        unchanged = DetectionEmbedding.objects.get()
-        self.assertEqual((unchanged.pk, unchanged.updated_at), (first.pk, first.updated_at))
-
-        self._save(self._moth(image, _embedding_payload(self.HIGH)))
-        replaced = DetectionEmbedding.objects.get()
-        self.assertEqual(replaced.pk, first.pk, "The row is updated in place, not deleted and re-inserted")
-        self.assertEqual(list(replaced.vector), self.HIGH)
-        self.assertGreater(replaced.updated_at, first.updated_at)
-
-    def test_an_algorithm_keeps_the_length_of_its_first_vector(self):
-        """Vectors of another length are refused, because they could never be compared."""
-        image, other = self._image(), self._image()
-        self._save(self._moth(image, _embedding_payload([0.5] * 512)))
-
-        with self.assertRaises(EmbeddingDimensionMismatch) as raised:
-            self._save(self._moth(other, _embedding_payload(self.LOW)))
-        self.assertIn(self.species.key, str(raised.exception))
-        self.assertIn("512", str(raised.exception))
-        self.assertIn(str(LENGTH), str(raised.exception))
-        self.assertFalse(DetectionEmbedding.objects.filter(detection__source_image=other).exists())
-
-    def test_a_batch_with_no_stored_vector_must_agree_on_one_length(self):
-        image = self._image()
-        with self.assertRaises(EmbeddingDimensionMismatch):
-            self._save(
-                self._rejected(image, _embedding_payload([0.5] * 8), box=0.0),
-                self._rejected(image, _embedding_payload([0.5] * 4), box=100.0),
-            )
-        self.assertFalse(DetectionEmbedding.objects.exists())
-
-    def test_a_vector_half_precision_cannot_hold_is_skipped_with_a_warning(self):
-        image = self._image()
-        too_large = [1e6] + [0.5] * (LENGTH - 1)
-        not_a_number = [float("nan")] + [0.5] * (LENGTH - 1)
-        with self.assertLogs("ami.ml.models.pipeline", level="WARNING") as logs:
-            self._save(
-                self._rejected(image, _embedding_payload(too_large), box=0.0),
-                self._rejected(image, _embedding_payload(not_a_number), box=100.0),
-                self._rejected(image, _embedding_payload(self.LOW), box=200.0),
-            )
-        self.assertIn("Skipped 2 vectors", "\n".join(logs.output))
-        self.assertEqual(self._stored(image), {(200.0, SPECIES.key): self.LOW})
-
-    def test_storing_vectors_takes_the_same_queries_however_many_detections(self):
+    def test_storing_vectors_takes_one_insert_however_many_detections(self):
         image = self._image()
         boxes = [float(20 * i) for i in range(5)]
         self._save(*[self._rejected(image, box=box) for box in boxes])
-        detections = list(Detection.objects.filter(source_image=image).order_by("bbox"))
+        detections = list(Detection.objects.filter(source_image=image).select_related("source_image").order_by("bbox"))
         parsed = [
             DetectionResponse.parse_obj(self._rejected(image, _embedding_payload(self.LOW), box=b)) for b in boxes
         ]
         algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
         pairs = list(zip(detections, parsed))
 
-        # Measure after a first write, on other detections so no read is served from the query cache.
-        create_detection_embeddings(pairs[:1], algorithms_known)
-        DetectionEmbedding.objects.all().delete()
-        with CaptureQueriesContext(connection) as one:
-            create_detection_embeddings(pairs[1:2], algorithms_known)
-        DetectionEmbedding.objects.all().delete()
-        with CaptureQueriesContext(connection) as five:
-            stored = create_detection_embeddings(pairs, algorithms_known)
-        self.assertEqual(len(five), len(one))
-        self.assertEqual(len(stored), 5)
-
-        # A rerun with identical vectors reads the length and the stored rows and writes nothing.
-        with self.assertNumQueries(2):
+        # One query, to check that the captures belong to a project.
+        with self.assertNumQueries(1):
+            validate_detection_embeddings(parsed, algorithms_known)
+        with self.assertNumQueries(1):
+            create_detection_embeddings(pairs[:1], algorithms_known)
+        with self.assertNumQueries(1):
             create_detection_embeddings(pairs, algorithms_known)
-
-    def test_two_nearby_boxes_each_get_their_own_vector(self):
-        image = self._image()
-        near, nearer = 10.0001, 10.0002
-        self._save(self._rejected(image, box=near), self._rejected(image, box=nearer))
-        self._save(
-            self._rejected(image, _embedding_payload(self.LOW), box=near),
-            self._rejected(image, _embedding_payload(self.HIGH), box=nearer),
-        )
-        self.assertEqual(self._stored(image), {(near, SPECIES.key): self.LOW, (nearer, SPECIES.key): self.HIGH})
-
-    def test_an_existing_box_returned_twice_is_one_detection_and_keeps_its_vector(self):
-        """Detection creation pairs both copies of a repeated box with the one stored detection,
-        which keeps a single vector."""
-        image = self._image()
-        self._save(self._rejected(image, box=5.0))
-        self._save(
-            self._rejected(image, _embedding_payload(self.LOW), box=5.0),
-            self._rejected(image, _embedding_payload(self.LOW), box=5.0),
-        )
-        self.assertEqual(self._stored(image), {(5.0, SPECIES.key): self.LOW})
-
-    def test_only_the_first_write_of_an_algorithm_takes_the_advisory_lock(self):
-        image, other = self._image(), self._image()
-        self._save(self._rejected(image), self._rejected(other))
-
-        def locks(queries) -> int:
-            return sum("pg_advisory_xact_lock" in query["sql"] for query in queries)
-
-        with CaptureQueriesContext(connection) as first:
-            self._save(self._rejected(image, _embedding_payload(self.LOW)))
-        with CaptureQueriesContext(connection) as later:
-            self._save(self._rejected(other, _embedding_payload(self.LOW)))
-        self.assertEqual(locks(first.captured_queries), 1)
-        self.assertEqual(locks(later.captured_queries), 0)
+        self.assertEqual(DetectionEmbedding.objects.count(), 5)
 
 
-class TestEmbeddingProject(TestCase):
-    """An embedding's project is its capture's, falling back to the capture's station's."""
+class TestReadingVectors(TestCase):
+    """The pattern to copy for reading vectors: one algorithm, a set of detections, one query.
 
-    @classmethod
-    def setUpTestData(cls) -> None:
-        with no_processing_service_http():
-            cls.project, cls.deployment = setup_test_project(reuse=False)
-        cls.image = SourceImage.objects.create(path="project-fill.jpg", deployment=cls.deployment, project=cls.project)
-        cls.detection = Detection.objects.create(source_image=cls.image, bbox=[0.0, 0.0, 10.0, 10.0])
-        cls.algorithm = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
-
-    def _embedding(self, **fields) -> DetectionEmbedding:
-        return DetectionEmbedding(detection=self.detection, algorithm=self.algorithm, vector=[0.5] * 4, **fields)
-
-    def test_the_captures_project_is_copied_on_save_and_on_store(self):
-        self._embedding().save()
-        self.assertEqual(DetectionEmbedding.objects.get().project_id, self.project.pk)
-
-        DetectionEmbedding.objects.all().delete()
-        DetectionEmbedding.objects.store([self._embedding()])
-        self.assertEqual(DetectionEmbedding.objects.get().project_id, self.project.pk)
-
-    def test_a_capture_without_a_project_falls_back_to_its_station(self):
-        SourceImage.objects.filter(pk=self.image.pk).update(project=None)
-        DetectionEmbedding.objects.store([self._embedding()])
-        self.assertEqual(DetectionEmbedding.objects.get().project_id, self.project.pk)
-
-    def test_no_project_anywhere_refuses_the_write(self):
-        SourceImage.objects.filter(pk=self.image.pk).update(project=None)
-        Deployment.objects.filter(pk=self.deployment.pk).update(project=None)
-        with self.assertRaises(ValueError):
-            DetectionEmbedding.objects.store([self._embedding()])
-        with self.assertRaises(ValueError):
-            self._embedding().save()
-        self.assertFalse(DetectionEmbedding.objects.exists())
-
-
-@contextlib.contextmanager
-def cache_off():
-    """Run a block with cachalot off, restoring it even when the block raises, so query counts are real."""
-    from cachalot.api import cachalot_disabled
-
-    disabled = cachalot_disabled()
-    disabled.__enter__()
-    try:
-        yield
-    finally:
-        disabled.__exit__(None, None, None)
-
-
-class TestQueryHelpers(TestCase):
-    """The functions in ``ami.ml.embeddings.reader``: each reads one algorithm in a fixed number of queries.
-
-    The fixture mixes two models of different lengths, so a helper that merged models would return
-    the wrong lengths or counts.
+    The unique index on (detection, algorithm) serves it at any scale; see
+    docs/claude/reference/feature-vectors.md for the measured plans of this and the other known reads.
     """
 
     @classmethod
     def setUpTestData(cls) -> None:
         with no_processing_service_http():
             cls.project, cls.deployment = setup_test_project(reuse=False)
-        cls.image = SourceImage.objects.create(path="helpers.jpg", deployment=cls.deployment, project=cls.project)
-        cls.eight = Algorithm.objects.create(name="Eight", key="eight", task_type="embedding")
-        cls.four = Algorithm.objects.create(name="Four", key="four", task_type="embedding")
-        cls.detections: list[Detection] = []
-
-    def _detections(self, count: int) -> list[Detection]:
-        made = [
-            Detection.objects.create(
-                source_image=self.image, bbox=[float(len(self.detections) + i), 0.0, 500.0 + i, 10.0]
-            )
-            for i in range(count)
+        image = SourceImage.objects.create(path="read.jpg", deployment=cls.deployment, project=cls.project)
+        cls.eight = Algorithm.objects.create(name="Eight", key="eight", task_type="embedding", embedding_dimensions=8)
+        cls.four = Algorithm.objects.create(name="Four", key="four", task_type="embedding", embedding_dimensions=4)
+        cls.detections = [
+            Detection.objects.create(source_image=image, bbox=[float(i), 0.0, 500.0 + i, 10.0]) for i in range(12)
         ]
-        self.detections += made
-        return made
+        rows = [
+            DetectionEmbedding(detection=d, algorithm=cls.eight, project=cls.project, vector=[i / 4] * 8)
+            for i, d in enumerate(cls.detections)
+        ]
+        rows += [
+            DetectionEmbedding(detection=d, algorithm=cls.four, project=cls.project, vector=[0.5] * 4)
+            for d in cls.detections[::2]
+        ]
+        DetectionEmbedding.objects.bulk_create(rows)
 
-    def _store(self, detections, algorithm, length):
-        DetectionEmbedding.objects.store(
-            [
-                DetectionEmbedding(detection=d, algorithm=algorithm, vector=[float(i % 7) / 4] * length)
-                for i, d in enumerate(detections)
-            ]
+    @staticmethod
+    def _vectors(detection_ids: list[int], algorithm_id: int) -> dict[int, np.ndarray]:
+        rows = (
+            DetectionEmbedding.objects.for_algorithm(algorithm_id)
+            .filter(detection_id__in=detection_ids)
+            .order_by()
+            .values_list("detection_id", "vector")
         )
+        return {detection_id: np.asarray(vector, dtype=np.float32) for detection_id, vector in rows}
 
-    def _fill(self, count: int):
-        """``count`` detections with an 8-d vector from one model, and every other one also with a
-        4-d vector from another."""
-        detections = self._detections(count)
-        self._store(detections, self.eight, 8)
-        self._store(detections[::2], self.four, 4)
-        return detections
-
-    def test_vectors_for_detections_returns_one_models_vectors_as_float32(self):
-        detections = self._fill(3)
-        ids = [d.pk for d in detections]
-        eight = vectors_for_detections(ids, self.eight.pk)
-        self.assertEqual({v.shape for v in eight.values()}, {(8,)})
-        self.assertEqual({v.dtype for v in eight.values()}, {np.dtype(np.float32)})
-        self.assertEqual(float(eight[ids[1]][0]), 0.25)
-        self.assertEqual(sorted(vectors_for_detections(ids, self.four.pk)), [ids[0], ids[2]])
-
-    def test_vectors_for_detections_takes_one_query_at_any_size(self):
-        counts = []
+    def test_one_algorithms_vectors_for_a_set_of_detections_in_one_query(self):
+        """The vector table is never cached (CACHALOT_UNCACHABLE_TABLES), so each read runs its query."""
         for size in (3, 12):
-            ids = [d.pk for d in self._fill(size)]
-            with cache_off(), CaptureQueriesContext(connection) as queries:
-                vectors = vectors_for_detections(ids, self.eight.pk)
-            self.assertEqual(len(vectors), size)
-            counts.append(len(queries))
-        self.assertEqual(counts, [1, 1])
-
-    def test_project_vectors_yields_every_row_once_in_id_order_in_bounded_chunks(self):
-        detections = self._fill(7)
-        chunks = list(project_vectors(self.project.pk, self.eight.pk, chunk_size=3))
-        self.assertEqual([len(ids) for ids, _ in chunks], [3, 3, 1])
-        all_ids = [i for ids, _ in chunks for i in ids]
-        self.assertEqual(all_ids, sorted(d.pk for d in detections))
-        for ids, array in chunks:
-            self.assertEqual(array.shape, (len(ids), 8))
-            self.assertEqual(array.dtype, np.dtype(np.float32))
-        # A chunk size that divides the rows exactly ends without an empty chunk.
-        self.assertEqual([len(i) for i, _ in project_vectors(self.project.pk, self.eight.pk, chunk_size=7)], [7])
-        unused = Algorithm.objects.create(name="Unused", key="unused", task_type="embedding")
-        self.assertEqual(list(project_vectors(self.project.pk, unused.pk)), [])
-
-    def test_project_vectors_keeps_models_apart_and_honours_the_id_scope(self):
-        detections = self._fill(6)
-        ((ids, array),) = project_vectors(self.project.pk, self.four.pk)
-        self.assertEqual(ids, [d.pk for d in detections[::2]])
-        self.assertEqual(array.shape, (3, 4))
-        wanted = [detections[0].pk, detections[1].pk, detections[2].pk]
-        ((ids, _),) = project_vectors(self.project.pk, self.four.pk, detection_ids=wanted)
-        self.assertEqual(ids, [detections[0].pk, detections[2].pk])
-
-    def test_counts_are_per_algorithm(self):
-        self._fill(5)
-        self.assertEqual(vector_counts_by_algorithm(self.project.pk), {self.eight.pk: 5, self.four.pk: 3})
-
-    def test_detections_missing_vectors_keeps_the_callers_scope(self):
-        detections = self._fill(4)
-        scope = Detection.objects.filter(source_image=self.image)
-        missing = detections_missing_vectors(scope, self.four.pk)
-        self.assertEqual({d.pk for d in missing}, {detections[1].pk, detections[3].pk})
-        self.assertEqual(list(detections_missing_vectors(scope, self.eight.pk)), [])
-        self.assertEqual(
-            {d.pk for d in detections_missing_vectors(scope.filter(pk__lte=detections[1].pk), self.four.pk)},
-            {detections[1].pk},
-        )
-
-    def test_detections_missing_vectors_is_never_served_from_the_query_cache(self):
-        """The vector table is uncachable, which only holds if django-cachalot sees it in the query.
-
-        It does not see tables inside a negated ``Exists`` in ``filter()``; written that way, a
-        cached "missing" result would outlive new vectors and the next run would send the same
-        detections again.
-        """
-        from cachalot.utils import UncachableQuery, _get_tables
-
-        query = detections_missing_vectors(Detection.objects.all(), self.four.pk).query
-        with self.assertRaises(UncachableQuery):
-            _get_tables(connection.alias, query)
+            ids = [d.pk for d in self.detections[:size]]
+            with self.assertNumQueries(1):
+                eight = self._vectors(ids, self.eight.pk)
+            self.assertEqual(len(eight), size)
+            self.assertEqual({v.shape for v in eight.values()}, {(8,)})
+            self.assertEqual({v.dtype for v in eight.values()}, {np.dtype(np.float32)})
+            self.assertEqual(float(eight[ids[1]][0]), 0.25)
+            # Detections without a vector from the other algorithm are absent, never filled with another algorithm's.
+            self.assertEqual(sorted(self._vectors(ids, self.four.pk)), ids[::2])
 
 
 class TestEmbeddingColumn(TestCase):
@@ -525,7 +374,9 @@ class TestEmbeddingAdmin(TestCase):
         with no_processing_service_http():
             cls.project, cls.deployment = setup_test_project(reuse=False)
         image = SourceImage.objects.create(path="admin.jpg", deployment=cls.deployment, project=cls.project)
-        cls.algorithm = Algorithm.objects.create(name="Admin backbone", key="admin-backbone", task_type="embedding")
+        cls.algorithm = Algorithm.objects.create(
+            name="Admin backbone", key="admin-backbone", task_type="embedding", embedding_dimensions=4
+        )
         cls.detections = [
             Detection.objects.create(source_image=image, bbox=[float(i), 0.0, float(i) + 10.0, 10.0]) for i in range(6)
         ]
@@ -533,16 +384,14 @@ class TestEmbeddingAdmin(TestCase):
 
     def _store(self, count: int) -> None:
         DetectionEmbedding.objects.all().delete()
-        DetectionEmbedding.objects.store(
-            [
-                DetectionEmbedding(detection=detection, algorithm=self.algorithm, vector=[0.5] * 4)
-                for detection in self.detections[:count]
-            ]
+        DetectionEmbedding.objects.bulk_create(
+            DetectionEmbedding(detection=detection, algorithm=self.algorithm, project=self.project, vector=[0.5] * 4)
+            for detection in self.detections[:count]
         )
 
     def _changelist(self):
         self.client.force_login(self.superuser)
-        with cache_off(), CaptureQueriesContext(connection) as queries:
+        with no_query_cache(), CaptureQueriesContext(connection) as queries:
             response = self.client.get("/admin/ml/detectionembedding/")
         self.assertEqual(response.status_code, 200)
         return response, queries.captured_queries
@@ -555,9 +404,7 @@ class TestEmbeddingAdmin(TestCase):
         _, six = self._changelist()
         self.assertEqual(len(two), len(six))
         for query in six:
-            # The vector's length is computed in SQL; the column itself is never read.
-            sql = query["sql"].replace('vector_dims("ml_detectionembedding"."vector")', "")
-            self.assertNotIn('"ml_detectionembedding"."vector"', sql)
+            self.assertNotIn('"ml_detectionembedding"."vector"', query["sql"])
 
     def test_the_admin_cannot_add_change_or_delete_vectors_and_shows_only_the_length(self):
         self._store(1)
@@ -570,3 +417,73 @@ class TestEmbeddingAdmin(TestCase):
         self.assertNotContains(response, "0.5, 0.5")
         self.assertContains(response, "Vector length")
         self.assertEqual(self.client.post(f"/admin/ml/detectionembedding/{embedding.pk}/change/", {}).status_code, 403)
+
+
+class TestConcurrentWriters(ClassifierPipelineMixin, TransactionTestCase):
+    """Several workers saving results at once, as the async job path does in production.
+
+    Two inserts that share rows but take them in different orders can each hold a row the other
+    needs, and Postgres then aborts one with a deadlock. The writer inserts in one fixed order, so
+    concurrent writers wait for each other instead, and the first vector for each row is kept.
+    """
+
+    ROWS = 600
+    ROUNDS = 3
+
+    def setUp(self) -> None:
+        self._set_up_pipeline()
+        image = self._image()
+        boxes = [float(i) for i in range(self.ROWS)]
+        self._save(*[self._rejected(image, box=box) for box in boxes])
+        detections = {
+            d.bbox[0]: d for d in Detection.objects.filter(source_image=image).select_related("source_image")
+        }
+        self.algorithms_known = {algorithm.key: algorithm for algorithm in self.pipeline.algorithms.all()}
+        self.pairs_by_vector = {
+            value: [
+                (
+                    detections[box],
+                    DetectionResponse.parse_obj(
+                        self._rejected(image, _embedding_payload([value] * 8, BINARY), box=box)
+                    ),
+                )
+                for box in boxes
+            ]
+            for value in (0.25, 0.75)
+        }
+
+    def _race(self, orders: list[list[int]]) -> list[BaseException]:
+        """Run one writer per order at the same moment, each in its own connection; return their errors."""
+        barrier = threading.Barrier(len(orders))
+        errors: list[BaseException] = []
+
+        def write(value: float, order: list[int]) -> None:
+            pairs = self.pairs_by_vector[value]
+            try:
+                barrier.wait()
+                create_detection_embeddings([pairs[i] for i in order], self.algorithms_known)
+            except BaseException as error:  # noqa: B036 - collected and asserted in the test thread
+                errors.append(error)
+            finally:
+                connection.close()
+
+        threads = [
+            threading.Thread(target=write, args=(value, order))
+            for value, order in zip([0.25, 0.75] * len(orders), orders)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=60)
+        return errors
+
+    def test_concurrent_writers_of_the_same_rows_in_different_orders_neither_fail_nor_duplicate(self):
+        forward = list(range(self.ROWS))
+        for round_number in range(self.ROUNDS):
+            DetectionEmbedding.objects.all().delete()
+            shuffled = random.Random(round_number).sample(forward, len(forward))
+            errors = self._race([forward, list(reversed(forward)), shuffled, forward[::-1]])
+            self.assertEqual(errors, [], f"round {round_number}")
+            rows = DetectionEmbedding.objects.values_list("detection_id", "vector")
+            self.assertEqual(len(rows), self.ROWS)
+            self.assertTrue(all(set(vector) <= {0.25, 0.75} for _, vector in rows))

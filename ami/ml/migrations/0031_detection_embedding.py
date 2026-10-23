@@ -1,8 +1,7 @@
-# Additive: an empty table. The vector column is stored uncompressed out of
+# Additive: an empty table and a nullable column on Algorithm. The vector column is stored uncompressed out of
 # line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1462.
 
 import django.db.models.deletion
-import django.utils.timezone
 import pgvector.django.halfvec
 from django.db import migrations, models
 
@@ -15,6 +14,19 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AddField(
+            model_name="algorithm",
+            name="embedding_dimensions",
+            field=models.PositiveIntegerField(
+                blank=True,
+                help_text=(
+                    "The length of the feature vectors this algorithm returns, as declared by its processing "
+                    "service and recorded when the service first registers it. Vectors of any other length are "
+                    "refused, because vectors of different lengths cannot be compared."
+                ),
+                null=True,
+            ),
+        ),
         migrations.CreateModel(
             name="DetectionEmbedding",
             fields=[
@@ -25,13 +37,12 @@ class Migration(migrations.Migration):
                     "vector",
                     pgvector.django.halfvec.HalfVectorField(help_text="The feature vector, in half precision."),
                 ),
-                ("timestamp", models.DateTimeField(default=django.utils.timezone.now)),
                 (
                     "algorithm",
                     models.ForeignKey(
                         db_index=False,
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="detection_embeddings",
+                        related_name="%(class)ss",
                         to="ml.algorithm",
                     ),
                 ),
@@ -51,7 +62,7 @@ class Migration(migrations.Migration):
                         db_index=False,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="detection_embeddings",
+                        related_name="%(class)ss",
                         to="jobs.job",
                     ),
                 ),
@@ -60,7 +71,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         db_index=False,
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="detection_embeddings",
+                        related_name="%(class)ss",
                         to="main.project",
                     ),
                 ),

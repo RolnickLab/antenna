@@ -1,10 +1,10 @@
-# Feature vectors: how they are stored and how to query them
+# Feature vectors: how they are stored and how to read them
 
-Feature vectors (embeddings) are stored once per detection, per model output, in one table. This
-page explains the layout, the single rule every reader must follow, the queries the layout is built
-for (with the function that serves each), what to avoid, and how to extend it. The code lives in
-`ami/ml/models/embedding.py` (model and queryset), `ami/ml/embeddings/writer.py` (storing results)
-and `ami/ml/embeddings/reader.py` (query functions). Introduced in #1462.
+Feature vectors (embeddings) are stored once per detection and algorithm, in one table. This page
+covers the layout, the rules for writing and reading, the reads the layout is built for (with
+measured plans), and how to add a vector table for another target. The code is
+`ami/ml/models/embedding.py` (models) and `ami/ml/embeddings/writer.py` (storing results).
+Introduced in #1462; design and goals in #1457.
 
 ## Storage model
 
@@ -13,161 +13,126 @@ and `ami/ml/embeddings/reader.py` (query functions). Introduced in #1462.
 | Column | Meaning |
 |---|---|
 | `detection` | The detection the vector describes. Rows cascade with it. |
-| `algorithm` | The model that produced the vector. Rows cascade with it. |
+| `algorithm` | The algorithm that produced the vector (one per ML model output). Rows cascade with it. |
 | `vector` | A `halfvec` column with no declared length, stored out of line and uncompressed (`STORAGE EXTERNAL`), because vectors do not compress and this keeps heap rows small. |
-| `project` | Copied from the detection's capture (or its station), so project-scoped queries need no join. |
+| `project` | The project of the detection's capture, so project-scoped queries need no join. |
 | `job` | The job whose results stored the vector; set to null if the job is deleted. |
 
+Indexes: the unique constraint on (detection, algorithm); (project, algorithm, detection);
+(algorithm, detection), which also serves deleting an algorithm with its vectors; and a partial
+(job, detection) index where a job is set, which also serves clearing the job when it is deleted.
+The foreign keys have no single-column indexes, because these lead with them.
+
 A vector keeps the project it was written with. Moving a station to another project does not move
-its vectors: `Deployment.update_children` realigns only events, occurrences and captures. Until the
-move command (#1192) or a project-consistency check (#1453) covers vectors, a moved station's vectors
-stay with its old project.
+its vectors (`Deployment.update_children` realigns events, occurrences and captures only); the move
+command (#1192) or a project-consistency check (#1453) is where that belongs.
 
-Indexes: the unique constraint on (detection, algorithm), an index on
-(project, algorithm, detection), an index on (algorithm, detection) that serves the writer's
-length lookup (an algorithm's first row, ordered by detection), and a partial index on (job, detection)
-where a job is set, for a job's list of occurrences. The foreign keys have no single-column indexes of
-their own, because these already lead with them.
+## One algorithm, one length
 
-Because the column has no declared length, models of different lengths share the table (for example
-a 2048-dimension classifier backbone and a 1024-dimension image-text model). Each algorithm
-keeps one length: the writer reads the length of one existing row of the algorithm and refuses vectors
-of another length with `EmbeddingDimensionMismatch`. No length is stored on `Algorithm`.
+Vectors from different algorithms are not comparable, so every read is for one algorithm, and each
+algorithm stores at most one vector per detection. An ML model with several outputs (two layers, or an
+image vector and a projected one) registers one algorithm per output; see `processing_services/README.md`,
+"Returning feature vectors". A reduction of a vector (PCA, UMAP) is also its own algorithm.
 
-## Which algorithm a vector is stored under
+Each algorithm has one vector length, `Algorithm.embedding_dimensions`, declared by its processing
+service in `/info` and recorded at registration. An unsized column lets algorithms of different lengths
+share the table, and the declared length keeps one algorithm's vectors comparable. If a service later
+declares a different length for an algorithm that already has one, registration keeps the registered
+length and logs a warning, and vectors of the new length are refused when results are saved: register
+the new ML model under a new algorithm key. Do not delete the old algorithm to make room: its
+classifications and detections would lose their algorithm.
 
-A vector is stored under the algorithm the processing service names for it in the response. A
-classifier that returns its own backbone features therefore stores them under that classifier's
-algorithm row, while a dedicated extractor (for example BioCLIP, task type `embedding`) has its own
-row. To find which models have vectors in a project, use `vector_counts_by_algorithm(project_id)`
-rather than assuming an algorithm.
+## Writing
 
-## A model with several outputs
+`save_results` runs `validate_detection_embeddings` before it saves anything, then
+`create_detection_embeddings` after the detections are saved. The results are refused, with nothing
+written, when a vector:
 
-A model that yields several vectors per detection in one pass (two layers, or an image vector and a
-projected one) registers one algorithm per output, and the service sends one `EmbeddingResponse` per
-output, each naming its own algorithm. Each output is then its own comparable set, with its own
-length. A model that yields many vectors for one detection (one per image patch) is pooled to one
-vector by the service first. The processing-service side of this is in `processing_services/README.md`,
-"Returning feature vectors".
+- comes from an algorithm the pipeline did not register (`PipelineNotConfigured`),
+- or (`EmbeddingRefused`) comes from an algorithm that declares no length, has another length, holds a
+  value half precision cannot store (NaN, infinity, beyond ±65,504), repeats an algorithm on one
+  detection, sits on a detection without a bounding box, or belongs to a capture without a project.
 
-## The rule: one algorithm per query
+A refusal fails the job, on both paths: it means the pipeline's registration and the processing service
+disagree, and every retry would fail the same way. In the async path `process_nats_pipeline_result`
+(`ami/jobs/tasks.py`) acks the message and fails the job rather than letting NATS redeliver it. Fix the
+service or its registration, or run the job with a pipeline that has no embedding algorithm.
 
-Vectors from different models are not comparable. Every reader therefore takes one algorithm id,
-and nothing merges models. A query that mixes
-models returns noise, and it also mixes lengths, which the database rejects when distances are
-computed. When a cross-model query is truly intended, say so in a comment at the call site.
+The first vector stored for a (detection, algorithm) is kept: later ones are not written
+(`INSERT … ON CONFLICT DO NOTHING`). To store new vectors, delete the detections or register the new ML
+model as a new algorithm.
 
-## Query patterns
+## Filling in missing vectors
 
-Each pattern names the function in `ami/ml/embeddings/reader.py` that serves it, the SQL shape,
-and the index it uses. Check a plan with `EXPLAIN (ANALYZE, BUFFERS)` on realistic data before
-claiming a query is cheap.
+There is no separate embedding pipeline. Any pipeline algorithm that declares a vector length
+(`Algorithm.writes_embeddings`, whatever its task type: a species classifier can also return its
+backbone's vectors) is treated like a classifier by `filter_processed_images`: a capture is processed again
+while one of its real detections lacks a vector from that algorithm. The detections are matched to the
+existing ones and the writer adds only the missing vectors. A declared length is therefore a promise to
+send a vector for every detection on every request; a service that declares one and sends none makes its
+captures reprocess on every job.
 
-| # | Need | Function | SQL shape | Index |
-|---|---|---|---|---|
-| Q1 | Vectors of one model for some detections (tracking over adjacent captures, retraining on verified detections) | `vectors_for_detections(ids, algorithm_id)` | `detection_id = ANY(..) AND algorithm_id = A` | unique (detection, algorithm) for a few captures' worth; for thousands of ids the planner may prefer (algorithm, detection) or a sequential scan, measured at 17-19 ms for 5,000 ids on a 450k-row table (a sequential scan; 12 ms when forced onto the algorithm index; measured while the table also had a `key` column) |
-| Q2 | Occurrences sorted by similarity to one occurrence | not in this PR: the sort ships in its own follow-up pull request | per occurrence, a representative detection's vector, then cosine distance | (algorithm, detection), probed once per occurrence; an exact scan |
-| Q3 | All of one model's vectors in a project (exports, clustering) | `project_vectors(project_id, algorithm_id, detection_ids=None, chunk_size=2000)` | `project_id = P AND algorithm_id = A AND detection_id > last ORDER BY detection_id LIMIT n` | (project, algorithm, detection): rows come out in order, so no sort |
-| Q4 | Which models have vectors in a project, and how many | `vector_counts_by_algorithm(project_id)` | `GROUP BY algorithm_id` within a project | the same index (index-only); when one project holds most of the table the planner may scan the table instead, measured at 36 ms for 359k rows |
-| Q5 | Detections that still lack a vector from a model | `detections_missing_vectors(detections, algorithm_id)` | `NOT EXISTS` on (detection, algorithm) added to the caller's queryset | (algorithm, detection), index-only |
-| Q6 | Nearest neighbours of one vector, when exact scans are too slow | not shipped | `ORDER BY vector::halfvec(D) <=> seed` within one algorithm | a partial HNSW index per algorithm, see below |
+A fill-in runs the whole pipeline again, and two costs follow (measured in the async end-to-end run on
+#1462). Classifiers run again, and their scores vary by about 0.00005 between GPU runs, so the exact-score
+duplicate check stores a repeat classification for most detections. Detector boxes can also move by one
+pixel, so exact-box matching saves a near-duplicate detection, and the original stays without a vector until
+a later job reproduces its box.
 
-`project_vectors` pages with `detection_id > last` rather than `OFFSET`, so every page costs the
-same and memory stays at one chunk. Callers keep their own scope by passing `detection_ids` or by
-filtering the queryset given to `detections_missing_vectors`.
+Concurrent writers: the writer takes no lock of its own. Its one `bulk_create` runs its INSERTs of up to
+200 rows in a single transaction, so the inserted rows stay locked until the last INSERT finishes. Rows
+are inserted in (detection, algorithm) order, because two writers that insert shared rows in different
+orders deadlock; with the ordering removed, `TestConcurrentWriters` fails with "deadlock detected"
+(checked on 2026-10-16).
 
-## Anti-patterns
+## Reading
 
-- **Computing similarity in Python over unbounded rows.** Use the database's distance operators,
-  or the chunked reader for exports. Never `list()` a project's vectors.
-- **Mixing models.** Always filter by algorithm; a missing filter is a silent correctness bug.
-- **`.distinct()` or JSON round trips over vector rows.** De-duplicating sorts the vector column
-  and is very slow; the unique constraint already prevents duplicates.
-- **Omitting the project filter** on project-scoped reads. The index leads with `project`, and the
-  filter also enforces visibility.
-- **Reading an algorithm's rows by algorithm alone** at scale. Only the (algorithm, detection)
-  index leads with that column; it is meant for the writer's one-row length lookup, and a scan of
-  all of an algorithm's rows still reads the table.
+Every read filters by one algorithm (`for_algorithm`), and project-scoped reads also filter by
+project first, which enforces visibility as well. Check a plan with `EXPLAIN (ANALYZE, BUFFERS)` on
+realistic data before calling a query cheap. `TestReadingVectors` shows the basic read to copy.
 
-## Logits are not vectors to search
+| Need | SQL shape | Index and measured cost |
+|---|---|---|
+| One algorithm's vectors for some detections (tracking over adjacent captures, retraining sets) | `detection_id = ANY(..) AND algorithm_id = A` | unique (detection, algorithm) for a few captures' worth; 17-19 ms for 5,000 ids on a 450k-row table, where the planner chose a sequential scan (12 ms forced onto the algorithm index) |
+| All of one algorithm's vectors in a project (exports, clustering) | `project_id = P AND algorithm_id = A AND detection_id > last ORDER BY detection_id LIMIT n`, paged by the last id rather than `OFFSET` | (project, algorithm, detection): rows come out in order, with no sort |
+| Which algorithms have vectors in a project, and how many | `GROUP BY algorithm_id` within a project | the same index, index-only; 36 ms for 359k rows, when the planner scanned the table because one project held most of it |
+| Detections still lacking a vector from an algorithm | `NOT EXISTS` on (detection, algorithm), added to the caller's detection queryset | (algorithm, detection), index-only; 138 ms over a 179k-detection project (parallel hash anti-join) |
+| Occurrences ordered by similarity to one occurrence | a representative detection's vector per occurrence, then cosine distance | (algorithm, detection), probed once per occurrence; exact scans measured at 16-19 ms per 1,000 candidates |
 
-Per-class logits belong to a classification, not to this table. Measured on a copy of production
-data: 308 thousand classifications carry logits, taking about 4.3 GB of out-of-line storage; one
-classifier has 29,176 classes, which is above pgvector's 16,000-dimension storage limit; and
-37,776 (detection, algorithm) groups hold several classifications that disagree, so logits must
-stay tied to their own classification row. Keep them on `Classification` and defer them in list
-queries. If they move, use a side table keyed by classification with a `real[]` or bytea column
-stored out of line, or files in object storage for bulk training exports; do not put them here.
-Store only the top-k when the full vector is not needed. For all but one small model the stored
-scores equal the softmax of the logits, so they can be derived.
+Measured on a copy of production data in October 2026, on an earlier version of this table. Nearest-neighbour (HNSW) indexes are not created; #1500 tracks when to add them.
 
-## Reduced dimensions
-
-A reduction (PCA, UMAP, random projection) of a vector is a different model output. Give it its own
-`Algorithm` row, recording the method, the parent algorithm and the fit parameters, and store its
-vectors in this table under that algorithm id. Its length and any index are then its own. Two
-dimensional layouts for display are derived data that can be recomputed; store them only if a page
-needs them persistently.
-
-## Adding a sibling table
-
-Capture-level or taxon-level vectors get sibling tables of the same shape (`SourceImageEmbedding`,
-`TaxonEmbedding`), not a polymorphic target column on this table. That keeps foreign keys,
-cascades and indexes exact. Only `DetectionEmbedding` exists today; the shared parts live in
-`ami/ml/models/embedding.py` so a sibling is a small change:
-
-1. Subclass `BaseEmbedding` (algorithm, job, project, vector, timestamp, and `save()` that
-   fills the project). Add the target foreign key with `db_index=False`, and implement the
-   `fill_project_ids(embeddings)` classmethod (how a vector finds its project from its target).
-2. Subclass `BaseEmbeddingQuerySet` with `target_field = "<target>"` and use it as the manager.
-   `store()`, `stored_length()` and `for_algorithm()` then work unchanged. The base foreign keys use
-   `related_name="%(class)ss"`. `DetectionEmbedding` declares its own related names
-   (`detection_embeddings`, `embeddings`); new sibling tables use the base's `%(class)ss` names.
-3. Write the Meta by hand: a unique constraint on (target, algorithm),
-   an index on (project, algorithm, target), an index on (algorithm, target) for the
-   writer's length lookup, and the partial (job, target) index. Give the indexes explicit short names
-   (the 30 character limit) like `ml_detemb_*`.
-4. The migration must repeat what `makemigrations` does not infer: create the table, then run
-   `ALTER TABLE <table> ALTER COLUMN vector SET STORAGE EXTERNAL`, as `ml/0031` does for detections.
-   Enabling pgvector is already done by `ml/0030`.
-5. Add reader and writer functions next to the detection ones, keyed by algorithm like
-   every other reader. The writer stays specific to its target (matching responses to targets is
-   not shared).
-
-Open question: taxa are not project-scoped, so a `TaxonEmbedding` might carry a nullable `project`
-or none at all. The base requires a project, so that table would override the field, or the base
-would need to be relaxed first. Decide this before building it.
-
-## Nearest-neighbour indexes (HNSW)
-
-Exact scans were measured at about 16 to 19 ms per 1,000 candidate rows, which is fine for a
-filtered list. When that stops being enough, add a partial HNSW index per algorithm on the
-cast expression, for example
-`CREATE INDEX ... USING hnsw ((vector::halfvec(1024)) halfvec_cosine_ops) WHERE algorithm_id = A`.
-The cast is valid because each algorithm has one length, and halfvec HNSW supports up to 4,000
-dimensions. Measured costs at about 350 thousand rows: 0.9 to 2.7 GB and 3.5 to 15 minutes to
-build per model, with recall between 0.68 and 0.98, so results are approximate and filtered
-queries need care. Not created by default.
+Avoid: computing similarity in Python over unbounded rows (use the database's distance operators,
+or read in pages); a read without an algorithm filter, which silently mixes algorithms; and `.distinct()`
+over vector rows, which sorts the vector column and is very slow (the unique constraint already
+prevents duplicates).
 
 ## Precision
 
-`halfvec` stores 16-bit floats. On 600 real 2,048-dimension vectors the cosine similarity changed
-by at most 1.5e-4 and the top-1 neighbour agreed in 98.2 percent of cases. Values outside the
-half-precision range (beyond 65,504, NaN, infinity) cannot be stored; the writer skips them with a
-warning. Keep full precision somewhere else only where that difference matters, and say so.
+`halfvec` stores 16-bit floats. On 600 real 2,048-dimension vectors, cosine similarity changed by at
+most 1.5e-4 and the top-1 neighbour agreed in 98.2 percent of cases.
 
 ## Query cache
 
-The vector table is listed in `CACHALOT_UNCACHABLE_TABLES` (`config/settings/base.py`), so queries
-that read it are never cached: vector rows are large, and the cache shares Redis with async job
-state. This only works when django-cachalot can see the table in the query. It does not see tables
-inside a negated `Exists` in `filter()`, which is why `detections_missing_vectors` uses `exclude()`.
+The vector table is listed in `CACHALOT_UNCACHABLE_TABLES` (`config/settings/base.py`): vector rows
+are large, and the cache shares Redis with async job state. django-cachalot only honours this when
+it can see the table in the query, and it does not see tables inside a negated `Exists` passed to
+`filter()`. Write such a query with `exclude(Exists(...))`.
 
-## Deletion and retention
+## Adding a vector table for another target
 
-Vectors are deleted with their detection or algorithm. Deleting a job keeps its vectors (the job
-reference becomes null). Saving identical results twice changes nothing; a new vector for the same
-(detection, algorithm) replaces the old one in place, and the replacing job is recorded on
-the row. A vector that is identical on a re-run is not written, and keeps the job that first stored
-it.
+Capture and taxon vectors get their own tables of the same shape, not a polymorphic target column
+on this one, so foreign keys, cascades and indexes stay exact. `ami/ml/models/embedding.py` has
+commented-out `SourceImageEmbedding` and `TaxonEmbedding` to start from:
+
+1. Subclass `BaseEmbedding` (algorithm, job, project, vector) and add the target foreign
+   key with `db_index=False`.
+2. Use a `BaseEmbeddingQuerySet` subclass as the manager.
+3. In the Meta, set `indexes, constraints = embedding_table_options("<target>", prefix=..., short_target=...)`:
+   a unique constraint on (target, algorithm) and indexes on (project, algorithm, target), (algorithm,
+   target) and a partial (job, target). The reverse names come from the base (`algorithm.<table>s`).
+4. In the migration, after creating the table, run
+   `ALTER TABLE <table> ALTER COLUMN vector SET STORAGE EXTERNAL`, as `ml/0031` does.
+5. Write a writer for the target next to the detection one, and add the table to
+   `CACHALOT_UNCACHABLE_TABLES`.
+
+Taxa belong to no project, so a `TaxonEmbedding` needs a decision first: the project the vector was
+computed for, or a nullable project, which means overriding the base field.
