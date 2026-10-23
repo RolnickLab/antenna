@@ -7541,14 +7541,19 @@ class TestOccurrenceJobFilter(APITestCase):
         # Detection and classification come from another job; only the vector links to vector_job.
         only_vector = self._make_occurrence([(self.other_job, [self.other_job])])
         other_vector = self._make_occurrence([(self.other_job, [self.other_job])])
-        DetectionEmbedding.objects.store(
+        DetectionEmbedding.objects.bulk_create(
             [
                 DetectionEmbedding(
-                    detection=only_vector.detections.get(), algorithm=self.algorithm, vector=[0.5] * 4, job=vector_job
+                    detection=only_vector.detections.get(),
+                    algorithm=self.algorithm,
+                    project=self.project,
+                    vector=[0.5] * 4,
+                    job=vector_job,
                 ),
                 DetectionEmbedding(
                     detection=other_vector.detections.get(),
                     algorithm=self.algorithm,
+                    project=self.project,
                     vector=[0.5] * 4,
                     job=self.other_job,
                 ),

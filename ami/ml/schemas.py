@@ -15,7 +15,7 @@ class BoundingBox(pydantic.BaseModel):
     y2: float
 
     def as_coords(self) -> list[float]:
-        """The box as [x1, y1, x2, y2] - the one place that defines this order."""
+        """The box as ``[x1, y1, x2, y2]``, the order ``from_coords`` reads and detections store."""
         return [self.x1, self.y1, self.x2, self.y2]
 
     @classmethod
@@ -120,6 +120,14 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         description="A URI to the weight or model details, could be a public web URL or object store path.",
     )
     category_map: AlgorithmCategoryMapResponse | None = None
+    embedding_dimensions: int | None = pydantic.Field(
+        default=None,
+        gt=0,
+        description=(
+            "The length of the feature vectors this algorithm returns in detection embeddings. Required for any "
+            "algorithm that returns them: Antenna refuses vectors from an algorithm that does not declare it."
+        ),
+    )
 
     class Config:
         extra = "ignore"
@@ -173,20 +181,13 @@ class DetectionRequest(pydantic.BaseModel):
 
 
 class EmbeddingResponse(pydantic.BaseModel):
-    """A feature vector for one detection, and the algorithm whose backbone produced it.
+    """A feature vector for one detection, and the algorithm that produced it.
 
-    It is carried on the detection rather than on a classification, so storing it can never
-    add a prediction. Only vectors from the same algorithm are comparable.
+    Only vectors from the same algorithm are comparable, and they are stored in half precision.
     """
 
     features: list[float] = pydantic.Field(description="The feature vector.")
     algorithm: AlgorithmReference
-
-    @pydantic.validator("features")
-    def _features_not_empty(cls, v):
-        if not v:
-            raise ValueError("features must contain at least one value")
-        return v
 
 
 class DetectionResponse(pydantic.BaseModel):
@@ -200,8 +201,9 @@ class DetectionResponse(pydantic.BaseModel):
     embeddings: list[EmbeddingResponse] | None = pydantic.Field(
         default=None,
         description=(
-            "Feature vectors for this detection, at most one per algorithm. Only vectors from the same "
-            "algorithm are comparable. See docs on how to support models that output multiple vectors."
+            "Feature vectors for this detection, at most one per algorithm. Each algorithm must declare "
+            "embedding_dimensions in /info. To return several vectors from one ML model, register one algorithm "
+            "per output (see processing_services/README.md, 'Returning feature vectors')."
         ),
     )
 
