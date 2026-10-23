@@ -1,9 +1,5 @@
 """
-Batch creation of identifications.
-
-Resolves every row a batch references in a fixed number of queries, validates
-each item against the resolved batch, then saves each item inside its own
-savepoint so one bad item does not abort the rest. See #1371.
+The Identification model and any managers/querysets associated with it.
 """
 
 import logging
@@ -43,6 +39,9 @@ def create_identifications_batch(
     :func:`resolve_occurrences` so the permission check and the writes see the
     same rows.
     """
+    # Resolves every row a batch references in a fixed number of queries, validates
+    # each item against the resolved batch, then saves each item inside its own
+    # savepoint so one bad item does not abort the rest. See #1371.
     taxa = _resolve_taxa(items)
     agreed_identifications, agreed_predictions = _resolve_agreement_targets(items)
 

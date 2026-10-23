@@ -165,9 +165,9 @@ class DataExportTest(TestCase):
         """Fields in ``EXPORT_EXCLUDED_FIELDS`` cost a query per occurrence, so exported rows never
         carry them and their queries never run, even when the data exists."""
         algorithm = Algorithm.objects.create(name="Export embedder", key="export-embedder", task_type="embedding")
-        DetectionEmbedding.objects.store(
+        DetectionEmbedding.objects.bulk_create(
             [
-                DetectionEmbedding(detection=detection, algorithm=algorithm, vector=[0.5] * 4)
+                DetectionEmbedding(detection=detection, algorithm=algorithm, project=self.project, vector=[0.5] * 4)
                 for detection in Detection.objects.filter(occurrence__project=self.project)
             ]
         )

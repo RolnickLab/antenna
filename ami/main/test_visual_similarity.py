@@ -48,9 +48,13 @@ class VisualSimilarityFixture(APITestCase):
         cls.seed, cls.near, cls.far, cls.other_only, cls.no_vector = list(
             Occurrence.objects.filter(project=cls.project).order_by("pk")
         )
-        cls.backbone = Algorithm.objects.create(name="Backbone", key="backbone", task_type="embedding")
-        cls.other = Algorithm.objects.create(name="Other backbone", key="other-backbone", task_type="embedding")
-        DetectionEmbedding.objects.store(
+        cls.backbone = Algorithm.objects.create(
+            name="Backbone", key="backbone", task_type="embedding", embedding_dimensions=len(SEED)
+        )
+        cls.other = Algorithm.objects.create(
+            name="Other backbone", key="other-backbone", task_type="embedding", embedding_dimensions=len(SEED)
+        )
+        DetectionEmbedding.objects.bulk_create(
             [
                 cls._embedding(cls.seed, cls.backbone, SEED),
                 cls._embedding(cls.near, cls.backbone, NEAR),
@@ -63,7 +67,9 @@ class VisualSimilarityFixture(APITestCase):
 
     @staticmethod
     def _embedding(occurrence: Occurrence, algorithm: Algorithm, vector: list[float]) -> DetectionEmbedding:
-        return DetectionEmbedding(detection=occurrence.detections.get(), algorithm=algorithm, vector=vector)
+        return DetectionEmbedding(
+            detection=occurrence.detections.get(), algorithm=algorithm, project=occurrence.project, vector=vector
+        )
 
     def _ids(self, query: str, expected_status: int = status.HTTP_200_OK) -> list[int]:
         response = self.client.get(f"{self.url}&{query}")
