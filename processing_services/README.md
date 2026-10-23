@@ -43,6 +43,7 @@ If your goal is to run an ML backend locally, simply copy the `example` app and 
         - `ZeroShotObjectDetectorPipeline`
         - `ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline`
         - `ZeroShotObjectDetectorWithConstantClassifierPipeline`
+        - `ZeroShotObjectDetectorWithGlobalMothClassifierPipeline` (see below)
 
 4. Add `NewPipeline` to `processing_services/example/api/api.py`
 
@@ -76,6 +77,15 @@ PipelineChoice = typing.Literal[
     "new-pipeline-slug",
 ]
 ```
+### Global moth classifier pipeline
+
+`ZeroShotObjectDetectorWithGlobalMothClassifierPipeline` finds insects with the zero-shot detector and classifies each crop with a ResNet50 trained on about 29,000 moth species (`api/global_moth_classifier.py`). It is a working template for adding a real model with downloaded weights.
+
+- The weights (about 330 MB) and the category map are downloaded on first use into `processing_services/example/cache/` and reused afterwards. The first request is slow on CPU while the models load.
+- Set the `MODEL_BASE_URL` environment variable to download from a mirror, or to read from a local directory laid out as `moths/classification/<file>`. It defaults to the public AMI model store.
+- The classifier returns the raw logits for every class (in the order of the category map published in `/info`) and no probabilities. The receiving system derives probabilities from the logits.
+- Run its tests without any downloads: `docker compose -f processing_services/docker-compose.yml run --rm ml_backend_example python -m unittest api.test_global_moth_classifier api.test_utils`
+
 ## Demo
 
 ## `minimal` Pipelines and Output Images

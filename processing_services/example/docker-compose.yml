@@ -4,8 +4,11 @@ services:
       context: .
     volumes:
       - ./:/app:z
+      - ./cache:/app/cache  # Model weights and labels cache
       - ./huggingface_cache:/root/.cache/huggingface
       - ./pytorch_cache:/root/.cache/torch
+    environment:
+      - MODEL_BASE_URL  # Optional: mirror or local directory for model weights
     ports:
       - "2003:2000"
     extra_hosts:
