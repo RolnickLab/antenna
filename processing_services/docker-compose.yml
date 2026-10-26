@@ -25,4 +25,4 @@ services:
 
 networks:
   antenna_network:
-    name: antenna_network
+    name: ${ANTENNA_NETWORK:-antenna_network}

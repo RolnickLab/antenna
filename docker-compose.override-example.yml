@@ -9,13 +9,21 @@
 # 3. Attach debugger from VS Code using the launch configurations in .vscode/launch.json
 #
 # The docker-compose.override.yml file is git-ignored for local customization.
+#
+# To run a second copy of the stack on the same machine, change host ports with the
+# ANTENNA_* variables in .env, and remove the ports you do not need here, for example:
+#
+#   postgres:
+#     ports: !reset []
+#
+# See "Running more than one stack" in README.md.
 
 services:
   django:
     environment:
       - DEBUGGER=1
     ports:
-      - "5678:5678"
+      - "${ANTENNA_DJANGO_DEBUGGER_PORT:-5678}:5678"
     volumes:
       # allow modifying the start script without rebuilding the image
       - ./compose/local/django/start:/start
@@ -24,7 +32,7 @@ services:
     environment:
       - DEBUGGER=1
     ports:
-      - "5679:5679"
+      - "${ANTENNA_CELERYWORKER_DEBUGGER_PORT:-5679}:5679"
     volumes:
       # allow modifying the start script without rebuilding the image
       - ./compose/local/django/celery/worker/start:/start-celeryworker

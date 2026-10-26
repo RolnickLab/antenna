@@ -270,6 +270,70 @@ The local environment uses a local PostgreSQL database in a Docker container.
 
     docker compose run --rm django python manage.py migrate
 
+## Running more than one stack
+
+You can run several copies of the local stack on one machine, for example one per branch in
+separate git worktrees. Each copy needs its own compose project name, its own host ports and
+its own shared network name. Containers, images and volumes are then kept apart by the
+project name.
+
+1. Check out the second copy in its own directory, for example with `git worktree add`.
+
+2. In that directory, create a `.env` file that sets the project name, the network name and
+   any host ports that would clash with the first copy. Every host port in
+   `docker-compose.yml` has an `ANTENNA_*` variable. The default is used for any variable you
+   leave out.
+
+   ```bash
+   COMPOSE_PROJECT_NAME=antenna-two
+   ANTENNA_NETWORK=antenna-two_network
+   ANTENNA_DJANGO_PORT=8100
+   ANTENNA_UI_PORT=4100
+   ANTENNA_POSTGRES_PORT=5544
+   ANTENNA_MINIO_PORT=9100
+   ANTENNA_MINIO_CONSOLE_PORT=9101
+   ANTENNA_NATS_PORT=4322
+   ANTENNA_NATS_MONITOR_PORT=8322
+   ANTENNA_FLOWER_PORT=5655
+   ANTENNA_RABBITMQ_PORT=5772
+   ANTENNA_RABBITMQ_MANAGEMENT_PORT=15772
+   ANTENNA_ML_BACKEND_PORT=2105
+   ```
+
+   Compose reads `.env` for these values, and the file is git-ignored. Django also loads it,
+   so do not put values in it that you do not want in Django's environment.
+
+3. Optionally, use a `docker-compose.override.yml` file to remove host ports that you do not
+   need in the second copy. Services in the same stack reach each other by service name, so
+   a port is needed only for access from your machine. `docker compose` merges
+   `docker-compose.override.yml` automatically when it is present, and the file is
+   git-ignored. `!reset` needs Docker Compose 2.24 or later.
+
+   ```yaml
+   # docker-compose.override.yml
+   services:
+     postgres:
+       ports: !reset []
+     nats:
+       ports: !reset []
+     rabbitmq:
+       ports: !reset []
+     flower:
+       ports: !reset []
+   ```
+
+   To keep your debugging settings as well, add these lines to a copy of
+   `docker-compose.override-example.yml` instead. Use `!override` in place of `!reset` to
+   replace a port list with a different one rather than remove it.
+
+4. Start the stack as usual with `docker compose up -d`. The UI is then at
+   `http://localhost:4100` and the API at `http://localhost:8100/api/v2/`.
+
+To start a processing service from `processing_services/` against the second copy, run it
+with the same `ANTENNA_NETWORK` value, for example
+`ANTENNA_NETWORK=antenna-two_network docker compose -f processing_services/example/docker-compose.yml -p antenna-two-ml up -d`.
+Its own host port (2000 or 2003) is still fixed, so start it in only one copy at a time.
+
 ## Debugging with VS Code
 
 Antenna supports remote debugging with debugpy for both Django and Celery services.
