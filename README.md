@@ -300,8 +300,15 @@ project name.
    ANTENNA_ML_BACKEND_PORT=2105
    ```
 
-   Compose reads `.env` for these values, and the file is git-ignored. Django also loads it,
-   so do not put values in it that you do not want in Django's environment.
+   Compose reads `.env` for these values, and the file is git-ignored. Django also loads
+   `.env`, after `.envs/.local/.django`, so add the second copy's UI address there too.
+   Without these lines, links, exports and session logins use port 4000:
+
+   ```bash
+   EXTERNAL_HOSTNAME=localhost:4100
+   DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:4100
+   CORS_ALLOWED_ORIGINS=http://localhost:4100
+   ```
 
 3. Optionally, use a `docker-compose.override.yml` file to remove host ports that you do not
    need in the second copy. Services in the same stack reach each other by service name, so
@@ -328,6 +335,19 @@ project name.
 
 4. Start the stack as usual with `docker compose up -d`. The UI is then at
    `http://localhost:4100` and the API at `http://localhost:8100/api/v2/`.
+
+Limits of a second copy:
+
+- Capture images in the demo data use `http://minio:9000`. Inside each copy this name reaches
+  that copy's own MinIO, so processing works. Your browser, however, resolves `minio` to your
+  machine and port 9000, which is the first copy. Images of the second copy show only when
+  the first copy is stopped.
+- VS Code's attach configurations in `.vscode/launch.json` use ports 5678 and 5679. If you
+  change `ANTENNA_DJANGO_DEBUGGER_PORT` or `ANTENNA_CELERYWORKER_DEBUGGER_PORT`, change them
+  there too.
+- Images built before this change were named `ami_local_*`. The first `docker compose up`
+  builds them again under the project name. Remove the old ones with
+  `docker image rm $(docker image ls -q 'ami_local_*')`.
 
 To start a processing service from `processing_services/` against the second copy, run it
 with the same `ANTENNA_NETWORK` value, for example
