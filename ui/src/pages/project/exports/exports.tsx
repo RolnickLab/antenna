@@ -1,10 +1,12 @@
 import { EmptyState } from 'components/empty-state/empty-state'
 import { API_ROUTES } from 'data-services/constants'
 import { useExports } from 'data-services/hooks/exports/useExports'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
+import {
+  PageHeader,
+  PaginationBar,
+  Table,
+  TableSortSettings,
+} from 'nova-ui-kit'
 import { ExportDetailsDialog } from 'pages/export-details/export-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useEffect, useState } from 'react'

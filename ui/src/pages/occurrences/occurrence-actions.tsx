@@ -1,6 +1,5 @@
 import { Occurrence } from 'data-services/models/occurrence'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { IdentificationScore } from 'nova-ui-kit'
+import { BasicTooltip, IdentificationScore } from 'nova-ui-kit'
 import { Agree } from 'pages/occurrence-details/agree/agree'
 import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'

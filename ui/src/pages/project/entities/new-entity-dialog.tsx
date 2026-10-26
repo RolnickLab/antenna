@@ -1,8 +1,7 @@
 import classNames from 'classnames'
 import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
-import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -19,8 +18,8 @@ export const NewEntityDialog = ({
   isCompact,
   type,
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
   collection: string
   isCompact?: boolean
   type: string

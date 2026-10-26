@@ -1,0 +1,33 @@
+.root {
+  display: flex;
+  gap: 2px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-generic-white);
+  box-sizing: border-box;
+  border-radius: 16px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 100%;
+  outline: none;
+  color: var(--color-primary);
+  border-radius: 16px;
+
+  &.active {
+    background-color: var(--color-primary);
+  }
+
+  &:hover {
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-generic-black);
+  }
+}

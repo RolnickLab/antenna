@@ -1,5 +1,5 @@
 import { Breadcrumbs } from 'components/breadcrumbs/breadcrumbs'
-import { NavigationBar } from 'design-system/components/navigation/navigation-bar'
+import { NavigationBar } from 'components/navigation/navigation-bar'
 import { useNavigate } from 'react-router-dom'
 import { useNavItems } from 'utils/useNavItems'
 import styles from './menu.module.scss'

@@ -2,28 +2,22 @@ import { DefaultFiltersControl } from 'components/filtering/default-filter-contr
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
-import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
-import { Occurrence } from 'data-services/models/occurrence'
-import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { SortControl } from 'design-system/components/sort-control'
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import { Table } from 'design-system/components/table/table/table'
-import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
 import {
-  OccurrenceDetails,
-  TABS,
-} from 'pages/occurrence-details/occurrence-details'
-import { useContext, useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { BreadcrumbContext } from 'utils/breadcrumbContext'
+  BulkActionBar,
+  buttonVariants,
+  ColumnSettings,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Table,
+  ToggleGroup,
+} from 'nova-ui-kit'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -34,12 +28,14 @@ import { useUser } from 'utils/user/userContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './occurrence-columns'
+import { OccurrenceDetailsDialog } from './occurrence-details-dialog'
 import { OccurrenceGallery } from './occurrence-gallery'
-import { OccurrenceNavigation } from './occurrence-navigation'
+import { OccurrenceStats } from './occurrence-stats'
 import { OccurrencesActions } from './occurrences-actions'
 
 export const Occurrences = () => {
   const { user } = useUser()
+  const navigate = useNavigate()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -94,7 +90,9 @@ export const Occurrences = () => {
     <>
       <div className="flex flex-col gap-6 md:flex-row">
         <div className="space-y-6">
+          <OccurrenceStats projectId={projectId} filters={filters} />
           <FilterSection defaultOpen>
+            <DefaultFiltersControl field="apply_defaults" />
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
             <FilterControl field="taxon" />
@@ -106,12 +104,19 @@ export const Occurrences = () => {
             )}
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
-            <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
-            title="More filters"
+            title={translate(STRING.MORE_FILTERS)}
             defaultOpen={someActive(
-              ['collection', 'deployment', 'algorithm', 'not_algorithm'],
+              [
+                'collection',
+                'deployment',
+                'deployment__device',
+                'deployment__research_site',
+                'algorithm',
+                'not_algorithm',
+                'job',
+              ],
               activeFilters
             )}
           >
@@ -119,8 +124,11 @@ export const Occurrences = () => {
             <FilterControl field="date_end" />
             <FilterControl field="collection" />
             <FilterControl field="deployment" />
+            <FilterControl field="deployment__device" />
+            <FilterControl field="deployment__research_site" />
             <FilterControl field="algorithm" />
             <FilterControl field="not_algorithm" />
+            <FilterControl field="job" />
           </FilterSection>
         </div>
         <div className="w-full overflow-hidden">
@@ -153,7 +161,7 @@ export const Occurrences = () => {
               to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
             >
               <DownloadIcon className="w-4 h-4" />
-              <span>Export </span>
+              <span>Export</span>
             </Link>
             <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
@@ -219,73 +227,19 @@ export const Occurrences = () => {
         ) : null}
       </PageFooter>
       {id ? (
-        <OccurrenceDetailsDialog id={id} occurrences={occurrences} />
+        <OccurrenceDetailsDialog
+          id={id}
+          occurrences={occurrences}
+          onClose={() =>
+            navigate(
+              getAppRoute({
+                to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
+                keepSearchParams: true,
+              })
+            )
+          }
+        />
       ) : null}
     </>
-  )
-}
-
-const OccurrenceDetailsDialog = ({
-  id,
-  occurrences,
-}: {
-  id: string
-  occurrences?: Occurrence[]
-}) => {
-  const navigate = useNavigate()
-  const { state } = useLocation()
-  const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
-  const { projectId } = useParams()
-  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { occurrence, isLoading, error } = useOccurrenceDetails(id)
-
-  useEffect(() => {
-    // If a default tab is set from router state, set this as active
-    if (state?.defaultTab) {
-      setSelectedView(state.defaultTab)
-    }
-  }, [state?.defaultTab])
-
-  useEffect(() => {
-    setDetailBreadcrumb(
-      occurrence ? { title: occurrence.displayName } : undefined
-    )
-
-    return () => {
-      setDetailBreadcrumb(undefined)
-    }
-  }, [occurrence])
-
-  return (
-    <Dialog.Root
-      open={!!id}
-      onOpenChange={(open) => {
-        if (!open) {
-          setSelectedView(undefined)
-        }
-
-        navigate(
-          getAppRoute({
-            to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
-            keepSearchParams: true,
-          })
-        )
-      }}
-    >
-      <Dialog.Content
-        ariaCloselabel={translate(STRING.CLOSE)}
-        error={error}
-        isLoading={isLoading}
-      >
-        {occurrence ? (
-          <OccurrenceDetails
-            occurrence={occurrence}
-            selectedTab={selectedView}
-            setSelectedTab={setSelectedView}
-          />
-        ) : null}
-        <OccurrenceNavigation occurrences={occurrences} />
-      </Dialog.Content>
-    </Dialog.Root>
   )
 }

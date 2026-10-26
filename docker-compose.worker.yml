@@ -55,7 +55,7 @@ services:
 
   celeryworker_ml:
     <<: *django
-    scale: 1
+    scale: 4
     ports: []
     command: /start-celeryworker
     environment:

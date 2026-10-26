@@ -1,0 +1,12 @@
+.infoLabel {
+  display: block;
+  @include body-small;
+  font-weight: 600;
+  color: var(--color-muted-foreground);
+}
+
+@media only screen and (max-width: $breakpoint-md) {
+  .infoLabel {
+    display: none;
+  }
+}

@@ -1,9 +1,8 @@
 import classNames from 'classnames'
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { useRecentIdentifications } from './useRecentOptions'
 

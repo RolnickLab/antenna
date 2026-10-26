@@ -1,7 +1,6 @@
 import { useQueueJob } from 'data-services/hooks/jobs/useQueueJob'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { CheckIcon, Loader2Icon, PlayIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const QueueJob = ({

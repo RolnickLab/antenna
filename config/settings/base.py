@@ -232,20 +232,24 @@ X_FRAME_OPTIONS = "DENY"
 
 # EMAIL
 # ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
-EMAIL_BACKEND = env(
-    "DJANGO_EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",  # type: ignore[no-untyped-call]
-)
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
+# Note that EMAIL_BACKEND is a deprecated way to say this.
+# We need a default because one or more processes in our docker compose for prod
+# needs to load this without an env.
+EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 EMAIL_TIMEOUT = 5
 
-# Sendgrid
+# Credentials for providers which may be selected by EMAIL_BACKEND.
 ANYMAIL = {
     "SENDGRID_API_KEY": env("SENDGRID_API_KEY", default=None),  # type: ignore[no-untyped-call]
+    "MANDRILL_API_KEY": env("MANDRILL_API_KEY", default=None),  # type: ignore[no-untyped-call]
 }
+# Config for the Sendgrid email provider, which may be selected by EMAIL_BACKEND.
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
+
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="Antenna <noreply@example.com>")
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+EMAIL_SUBJECT_PREFIX = env("DJANGO_EMAIL_SUBJECT_PREFIX", default="[Antenna]")
 
 # TCP keepalive (shared by Redis cache and Celery/RabbitMQ broker)
 # ------------------------------------------------------------------------------
@@ -550,6 +554,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     # "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # Names for the single-value enums that tag each occurrence history entry (see
+    # OCCURRENCE_HISTORY_ENTRY_SCHEMA); without them drf-spectacular falls back to hashed names.
+    "ENUM_NAME_OVERRIDES": {
+        "AlgorithmResultEntryTypeEnum": ["algorithm_result"],
+        "IdentificationEntryTypeEnum": ["identification"],
+        "PredictionEntryTypeEnum": ["prediction"],
+    },
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
@@ -587,3 +598,10 @@ DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ign
 # preserves existing behavior; deployments seeing contention can set to False
 # until the append-only ``JobLog`` child table (PR #1259) is in place.
 JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]
+
+
+# Sizes for Source Image Thumbnails ("large" backs the zoomable session detail view)
+THUMBNAILS = {
+    "STORAGE_PREFIX": "thumbnails/",
+    "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}, "large": {"width": 2560}},
+}

@@ -3,16 +3,17 @@ import { FormRow, FormSection } from 'components/form/layout/layout'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { StatusBar } from 'design-system/components/status/status-bar'
+import { CheckIcon } from 'lucide-react'
 import {
+  CodeBlock,
+  Dialog,
+  InputContent,
+  InputValue,
+  StatusBar,
   StatusBullet,
   StatusBulletTheme,
-} from 'design-system/components/wizard/status-bullet/status-bullet'
-import * as Wizard from 'design-system/components/wizard/wizard'
-import { CheckIcon } from 'lucide-react'
-import { CodeBlock } from 'nova-ui-kit'
+  Wizard,
+} from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -106,6 +107,16 @@ const JobSummary = ({ job }: { job: Job }) => {
           <InputValue
             label={translate(STRING.FIELD_LABEL_PIPELINE)}
             value={job.pipeline.name}
+          />
+        ) : null}
+        {job.type.key === 'ml' || job.type.key === 'post_processing' ? (
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_OCCURRENCES)}
+            value={translate(STRING.VIEW_OCCURRENCES)}
+            to={getAppRoute({
+              to: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
+              filters: { job: job.id },
+            })}
           />
         ) : null}
         {job.sourceImage ? (

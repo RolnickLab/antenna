@@ -10,10 +10,8 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
-import { Button } from 'nova-ui-kit'
+import { Button, EntityPicker, InputContent, InputValue } from 'nova-ui-kit'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useContext, useState } from 'react'
 import { useForm } from 'react-hook-form'

@@ -1,14 +1,10 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-@import 'src/design-system/variables/variables.scss';
-
 .section {
   margin: 32px;
   box-sizing: border-box;
 
   &:not(:last-child) {
     padding-bottom: 32px;
-    border-bottom: 1px solid $color-neutral-100;
+    border-bottom: 1px solid var(--color-border);
   }
 }
 
@@ -20,16 +16,16 @@
 }
 
 .sectionTitle {
-  @include paragraph-large();
-  color: $color-neutral-700;
+  @include body-large;
+  color: var(--color-foreground);
   font-weight: 600;
   margin: 0;
 }
 
 .sectionDescription {
   display: block;
-  @include paragraph-small();
-  color: $color-neutral-300;
+  @include body-small;
+  color: var(--color-muted-foreground);
   font-style: italic;
   word-break: break-word;
   margin: 0;
@@ -62,7 +58,7 @@
 
   &.inDialog {
     position: sticky;
-    top: $dialog-header-height;
+    top: 72px; // Dialog header height
     z-index: 1;
   }
 }
@@ -71,7 +67,7 @@
   font-weight: 600;
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .section {
     margin: 16px;
 
@@ -101,7 +97,7 @@
     padding: 8px 16px;
 
     &.inDialog {
-      top: $dialog-header-height-small;
+      top: 64px; // Dialog header height (small screen)
     }
   }
 }

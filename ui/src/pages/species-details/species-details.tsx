@@ -1,24 +1,28 @@
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
 import { DeterminationScore } from 'components/determination-score'
+import { Plot } from 'components/plot/lazy-plot'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
-import { Box } from 'design-system/components/box/box'
+import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import {
+  Box,
+  buttonVariants,
   InfoBlockField,
   InfoBlockFieldValue,
-} from 'design-system/components/info-block/info-block'
-import { Plot } from 'design-system/components/plot/lazy-plot'
-import * as Tabs from 'design-system/components/tabs/tabs'
-import { ExternalLinkIcon, LockIcon } from 'lucide-react'
-import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
+  Tabs,
+} from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useCarryOverFilters } from 'utils/useFilters'
+import { FILTERS_TO_OCCURRENCES } from 'pages/occurrences/occurrence-filters'
+import { FILTERS_TO_TAXA } from 'pages/species/species-filters'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 
@@ -39,6 +43,8 @@ export const SpeciesDetails = ({
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { project } = useProjectDetails(projectId as string, true)
+  const occurrenceFilters = useCarryOverFilters(FILTERS_TO_OCCURRENCES)
+  const taxaFilters = useCarryOverFilters(FILTERS_TO_TAXA)
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
   const hasChildren = species.rank !== 'SPECIES'
 
@@ -133,12 +139,12 @@ export const SpeciesDetails = ({
                 {hasChildren ? (
                   <InfoBlockField label="Child taxa">
                     <InfoBlockFieldValue
-                      value="View all"
+                      value={translate(STRING.VIEW_ALL)}
                       to={getAppRoute({
                         to: APP_ROUTES.TAXA({
                           projectId: projectId as string,
                         }),
-                        filters: { taxon: species.id },
+                        filters: { ...taxaFilters, taxon: species.id },
                       })}
                     />
                   </InfoBlockField>
@@ -148,12 +154,27 @@ export const SpeciesDetails = ({
                     value={`Direct: ${species.numOccurrences ?? 0}`}
                   />
                   <InfoBlockFieldValue
-                    value="View all"
+                    value={translate(STRING.VIEW_ALL)}
                     to={getAppRoute({
                       to: APP_ROUTES.OCCURRENCES({
                         projectId: projectId as string,
                       }),
-                      filters: { taxon: species.id },
+                      filters: { ...occurrenceFilters, taxon: species.id },
+                    })}
+                  />
+                </InfoBlockField>
+                <InfoBlockField label="Verification">
+                  <InfoBlockFieldValue
+                    value={`Verified: ${species.numVerified}`}
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCES({
+                        projectId: projectId as string,
+                      }),
+                      filters: {
+                        ...occurrenceFilters,
+                        taxon: species.id,
+                        verified: 'true',
+                      },
                     })}
                   />
                 </InfoBlockField>

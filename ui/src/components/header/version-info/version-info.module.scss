@@ -1,7 +1,3 @@
-@import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-
 .wrapper {
   display: flex;
   align-items: center;
@@ -10,7 +6,7 @@
 }
 
 .version {
-  @include paragraph-x-small();
-  color: $color-neutral-700;
+  @include body-small;
+  color: var(--color-foreground);
   white-space: nowrap;
 }

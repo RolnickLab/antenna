@@ -14,7 +14,7 @@ export class Session {
 
     if (event.example_captures?.length) {
       this._exampleCaptures = event.example_captures?.map((capture: any) => ({
-        src: capture.url,
+        src: capture.thumbnails?.medium ?? capture.url,
       }))
     }
   }

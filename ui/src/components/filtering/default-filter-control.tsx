@@ -2,9 +2,15 @@ import classNames from 'classnames'
 import { FormRow } from 'components/form/layout/layout'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { InputValue } from 'design-system/components/input/input'
 import { ChevronRightIcon, InfoIcon } from 'lucide-react'
-import { Button, buttonVariants, Popover, Switch } from 'nova-ui-kit'
+import {
+  Button,
+  buttonVariants,
+  InputValue,
+  Popover,
+  Switch,
+} from 'nova-ui-kit'
+import { useId } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -16,6 +22,7 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   const { project } = useProjectDetails(projectId as string, true)
   const { filters, addFilter, clearFilter } = useFilters()
   const filter = filters.find((filter) => filter.field === field)
+  const labelId = useId()
 
   if (!filter) {
     return null
@@ -24,12 +31,16 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   return (
     <div className="flex items-center justify-between pl-2">
       <div className="flex items-center gap-1">
-        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+        <span
+          id={labelId}
+          className="text-muted-foreground body-overline-small font-bold pt-0.5"
+        >
           {filter.label}
         </span>
         {project ? <DefaultFiltersTooltip project={project} /> : null}
       </div>
       <Switch
+        aria-labelledby={labelId}
         checked={stringToBoolean(filter.value) ?? true}
         onCheckedChange={(value) => {
           if (value) {
@@ -44,20 +55,13 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
 }
 
 export const DefaultFiltersTooltip = ({
-  className,
   project,
 }: {
-  className?: string
   project: ProjectDetails
 }) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <Button
-        aria-label={translate(STRING.INFO)}
-        className={className}
-        size="icon"
-        variant="ghost"
-      >
+      <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
         <InfoIcon className="w-4 h-4" />
       </Button>
     </Popover.Trigger>

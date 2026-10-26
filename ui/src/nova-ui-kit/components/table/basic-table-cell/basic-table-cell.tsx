@@ -1,0 +1,43 @@
+import classNames from 'classnames'
+import _ from 'lodash'
+import { CellTheme, TextAlign } from 'nova-ui-kit'
+import { CSSProperties, ReactNode } from 'react'
+import styles from './basic-table-cell.module.scss'
+
+interface BasicTableCellProps {
+  value?: string | number
+  details?: string[]
+  theme?: CellTheme
+  children?: ReactNode
+  style?: CSSProperties
+}
+
+export const BasicTableCell = ({
+  value,
+  details,
+  theme = CellTheme.Default,
+  children,
+  style = {},
+}: BasicTableCellProps) => {
+  const textAlign = _.isNumber(value) ? TextAlign.Right : TextAlign.Left
+  const valueLabel = _.isNumber(value) ? value.toLocaleString() : value
+
+  return (
+    <div
+      className={classNames(styles.tableCell, {
+        [styles.primary]: theme === CellTheme.Primary,
+        [styles.bubble]: theme === CellTheme.Bubble,
+      })}
+      style={{ textAlign, ...style }}
+    >
+      {valueLabel ? <span className={styles.label}>{valueLabel}</span> : null}
+      {details &&
+        details.map((detail, index) => (
+          <span key={index} className={styles.details}>
+            {detail}
+          </span>
+        ))}
+      {children}
+    </div>
+  )
+}

@@ -96,6 +96,12 @@ export class Capture {
     })
   }
 
+  get lastProcessed(): Date | undefined {
+    return this._capture.last_processed
+      ? new Date(this._capture.last_processed)
+      : undefined
+  }
+
   get deploymentId(): string | undefined {
     return this._capture.deployment
       ? `${this._capture.deployment.id}`
@@ -159,6 +165,25 @@ export class Capture {
 
   get sessionLabel(): string {
     return this._capture.event?.name ?? ''
+  }
+
+  get thumbnailSmall(): string {
+    if (this._capture.thumbnails?.small) {
+      return this._capture.thumbnails.small
+    }
+
+    return this._capture.url
+  }
+
+  // EXIF-free thumbnail URLs for the session detail zoom ladder, with no
+  // original-file fallback: thumbnails are generated on request, so a missing
+  // size usually means the source file is unreachable too, and the ladder
+  // simply skips that tier.
+  get thumbnailSizes(): { medium?: string; large?: string } {
+    return {
+      medium: this._capture.thumbnails?.medium ?? undefined,
+      large: this._capture.thumbnails?.large ?? undefined,
+    }
   }
 
   get src(): string {

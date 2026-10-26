@@ -1,3 +1,4 @@
+import { CONSTANTS } from 'nova-ui-kit'
 import { UserPermission } from 'utils/user/types'
 import { Entity } from './entity'
 import { Pipeline } from './pipeline'
@@ -20,6 +21,7 @@ export const SERVER_JOB_TYPES = [
   'data_storage_sync',
   'populate_captures_collection',
   'data_export',
+  'post_processing',
   'unknown',
 ] as const
 
@@ -163,6 +165,7 @@ export class Job extends Entity {
       data_storage_sync: 'Data storage sync',
       populate_captures_collection: 'Populate captures collection',
       data_export: 'Data export',
+      post_processing: 'Post-processing',
       unknown: 'Unknown',
     }[key]
 
@@ -190,10 +193,10 @@ export class Job extends Entity {
     }[code]
 
     const color = {
-      [JobStatusType.Error]: '#ef4444', // color-destructive-500,
-      [JobStatusType.Neutral]: '#78777f', // color-neutral-300
-      [JobStatusType.Success]: '#09af8a', // color-success-500
-      [JobStatusType.Warning]: '#f59e0b', // color-warning-500
+      [JobStatusType.Error]: CONSTANTS.COLORS.destructive[500],
+      [JobStatusType.Neutral]: CONSTANTS.COLORS.neutral[500],
+      [JobStatusType.Success]: CONSTANTS.COLORS.success[500],
+      [JobStatusType.Warning]: CONSTANTS.COLORS.warning[500],
     }[type]
 
     return {

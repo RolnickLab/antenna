@@ -1,4 +1,5 @@
 from django_pydantic_field.rest_framework import SchemaField
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from ami.exports.models import DataExport
@@ -13,7 +14,7 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobLogs, JobProgress, MLJob
+from .models import JOB_LOGS_DEFAULT_LIMIT, Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
 from .schemas import QueuedTaskAcknowledgment
 
 
@@ -49,7 +50,7 @@ class JobListSerializer(DefaultSerializer):
     source_image_single = SourceImageNestedSerializer(read_only=True)
     data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
-    logs = SchemaField(schema=JobLogs, read_only=True)
+    logs = serializers.SerializerMethodField()
     job_type = JobTypeSerializer(read_only=True)
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
@@ -147,6 +148,30 @@ class JobListSerializer(DefaultSerializer):
             "dispatch_mode",
         ]
 
+    @extend_schema_field(
+        {
+            "type": "object",
+            "properties": {
+                "stdout": {"type": "array", "items": {"type": "string"}, "title": "All messages"},
+                "stderr": {"type": "array", "items": {"type": "string"}, "title": "Error messages"},
+            },
+            "required": ["stdout", "stderr"],
+        }
+    )
+    def get_logs(self, obj: Job) -> dict[str, list[str]]:
+        # List responses skip the JobLog query to avoid N+1 — the UI only renders
+        # logs on the detail page, so returning the (typically empty for new jobs)
+        # legacy JSON shape is acceptable. Detail responses go to the joined table
+        # and fall back to the legacy shape for pre-migration jobs.
+        view = self.context.get("view")
+        if getattr(view, "action", None) == "list":
+            return _legacy_logs_shape(obj)
+        # ``JobViewSet.get_serializer_context`` validates ``?logs_limit=`` and
+        # puts the cleaned int (or ``None`` when unset) on context, so a bad
+        # value already 400'd before we got here.
+        limit = self.context.get("logs_limit") or JOB_LOGS_DEFAULT_LIMIT
+        return serialize_job_logs(obj, limit=limit)
+
 
 class JobSerializer(JobListSerializer):
     # progress = serializers.JSONField(initial=Job.default_progress(), allow_null=False, required=False)
@@ -165,6 +190,23 @@ class MinimalJobSerializer(DefaultSerializer):
     class Meta:
         model = Job
         fields = ["id", "pipeline_slug"]
+
+
+class JobChoiceSerializer(DefaultSerializer):
+    """What a job dropdown needs to name a job.
+
+    The job counterpart of ``SourceImageCollectionNestedSerializer``, which serves the capture
+    set choices: no counts or nested objects, so the choices query stays cheap.
+    """
+
+    def get_permissions(self, instance, instance_data):
+        # A picker needs no per-job permissions, and resolving them costs several queries per row.
+        instance_data["user_permissions"] = []
+        return instance_data
+
+    class Meta:
+        model = Job
+        fields = ["id", "name", "details", "job_type_key", "created_at"]
 
 
 class MLJobTasksRequestSerializer(serializers.Serializer):

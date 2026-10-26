@@ -98,46 +98,10 @@ STATIC_URL = f"https://{aws_s3_domain}/static/"  # noqa
 
 COLLECTFAST_STRATEGY = "collectfast.strategies.boto3.Boto3Strategy"
 
-
-# EMAIL
-# ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#default-from-email
-EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
-
-DEFAULT_FROM_EMAIL = env(
-    "DJANGO_DEFAULT_FROM_EMAIL",
-    default="Automated Monitoring of Insects ML Platform <noreply@app.insectai.org>",
-)
-# https://docs.djangoproject.com/en/dev/ref/settings/#server-email
-SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-subject-prefix
-EMAIL_SUBJECT_PREFIX = env(
-    "DJANGO_EMAIL_SUBJECT_PREFIX",
-    default="[Automated Monitoring of Insects ML Platform]",
-)
-
 # ADMIN
 # ------------------------------------------------------------------------------
 # Django Admin URL regex.
 ADMIN_URL = env("DJANGO_ADMIN_URL")
-
-# Anymail
-# ------------------------------------------------------------------------------
-# https://anymail.readthedocs.io/en/stable/installation/#installing-anymail
-# INSTALLED_APPS += ["anymail"]  # noqa: F405
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
-# https://anymail.readthedocs.io/en/stable/installation/#anymail-settings-reference
-# https://anymail.readthedocs.io/en/stable/esps/mailgun/
-# EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
-EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
-ANYMAIL = {
-    "SENDGRID_API_KEY": env("SENDGRID_API_KEY"),
-    # "MAILGUN_API_KEY": env("MAILGUN_API_KEY"),
-    # "MAILGUN_SENDER_DOMAIN": env("MAILGUN_DOMAIN"),
-    # "MAILGUN_API_URL": env("MAILGUN_API_URL", default="https://api.mailgun.net/v3"),
-}
-# EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
-
 
 # LOGGING
 # ------------------------------------------------------------------------------
@@ -176,6 +140,22 @@ LOGGING = {
         },
     },
 }
+
+# Django's default mail_admins handler sends email synchronously, blocking a worker
+# thread per HTTP 500; other (async/queued) handlers are recommended. Disabled by
+# default and gated behind an env var; errors are already captured by Sentry.
+ADMIN_ERROR_EMAILS = env.bool("DJANGO_ADMIN_ERROR_EMAILS", default=False)
+if not ADMIN_ERROR_EMAILS:
+    LOGGING["loggers"]["django"] = {
+        "level": "INFO",
+        "handlers": ["console"],
+        "propagate": False,
+    }
+else:
+    # Nothing to wire here: Django's DEFAULT_LOGGING attaches the mail_admins handler
+    # to the "django" logger before this module's LOGGING is applied. Explicit branch
+    # so the "on" path is visible here instead of hidden in Django's defaults. See #1356.
+    pass
 
 # Sentry
 # ------------------------------------------------------------------------------

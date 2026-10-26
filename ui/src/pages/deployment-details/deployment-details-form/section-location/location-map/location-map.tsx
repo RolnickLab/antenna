@@ -1,5 +1,5 @@
-import { EditableMap } from 'design-system/map/editable-map/editable-map'
-import { Map, MarkerPosition } from 'design-system/map/types'
+import { EditableMap } from 'components/map/editable-map/editable-map'
+import { Map, MarkerPosition } from 'components/map/types'
 import { Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useRef, useState } from 'react'
