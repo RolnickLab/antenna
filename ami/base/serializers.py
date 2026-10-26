@@ -59,6 +59,20 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         return instance_data
 
 
+class NoObjectPermissionsMixin:
+    """
+    Return an empty ``user_permissions`` list instead of looking it up for each object.
+
+    For read-only references and choices nested in other responses, where the lookup costs
+    several queries per object and nothing reads the result. List it before the serializer base class.
+    See #1430 for removing the per-object cost everywhere.
+    """
+
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+
 class MinimalNestedModelSerializer(DefaultSerializer):
     """
     A nested serializer that only includes the id and the hyperlinked identity field.

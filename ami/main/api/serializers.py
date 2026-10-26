@@ -10,7 +10,12 @@ from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
 from ami.base.permissions import add_m2m_object_permissions
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
+from ami.base.serializers import (
+    DefaultSerializer,
+    MinimalNestedModelSerializer,
+    NoObjectPermissionsMixin,
+    reverse_with_params,
+)
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
@@ -272,18 +277,12 @@ class DeploymentNestedSerializer(DefaultSerializer):
         ]
 
 
-class DeviceReferenceSerializer(DeviceNestedSerializer):
-    # A read-only reference, so skip the per-object permission queries.
-    def get_permissions(self, instance, instance_data):
-        instance_data["user_permissions"] = []
-        return instance_data
+class DeviceReferenceSerializer(NoObjectPermissionsMixin, DeviceNestedSerializer):
+    pass
 
 
-class SiteReferenceSerializer(SiteNestedSerializer):
-    # A read-only reference, so skip the per-object permission queries.
-    def get_permissions(self, instance, instance_data):
-        instance_data["user_permissions"] = []
-        return instance_data
+class SiteReferenceSerializer(NoObjectPermissionsMixin, SiteNestedSerializer):
+    pass
 
 
 class DeploymentNestedSerializerWithDeviceAndSite(DeploymentNestedSerializer):
@@ -847,13 +846,9 @@ class TaxaListTaxonSerializer(TaxonNoParentNestedSerializer):
     pass
 
 
-class CaptureTaxonSerializer(DefaultSerializer):
+class CaptureTaxonSerializer(NoObjectPermissionsMixin, DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
-
-    def get_permissions(self, instance, instance_data):
-        instance_data["user_permissions"] = []
-        return instance_data
 
     class Meta:
         model = Taxon
@@ -1217,11 +1212,7 @@ class ClassificationListSerializer(DefaultSerializer):
         ]
 
 
-class ClassificationNestedSerializer(ClassificationSerializer):
-    def get_permissions(self, instance, instance_data):
-        instance_data["user_permissions"] = []
-        return instance_data
-
+class ClassificationNestedSerializer(NoObjectPermissionsMixin, ClassificationSerializer):
     class Meta:
         model = Classification
         fields = [
