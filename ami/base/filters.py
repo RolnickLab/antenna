@@ -1,7 +1,11 @@
-from django.db.models import F, OrderBy
+import datetime
+
+from django.db.models import F, OrderBy, Q
 from django.forms import FloatField, IntegerField
 from django_filters.rest_framework import NumberFilter
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
+
+from .serializers import DateRangeFilterSerializer
 
 
 class RelatedIdFilter(NumberFilter):
@@ -77,4 +81,56 @@ class ThresholdFilter(BaseFilterBackend):
                 "query_param": query_param,
                 "filter_param": filter_param,
             },
+        )
+
+
+def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datetime.datetime | None]:
+    """
+    Turn ``date_start`` / ``date_end`` (both inclusive) into a half-open ``[start, end)`` datetime range.
+
+    Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
+    Comparing against datetimes, rather than casting with ``__date``, keeps the timestamp indexes usable.
+    """
+    cleaned_data = DateRangeFilterSerializer(data=query_params).clean()
+    start_date = cleaned_data.get("date_start")
+    end_date = cleaned_data.get("date_end")
+    start = datetime.datetime.combine(start_date, datetime.time.min) if start_date else None
+    end = datetime.datetime.combine(end_date + datetime.timedelta(days=1), datetime.time.min) if end_date else None
+    return start, end
+
+
+class DateRangeFilter(BaseFilterBackend):
+    """
+    Filter records that fall within ``date_start`` / ``date_end`` (both inclusive).
+
+    A record with one timestamp matches when it falls in the range. A record with a start and an
+    end matches when any part of it overlaps the range, and a record without an end matches on its start.
+
+    Example:
+
+    CaptureDateFilter = DateRangeFilter.create("timestamp")
+    SessionDateFilter = DateRangeFilter.create("start", end_field="end")
+    """
+
+    start_field = "timestamp"
+    end_field = "timestamp"
+
+    def filter_queryset(self, request, queryset, view):
+        start, end = get_date_range_bounds(request.query_params)
+        if start:
+            ends_after_start = Q(**{f"{self.end_field}__gte": start})
+            if self.end_field != self.start_field:
+                ends_after_start |= Q(**{f"{self.end_field}__isnull": True, f"{self.start_field}__gte": start})
+            queryset = queryset.filter(ends_after_start)
+        if end:
+            queryset = queryset.filter(**{f"{self.start_field}__lt": end})
+        return queryset
+
+    @classmethod
+    def create(cls, start_field: str, end_field: str | None = None) -> type["DateRangeFilter"]:
+        end_field = end_field or start_field
+        return type(
+            f"{cls.__name__}_{start_field}_{end_field}",
+            (cls,),
+            {"start_field": start_field, "end_field": end_field},
         )

@@ -196,6 +196,21 @@ class FilterParamsSerializer(serializers.Serializer):
         raise api_exceptions.ValidationError("Invalid filter parameters")
 
 
+class DateRangeFilterSerializer(FilterParamsSerializer):
+    date_start = serializers.DateField(required=False)
+    date_end = serializers.DateField(required=False)
+
+    def validate(self, data):
+        """
+        Additionally validate that the start date is before the end date.
+        """
+        start_date = data.get("date_start")
+        end_date = data.get("date_end")
+        if start_date and end_date and start_date > end_date:
+            raise api_exceptions.ValidationError({"date_start": "Start date must be before end date"})
+        return data
+
+
 class ModelRefSerializer(serializers.Serializer):
     """A record a stored value names (see ``ami.base.model_references``). ``name`` is null when it no longer exists."""
 

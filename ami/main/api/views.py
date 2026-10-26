@@ -25,12 +25,12 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
+from ami.base.filters import DateRangeFilter, NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
-from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
+from ami.base.serializers import DateRangeFilterSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
 from ami.main.api.occurrence_history.timeline import occurrence_timeline
@@ -435,49 +435,6 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datetime.datetime | None]:
-    """
-    Turn ``date_start`` / ``date_end`` (both inclusive) into a half-open ``[start, end)`` datetime range.
-
-    Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
-    Comparing against datetimes, rather than casting with ``__date``, keeps the timestamp indexes usable.
-    """
-    cleaned_data = DateRangeFilterSerializer(data=query_params).clean()
-    start_date = cleaned_data.get("date_start")
-    end_date = cleaned_data.get("date_end")
-    start = datetime.datetime.combine(start_date, datetime.time.min) if start_date else None
-    end = datetime.datetime.combine(end_date + datetime.timedelta(days=1), datetime.time.min) if end_date else None
-    return start, end
-
-
-class SourceImageDateFilter(filters.BaseFilterBackend):
-    """Filter captures taken within a range of dates."""
-
-    def filter_queryset(self, request, queryset, view):
-        start, end = get_date_range_bounds(request.query_params)
-        if start:
-            queryset = queryset.filter(timestamp__gte=start)
-        if end:
-            queryset = queryset.filter(timestamp__lt=end)
-        return queryset
-
-
-class EventDateFilter(filters.BaseFilterBackend):
-    """
-    Filter sessions that overlap a range of dates.
-
-    A night that runs past midnight matches both of its dates. A session without an end is treated as a single moment.
-    """
-
-    def filter_queryset(self, request, queryset, view):
-        start, end = get_date_range_bounds(request.query_params)
-        if start:
-            queryset = queryset.filter(models.Q(end__gte=start) | models.Q(end__isnull=True, start__gte=start))
-        if end:
-            queryset = queryset.filter(start__lt=end)
-        return queryset
-
-
 class EventViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows events to be viewed or edited.
@@ -485,7 +442,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [EventDateFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [DateRangeFilter.create("start", end_field="end")]
     filterset_fields = ["deployment", "deployment__device", "deployment__research_site"]
     ordering_fields = [
         "created_at",
@@ -659,7 +616,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [SourceImageDateFilter]
+    filter_backends = DefaultViewSetMixin.filter_backends + [DateRangeFilter.create("timestamp")]
     filterset_fields = [
         "event",
         "deployment",
@@ -1398,21 +1355,6 @@ class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
                 queryset = queryset.exclude(identifications__user=request.user)
 
         return queryset
-
-
-class DateRangeFilterSerializer(FilterParamsSerializer):
-    date_start = serializers.DateField(required=False)
-    date_end = serializers.DateField(required=False)
-
-    def validate(self, data):
-        """
-        Additionally validate that the start date is before the end date.
-        """
-        start_date = data.get("date_start")
-        end_date = data.get("date_end")
-        if start_date and end_date and start_date > end_date:
-            raise api_exceptions.ValidationError({"date_start": "Start date must be before end date"})
-        return data
 
 
 class OccurrenceDateFilter(filters.BaseFilterBackend):
