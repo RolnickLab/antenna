@@ -279,42 +279,27 @@ project name.
 
 1. Check out the second copy in its own directory, for example with `git worktree add`.
 
-2. In that directory, create a `.env` file that sets the project name, the network name and
-   any host ports that would clash with the first copy. Every host port in
-   `docker-compose.yml` has an `ANTENNA_*` variable. The default is used for any variable you
-   leave out.
+2. In that directory, create a `.env` file with the project name, the network name, the
+   three host ports you use from your browser, and the second copy's UI address. Compose reads
+   `.env` for these values, and the file is git-ignored. Django also loads `.env`, after
+   `.envs/.local/.django`. Without the last three lines, links, exports and session logins
+   use port 4000.
 
    ```bash
    COMPOSE_PROJECT_NAME=antenna-two
    ANTENNA_NETWORK=antenna-two_network
    ANTENNA_DJANGO_PORT=8100
    ANTENNA_UI_PORT=4100
-   ANTENNA_POSTGRES_PORT=5544
    ANTENNA_MINIO_PORT=9100
-   ANTENNA_MINIO_CONSOLE_PORT=9101
-   ANTENNA_NATS_PORT=4322
-   ANTENNA_NATS_MONITOR_PORT=8322
-   ANTENNA_FLOWER_PORT=5655
-   ANTENNA_RABBITMQ_PORT=5772
-   ANTENNA_RABBITMQ_MANAGEMENT_PORT=15772
-   ANTENNA_ML_BACKEND_PORT=2105
-   ```
-
-   Compose reads `.env` for these values, and the file is git-ignored. Django also loads
-   `.env`, after `.envs/.local/.django`, so add the second copy's UI address there too.
-   Without these lines, links, exports and session logins use port 4000:
-
-   ```bash
    EXTERNAL_HOSTNAME=localhost:4100
    DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:4100
    CORS_ALLOWED_ORIGINS=http://localhost:4100
    ```
 
-3. Optionally, use a `docker-compose.override.yml` file to remove host ports that you do not
-   need in the second copy. Services in the same stack reach each other by service name, so
-   a port is needed only for access from your machine. `docker compose` merges
-   `docker-compose.override.yml` automatically when it is present, and the file is
-   git-ignored. `!reset` needs Docker Compose 2.24 or later.
+3. In the same directory, create a `docker-compose.override.yml` that removes the other host
+   ports. Services in one copy reach each other by service name, so they need no host port.
+   Compose loads this file automatically, and it is git-ignored. `!reset` needs Docker
+   Compose 2.24 or later.
 
    ```yaml
    # docker-compose.override.yml
@@ -327,11 +312,19 @@ project name.
        ports: !reset []
      flower:
        ports: !reset []
+     minio:
+       ports: !reset []
+     ml_backend:
+       ports: !reset []
    ```
 
-   To keep your debugging settings as well, add these lines to a copy of
-   `docker-compose.override-example.yml` instead. Use `!override` in place of `!reset` to
-   replace a port list with a different one rather than remove it.
+   If you need one of these services from your machine, keep its port and set its `ANTENNA_*`
+   variable in `.env` instead. Every host port in `docker-compose.yml` has one. An empty
+   variable uses the default port; it does not remove the port.
+
+   To keep the debugger settings too, add these lines to a copy of
+   `docker-compose.override-example.yml`, and set `ANTENNA_DJANGO_DEBUGGER_PORT` and
+   `ANTENNA_CELERYWORKER_DEBUGGER_PORT` in `.env`.
 
 4. Start the stack as usual with `docker compose up -d`. The UI is then at
    `http://localhost:4100` and the API at `http://localhost:8100/api/v2/`.
