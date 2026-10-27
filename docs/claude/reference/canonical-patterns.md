@@ -13,7 +13,7 @@ canonical but was undocumented.
 | `url_boolean_param()` | `ami/utils/fields.py:5` (usage: `ami/jobs/views.py:165`) | Boolean query params, e.g. `?incomplete_only=true` |
 | `ProjectMixin` / `require_project` | `ami/base/views.py:67-96` | Project scoping on viewsets. Set `require_project` explicitly on every new viewset; `get_active_project()` raises 400/404 for you |
 | Permission base classes | `ami/base/permissions.py:20` (`IsActiveStaffOrReadOnly`), `:118` (`IsProjectMemberOrReadOnly`), `:147` (`ObjectPermission`) | Object-level enforcement. `ObjectPermission` delegates to the model's `check_permission()`. DRF calls `check_object_permissions()` via `get_object()` — never look up objects by raw pk |
-| `apply_default_filters()` | `ami/main/models.py:3118` (OccurrenceQuerySet) | All occurrence-related querysets — combines score thresholds + hierarchical taxa lists. Respects `apply_defaults=false` |
+| `apply_default_filters()` | `ami/main/models_future/occurrences.py:299` (OccurrenceQuerySet) | All occurrence-related querysets — combines score thresholds + hierarchical taxa lists. Respects `apply_defaults=false` |
 | Stats endpoints | `docs/claude/reference/api-stats-pattern.md` | Aggregate/leaderboard/chart endpoints: `GenericViewSet` + `@action` per stat kind, pure querysets in `ami/main/models_future/<entity>.py`, scalar dicts (not paginated lists) |
 | Pydantic schemas | `ami/<app>/schemas.py` (exists in `base`, `utils`, `jobs`, `ml`, `main/api`, `main/checks`) | All structured payloads. Don't pass raw dicts where a schema exists |
 | Queryset construction | Override `get_queryset()` | That's the method overridden everywhere else — don't build querysets inside individual actions |

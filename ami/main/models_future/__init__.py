@@ -10,11 +10,11 @@ models/
 ├── base.py             # BaseModel and mixins
 ├── content.py          # Page, BlogPost
 ├── enums.py            # TaxonRank and other enums
-├── detection.py        # Detection, Classification, Occurrence
+├── detection.py        # Detection, Classification
 ├── identifications.py  # Identification
 ├── images.py           # SourceImage, Event, SourceImageCollection
 ├── filters.py          # Filters for database queries
-├── occurrences.py      # Occurrence rendering
+├── occurrences.py      # Occurrence
 ├── projects.py         # Project, Device, Site, Deployment
 ├── storage.py          # S3StorageSource, SourceImageUpload
 └── taxonomy.py         # Taxon, TaxaList, Tag, and releated DB model classes and methods
