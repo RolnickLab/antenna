@@ -1593,12 +1593,12 @@ class OccurrenceListSerializer(DefaultSerializer):
         ]
 
     def get_detection_images(self, obj: Occurrence) -> list[str]:
-        from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
+        from ami.main.models_future.occurrences import detection_image_urls_from_prefetch
 
         return detection_image_urls_from_prefetch(obj, limit=self.detection_images_limit)
 
     def get_determination_details(self, obj: Occurrence):
-        from ami.main.models_future.occurrence import best_identification_from_prefetch, best_prediction_from_prefetch
+        from ami.main.models_future.occurrences import best_identification_from_prefetch, best_prediction_from_prefetch
 
         context = self.context
         # Add this occurrence to the context so that the nested serializers can access it
@@ -1632,7 +1632,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         Populated regardless of human verification status, so clients can always show
         the ML result alongside a human-set determination.
         """
-        from ami.main.models_future.occurrence import best_prediction_from_prefetch
+        from ami.main.models_future.occurrences import best_prediction_from_prefetch
 
         context = self.context
         context["occurrence"] = obj

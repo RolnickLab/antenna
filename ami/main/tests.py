@@ -4344,7 +4344,7 @@ class TestOccurrenceDetailQueryCount(APITestCase):
 
 
 class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
-    """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
+    """Helpers in `models_future/occurrences.py` must handle empty prefetch caches gracefully.
 
     `.valid()` excludes zero-detection occurrences from the list endpoint, but
     helpers can still be called on objects whose detections were deleted, or in
@@ -4359,7 +4359,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
 
     def _empty_occurrence(self) -> "Occurrence":
         """An occurrence with prefetch caches populated but all relations empty."""
-        from ami.main.models_future.occurrence import prefetch_detections_for_list
+        from ami.main.models_future.occurrences import prefetch_detections_for_list
 
         occurrence = (
             Occurrence.objects.filter(project=self.project)
@@ -4378,7 +4378,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
         )
 
     def test_helpers_return_safe_defaults_on_empty(self):
-        from ami.main.models_future.occurrence import (
+        from ami.main.models_future.occurrences import (
             best_identification_from_prefetch,
             best_prediction_from_prefetch,
             detection_image_urls_from_prefetch,
@@ -4392,7 +4392,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
 
     def test_helpers_raise_when_prefetch_missing(self):
         """Strict contract: missing prefetch must raise, not silently slow-path."""
-        from ami.main.models_future.occurrence import (
+        from ami.main.models_future.occurrences import (
             best_identification_from_prefetch,
             best_prediction_from_prefetch,
             detection_image_urls_from_prefetch,
@@ -6174,37 +6174,37 @@ class TestLcaRankBetween(TestCase):
     )
 
     def test_identical_taxa_lca_is_self_rank(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_PRONUBA)
         self.assertEqual(rank, TaxonRank.SPECIES)
 
     def test_sister_species_share_genus(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_FIMBRIATA)
         self.assertEqual(rank, TaxonRank.GENUS)
 
     def test_genus_vs_species_in_same_genus(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.GENUS_NOCTUA, self.SPECIES_NOCTUA_PRONUBA)
         self.assertEqual(rank, TaxonRank.GENUS)
 
     def test_different_family_same_order(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_FAMILY)
         self.assertEqual(rank, TaxonRank.ORDER)
 
     def test_different_order_same_kingdom(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_ORDER)
         self.assertEqual(rank, TaxonRank.KINGDOM)
 
     def test_no_shared_ancestor_returns_none(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rootless = (501, "SPECIES", [])
         rank = lca_rank_between(rootless, self.SPECIES_NOCTUA_PRONUBA)
@@ -6215,7 +6215,7 @@ class TestLcaRankBetween(TestCase):
         so without explicit exclusion `UNKNOWN >= ORDER` would be True and a
         shared UNKNOWN ancestor would wrongly count as under-order agreement.
         """
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         # Both chains share a KINGDOM ancestor and an UNKNOWN ancestor; the LCA
         # at a real taxonomic rank is KINGDOM, not UNKNOWN.
@@ -6353,7 +6353,7 @@ class TestModelAgreementForProject(APITestCase):
         return Identification.objects.create(user=self.user, occurrence=occurrence, taxon=taxon)
 
     def test_empty_project_returns_zeros_not_nans(self):
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         empty_project = Project.objects.create(name="empty")
         result = model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
@@ -6368,7 +6368,7 @@ class TestModelAgreementForProject(APITestCase):
         self.assertIsNone(result["agreed_coarser_rank_pct"])
 
     def test_buckets_canonical_cases(self):
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         self.assertEqual(len(occurrences), 4)
@@ -6392,7 +6392,7 @@ class TestModelAgreementForProject(APITestCase):
     def test_coarsest_rank_threshold_filters_shallow_lcas(self):
         """With coarsest_rank=FAMILY, an ORDER-only LCA pair is excluded."""
         from ami.main.models import TaxonRank
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         # 0: exact (SPECIES) — counts in both
@@ -6416,7 +6416,7 @@ class TestModelAgreementForProject(APITestCase):
         """A comment-only verification (Identification.taxon=None) has a machine
         prediction but no human taxon. It can neither agree nor disagree, so it
         must be excluded from comparable_count, not just from the numerators."""
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         # 0: exact agreement (machine == user)
@@ -6443,7 +6443,7 @@ class TestModelAgreementForProject(APITestCase):
         comparable_count falls below verified_with_prediction_count whenever a
         verification has no taxon, and the intervals key off the former.
         """
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         for occurrence in occurrences[:2]:

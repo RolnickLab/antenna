@@ -3389,13 +3389,13 @@ class OccurrenceQuerySet(BaseQuerySet):
 
     def with_list_prefetches(self):
         """Add prefetches the list serializer needs (detection paths, classifications)."""
-        from ami.main.models_future.occurrence import prefetch_detections_for_list
+        from ami.main.models_future.occurrences import prefetch_detections_for_list
 
         return self.prefetch_related(prefetch_detections_for_list())
 
     def with_detail_prefetches(self):
         """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
-        from ami.main.models_future.occurrence import prefetch_detections_for_detail
+        from ami.main.models_future.occurrences import prefetch_detections_for_detail
 
         return self.prefetch_related(prefetch_detections_for_detail())
 

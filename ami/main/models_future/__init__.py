@@ -14,7 +14,7 @@ models/
 ├── identifications.py  # Identification
 ├── images.py           # SourceImage, Event, SourceImageCollection
 ├── filters.py          # Filters for database queries
-├── occurrence.py       # Occurrence rendering
+├── occurrences.py      # Occurrence rendering
 ├── projects.py         # Project, Device, Site, Deployment
 ├── storage.py          # S3StorageSource, SourceImageUpload
 └── taxonomy.py         # Taxon, TaxaList, Tag, and releated DB model classes and methods
