@@ -179,35 +179,17 @@ class SingleParamSerializer(serializers.Serializer, typing.Generic[T]):
         self.fields[param_name] = field
 
 
-class FilterParamsSerializer(serializers.Serializer):
-    """
-    Serializer for validating query parameters in DRF views.
-    Typically in filters for list views.
+class DateRangeFilterSerializer(serializers.Serializer):
+    """Validate the ``date_start`` / ``date_end`` query parameters. Equal dates select a single day."""
 
-    A normal serializer with one helpful method to:
-    1) run .is_valid()
-    2) raise any validation exceptions
-    3) then return the cleaned data.
-    """
-
-    def clean(self) -> dict[str, typing.Any]:
-        if self.is_valid(raise_exception=True):
-            return self.validated_data
-        raise api_exceptions.ValidationError("Invalid filter parameters")
-
-
-class DateRangeFilterSerializer(FilterParamsSerializer):
     date_start = serializers.DateField(required=False)
     date_end = serializers.DateField(required=False)
 
     def validate(self, data):
-        """
-        Additionally validate that the start date is before the end date.
-        """
         start_date = data.get("date_start")
         end_date = data.get("date_end")
         if start_date and end_date and start_date > end_date:
-            raise api_exceptions.ValidationError({"date_start": "Start date must be before end date"})
+            raise api_exceptions.ValidationError({"date_start": "Start date must be on or before end date"})
         return data
 
 

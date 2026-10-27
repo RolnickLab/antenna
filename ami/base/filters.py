@@ -1,6 +1,6 @@
 import datetime
 
-from django.db.models import F, OrderBy, Q
+from django.db.models import F, OrderBy
 from django.forms import FloatField, IntegerField
 from django_filters.rest_framework import NumberFilter
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
@@ -91,9 +91,10 @@ def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datet
     Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
     Comparing against datetimes, rather than casting with ``__date``, keeps the timestamp indexes usable.
     """
-    cleaned_data = DateRangeFilterSerializer(data=query_params).clean()
-    start_date = cleaned_data.get("date_start")
-    end_date = cleaned_data.get("date_end")
+    serializer = DateRangeFilterSerializer(data=query_params)
+    serializer.is_valid(raise_exception=True)
+    start_date = serializer.validated_data.get("date_start")
+    end_date = serializer.validated_data.get("date_end")
     start = datetime.datetime.combine(start_date, datetime.time.min) if start_date else None
     end = datetime.datetime.combine(end_date + datetime.timedelta(days=1), datetime.time.min) if end_date else None
     return start, end
@@ -101,36 +102,42 @@ def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datet
 
 class DateRangeFilter(BaseFilterBackend):
     """
-    Filter records that fall within ``date_start`` / ``date_end`` (both inclusive).
+    Filter records whose date field falls within ``date_start`` / ``date_end`` (both inclusive).
 
-    A record with one timestamp matches when it falls in the range. A record with a start and an
-    end matches when any part of it overlaps the range, and a record without an end matches on its start.
+    Use a single-valued field. A multi-valued path such as ``detections__timestamp`` makes two joins,
+    which repeats rows and matches records whose values only straddle the range.
 
     Example:
 
     CaptureDateFilter = DateRangeFilter.create("timestamp")
-    SessionDateFilter = DateRangeFilter.create("start", end_field="end")
+    SessionDateFilter = DateRangeFilter.create("start")
     """
 
-    start_field = "timestamp"
-    end_field = "timestamp"
+    field = "timestamp"
 
     def filter_queryset(self, request, queryset, view):
         start, end = get_date_range_bounds(request.query_params)
         if start:
-            ends_after_start = Q(**{f"{self.end_field}__gte": start})
-            if self.end_field != self.start_field:
-                ends_after_start |= Q(**{f"{self.end_field}__isnull": True, f"{self.start_field}__gte": start})
-            queryset = queryset.filter(ends_after_start)
+            queryset = queryset.filter(**{f"{self.field}__gte": start})
         if end:
-            queryset = queryset.filter(**{f"{self.start_field}__lt": end})
+            queryset = queryset.filter(**{f"{self.field}__lt": end})
         return queryset
 
+    def get_schema_operation_parameters(self, view):
+        return [
+            {
+                "name": name,
+                "required": False,
+                "in": "query",
+                "description": description,
+                "schema": {"type": "string", "format": "date"},
+            }
+            for name, description in [
+                ("date_start", "Only records on or after this date (YYYY-MM-DD, local capture time)."),
+                ("date_end", "Only records on or before this date (YYYY-MM-DD, local capture time)."),
+            ]
+        ]
+
     @classmethod
-    def create(cls, start_field: str, end_field: str | None = None) -> type["DateRangeFilter"]:
-        end_field = end_field or start_field
-        return type(
-            f"{cls.__name__}_{start_field}_{end_field}",
-            (cls,),
-            {"start_field": start_field, "end_field": end_field},
-        )
+    def create(cls, field: str) -> type["DateRangeFilter"]:
+        return type(f"{cls.__name__}_{field}", (cls,), {"field": field})

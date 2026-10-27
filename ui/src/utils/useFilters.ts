@@ -1,4 +1,4 @@
-import { isBefore, isValid } from 'date-fns'
+import { isAfter, isValid } from 'date-fns'
 import { useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { buildCarryOverFilters } from './buildCarryOverFilters'
@@ -94,11 +94,11 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     field: 'deployment__device',
   },
   {
-    label: 'Site',
+    label: translate(STRING.FIELD_LABEL_SITE),
     field: 'deployment__research_site',
   },
   {
-    label: 'End date',
+    label: translate(STRING.FIELD_LABEL_END_DATE),
     field: 'date_end',
     validate: (value) => {
       if (!value) {
@@ -113,7 +113,7 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     },
   },
   {
-    label: 'Start date',
+    label: translate(STRING.FIELD_LABEL_START_DATE),
     field: 'date_start',
     validate: (value, filters) => {
       if (!value) {
@@ -128,8 +128,8 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
         (filter) => filter.field === 'date_end'
       )?.value
 
-      if (dateEnd && !isBefore(new Date(value), new Date(dateEnd))) {
-        return 'Start date must be before end date'
+      if (dateEnd && isAfter(new Date(value), new Date(dateEnd))) {
+        return 'Start date must be on or before end date'
       }
 
       return undefined

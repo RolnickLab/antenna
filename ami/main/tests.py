@@ -2385,8 +2385,8 @@ class TestCapturesStationAndDateFilters(APITestCase):
 class TestSessionsStationAndDateFilters(APITestCase):
     """
     The sessions list filters by the station's device type and research site, and by
-    date range. A session matches a date range when any part of it falls inside the
-    range, so a night that runs past midnight matches both of its dates.
+    date range. A session matches the date it starts on, so each night belongs to one
+    date and adjacent ranges never share a session.
 
     Fixture: station A (device A, site A) has a session from 2024-06-01 21:00 to
     2024-06-02 04:00. Station B (device B) has one on 2024-06-03 22:00-23:00 and one
@@ -2441,14 +2441,13 @@ class TestSessionsStationAndDateFilters(APITestCase):
         self.assertIsNone(rows[0]["deployment"]["device"])
         self.assertEqual(queries_with, queries_without)
 
-    def test_date_range_matches_overlapping_sessions(self):
-        # The overnight session matches the day it started and the day it ended.
-        self.assertEqual(self._count("&date_end=2024-06-01"), 1)
-        self.assertEqual(self._count("&date_start=2024-06-02&date_end=2024-06-02"), 1)
+    def test_date_range_matches_sessions_by_start_date(self):
+        # The overnight session belongs to the date it started on, not the date it ended on.
+        self.assertEqual(self._count("&date_start=2024-06-01&date_end=2024-06-01"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-02&date_end=2024-06-02"), 0)
         self.assertEqual(self._count("&date_start=2024-06-03"), 2)
-        # A session without an end matches on its start date only.
-        self.assertEqual(self._count("&date_start=2024-06-05"), 1)
-        self.assertEqual(self._count("&date_start=2024-06-04&date_end=2024-06-04"), 0)
+        self.assertEqual(self._count("&date_end=2024-06-03"), 2)
+        self.assertEqual(self._count("&date_start=2024-06-05&date_end=2024-06-05"), 1)
 
     def test_date_range_rejects_invalid_dates(self):
         self.assertEqual(self._get("&date_end=not-a-date").status_code, status.HTTP_400_BAD_REQUEST)

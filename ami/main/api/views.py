@@ -442,7 +442,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    filter_backends = DefaultViewSetMixin.filter_backends + [DateRangeFilter.create("start", end_field="end")]
+    filter_backends = DefaultViewSetMixin.filter_backends + [DateRangeFilter.create("start")]
     filterset_fields = ["deployment", "deployment__device", "deployment__research_site"]
     ordering_fields = [
         "created_at",
@@ -1363,12 +1363,10 @@ class OccurrenceDateFilter(filters.BaseFilterBackend):
     """
 
     def filter_queryset(self, request, queryset, view):
-        # Validate and clean the query params. They should be in ISO format.
-        cleaned_data = DateRangeFilterSerializer(data=request.query_params).clean()
-
-        # Access the validated dates
-        start_date = cleaned_data.get("date_start")
-        end_date = cleaned_data.get("date_end")
+        serializer = DateRangeFilterSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        start_date = serializer.validated_data.get("date_start")
+        end_date = serializer.validated_data.get("date_end")
 
         if start_date:
             queryset = queryset.filter(detections__timestamp__date__gte=start_date)
