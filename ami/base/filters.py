@@ -90,6 +90,7 @@ def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datet
 
     Timestamps are the station's local capture time (USE_TZ is off), so dates match what users see.
     Comparing against datetimes, rather than casting with ``__date``, keeps the timestamp indexes usable.
+    See #1561.
     """
     serializer = DateRangeFilterSerializer(data=query_params)
     serializer.is_valid(raise_exception=True)
@@ -103,6 +104,7 @@ def get_date_range_bounds(query_params) -> tuple[datetime.datetime | None, datet
 class DateRangeFilter(BaseFilterBackend):
     """
     Filter records whose date field falls within ``date_start`` / ``date_end`` (both inclusive).
+    Records with no value in the field are left out whenever either date is given.
 
     Use a single-valued field. A multi-valued path such as ``detections__timestamp`` makes two joins,
     which repeats rows and matches records whose values only straddle the range.
