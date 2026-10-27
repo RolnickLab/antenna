@@ -22,7 +22,7 @@ the standard CRUD shape of an entity ViewSet.
 
 Reference implementation: `OccurrenceStatsViewSet` at
 `ami/main/api/views.py`. The pure query lives in
-`ami/main/models_future/occurrence.py::top_identifiers_for_project()`.
+`ami/main/models_future/occurrences.py::top_identifiers_for_project()`.
 
 ## The scalar pattern
 
