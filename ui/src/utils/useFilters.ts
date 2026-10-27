@@ -22,6 +22,37 @@ interface FilterConfig {
   ) => string | undefined
 }
 
+// A filter with an error is left out of the request, so a reversed range marks both
+// dates: a request with only one of them would show the wrong records.
+const validateDateRange =
+  (field: 'date_start' | 'date_end'): FilterConfig['validate'] =>
+  (value, filters) => {
+    if (!value) {
+      return undefined
+    }
+
+    if (!isValid(new Date(value))) {
+      return translate(STRING.MESSAGE_DATE_NOT_VALID)
+    }
+
+    const valueOf = (other: string) =>
+      other === field
+        ? value
+        : filters?.find((filter) => filter.field === other)?.value
+    const dateStart = valueOf('date_start')
+    const dateEnd = valueOf('date_end')
+
+    if (
+      dateStart &&
+      dateEnd &&
+      isAfter(new Date(dateStart), new Date(dateEnd))
+    ) {
+      return translate(STRING.MESSAGE_DATE_RANGE_REVERSED)
+    }
+
+    return undefined
+  }
+
 export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Include algorithm',
@@ -100,40 +131,12 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: translate(STRING.FIELD_LABEL_END_DATE),
     field: 'date_end',
-    validate: (value) => {
-      if (!value) {
-        return undefined
-      }
-
-      if (!isValid(new Date(value))) {
-        return 'Date is not valid'
-      }
-
-      return undefined
-    },
+    validate: validateDateRange('date_end'),
   },
   {
     label: translate(STRING.FIELD_LABEL_START_DATE),
     field: 'date_start',
-    validate: (value, filters) => {
-      if (!value) {
-        return undefined
-      }
-
-      if (!isValid(new Date(value))) {
-        return 'Date is not valid'
-      }
-
-      const dateEnd = filters?.find(
-        (filter) => filter.field === 'date_end'
-      )?.value
-
-      if (dateEnd && isAfter(new Date(value), new Date(dateEnd))) {
-        return 'Start date must be on or before end date'
-      }
-
-      return undefined
-    },
+    validate: validateDateRange('date_start'),
   },
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE),

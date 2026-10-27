@@ -201,6 +201,8 @@ export enum STRING {
   MESSAGE_CONFIGURE_LOCATION,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
+  MESSAGE_DATE_NOT_VALID,
+  MESSAGE_DATE_RANGE_REVERSED,
   MESSAGE_DEFAULT_FILTERS,
   MESSAGE_DEFAULT_PIPELINE,
   MESSAGE_DELETE_CONFIRM,
@@ -626,6 +628,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
     'A data source must be configured and saved before syncing captures.',
+  [STRING.MESSAGE_DATE_NOT_VALID]: 'Date is not valid',
+  [STRING.MESSAGE_DATE_RANGE_REVERSED]:
+    'Start date must be on or before end date',
   [STRING.MESSAGE_DEFAULT_FILTERS]:
     'Data is filtered by default based on global project configuration.',
   [STRING.MESSAGE_DEFAULT_PIPELINE]:
