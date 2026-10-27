@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -348,10 +348,69 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         mock_ack.assert_called_once()
         mock_fail.assert_called_once()
-        # New, accurate message — no longer the misleading "Redis state missing"
-        # that users saw in the UI for transient connection drops.
+        # The reason string passed to _fail_job identifies the stage and embeds
+        # a live Redis snapshot (from diagnose_missing_state) so the FAILURE
+        # log and UI progress.errors distinguish DB-index drift, eviction, and
+        # never-initialized state rather than collapsing them into one message.
         args, _ = mock_fail.call_args
-        self.assertIn("Job state keys not found in Redis", args[1])
+        self.assertIn("Job state missing from Redis", args[1])
+        self.assertIn("stage=process", args[1])
+
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_genuinely_missing_state_results_stage_acks_and_fails_job(self, mock_manager_class, mock_ack, mock_fail):
+        """
+        Mirror of test_genuinely_missing_state_acks_and_fails_job for the
+        stage=results path (tasks.py lines 378-388). When the total-images key
+        is gone at the results-stage update_state call, the task must ack NATS
+        to stop redelivery and fail the job — there is no state to reconcile.
+        The reason string must identify stage=results.
+        """
+        self._setup_mock_nats(mock_manager_class)
+
+        # save_results requires at least one algorithm on the pipeline.
+        detection_algorithm = Algorithm.objects.create(
+            name="results-missing-state-detector",
+            key="results-missing-state-detector",
+            task_type=AlgorithmTaskType.LOCALIZATION,
+        )
+        self.pipeline.algorithms.add(detection_algorithm)
+
+        # Use a success result so the process-stage path succeeds and
+        # save_results runs before the results-stage update_state is reached.
+        success_data = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+        ).dict()
+
+        real_update_state = AsyncJobStateManager.update_state
+
+        def none_on_results_stage(self_inner, processed_image_ids, stage, failed_image_ids=None):
+            if stage == "results":
+                return None
+            return real_update_state(self_inner, processed_image_ids, stage, failed_image_ids)
+
+        with patch.object(AsyncJobStateManager, "update_state", none_on_results_stage):
+            process_nats_pipeline_result(
+                job_id=self.job.pk,
+                result_data=success_data,
+                reply_subject="reply.missing-results",
+            )
+
+        mock_ack.assert_called_once()
+        mock_fail.assert_called_once()
+        # The reason string passed to _fail_job identifies the stage and embeds
+        # a live Redis snapshot (from diagnose_missing_state) so the FAILURE
+        # log and UI progress.errors distinguish DB-index drift, eviction, and
+        # never-initialized state rather than collapsing them into one message.
+        args, _ = mock_fail.call_args
+        self.assertIn("Job state missing from Redis", args[1])
+        self.assertIn("stage=results", args[1])
 
     @patch("ami.jobs.tasks._ack_task_via_nats")
     @patch("ami.jobs.tasks.TaskQueueManager")
@@ -625,6 +684,63 @@ class TestTaskFailureGuard(TransactionTestCase):
 
         self.assertEqual(job.status, JobState.FAILURE)
         mock_cleanup.assert_called_once()
+
+
+class TestFailJob(TransactionTestCase):
+    """
+    Regression tests for ``_fail_job`` — specifically for the reason-string
+    mirroring into ``progress.errors`` that this PR adds.
+
+    The FAILURE log line alone is not enough for operators; the UI reads
+    ``progress.errors``, and prior to this PR that list stayed empty on the
+    missing-Redis-state path. Any regression that stops appending the reason
+    (e.g. silently dropping it via the defensive ``try/except``) would put
+    operators back in the position of digging through Celery worker logs to
+    find out why a job died.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="FailJob Test Project")
+        self.pipeline = Pipeline.objects.create(name="FailJob Pipeline", slug="fail-job-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="FailJob Collection", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_job(self, dispatch_mode: JobDispatchMode = JobDispatchMode.ASYNC_API) -> Job:
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name=f"{dispatch_mode} fail-job test",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=dispatch_mode,
+        )
+        job.update_status(JobState.STARTED, save=True)
+        return job
+
+    @patch("ami.ml.orchestration.jobs.cleanup_async_job_resources")
+    def test_fail_job_is_noop_on_already_final_job(self, mock_cleanup):
+        """
+        If the job is already in a final state (e.g. concurrent cleanup
+        beat us), ``_fail_job`` must return early without touching status
+        or progress. This protects against double-failing a job that has
+        already been reconciled to SUCCESS by the reconciler path.
+        """
+        from ami.jobs.tasks import _fail_job
+
+        job = self._make_job()
+        job.update_status(JobState.SUCCESS, save=True)
+        errors_before = list(job.progress.errors)
+
+        _fail_job(job.pk, "should be ignored")
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS)
+        self.assertEqual(job.progress.errors, errors_before)
+        mock_cleanup.assert_not_called()
 
 
 class TestResultEndpointWithError(APITestCase):
@@ -1762,3 +1878,28 @@ class TestCancelCompletionRace(TransactionTestCase):
             JobState.REVOKED.value,
             f"late completion resurrected a REVOKED job to {self.job.status!r}",
         )
+
+
+class TestRedisTargetLogging(SimpleTestCase):
+    """The per-job Redis-target log must not leak the internal Redis host.
+
+    run_job logs the Redis DB index to the public job log (via _redis_db_index) and the full
+    host:port only to the server log (via _describe_redis_target). The host names internal
+    infrastructure, so it must never reach the public job log / progress.errors. This pins the
+    split that a prior leak (host:port in the public job log) slipped through without.
+    """
+
+    def test_public_db_index_omits_host_and_port(self):
+        from ami.jobs.tasks import _redis_db_index
+
+        out = _redis_db_index()
+        self.assertNotIn(":", out, "DB index must not contain a host:port")
+        self.assertNotIn("redis=", out)
+
+    def test_server_target_includes_host_and_port(self):
+        from ami.jobs.tasks import _describe_redis_target
+
+        out = _describe_redis_target()
+        self.assertTrue(out.startswith("redis="))
+        self.assertIn(":", out)
+        self.assertIn("/db", out)
