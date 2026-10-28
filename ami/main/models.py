@@ -37,6 +37,7 @@ from ami.main import charts
 
 # These models and enums must be re-exported so that they are referenced as
 # models.* for compatibility with migrations existing before this change.
+from ami.main.models_future.classifications import probabilities
 from ami.main.models_future.enums import DEFAULT_RANKS, TaxonRank  # noqa: F401
 from ami.main.models_future.filters import (
     build_occurrence_default_filters_q,
@@ -61,7 +62,6 @@ from ami.main.models_future.taxonomy import (  # noqa: F401
     TaxonQuerySet,
     verified_taxon_counts,
 )
-from ami.ml.classification_arrays import softmax
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -2901,12 +2901,20 @@ class Classification(BaseModel):
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )
     logits = ArrayField(
-        models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
+        models.FloatField(),
+        null=True,
+        help_text=(
+            "The raw output of the last fully connected layer of the model. "
+            "Not stored when it only repeats the scores."
+        ),
     )
     scores = ArrayField(
         models.FloatField(),
         null=True,
-        help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+        help_text=(
+            "The probability per class, calibrated by the model maker, usually softmax(logits). "
+            "Not stored when it equals softmax(logits); read it with scores_or_softmax()."
+        ),
     )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
@@ -2983,13 +2991,9 @@ class Classification(BaseModel):
         Return the stored scores, or softmax(logits) when only the logits are stored.
 
         Scores equal softmax(logits) for classifiers that record real logits, so the
-        scores array is not stored for them (see ``ami.ml.classification_arrays``).
+        scores array is not stored for them. See ``ami.main.models_future.classifications``.
         """
-        if self.scores:
-            return self.scores
-        if self.logits:
-            return softmax(self.logits)
-        return []
+        return probabilities(self.scores, self.logits)
 
     def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
         """
