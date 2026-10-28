@@ -34,10 +34,10 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
+from ami.main.models_future.classifications import probabilities
 
 # These models and enums must be re-exported so that they are referenced as
 # models.* for compatibility with migrations existing before this change.
-from ami.main.models_future.classifications import probabilities
 from ami.main.models_future.enums import DEFAULT_RANKS, TaxonRank  # noqa: F401
 from ami.main.models_future.filters import (
     build_occurrence_default_filters_q,

@@ -91,9 +91,12 @@ class ClassificationResponse(pydantic.BaseModel):
         default_factory=list,
         description="The calibrated probabilities for each class label, most commonly the softmax output.",
     )
-    logits: list[float] = pydantic.Field(
-        default_factory=list,
-        description="The raw logits output by the model, before any calibration or normalization.",
+    logits: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "The raw logits output by the model, before any calibration or normalization. "
+            "Omit them if the model does not expose raw logits; do not send the probabilities here."
+        ),
     )
     inference_time: float | None = None
     algorithm: AlgorithmReference

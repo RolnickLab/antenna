@@ -40,6 +40,7 @@ def arrays_to_store(
       logits look like probabilities: ``probabilities()`` would then read them as such.
     - Otherwise both are kept, for example a model whose scores are calibrated.
     """
+    scores, logits = scores or None, logits or None
     if not scores or not logits or len(scores) != len(logits):
         return scores, logits
     if logits_are_probabilities(logits):

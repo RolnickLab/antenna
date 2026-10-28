@@ -814,12 +814,10 @@ def create_classification(
     ).first()
 
     if existing_classification:
-        # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
-        NEW_FIELDS = ["logits", "scores", "terminal", "category_map"]
         logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
-            f"not creating a new one, but updating new fields if they are None ({NEW_FIELDS})"
+            "not creating a new one, but filling a missing category map and applying the one-copy array rule"
         )
         # Fill missing arrays from the response, then apply the same one-copy rule as a
         # new row, so an old row gaining real logits drops scores that duplicate them.
@@ -834,7 +832,6 @@ def create_classification(
         new_values = {
             "logits": final_logits,
             "scores": final_scores,
-            "terminal": classification_resp.terminal,
             "category_map": classification_algo.category_map,
         }
         fields_to_update = [
@@ -842,7 +839,7 @@ def create_classification(
         ]
         fields_to_update += [
             field
-            for field in ("terminal", "category_map")
+            for field in ("category_map",)
             if getattr(existing_classification, field) is None and new_values[field] is not None
         ]
         if fields_to_update:

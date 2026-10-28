@@ -23,7 +23,7 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.main.models_future.classifications import logits_are_probabilities
-from ami.ml.models import Algorithm, Pipeline, ProcessingService
+from ami.ml.models import Algorithm, AlgorithmCategoryMap, Pipeline, ProcessingService
 from ami.ml.models.pipeline import (
     collect_images,
     create_classification,
@@ -48,6 +48,7 @@ from ami.tests.fixtures.main import (
 )
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
+from ami.utils.stats import softmax
 
 
 class TestProcessingServiceAPI(APITestCase):
@@ -2376,10 +2377,6 @@ class TestClassificationArraysOnRerun(TestCase):
     """A re-run that brings real logits for an existing classification keeps only one copy."""
 
     def test_existing_scores_dropped_when_rerun_adds_matching_logits(self):
-        from ami.main.models import Deployment, Detection, Project, SourceImage
-        from ami.ml.models import AlgorithmCategoryMap
-        from ami.utils.stats import softmax
-
         project = Project.objects.create(name="Rerun arrays project")
         deployment = Deployment.objects.create(project=project, name="dep")
         image = SourceImage.objects.create(deployment=deployment, project=project, path="rerun-arrays.jpg")

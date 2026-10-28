@@ -217,7 +217,7 @@ class TestPostProcessingClassMasking(TestCase):
         )
 
     def test_source_without_scores_is_masked_from_logits(self):
-        """Masking reads only logits, so a source whose scores array was dropped is still masked."""
+        """A source that stores only logits is masked from softmax(logits)."""
         logits = [2.0, 1.0, 5.0]
         det, _ = self._detection_with_occurrence()
         original = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
@@ -898,7 +898,7 @@ class TestPostProcessingClassMasking(TestCase):
     def test_scope_fetches_scores_with_the_batch(self):
         """Masking reads the stored scores when a row has them, so they must arrive with
         the batch; a deferred column would cost one lazy query per row."""
-        taxa_list, pks = self._make_scope(2, "Deferred scores list")
+        taxa_list, pks = self._make_scope(2, "Batched scores list")
         scope = Classification.objects.filter(pk__in=pks, terminal=True)
 
         # Record how each scope row arrived the first time it was read, which is the

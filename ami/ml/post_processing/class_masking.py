@@ -76,8 +76,8 @@ def make_classifications_filtered_by_taxa_list(
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
-    For each terminal classification produced by ``algorithm``, the logits of
-    classes whose taxon is not in ``taxa_list`` are masked, the softmax is
+    For each terminal classification produced by ``algorithm``, the probability of
+    classes whose taxon is not in ``taxa_list`` is set to zero and the rest is
     renormalised over the remaining classes (or, when ``reweight=False``, the kept
     classes retain their original absolute scores), and a new terminal classification
     (attributed to ``new_algorithm``, linked back via ``applied_to``) records the
@@ -176,23 +176,21 @@ def make_classifications_filtered_by_taxa_list(
             i += 1
             # Probabilities come from the stored scores, or from softmax(logits) when only
             # the logits are stored. Rows whose "logits" are probabilities are read as such.
-            values = classification.scores_or_softmax()
-            if not all(isinstance(x, (int, float)) for x in values):
-                raise ValueError(f"Scores for classification {classification.pk} are not a list of numbers")
-            elif len(values) != num_categories:
+            probs = np.asarray(classification.scores_or_softmax(), dtype=float)
+            if len(probs) != num_categories:
                 task_logger.warning(
-                    f"Classification {classification.pk}: {len(values)} scores "
+                    f"Classification {classification.pk}: {len(probs)} scores "
                     f"!= {num_categories} categories; skipping"
                 )
-            elif not sum(values[index] for index in included_indices) > 0.0:
+            elif not np.isfinite(probs).all() or not probs[included_indices].sum() > 0.0:
                 # Stored scores can round every kept class to exactly zero; nothing to rescale.
-                task_logger.warning(f"Classification {classification.pk}: no probability on kept classes; skipping")
+                task_logger.warning(
+                    f"Classification {classification.pk}: no finite probability on kept classes; skipping"
+                )
             else:
                 # Drop the excluded classes to exactly zero, so an excluded class can never
                 # win argmax or carry probability.
-                full_softmax = np.asarray(values, dtype=float)
-
-                kept = full_softmax.copy()
+                kept = probs.copy()
                 kept[excluded_indices] = 0.0
                 kept_sum = kept.sum()
                 top_index = int(np.argmax(kept))  # over kept classes only (excluded are 0)
@@ -209,8 +207,8 @@ def make_classifications_filtered_by_taxa_list(
 
                 # No-change short-circuit: if masking shifted no probability (the classes
                 # this taxa list drops carried ~zero probability here), leave the row
-                # untouched. Compared against the unmasked softmax, not the stored scores.
-                if np.allclose(full_softmax, new_scores_np, atol=1e-9):
+                # untouched.
+                if np.allclose(probs, new_scores_np, atol=1e-9):
                     task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
                 else:
                     top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
@@ -249,7 +247,7 @@ def make_classifications_filtered_by_taxa_list(
                             detection.occurrence,
                             {
                                 "excluded_probability": float(1.0 - kept_sum),
-                                "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                                "new_winner_original_rank": int((probs > probs[top_index]).sum()) + 1,
                             },
                             rank=score,
                         )
