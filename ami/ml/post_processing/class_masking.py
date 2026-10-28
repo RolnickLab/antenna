@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from ami.base.model_references import model_reference
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
+from ami.ml.classification_arrays import logits_are_probabilities
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.results.schemas import DeterminationSnapshot
@@ -116,7 +117,7 @@ def make_classifications_filtered_by_taxa_list(
     # runs were revoked as stalled (or killed for memory). See #1404.
     scope_ids = list(classifications.order_by().values_list("pk", flat=True))
     total = len(scope_ids)
-    task_logger.info(f"Found {total} terminal classifications with scores to re-score.")
+    task_logger.info(f"Found {total} terminal classifications with logits to re-score.")
 
     if not algorithm.category_map:
         raise ValueError(f"Algorithm {algorithm} does not have a category map.")
@@ -185,6 +186,10 @@ def make_classifications_filtered_by_taxa_list(
                     f"Classification {classification.pk}: {len(logits)} logits "
                     f"!= {num_categories} categories; skipping"
                 )
+            elif logits_are_probabilities(logits):
+                # Some older rows hold the softmax output in ``logits``; masking a softmax of
+                # probabilities would flatten them and pick the wrong winner.
+                task_logger.warning(f"Classification {classification.pk}: logits look like probabilities; skipping")
             else:
                 # Everything is derived from ``logits`` alone — the stored ``scores`` field
                 # is being retired, so masking must not depend on it. Recompute the model's
@@ -363,7 +368,6 @@ class ClassMaskingTask(BasePostProcessingTask):
             Classification.objects.filter(
                 terminal=True,
                 algorithm=source_algorithm,
-                scores__isnull=False,
                 logits__isnull=False,
             )
             # If another task needs this replay guard, hoist it to a

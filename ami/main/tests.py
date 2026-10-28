@@ -1,6 +1,7 @@
 import copy
 import datetime
 import logging
+import math
 import typing
 from io import BytesIO
 from unittest import mock
@@ -7863,6 +7864,21 @@ class ClassificationAdminChangelistTest(TestCase):
         row = next(c for c in self.admin.get_queryset(self._request()) if c.pk == clf.pk)
         self.assertEqual(row.scores_count, 3)
         self.assertEqual(row.logits_count, 0)
+
+
+class ClassificationScoresFromLogitsTest(TestCase):
+    """A classification that stores only logits still reports its scores, as softmax(logits)."""
+
+    def test_top_scores_derived_from_logits_when_scores_missing(self):
+        clf = Classification(scores=None, logits=[1.0, 3.0, 2.0])
+        top = list(clf.top_scores_with_index(2))
+        self.assertEqual([index for index, _ in top], [1, 2])
+        expected = math.exp(3.0) / (math.exp(1.0) + math.exp(3.0) + math.exp(2.0))
+        self.assertAlmostEqual(top[0][1], expected, places=12)
+
+    def test_stored_scores_take_precedence(self):
+        clf = Classification(scores=[0.7, 0.2, 0.1], logits=[1.0, 3.0, 2.0])
+        self.assertEqual(clf.scores_or_softmax(), [0.7, 0.2, 0.1])
 
 
 class TestCaptureSetChoices(APITestCase):

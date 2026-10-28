@@ -52,7 +52,6 @@ class Command(BaseCommand):
             detection__source_image__collections=collection,
             terminal=True,
             algorithm=algorithm,
-            scores__isnull=False,
             logits__isnull=False,
         ).count()
 
@@ -66,7 +65,7 @@ class Command(BaseCommand):
         )
 
         if classification_count == 0:
-            raise CommandError("No terminal classifications with scores found for this collection/algorithm.")
+            raise CommandError("No terminal classifications with logits found for this collection/algorithm.")
 
         if dry_run:
             self.stdout.write(self.style.WARNING("Dry run — no changes made."))
