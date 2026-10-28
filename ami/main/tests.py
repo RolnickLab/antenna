@@ -2352,6 +2352,32 @@ class TestCapturesStationAndDateFilters(APITestCase):
         self.assertEqual(self._count(f"&deployment__device={self.unused_device.pk}"), 0)
         self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_filter_choices_list_what_the_stations_use(self):
+        """
+        The device and site filter choices are the records the project's stations use, including
+        a legacy device with no project, and only their names. Unused records and other projects'
+        records are left out, and a missing project is a 400.
+        """
+        shared_device = Device.objects.create(name="Shared device", project=None)
+        Deployment.objects.filter(project=self.project, device=self.device_b).update(device=shared_device)
+        other_project, _ = setup_test_project(reuse=False)
+        Device.objects.create(name="Other project's device", project=other_project)
+
+        def choices(collection: str) -> list[dict]:
+            response = self.client.get(f"/api/v2/deployments/{collection}/choices/?project_id={self.project.pk}")
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+            return response.json()["results"]
+
+        devices = {row["name"] for row in choices("devices")}
+        self.assertTrue({"Device A", "Shared device"} <= devices, devices)
+        self.assertFalse({"Device B", "Unused device", "Other project's device"} & devices, devices)
+        sites = choices("sites")
+        self.assertIn("Site A", {row["name"] for row in sites})
+        self.assertNotIn("Unused site", {row["name"] for row in sites})
+        self.assertNotIn("boundary_rect", sites[0])
+        response = self.client.get("/api/v2/deployments/devices/choices/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_rows_name_device_and_site_without_extra_queries(self):
         rows, queries_with = list_with_query_count(self.client, self.list_url)
         station_a_rows = [r for r in rows if r["deployment"]["device"]["name"] == "Device A"]

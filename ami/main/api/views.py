@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -79,6 +79,7 @@ from .serializers import (
     DeploymentSerializer,
     DetectionListSerializer,
     DetectionSerializer,
+    DeviceReferenceSerializer,
     DeviceSerializer,
     EventListSerializer,
     EventSerializer,
@@ -92,6 +93,7 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SiteReferenceSerializer,
     SiteSerializer,
     SourceImageCollectionNestedSerializer,
     SourceImageCollectionSerializer,
@@ -2609,6 +2611,27 @@ class IdentificationViewSet(DefaultViewSet):
             raise PermissionDenied("You do not have permission to identify occurrences in this project.")
 
 
+def station_ref_choices(view, request: Request, model, station_field: str, serializer_class) -> Response:
+    """Choices for the device and site filters: the records the project's stations use.
+
+    Follows the capture set choices pattern (``SourceImageCollectionViewSet.choices``): a slim
+    serializer and one response capped by ``ChoicesPagination``. A station can use a record
+    owned by no project or by another one (legacy data), so this matches on the stations, not
+    the owner. Only names are returned, never the record's other stations. See #1561.
+    """
+    project = view.get_active_project()
+    if project is None:
+        raise api_exceptions.ValidationError({"project_id": "This parameter is required."})
+    if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+        raise NotFound("Project not found.")
+    stations = Deployment.objects.filter(project=project, **{station_field: OuterRef("pk")})
+    queryset = model.objects.filter(Exists(stations)).only("id", "name").order_by("name", "pk")
+    paginator = ChoicesPagination()
+    page = paginator.paginate_queryset(queryset, request, view=view)
+    serializer = serializer_class(page, many=True, context=view.get_serializer_context())
+    return paginator.get_paginated_response(serializer.data)
+
+
 class SiteViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows sites to be viewed or edited.
@@ -2634,6 +2657,12 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=SiteReferenceSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for the site filter on the captures and sessions lists."""
+        return station_ref_choices(self, request, Site, "research_site", SiteReferenceSerializer)
 
 
 class DeviceViewSet(DefaultViewSet, ProjectMixin):
@@ -2661,6 +2690,12 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=DeviceReferenceSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for the device type filter on the captures and sessions lists."""
+        return station_ref_choices(self, request, Device, "device", DeviceReferenceSerializer)
 
 
 class StorageSourceConnectionTestSerializer(serializers.Serializer):
