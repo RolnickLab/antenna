@@ -35,14 +35,17 @@ def arrays_to_store(
 ) -> tuple[list[float] | None, list[float] | None]:
     """Return the ``(scores, logits)`` to save, leaving out an array the other one makes redundant.
 
-    - Logits that are a probability distribution are left out: they are not logits.
-    - Scores equal to softmax(logits), with the same top class, are left out.
+    - Logits that are a copy of the scores are left out: they are not logits.
+    - Scores equal to softmax(logits), with the same top class, are left out, unless the
+      logits look like probabilities: ``probabilities()`` would then read them as such.
     - Otherwise both are kept, for example a model whose scores are calibrated.
     """
     if not scores or not logits or len(scores) != len(logits):
         return scores, logits
     if logits_are_probabilities(logits):
-        return scores, None
+        if np.allclose(logits, scores, rtol=SOFTMAX_RTOL, atol=SOFTMAX_ATOL):
+            return scores, None
+        return scores, logits
     stored = np.asarray(scores, dtype=float)
     derived = softmax(logits)
     if int(stored.argmax()) == int(derived.argmax()) and np.allclose(

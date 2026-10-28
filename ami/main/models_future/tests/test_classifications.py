@@ -18,6 +18,12 @@ class TestArraysToStore(SimpleTestCase):
         scores = softmax([2.0, 1.0, 5.0]).tolist()
         self.assertEqual(arrays_to_store(scores, list(scores)), (scores, None))
 
+    def test_real_logits_that_look_like_probabilities_are_kept(self):
+        """Dropping the scores here would make the logits read back as probabilities."""
+        logits = [0.2, 0.3, 0.5]
+        scores = softmax(logits).tolist()
+        self.assertEqual(arrays_to_store(scores, logits), (scores, logits))
+
     def test_calibrated_scores_of_a_many_class_model_are_kept(self):
         """Tiny calibrated probabilities differ from softmax(logits) by less than an absolute 1e-4."""
         logits = [0.5 * ((i * 7919) % 101) / 101 for i in range(29_000)]

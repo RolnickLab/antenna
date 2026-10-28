@@ -22,6 +22,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.main.models_future.classifications import logits_are_probabilities
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import (
     collect_images,
@@ -417,9 +418,11 @@ class TestPipelineWithProcessingService(TestCase):
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
-            # Scores equal softmax(logits) for this classifier, so only the logits are stored.
-            assert classification.scores is None
+            # Scores equal softmax(logits) for this classifier, so only the logits are stored,
+            # except when the random logits happen to look like probabilities.
             assert classification.logits
+            if not logits_are_probabilities(classification.logits):
+                assert classification.scores is None
             taxa_with_scores = list(classification.predictions_with_taxa(sort=True))
             assert taxa_with_scores
             self.assertAlmostEqual(classification.score, taxa_with_scores[0][1], places=6)
