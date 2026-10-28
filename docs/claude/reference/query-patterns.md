@@ -307,40 +307,27 @@ img.refresh_from_db()
 images = SourceImage.objects.annotate(det_count=Count('detections'))
 ```
 
-**❌ DON'T: Rely on `.iterator(chunk_size=N)` to produce a first row quickly**
+**❌ DON'T: Use `.iterator()` for a long scan that must report progress**
 
-In this project, django-cachalot turns `.iterator()` into a full read: it calls `list()` on
-the chunked result so it can store it in Redis, so the whole scope is fetched, parsed and
-pickled before the first row is yielded, and `chunk_size` bounds neither memory nor latency.
-A loop that reports progress after its first batch reports nothing for that entire ramp. On `Classification` rows carrying `logits` and `scores` (~140 kB each
-for a 29,176-class algorithm) this measured 4.65 s at 200 rows, 22.06 s at 1,000, and
-61.09 s at 2,798 — roughly 22 ms per row regardless of `chunk_size`. Jobs whose stage
-never crosses `Job.STALLED_JOBS_MAX_MINUTES` (10 minutes) get revoked by the reaper
-having reported nothing.
+django-cachalot calls `list()` on the chunked result so it can store it in Redis, so
+`.iterator()` reads, parses and caches the whole scope before yielding the first row.
+`chunk_size` bounds neither memory nor latency. On wide `Classification` rows this was about
+22 ms per row (61 s before the first row of a 2,798-row scope), long enough for the stalled-job
+reaper (`Job.STALLED_JOBS_MAX_MINUTES`) to cancel a job that has reported nothing. See #1404.
 
-```python
-for row in wide_queryset.iterator(chunk_size=200):  # ← no heartbeat for minutes
-    ...
-```
-
-**✅ DO: Chunk by primary key, and fetch only the columns you read**
+**✅ DO: Read in primary-key batches, without the query cache, fetching only the columns you read**
 ```python
 ids = list(scope.order_by().values_list("pk", flat=True))  # narrow, fast
 for start in range(0, len(ids), BATCH):
-    rows = (Model.objects.filter(pk__in=ids[start:start + BATCH])
-            .defer("large_array_column_you_never_read")
-            .select_related("fk", "fk__nested"))
+    with no_query_cache():  # ami/utils/query_cache.py
+        rows = list(Model.objects.filter(pk__in=ids[start:start + BATCH])
+                    .defer("large_array_column_you_never_read")
+                    .select_related("fk", "fk__nested"))
 ```
-Each batch is its own short query, so memory stays bounded and every batch is a natural
-progress heartbeat. Read the batches inside `no_query_cache()` (`ami/utils/query_cache.py`) when each
-is read only once: cached, a 200-row batch of wide rows leaves tens of megabytes in Redis. Do not use
-`cachalot_disabled()` directly: if a read raises, it leaves the cache off for the rest of the thread. Measured on the same 2,798-row scope: first batch 3.22 s instead of
-61.58 s, and 91 rows/s instead of ~3.5 rows/s.
+Each batch is a short query and a natural progress heartbeat. Use `no_query_cache()`, not
+`cachalot_disabled()`: the latter leaves the cache off for the rest of the thread if a read raises.
 
-**⚠️ `EXPLAIN (ANALYZE)` cannot see this.** It executes the plan but never returns rows
-to the client, so it never detoasts a large array column, never puts it on the wire, and
-never parses it in Python. The plan for that 2,798-row scope reports 23 ms against a real
-fetch of 61 s. Note also that `Sort` on a TOASTed column is cheap — it sorts pointers
-(`width=141`) — whereas `DISTINCT` compares values and therefore detoasts. When rows are
-wide, quote both the plan *and* a timed real fetch.
+**⚠️ `EXPLAIN (ANALYZE)` cannot see this.** It never returns rows to the client, so it never
+detoasts or parses a large array column (23 ms planned against a 61 s real fetch). When rows
+are wide, quote a timed real fetch as well as the plan.
 
