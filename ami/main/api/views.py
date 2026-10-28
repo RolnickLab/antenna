@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -2609,6 +2609,34 @@ class IdentificationViewSet(DefaultViewSet):
             raise PermissionDenied("You do not have permission to identify occurrences in this project.")
 
 
+has_deployments_doc_param = OpenApiParameter(
+    name="has_deployments",
+    description="List only the records used by the project's stations, including shared ones with no project.",
+    required=False,
+    type=OpenApiTypes.BOOL,
+)
+
+
+def filter_station_refs_by_project(view, queryset: QuerySet, station_field: str) -> QuerySet:
+    """
+    Limit devices or sites to the active project.
+
+    By default the list shows the records the project owns. With ``?has_deployments=true`` it shows the
+    records the project's stations use, which is what a list filter needs. Stations can use a shared record
+    with no project, which the default visibility filter hides, so visibility comes from the stations
+    instead. See #1561.
+    """
+    project = view.get_active_project()
+    if not project:
+        return queryset
+    if view.action == "list" and url_boolean_param(view.request, "has_deployments"):
+        stations = Deployment.objects.visible_for_user(view.request.user).filter(
+            project=project, **{station_field: OuterRef("pk")}
+        )
+        return queryset.model.objects.filter(Exists(stations))
+    return queryset.filter(project=project)
+
+
 class SiteViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows sites to be viewed or edited.
@@ -2625,13 +2653,9 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
     permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
-        project = self.get_active_project()
-        if project:
-            query_set = query_set.filter(project=project)
-        return query_set
+        return filter_station_refs_by_project(self, super().get_queryset(), "research_site")
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param, has_deployments_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -2652,13 +2676,9 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
     permission_classes = [ObjectPermission]
 
     def get_queryset(self) -> QuerySet:
-        query_set: QuerySet = super().get_queryset()
-        project = self.get_active_project()
-        if project:
-            query_set = query_set.filter(project=project)
-        return query_set
+        return filter_station_refs_by_project(self, super().get_queryset(), "device")
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param, has_deployments_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 

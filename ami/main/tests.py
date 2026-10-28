@@ -2352,6 +2352,29 @@ class TestCapturesStationAndDateFilters(APITestCase):
         self.assertEqual(self._count(f"&deployment__device={self.unused_device.pk}"), 0)
         self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_filter_choices_list_what_the_stations_use(self):
+        """
+        The device and site filters offer what the project's stations use, including a shared
+        device with no project, and leave out unused records and other projects' records.
+        """
+        shared_device = Device.objects.create(name="Shared device", project=None)
+        Deployment.objects.filter(project=self.project, device=self.device_b).update(device=shared_device)
+        other_project, _ = setup_test_project(reuse=False)
+        Device.objects.create(name="Other project's device", project=other_project)
+
+        def names(collection: str) -> set[str]:
+            url = f"/api/v2/deployments/{collection}/?project_id={self.project.pk}&has_deployments=true"
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+            return {row["name"] for row in response.json()["results"]}
+
+        devices = names("devices")
+        self.assertTrue({"Device A", "Shared device"} <= devices, devices)
+        self.assertFalse({"Device B", "Unused device", "Other project's device"} & devices, devices)
+        sites = names("sites")
+        self.assertIn("Site A", sites)
+        self.assertNotIn("Unused site", sites)
+
     def test_rows_name_device_and_site_without_extra_queries(self):
         rows, queries_with = list_with_query_count(self.client, self.list_url)
         station_a_rows = [r for r in rows if r["deployment"]["device"]["name"] == "Device A"]
