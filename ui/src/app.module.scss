@@ -37,6 +37,12 @@
   }
 }
 
+// Room below the content so a calendar opened from the last filter can scroll into view,
+// even when the page is short (no results). Date pickers always open downward. See #1561.
+.main:not(.fullscreen) {
+  padding-bottom: 320px;
+}
+
 @media print {
   .wrapper {
     height: auto;
