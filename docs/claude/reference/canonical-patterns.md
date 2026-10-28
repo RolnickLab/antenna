@@ -35,3 +35,7 @@ canonical but was undocumented.
 See `ui/CLAUDE.md` for frontend conventions, and
 `docs/claude/reference/react-form-to-drf-values.md` for the form-value → DRF serializer
 behavior reference.
+
+Filter and picker options come from a backend `choices` endpoint (see the Backend table): add an
+`API_ROUTES.*_CHOICES` route in `ui/src/data-services/constants.ts` and pass it to `EntityPicker`
+as `collection`, as `components/filtering/filters/capture-set-filter.tsx` and `device-filter.tsx` do.
