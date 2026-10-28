@@ -2,8 +2,6 @@ import logging
 import os
 from abc import ABC, abstractmethod
 
-from ami.exports.utils import apply_filters
-
 logger = logging.getLogger(__name__)
 
 
@@ -12,14 +10,16 @@ class BaseExporter(ABC):
 
     file_format = ""  # To be defined in child classes
     serializer_class = None
-    filter_backends = []
 
     def __init__(self, data_export):
         self.data_export = data_export
         self.job = data_export.job if hasattr(data_export, "job") else None
         self.project = data_export.project
-        self.queryset = apply_filters(
-            queryset=self.get_queryset(), filters=data_export.filters, filter_backends=self.get_filter_backends()
+        # Imported here: this module loads while the models load, before a FilterSet can be built.
+        from ami.main.occurrence_filters import filter_occurrences
+
+        self.queryset = filter_occurrences(
+            self.project, data_export.get_occurrence_filters(), queryset=self.get_queryset()
         )
         self.total_records = self.queryset.count()
         if self.job:
@@ -38,11 +38,6 @@ class BaseExporter(ABC):
 
     def get_serializer_class(self):
         return self.serializer_class
-
-    def get_filter_backends(self):
-        from ami.main.api.views import OccurrenceCollectionFilter
-
-        return [OccurrenceCollectionFilter]
 
     def update_export_stats(self, file_temp_path=None):
         """

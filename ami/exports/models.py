@@ -38,32 +38,23 @@ class DataExport(BaseModel):
         """
         Precompute a display-friendly version of filters.
         """
-        from django.apps import apps
+        # Imported here: this module loads while the models load, before a FilterSet can be built.
+        from ami.main.occurrence_filters import describe_saved_filters
 
-        related_models = {
-            "collection_id": "main.SourceImageCollection",
-            "taxa_list_id": "main.TaxaList",
-        }
+        return describe_saved_filters(self.filters)
+
+    def get_occurrence_filters(self) -> dict:
+        """The occurrence filters this export runs with.
+
+        The API validates and normalises ``filters`` when an export is created, and always records
+        ``apply_defaults``. An export saved before that ran with only its capture set filter and
+        without the project's default filters, so it runs the same way again. See #1537.
+        """
         filters = self.filters or {}
-        filters_display = {}
-
-        for key, value in filters.items():
-            if key in related_models:
-                model_path = related_models[key]
-                try:
-                    Model = apps.get_model(model_path)
-                    instance = Model.objects.get(pk=value)
-                    name = getattr(instance, "name", str(instance))
-                    key = key.replace("_id", "")  # Could potentially use the field name of the relationship instead
-                    filters_display[key] = {"id": value, "name": name}
-                except Model.DoesNotExist:
-                    filters_display[key] = {"id": value, "name": f"{model_path} with id {value} not found"}
-                except Exception as e:
-                    filters_display[key] = {"id": value, "name": f"Error: {str(e)}"}
-            else:
-                filters_display[key] = value
-
-        return filters_display
+        if "apply_defaults" in filters:
+            return filters
+        legacy = {key: filters[key] for key in ("collection_id", "collection") if filters.get(key) not in (None, "")}
+        return {**legacy, "apply_defaults": False}
 
     def generate_filename(self):
         """Generates a slugified filename using project name and export ID."""

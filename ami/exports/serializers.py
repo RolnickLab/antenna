@@ -7,6 +7,7 @@ from ami.jobs.models import Job
 from ami.jobs.serializers import JobListSerializer
 from ami.main.api.serializers import UserNestedSerializer
 from ami.main.models import Project
+from ami.main.occurrence_filters import clean_saved_filters
 
 from .models import DataExport
 
@@ -61,6 +62,20 @@ class DataExportSerializer(DefaultSerializer):
         if value not in supported_formats:
             raise serializers.ValidationError(f"Invalid format. Supported formats are: {supported_formats}")
         return value
+
+    def validate(self, attrs):
+        """Store ``filters`` as occurrence-list parameters in their normal form, so exports run what the list shows.
+
+        ``apply_defaults`` is always recorded, also when no filters are sent: true unless the request
+        sets it to false, as on the occurrence list. See #1537.
+        """
+        attrs = super().validate(attrs)
+        if "filters" in attrs or self.instance is None:
+            try:
+                attrs["filters"] = clean_saved_filters(attrs.get("filters"))
+            except serializers.ValidationError as e:
+                raise serializers.ValidationError({"filters": e.detail})
+        return attrs
 
     def get_file_url(self, obj):
         return obj.get_absolute_url(request=self.context.get("request"))
