@@ -38,7 +38,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
-from ami.ml.classification_arrays import arrays_to_store
+from ami.main.models_future.classifications import arrays_to_store
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
@@ -821,17 +821,28 @@ def create_classification(
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
             f"not creating a new one, but updating new fields if they are None ({NEW_FIELDS})"
         )
+        # Fill missing arrays from the response, then apply the same one-copy rule as a
+        # new row, so an old row gaining real logits drops scores that duplicate them.
+        final_scores, final_logits = arrays_to_store(
+            existing_classification.scores
+            if existing_classification.scores is not None
+            else classification_resp.scores,
+            existing_classification.logits
+            if existing_classification.logits is not None
+            else classification_resp.logits,
+        )
         new_values = {
-            "logits": logits,
-            "scores": scores,
+            "logits": final_logits,
+            "scores": final_scores,
             "terminal": classification_resp.terminal,
             "category_map": classification_algo.category_map,
         }
-        # Update new fields if they are None, unless the value to store is None too
-        # (an array left out because it duplicates the other).
         fields_to_update = [
+            field for field in ("scores", "logits") if getattr(existing_classification, field) != new_values[field]
+        ]
+        fields_to_update += [
             field
-            for field in NEW_FIELDS
+            for field in ("terminal", "category_map")
             if getattr(existing_classification, field) is None and new_values[field] is not None
         ]
         if fields_to_update:
