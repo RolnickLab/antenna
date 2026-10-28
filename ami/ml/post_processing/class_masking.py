@@ -4,7 +4,6 @@ from collections.abc import Callable
 
 import numpy as np
 import pydantic
-from cachalot.api import cachalot_disabled
 from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
@@ -15,6 +14,7 @@ from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.results.schemas import DeterminationSnapshot
 from ami.ml.results.writer import AlgorithmResultWriter
+from ami.utils.query_cache import no_query_cache
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -170,7 +170,7 @@ def make_classifications_filtered_by_taxa_list(
         # ``scores`` is never read while masking and is as large as ``logits``. The
         # query cache is bypassed because each batch is read once, and caching it would
         # leave tens of megabytes per batch in Redis.
-        with cachalot_disabled():
+        with no_query_cache():
             batch = list(
                 classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by().defer("scores")
             )
@@ -229,9 +229,10 @@ def make_classifications_filtered_by_taxa_list(
                         category_map=new_algorithm.category_map,
                         score=score,
                         scores=new_scores,
-                        # Store the raw logits unchanged (JSON-safe): the mask is fully captured
-                        # by ``scores`` (dropped classes -> 0) and the ``applied_to`` lineage.
-                        logits=logits,
+                        # Not copied: the source row keeps the logits, reachable through
+                        # ``applied_to``, and a copy per masked row filled a production disk.
+                        # ``scores`` holds the masked result. See #1404.
+                        logits=None,
                         terminal=True,
                         timestamp=classification.timestamp,
                         applied_to=classification,

@@ -773,13 +773,12 @@ class TestPostProcessingClassMasking(TestCase):
         )
 
     def test_scope_is_read_one_batch_per_query(self):
-        """The scope is read by one query per batch, not through a single cursor.
+        """The scope is read by one query per batch, not through ``.iterator()``.
 
-        A single cursor makes the time to the first row scale with the size of the
-        scope, so the first progress report lands after the whole scope has been read
-        and a large run is revoked as stalled having reported nothing. That delay
-        happens inside PostgreSQL and is invisible to the test process, so the query
-        shape is what can be pinned here. See #1376.
+        The query cache turns ``.iterator()`` into one read of the whole scope, so a large
+        run reports no progress until every row is loaded and is cancelled as stalled.
+        Reading each batch with its own query keeps the first progress report one batch
+        away. See #1404.
         """
         taxa_list, pks = self._make_scope(5, "Bounded batch list")
         scope = Classification.objects.filter(pk__in=pks, terminal=True)
@@ -812,6 +811,49 @@ class TestPostProcessingClassMasking(TestCase):
             f"5 rows at batch_size=2 should reach the loop in at least 3 queries, got {batch_sizes}",
         )
         self.assertLessEqual(max(batch_sizes), 2, f"A single query returned {max(batch_sizes)} scope rows")
+
+    def test_masked_row_does_not_copy_the_source_logits(self):
+        """A masked row stores no logits; they stay on the source row it was applied to.
+
+        A full copy per masked row doubles the size of every run for no new information.
+        """
+        taxa_list, pks = self._make_scope(1, "No logits copy list")
+        source = Classification.objects.get(pk=pks[0])
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=pks, terminal=True),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=self._masking_algorithm("masked_no_logits"),
+        )
+        masked = Classification.objects.get(applied_to=source)
+        self.assertIsNone(masked.logits)
+        self.assertIsNotNone(masked.scores)
+        self.assertEqual(masked.applied_to.logits, source.logits)
+
+    def test_query_cache_is_restored_when_a_batch_read_fails(self):
+        """A failed batch read must not leave the query cache off for the rest of the worker thread."""
+        from cachalot.api import LOCAL_STORAGE
+
+        taxa_list, pks = self._make_scope(2, "Failing read list")
+        self.addCleanup(setattr, LOCAL_STORAGE, "cachalot_enabled", getattr(LOCAL_STORAGE, "cachalot_enabled", True))
+        LOCAL_STORAGE.cachalot_enabled = True
+
+        original_fetch_all = QuerySet._fetch_all
+
+        def _fail_on_scope_rows(self_qs):
+            if self_qs.model is Classification and "scores" in self_qs.query.deferred_loading[0]:
+                raise RuntimeError("batch read failed")
+            original_fetch_all(self_qs)
+
+        with mock.patch.object(QuerySet, "_fetch_all", _fail_on_scope_rows):
+            with self.assertRaises(RuntimeError):
+                make_classifications_filtered_by_taxa_list(
+                    classifications=Classification.objects.filter(pk__in=pks, terminal=True),
+                    taxa_list=taxa_list,
+                    algorithm=self.algorithm,
+                    new_algorithm=self._masking_algorithm("masked_failing_read"),
+                )
+        self.assertTrue(LOCAL_STORAGE.cachalot_enabled)
 
     def test_scope_does_not_fetch_the_unused_scores_column(self):
         """``scores`` is never read while masking, and it is as large as ``logits``
