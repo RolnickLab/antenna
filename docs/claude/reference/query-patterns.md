@@ -332,8 +332,9 @@ for start in range(0, len(ids), BATCH):
             .select_related("fk", "fk__nested"))
 ```
 Each batch is its own short query, so memory stays bounded and every batch is a natural
-progress heartbeat. Read the batches inside `cachalot_disabled()` when each is read only once:
-cached, a 200-row batch of wide rows leaves tens of megabytes in Redis. Measured on the same 2,798-row scope: first batch 3.22 s instead of
+progress heartbeat. Read the batches inside `no_query_cache()` (`ami/utils/query_cache.py`) when each
+is read only once: cached, a 200-row batch of wide rows leaves tens of megabytes in Redis. Do not use
+`cachalot_disabled()` directly: if a read raises, it leaves the cache off for the rest of the thread. Measured on the same 2,798-row scope: first batch 3.22 s instead of
 61.58 s, and 91 rows/s instead of ~3.5 rows/s.
 
 **⚠️ `EXPLAIN (ANALYZE)` cannot see this.** It executes the plan but never returns rows
