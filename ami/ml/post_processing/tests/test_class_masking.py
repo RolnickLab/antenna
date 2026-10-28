@@ -203,6 +203,46 @@ class TestPostProcessingClassMasking(TestCase):
         self.assertTrue(original.terminal, "Nothing masked, so the source stays terminal")
         self.assertEqual(Classification.objects.filter(detection=det).count(), 1, "No new classification created")
 
+    def _mask_keep_first_two(self, classification: Classification, key: str) -> None:
+        taxa_list = TaxaList.objects.create(name=f"Keep first two ({key})")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        new_algorithm = Algorithm.objects.create(
+            name=key,
+            key=key,
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk=classification.pk),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+    def test_source_without_scores_is_masked_from_logits(self):
+        """Masking reads only logits, so a source whose scores array was dropped is still masked."""
+        logits = [2.0, 1.0, 5.0]
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+        Classification.objects.filter(pk=original.pk).update(scores=None)
+
+        self._mask_keep_first_two(original, "masked_no_scores")
+
+        new_clf = Classification.objects.get(detection=det, terminal=True)
+        self.assertEqual(new_clf.taxon, self.species_taxa[0])
+
+    def test_source_whose_logits_are_probabilities_is_skipped(self):
+        """Some older rows store the softmax output in ``logits``; masking those would be wrong."""
+        scores = _softmax([2.0, 1.0, 5.0])
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[2], scores, list(scores))
+
+        self._mask_keep_first_two(original, "masked_prob_logits")
+
+        original.refresh_from_db()
+        self.assertTrue(original.terminal)
+        self.assertEqual(Classification.objects.filter(detection=det).count(), 1)
+
     def test_all_classes_excluded_raises(self):
         # A taxa list sharing nothing with the category map leaves no class to keep.
         taxa_list = TaxaList.objects.create(name="Unrelated")

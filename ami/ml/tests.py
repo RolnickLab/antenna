@@ -22,6 +22,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.classification_arrays import arrays_to_store, softmax
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
@@ -412,10 +413,12 @@ class TestPipelineWithProcessingService(TestCase):
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
-            assert classification.scores
+            # Scores equal softmax(logits) for this classifier, so only the logits are stored.
+            assert classification.scores is None
+            assert classification.logits
             taxa_with_scores = list(classification.predictions_with_taxa(sort=True))
             assert taxa_with_scores
-            assert classification.score == taxa_with_scores[0][1]
+            self.assertAlmostEqual(classification.score, taxa_with_scores[0][1], places=6)
             assert classification.taxon == taxa_with_scores[0][0]
 
     def test_top_n_alignment(self):
@@ -427,7 +430,8 @@ class TestPipelineWithProcessingService(TestCase):
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
             top_n = classification.top_n(n=3)
-            assert classification.score == top_n[0]["score"]
+            # The stored score comes from the model; top_n recomputes it from the logits.
+            self.assertAlmostEqual(classification.score, top_n[0]["score"], places=6)
             assert classification.taxon == top_n[0]["taxon"]
 
     def test_pipeline_reprocessing(self):
@@ -2359,3 +2363,23 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestArraysToStore(unittest.TestCase):
+    """Only one copy of a classification's per-class information is stored."""
+
+    def test_scores_dropped_when_they_equal_softmax_of_logits(self):
+        logits = [2.0, 1.0, 5.0]
+        self.assertEqual(arrays_to_store(softmax(logits), logits), (None, logits))
+
+    def test_logits_dropped_when_they_copy_the_scores(self):
+        scores = softmax([2.0, 1.0, 5.0])
+        self.assertEqual(arrays_to_store(scores, list(scores)), (scores, None))
+
+    def test_both_kept_when_scores_are_not_softmax_of_logits(self):
+        logits = [2.0, 1.0, 5.0]
+        calibrated = softmax([x / 2 for x in logits])
+        self.assertEqual(arrays_to_store(calibrated, logits), (calibrated, logits))
+
+    def test_scores_kept_without_logits(self):
+        self.assertEqual(arrays_to_store([0.9], None), ([0.9], None))

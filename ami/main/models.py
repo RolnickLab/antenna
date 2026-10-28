@@ -61,6 +61,7 @@ from ami.main.models_future.taxonomy import (  # noqa: F401
     TaxonQuerySet,
     verified_taxon_counts,
 )
+from ami.ml.classification_arrays import softmax
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
@@ -2977,15 +2978,24 @@ class Classification(BaseModel):
             f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
         )
 
+    def scores_or_softmax(self) -> list[float]:
+        """
+        Return the stored scores, or softmax(logits) when only the logits are stored.
+
+        Scores equal softmax(logits) for classifiers that record real logits, so the
+        scores array is not stored for them (see ``ami.ml.classification_arrays``).
+        """
+        if self.scores:
+            return self.scores
+        if self.logits:
+            return softmax(self.logits)
+        return []
+
     def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
         """
         Return the scores with their index, but sorted by score.
         """
-        if self.scores:
-            top_scores_by_index = sorted(enumerate(self.scores), key=lambda x: x[1], reverse=True)[:n]
-            return top_scores_by_index
-        else:
-            return []
+        return sorted(enumerate(self.scores_or_softmax()), key=lambda x: x[1], reverse=True)[:n]
 
     def predictions(self, sort=True) -> typing.Iterable[tuple[str, float]]:
         """
@@ -2993,7 +3003,7 @@ class Classification(BaseModel):
         """
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
-        scores = self.scores or []
+        scores = self.scores_or_softmax()
         preds = zip(self.category_map.labels, scores)
         if sort:
             return sorted(preds, key=lambda x: x[1], reverse=True)
@@ -3009,7 +3019,7 @@ class Classification(BaseModel):
         """
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
-        scores = self.scores or []
+        scores = self.scores_or_softmax()
         category_data_with_taxa = self.category_map.with_taxa()
         taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
         preds = zip(taxa_sorted_by_index, scores)
