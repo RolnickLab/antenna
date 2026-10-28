@@ -1,5 +1,4 @@
 import { useEntities } from 'data-services/hooks/entities/useEntities'
-import { FetchParams } from 'data-services/types'
 import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -7,19 +6,16 @@ import { STRING, translate } from 'utils/language'
 // TODO: Move to src/components, this is not a design system component
 export const EntityPicker = ({
   collection,
-  filters,
   value: _value,
   onValueChange,
 }: {
   collection: string
-  filters?: FetchParams['filters']
   value?: string
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
   const { entities = [], isLoading } = useEntities(collection, {
     projectId: projectId as string,
-    filters,
   })
   const value = entities.some((e) => e.id === _value) ? _value : ''
 
