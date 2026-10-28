@@ -8,7 +8,8 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from ami.main.models import Deployment, Project, SourceImage
+from ami.main.models import Deployment, SourceImage
+from ami.main.models_future.projects import Project
 from ami.main.models_future.storage import S3StorageSource
 from ami.tests.fixtures.storage import S3_TEST_CONFIG, create_storage_source
 from ami.users.models import User

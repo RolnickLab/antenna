@@ -31,7 +31,8 @@ from ami.users.models import User
 from ami.utils.requests import get_apply_default_filters_flag
 
 if TYPE_CHECKING:
-    from ami.main.models import Classification, Detection, Occurrence, Project
+    from ami.main.models import Classification, Detection, Occurrence
+    from ami.main.models_future.projects import Project
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +419,8 @@ class TaxonQuerySet(BaseQuerySet):
     def visible_for_user(self, user: User | AnonymousUser):
         # We need to do a function level import here to avoid a circular import,
         # since ami.main.models imports this module.
-        from ami.main.models import Occurrence, Project
+        from ami.main.models import Occurrence
+        from ami.main.models_future.projects import Project
 
         if user.is_superuser:
             return self
