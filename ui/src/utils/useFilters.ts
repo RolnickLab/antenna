@@ -35,6 +35,17 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     },
   },
   {
+    label: translate(STRING.FIELD_LABEL_JOB),
+    field: 'job',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_JOB_FILTER),
+      link: {
+        text: translate(STRING.NAV_ITEM_JOBS),
+        to: APP_ROUTES.JOBS({ projectId }),
+      },
+    },
+  },
+  {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
     field: 'collection', // This is for viewing occurrences by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
     tooltip: {

@@ -33,10 +33,7 @@ export const Sessions = () => {
     occurrences: true,
     species: true,
   })
-  const { sort, setSort } = useSort({
-    field: 'occurrences_count',
-    order: 'desc',
-  })
+  const { sort, setSort } = useSort({ field: 'start', order: 'desc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
   const { sessions, total, isLoading, isFetching, error } = useSessions({

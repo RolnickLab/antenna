@@ -2,7 +2,6 @@ import { DeterminationScore } from 'components/determination-score'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
-import { ShieldCheckIcon } from 'lucide-react'
 import {
   BasicTableCell,
   CellTheme,
@@ -157,15 +156,7 @@ export const columns: (project: {
           filters: { ...carryFilters, taxon: item.id, verified: 'true' },
         })}
       >
-        <div className="flex items-center justify-end gap-1.5">
-          {item.numVerified > 0 ? (
-            <ShieldCheckIcon
-              aria-label={translate(STRING.VERIFIED)}
-              className="w-4 h-4 text-success"
-            />
-          ) : null}
-          <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
-        </div>
+        <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
       </Link>
     ),
   },

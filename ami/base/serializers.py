@@ -180,3 +180,11 @@ class FilterParamsSerializer(serializers.Serializer):
         if self.is_valid(raise_exception=True):
             return self.validated_data
         raise api_exceptions.ValidationError("Invalid filter parameters")
+
+
+class ModelRefSerializer(serializers.Serializer):
+    """A record a stored value names (see ``ami.base.model_references``). ``name`` is null when it no longer exists."""
+
+    type = serializers.CharField(help_text="What kind of record: taxa_list, capture_set, algorithm, ...")
+    id = serializers.IntegerField()
+    name = serializers.CharField(allow_null=True)

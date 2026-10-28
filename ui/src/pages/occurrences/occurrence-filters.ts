@@ -18,5 +18,6 @@ export const FILTERS_TO_OCCURRENCES = [
   'deployment__research_site',
   'algorithm',
   'not_algorithm',
+  'job',
   'apply_defaults',
 ]

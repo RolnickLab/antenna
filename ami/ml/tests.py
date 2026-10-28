@@ -22,6 +22,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.classification_arrays import arrays_to_store, softmax
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
@@ -412,10 +413,12 @@ class TestPipelineWithProcessingService(TestCase):
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
-            assert classification.scores
+            # Scores equal softmax(logits) for this classifier, so only the logits are stored.
+            assert classification.scores is None
+            assert classification.logits
             taxa_with_scores = list(classification.predictions_with_taxa(sort=True))
             assert taxa_with_scores
-            assert classification.score == taxa_with_scores[0][1]
+            self.assertAlmostEqual(classification.score, taxa_with_scores[0][1], places=6)
             assert classification.taxon == taxa_with_scores[0][0]
 
     def test_top_n_alignment(self):
@@ -427,7 +430,8 @@ class TestPipelineWithProcessingService(TestCase):
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
             top_n = classification.top_n(n=3)
-            assert classification.score == top_n[0]["score"]
+            # The stored score comes from the model; top_n recomputes it from the logits.
+            self.assertAlmostEqual(classification.score, top_n[0]["score"], places=6)
             assert classification.taxon == top_n[0]["taxon"]
 
     def test_pipeline_reprocessing(self):
@@ -671,6 +675,55 @@ class TestPipeline(TestCase):
             self.assertEqual(image.detections_count, 1)
 
         # @TODO test the cached counts for detections, etc are updated on Events, Deployments, etc.
+
+    def test_save_results_records_the_job_on_the_rows_it_creates(self):
+        from ami.jobs.models import Job
+
+        first_job = Job.objects.create(project=self.project, name="First run", pipeline=self.pipeline)
+        second_job = Job.objects.create(project=self.project, name="Second run", pipeline=self.pipeline)
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+
+        save_results(results, job_id=first_job.pk)
+        # A second run returning the same boxes and labels reuses the rows, which keep the first job.
+        save_results(results, job_id=second_job.pk)
+
+        detections = Detection.objects.filter(source_image__in=self.test_images)
+        classifications = Classification.objects.filter(detection__in=detections)
+        self.assertTrue(detections.exists())
+        self.assertTrue(classifications.exists())
+        self.assertEqual(set(detections.values_list("job_id", flat=True)), {first_job.pk})
+        self.assertEqual(set(classifications.values_list("job_id", flat=True)), {first_job.pk})
+
+    def test_each_classification_lands_on_its_own_detection_in_a_batch_of_new_and_existing_boxes(self):
+        """Each classification is saved on the detection its response came from, in a batch that
+        mixes a new box, an already-stored box and a box whose capture does not exist. See #1436."""
+        image = self.test_images[0]
+        first = self.fake_pipeline_results([image], self.pipeline)
+        save_results(first)
+
+        known = first.detections[0]
+        first_score = max(known.classifications[1].scores)
+        new = known.copy(deep=True)
+        new.bbox = BoundingBox(x1=2.0, y1=2.0, x2=3.0, y2=3.0)
+        orphan = new.copy(deep=True)
+        orphan.source_image_id = str(SourceImage.objects.order_by("-pk").values_list("pk", flat=True).first() + 1)
+        new.classifications[1].scores = [0.111]
+        known = known.copy(deep=True)
+        known.classifications[1].scores = [0.999]
+
+        second = self.fake_pipeline_results([image], self.pipeline)
+        second.detections = [new, orphan, known]
+        save_results(second)
+
+        species = self.algorithms["random-species-classifier"]
+        scores_by_box = {
+            tuple(detection.bbox): set(
+                detection.classifications.filter(algorithm=species).values_list("score", flat=True)
+            )
+            for detection in image.detections.all()
+        }
+        self.assertEqual(scores_by_box[(2.0, 2.0, 3.0, 3.0)], {0.111})
+        self.assertEqual(scores_by_box[(0.0, 0.0, 1.0, 1.0)], {first_score, 0.999})
 
     def test_skip_existing_when_all_matching(self):
         """
@@ -1603,6 +1656,28 @@ class TestPostProcessingTasks(TestCase):
         # count equals the detection count.
         self.assertEqual(params.get("occurrences_updated"), total)
 
+    def test_new_classifications_record_the_job(self):
+        """The size filter's "Not identifiable" classifications point at the job that ran it."""
+        from ami.jobs.models import Job
+
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small → flagged
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+        job = Job.objects.create(project=self.project, name="size filter job test", job_type_key="post_processing")
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(job=job, source_image_collection_id=self.collection.pk, size_threshold=0.01).run()
+
+        new_classifications = Classification.objects.filter(
+            detection__source_image__in=self.collection.images.all(), taxon__name="Not identifiable"
+        )
+        self.assertTrue(new_classifications.exists())
+        self.assertEqual(set(new_classifications.values_list("job_id", flat=True)), {job.pk})
+
     def test_progress_save_bumps_updated_at_for_reaper(self):
         """A progress heartbeat bumps ``Job.updated_at`` so the stale-job reaper
         leaves an actively-running post-processing job alone.
@@ -2288,3 +2363,23 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestArraysToStore(unittest.TestCase):
+    """Only one copy of a classification's per-class information is stored."""
+
+    def test_scores_dropped_when_they_equal_softmax_of_logits(self):
+        logits = [2.0, 1.0, 5.0]
+        self.assertEqual(arrays_to_store(softmax(logits), logits), (None, logits))
+
+    def test_logits_dropped_when_they_copy_the_scores(self):
+        scores = softmax([2.0, 1.0, 5.0])
+        self.assertEqual(arrays_to_store(scores, list(scores)), (scores, None))
+
+    def test_both_kept_when_scores_are_not_softmax_of_logits(self):
+        logits = [2.0, 1.0, 5.0]
+        calibrated = softmax([x / 2 for x in logits])
+        self.assertEqual(arrays_to_store(calibrated, logits), (calibrated, logits))
+
+    def test_scores_kept_without_logits(self):
+        self.assertEqual(arrays_to_store([0.9], None), ([0.9], None))

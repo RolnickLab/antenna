@@ -5,6 +5,7 @@ from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.fields import SkipField
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
@@ -28,6 +29,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectQuerySet,
     ProjectSettingsMixin,
     S3StorageSource,
     Site,
@@ -304,21 +306,52 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
+class ProjectLocationSerializer(serializers.Serializer):
+    """Where a project's stations are, from ProjectQuerySet.with_location(); null when none has coordinates."""
+
+    latitude = serializers.FloatField(source="centroid_latitude")
+    longitude = serializers.FloatField(source="centroid_longitude")
+
+    def get_attribute(self, instance):
+        # Left out of the response unless the list asked for it with ?with_location.
+        if not hasattr(instance, "centroid_latitude"):
+            raise SkipField
+        return instance if instance.centroid_latitude is not None else None
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
+    captures_count = serializers.IntegerField(read_only=True)
+    occurrences_count = serializers.IntegerField(read_only=True)
+    members_count = serializers.IntegerField(read_only=True)
+    last_capture_timestamp = serializers.DateTimeField(read_only=True)
+    last_occurrence_updated_at = serializers.DateTimeField(read_only=True)
+    last_job_updated_at = serializers.DateTimeField(read_only=True)
+    # Set on the page by add_taxa_counts().
+    taxa_observed_count = serializers.IntegerField(read_only=True)
+    location = ProjectLocationSerializer(source="*", read_only=True)
 
     class Meta:
         model = Project
-        fields = [
+        base_fields = [
             "id",
             "name",
             "description",
             "details",
-            "deployments_count",
             "created_at",
             "updated_at",
             "image",
             "draft",
+        ]
+        # The list always adds the activity dates. The totals and location are added when it asks for
+        # them with ?with_counts or ?with_location and left out otherwise, except deployments_count,
+        # which falls back to the model method.
+        fields = [
+            *base_fields,
+            *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
+            *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+            "taxa_observed_count",
+            "location",
         ]
 
 
@@ -394,7 +427,8 @@ class ProjectSerializer(DefaultSerializer):
 
     class Meta:
         model = Project
-        fields = ProjectListSerializer.Meta.fields + [
+        fields = ProjectListSerializer.Meta.base_fields + [
+            "deployments_count",
             "deployments",
             "summary_data",  # Conditionally included based on with_charts query param
             "owner",
@@ -1105,6 +1139,7 @@ class ClassificationSerializer(DefaultSerializer):
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
     applied_to = ClassificationAppliedToSerializer(read_only=True)
+    job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this classification.")
 
     class Meta:
         model = Classification
@@ -1118,6 +1153,7 @@ class ClassificationSerializer(DefaultSerializer):
             "logits",
             "top_n",
             "applied_to",
+            "job",
             "created_at",
             "updated_at",
         ]
@@ -1263,6 +1299,7 @@ class DetectionSerializer(DefaultSerializer):
         queryset=Algorithm.objects.all(), source="detection_algorithm", write_only=True
     )
     classifications = ClassificationNestedSerializer(many=True, read_only=True)
+    job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this detection.")
 
     class Meta:
         model = Detection
@@ -1271,6 +1308,7 @@ class DetectionSerializer(DefaultSerializer):
             "detection_algorithm",
             "detection_algorithm_id",
             "classifications",
+            "job",
         ]
 
 

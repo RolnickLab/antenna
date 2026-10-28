@@ -1,62 +1,81 @@
+import { SearchInput } from 'components/search-input/search-input'
 import { useProjects } from 'data-services/hooks/projects/useProjects'
+import { Grid2X2Icon, MapIcon, TableIcon } from 'lucide-react'
 import {
   Button,
+  ColumnSettings,
   PageFooter,
   PageHeader,
   PaginationBar,
-  SortControl,
+  Table,
   Tabs,
+  ToggleGroup,
 } from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { useSearch } from 'utils/useSearch'
+import { useColumnSettings } from 'utils/useColumnSettings'
 import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
+import { columns } from './project-columns'
 import { ProjectGallery } from './project-gallery'
+import { ProjectsMap } from './projects-map'
+
+// The map shows every project at once rather than a page of them.
+const MAP_LIMIT = 300
 
 export const TABS = {
   MY_PROJECTS: 'my-projects',
   ALL_PROJECTS: 'all-projects',
 }
 
-const SORT_FIELDS = [
-  { id: 'name', name: translate(STRING.FIELD_LABEL_NAME) },
-  { id: 'created_at', name: translate(STRING.FIELD_LABEL_CREATED_AT) },
-  { id: 'updated_at', name: translate(STRING.FIELD_LABEL_UPDATED_AT) },
-  {
-    id: 'last_capture_timestamp',
-    name: translate(STRING.SORT_RECENT_CAPTURES),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'last_occurrence_updated_at',
-    name: translate(STRING.SORT_OCCURRENCE_UPDATES),
-    defaultSortOrder: 'desc' as const,
-  },
-  {
-    id: 'last_job_updated_at',
-    name: translate(STRING.SORT_JOBS_ACTIVITY),
-    defaultSortOrder: 'desc' as const,
-  },
-]
-
 export const Projects = () => {
   const { user } = useUser()
   const { userInfo } = useUserInfo()
   const { selectedView: selectedTab, setSelectedView: setSelectedTab } =
     useSelectedView(user.loggedIn ? TABS.MY_PROJECTS : TABS.ALL_PROJECTS)
+  const { selectedView: layout, setSelectedView: setLayout } = useSelectedView(
+    'gallery',
+    'layout'
+  )
+  const { columnSettings, setColumnSettings } = useColumnSettings('projects', {
+    image: true,
+    name: true,
+    deployments: true,
+    captures: true,
+    occurrences: true,
+    taxa: true,
+    members: false,
+    'last-capture': true,
+    'last-occurrence-update': false,
+    'last-job-update': false,
+    'created-at': false,
+    'updated-at': false,
+  })
   const { sort, setSort } = useSort()
   const { pagination, setPage } = usePagination({ perPage: 40 })
-  const filters =
-    user.loggedIn && selectedTab === TABS.MY_PROJECTS
+  const { search, setSearch } = useSearch()
+  const filters = [
+    ...(user.loggedIn && selectedTab === TABS.MY_PROJECTS
       ? [{ field: 'user_id', value: userInfo?.id }]
-      : []
+      : []),
+    ...(search ? [{ field: 'search', value: search }] : []),
+    ...(layout === 'map' ? [{ field: 'with_location', value: 'true' }] : []),
+  ]
   const { projects, total, userPermissions, isLoading, isFetching, error } =
-    useProjects({ pagination, filters, sort })
+    useProjects({
+      pagination:
+        layout === 'map' ? { page: 0, perPage: MAP_LIMIT } : pagination,
+      filters,
+      sort,
+      // Totals are only shown, and only computed, in the table.
+      withCounts: layout === 'table',
+    })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
@@ -88,17 +107,40 @@ export const Projects = () => {
             </Tabs.List>
           </Tabs.Root>
         ) : null}
+        <SearchInput
+          label={translate(STRING.SEARCH_PROJECTS)}
+          value={search}
+          onChange={setSearch}
+        />
         {canCreate ? <NewProjectDialog /> : null}
-        <SortControl
-          columns={SORT_FIELDS.map((field) => ({
-            ...field,
-            sortField: field.id,
-          }))}
-          setSort={setSort}
-          sort={sort}
+        <ToggleGroup
+          items={[
+            {
+              value: 'table',
+              label: translate(STRING.TAB_ITEM_TABLE),
+              Icon: TableIcon,
+            },
+            {
+              value: 'gallery',
+              label: translate(STRING.TAB_ITEM_GALLERY),
+              Icon: Grid2X2Icon,
+            },
+            {
+              value: 'map',
+              label: translate(STRING.TAB_ITEM_MAP),
+              Icon: MapIcon,
+            },
+          ]}
+          value={layout}
+          onValueChange={setLayout}
+        />
+        <ColumnSettings
+          columns={columns}
+          columnSettings={columnSettings}
+          onColumnSettingsChange={setColumnSettings}
         />
       </PageHeader>
-      {projects && projects.length === 0 && canCreate ? (
+      {projects && projects.length === 0 && canCreate && !search ? (
         <div className="flex flex-col items-center pt-32">
           <h1 className="mb-8 heading-large">Get started</h1>
           <p className="text-center body-large mb-16">
@@ -116,6 +158,18 @@ export const Projects = () => {
             </Button>
           </div>
         </div>
+      ) : layout === 'table' ? (
+        <Table
+          columns={columns.filter((column) => !!columnSettings[column.id])}
+          error={error}
+          isLoading={isLoading}
+          items={projects}
+          onSortSettingsChange={setSort}
+          sortable
+          sortSettings={sort}
+        />
+      ) : layout === 'map' ? (
+        <ProjectsMap error={error} isLoading={isLoading} projects={projects} />
       ) : (
         <ProjectGallery
           error={error}
@@ -124,7 +178,7 @@ export const Projects = () => {
         />
       )}
       <PageFooter>
-        {projects?.length ? (
+        {projects?.length && layout !== 'map' ? (
           <PaginationBar
             pagination={pagination}
             total={total}

@@ -2,7 +2,7 @@ import { API_ROUTES } from 'data-services/constants'
 import { Project, ServerProject } from 'data-services/models/project'
 import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { UserPermission } from 'utils/user/types'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
@@ -31,9 +31,16 @@ export const useProjects = (
 
   const projects = useMemo(() => data?.results.map(convertServerRecord), [data])
 
+  // Permissions do not depend on the filters, so keep the last known ones while
+  // another tab, search or view loads, instead of hiding and re-adding buttons.
+  const userPermissions = useRef<UserPermission[]>()
+  if (data?.user_permissions) {
+    userPermissions.current = data.user_permissions
+  }
+
   return {
     projects,
-    userPermissions: data?.user_permissions,
+    userPermissions: userPermissions.current,
     total: data?.count ?? 0,
     isLoading,
     isFetching,
