@@ -9,7 +9,6 @@ link, the persisted output algorithm, and both admin scopes (collection / single
 occurrence) end to end through ``ClassMaskingTask.run()``.
 """
 import datetime
-import math
 import pathlib
 import uuid
 from unittest import mock
@@ -34,13 +33,11 @@ from ami.ml.models import Algorithm, AlgorithmCategoryMap, AlgorithmResult
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.class_masking import ClassMaskingTask, make_classifications_filtered_by_taxa_list
 from ami.tests.fixtures.main import create_taxa, setup_test_project
+from ami.utils.stats import softmax
 
 
 def _softmax(logits: list[float]) -> list[float]:
-    shifted = [x - max(logits) for x in logits]
-    exp = [math.exp(x) for x in shifted]
-    total = sum(exp)
-    return [e / total for e in exp]
+    return softmax(logits).tolist()
 
 
 class TestPostProcessingClassMasking(TestCase):
@@ -231,17 +228,19 @@ class TestPostProcessingClassMasking(TestCase):
         new_clf = Classification.objects.get(detection=det, terminal=True)
         self.assertEqual(new_clf.taxon, self.species_taxa[0])
 
-    def test_source_whose_logits_are_probabilities_is_skipped(self):
-        """Some older rows store the softmax output in ``logits``; masking those would be wrong."""
+    def test_source_whose_logits_are_probabilities_is_masked_from_them(self):
+        """Some older rows store the softmax output in ``logits``. They are masked as
+        probabilities, not passed through softmax again, which would flatten the score."""
         scores = _softmax([2.0, 1.0, 5.0])
         det, _ = self._detection_with_occurrence()
         original = self._create_classification_with_logits(det, self.species_taxa[2], scores, list(scores))
+        Classification.objects.filter(pk=original.pk).update(scores=None)
 
         self._mask_keep_first_two(original, "masked_prob_logits")
 
-        original.refresh_from_db()
-        self.assertTrue(original.terminal)
-        self.assertEqual(Classification.objects.filter(detection=det).count(), 1)
+        new_clf = Classification.objects.get(detection=det, terminal=True)
+        self.assertEqual(new_clf.taxon, self.species_taxa[0])
+        self.assertAlmostEqual(new_clf.score, scores[0] / (scores[0] + scores[1]), places=6)
 
     def test_all_classes_excluded_raises(self):
         # A taxa list sharing nothing with the category map leaves no class to keep.
@@ -881,7 +880,8 @@ class TestPostProcessingClassMasking(TestCase):
         original_fetch_all = QuerySet._fetch_all
 
         def _fail_on_scope_rows(self_qs):
-            if self_qs.model is Classification and "scores" in self_qs.query.deferred_loading[0]:
+            # The batch read is the only Classification read made with the query cache off.
+            if self_qs.model is Classification and not getattr(LOCAL_STORAGE, "cachalot_enabled", True):
                 raise RuntimeError("batch read failed")
             original_fetch_all(self_qs)
 
@@ -895,10 +895,9 @@ class TestPostProcessingClassMasking(TestCase):
                 )
         self.assertTrue(LOCAL_STORAGE.cachalot_enabled)
 
-    def test_scope_does_not_fetch_the_unused_scores_column(self):
-        """``scores`` is never read while masking, and it is as large as ``logits``
-        (~140 kB per row for a 29,176-class algorithm), so fetching it doubles what
-        every batch transfers and parses for nothing."""
+    def test_scope_fetches_scores_with_the_batch(self):
+        """Masking reads the stored scores when a row has them, so they must arrive with
+        the batch; a deferred column would cost one lazy query per row."""
         taxa_list, pks = self._make_scope(2, "Deferred scores list")
         scope = Classification.objects.filter(pk__in=pks, terminal=True)
 
@@ -929,8 +928,8 @@ class TestPostProcessingClassMasking(TestCase):
 
         self.assertEqual(len(deferred_on_arrival), 2, "Both scope rows should have been read")
         self.assertTrue(
-            all("scores" in deferred for deferred in deferred_on_arrival.values()),
-            "Masking fetched the scores column, which it never reads",
+            all("scores" not in deferred for deferred in deferred_on_arrival.values()),
+            "Masking deferred the scores column, so each row would load it with its own query",
         )
 
     def test_detection_is_not_queried_once_per_row(self):

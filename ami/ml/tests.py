@@ -22,9 +22,13 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.classification_arrays import arrays_to_store, softmax
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
-from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.models.pipeline import (
+    collect_images,
+    create_classification,
+    get_or_create_algorithm_and_category_map,
+    save_results,
+)
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -2365,21 +2369,46 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
 
 
-class TestArraysToStore(unittest.TestCase):
-    """Only one copy of a classification's per-class information is stored."""
+class TestClassificationArraysOnRerun(TestCase):
+    """A re-run that brings real logits for an existing classification keeps only one copy."""
 
-    def test_scores_dropped_when_they_equal_softmax_of_logits(self):
-        logits = [2.0, 1.0, 5.0]
-        self.assertEqual(arrays_to_store(softmax(logits), logits), (None, logits))
+    def test_existing_scores_dropped_when_rerun_adds_matching_logits(self):
+        from ami.main.models import Deployment, Detection, Project, SourceImage
+        from ami.ml.models import AlgorithmCategoryMap
+        from ami.utils.stats import softmax
 
-    def test_logits_dropped_when_they_copy_the_scores(self):
-        scores = softmax([2.0, 1.0, 5.0])
-        self.assertEqual(arrays_to_store(scores, list(scores)), (scores, None))
+        project = Project.objects.create(name="Rerun arrays project")
+        deployment = Deployment.objects.create(project=project, name="dep")
+        image = SourceImage.objects.create(deployment=deployment, project=project, path="rerun-arrays.jpg")
+        detection = Detection.objects.create(source_image=image, bbox=[0, 0, 1, 1])
+        labels = ["Rerun alpha", "Rerun beta", "Rerun gamma"]
+        category_map = AlgorithmCategoryMap.objects.create(
+            data=[{"index": i, "label": label} for i, label in enumerate(labels)], labels=labels, version="v1"
+        )
+        algorithm = Algorithm.objects.create(
+            name="Rerun classifier", key="rerun-classifier", task_type="classification", category_map=category_map
+        )
+        logits = [1.0, 4.0, 2.0]
+        scores = softmax(logits).tolist()
+        response = ClassificationResponse(
+            classification="Rerun beta",
+            scores=scores,
+            logits=logits,
+            algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
+            timestamp=datetime.datetime.now(),
+        )
+        # An older row: scores stored, logits never recorded.
+        existing, created = create_classification(
+            detection, response.copy(update={"logits": None}), {algorithm.key: algorithm}
+        )
+        self.assertTrue(created)
+        self.assertEqual(existing.scores, scores)
+        self.assertIsNone(existing.logits)
 
-    def test_both_kept_when_scores_are_not_softmax_of_logits(self):
-        logits = [2.0, 1.0, 5.0]
-        calibrated = softmax([x / 2 for x in logits])
-        self.assertEqual(arrays_to_store(calibrated, logits), (calibrated, logits))
+        rerun, created = create_classification(detection, response, {algorithm.key: algorithm})
 
-    def test_scores_kept_without_logits(self):
-        self.assertEqual(arrays_to_store([0.9], None), ([0.9], None))
+        self.assertFalse(created)
+        rerun.refresh_from_db()
+        self.assertEqual(rerun.pk, existing.pk)
+        self.assertIsNone(rerun.scores)
+        self.assertEqual(rerun.logits, logits)
