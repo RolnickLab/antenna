@@ -4,6 +4,7 @@ import logging
 import typing
 from io import BytesIO
 
+import requests
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -135,6 +136,41 @@ class TestProjectSetup(TestCase):
         self.assertIsNone(
             service, "Default processing service should not be created if environment variables are not set."
         )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Unreachable Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://unreachable.invalid:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,
+    )
+    def test_project_is_still_created_when_the_default_service_cannot_be_registered(self):
+        """
+        A default processing service that fails to register does not stop a project being created.
+
+        A network error or a database error during registration is logged, and the project is
+        created without the service rather than linked to one it has no pipelines from. Without
+        the savepoint, the database case aborts the transaction the project is written in.
+        """
+
+        def fail_in_the_database(*args, **kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1/0")
+
+        failures = {
+            "network": requests.exceptions.SSLError("certificate verify failed"),
+            "database": fail_in_the_database,
+        }
+        for label, failure in failures.items():
+            with (
+                self.subTest(failure=label),
+                mock.patch.object(ProcessingService, "create_pipelines", side_effect=failure),
+            ):
+                project = Project.objects.create(name=f"Unregistered service ({label})", create_defaults=True)
+
+                self.assertTrue(Project.objects.filter(pk=project.pk).exists())
+                self.assertGreaterEqual(project.deployments.count(), 1)
+                self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
+                self.assertEqual(project.processing_services.count(), 0)
+                self.assertEqual(ProjectPipelineConfig.objects.filter(project=project).count(), 0)
 
     @override_settings(
         DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",

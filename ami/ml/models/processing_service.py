@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 
 from ami.base.models import BaseQuerySet
 from ami.main.models import BaseModel, Project
@@ -153,7 +153,7 @@ class ProcessingService(BaseModel):
                 if algorithm not in existing_algorithms:
                     logger.debug(f"Registered new algorithm {algorithm.name} to pipeline {pipeline.name}.")
                     pipeline.algorithms.add(algorithm)
-                    pipelines_created.append(algorithm.key)
+                    algorithms_created.append(algorithm.key)
                 else:
                     logger.debug(f"Using existing algorithm {algorithm.name}.")
 
@@ -306,10 +306,12 @@ def get_or_create_default_processing_service(
     register_pipelines: bool = True,
 ) -> "ProcessingService | None":
     """
-    Create a default processing service for a project.
+    Create the push-mode default processing service for a project, if one is configured.
 
-    If configured, will use the global default processing service
-    for the current environment. Otherwise, it return None.
+    Returns None when no endpoint is configured, which is the normal case for a deployment
+    served by pull-mode workers: those register themselves for each project through
+    ``POST /projects/{id}/pipelines/``. Returns None as well when the service's pipelines
+    cannot be registered: the failure is logged and the project is created without it.
 
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
@@ -318,9 +320,9 @@ def get_or_create_default_processing_service(
     name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
     endpoint_url = settings.DEFAULT_PROCESSING_SERVICE_ENDPOINT
     if not endpoint_url:
-        logger.warning(
-            "Default processing service is not configured. "
-            "Set the 'DEFAULT_PROCESSING_SERVICE_ENDPOINT' environment variable."
+        logger.info(
+            "No push-mode default processing service is configured. "
+            "Set the 'DEFAULT_PROCESSING_SERVICE_ENDPOINT' environment variable to add one."
         )
         return None
 
@@ -328,11 +330,22 @@ def get_or_create_default_processing_service(
         name=name,
         endpoint_url=endpoint_url,
     )
-    service.projects.add(project)
-    logger.info(f"Created default processing service for project {project}")
     if register_pipelines:
-        service.create_pipelines(
-            enable_only=settings.DEFAULT_PIPELINES_ENABLED,
-            projects=Project.objects.filter(pk=project.pk),
-        )
+        # Registration calls the service's /info endpoint during the request. On failure the
+        # project is left unlinked, and the savepoint keeps a database error from aborting the
+        # caller's transaction. See #1566.
+        try:
+            with transaction.atomic():
+                service.create_pipelines(
+                    enable_only=settings.DEFAULT_PIPELINES_ENABLED,
+                    projects=Project.objects.filter(pk=project.pk),
+                )
+        except Exception:
+            logger.exception(
+                f"Could not register pipelines from the default processing service '{name}' "
+                f"at {endpoint_url}. Project {project} was created without it."
+            )
+            return None
+    service.projects.add(project)
+    logger.info(f"Added default processing service '{name}' to project {project}")
     return service
