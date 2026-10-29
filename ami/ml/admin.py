@@ -90,10 +90,8 @@ class ProcessingServiceAdmin(AdminBase):
         "id",
         "name",
         "endpoint_url",
-        "is_public",
         "created_at",
     ]
-    list_filter = ["is_public"]
 
 
 @admin.register(AlgorithmCategoryMap)
