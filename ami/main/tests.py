@@ -2354,14 +2354,17 @@ class TestCapturesStationAndDateFilters(APITestCase):
 
     def test_filter_choices_list_what_the_stations_use(self):
         """
-        The device and site filter choices are the records the project's stations use, including
-        a legacy device with no project, and only their names. Unused records and other projects'
-        records are left out, and a missing project is a 400.
+        The device and site filter choices are the records the project's stations use, whoever
+        owns them (legacy stations use records with no project or another project's), and only
+        their names. Records no station of this project uses are left out.
         """
         shared_device = Device.objects.create(name="Shared device", project=None)
         Deployment.objects.filter(project=self.project, device=self.device_b).update(device=shared_device)
-        other_project, _ = setup_test_project(reuse=False)
-        Device.objects.create(name="Other project's device", project=other_project)
+        other_project, other_station = setup_test_project(reuse=False)
+        borrowed_device = Device.objects.create(name="Borrowed device", project=other_project)
+        Deployment.objects.create(name="Station C", project=self.project, device=borrowed_device)
+        other_station.device = Device.objects.create(name="Other project's device", project=other_project)
+        other_station.save()
 
         def choices(collection: str) -> list[dict]:
             response = self.client.get(f"/api/v2/deployments/{collection}/choices/?project_id={self.project.pk}")
@@ -2369,14 +2372,22 @@ class TestCapturesStationAndDateFilters(APITestCase):
             return response.json()["results"]
 
         devices = {row["name"] for row in choices("devices")}
-        self.assertTrue({"Device A", "Shared device"} <= devices, devices)
+        self.assertTrue({"Device A", "Shared device", "Borrowed device"} <= devices, devices)
         self.assertFalse({"Device B", "Unused device", "Other project's device"} & devices, devices)
         sites = choices("sites")
         self.assertIn("Site A", {row["name"] for row in sites})
         self.assertNotIn("Unused site", {row["name"] for row in sites})
-        self.assertNotIn("boundary_rect", sites[0])
-        response = self.client.get("/api/v2/deployments/devices/choices/")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(set(sites[0]), {"id", "name", "details", "user_permissions"})
+
+    def test_filter_choices_require_a_visible_project(self):
+        """A missing project is a 400; an unknown project, or a draft one the user cannot see, is a 404."""
+        url = "/api/v2/deployments/devices/choices/"
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.client.get(f"{url}?project_id=999999").status_code, status.HTTP_404_NOT_FOUND)
+        Project.objects.filter(pk=self.project.pk).update(draft=True)
+        self.client.force_authenticate(user=None)
+        response = self.client.get(f"{url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_rows_name_device_and_site_without_extra_queries(self):
         rows, queries_with = list_with_query_count(self.client, self.list_url)

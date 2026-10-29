@@ -939,7 +939,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
 
 
 class ChoicesPagination(LimitOffsetPaginationWithPermissions):
-    """Sends a dropdown's choices in one response. Used by the capture set and job choices.
+    """Sends a dropdown's choices in one response. Used by every ``choices`` action.
 
     Dropdowns cannot page, so the limit is set here rather than by each caller. It is
     capped as well as defaulted, so no caller can ask for a larger one.
@@ -2619,9 +2619,9 @@ def station_ref_choices(view, request: Request, model, station_field: str, seria
     owned by no project or by another one (legacy data), so this matches on the stations, not
     the owner. Only names are returned, never the record's other stations. See #1561.
     """
+    # A missing project_id is a 400 and an unknown project a 404, as in the rest of the API.
+    view.require_project = True
     project = view.get_active_project()
-    if project is None:
-        raise api_exceptions.ValidationError({"project_id": "This parameter is required."})
     if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
         raise NotFound("Project not found.")
     stations = Deployment.objects.filter(project=project, **{station_field: OuterRef("pk")})
@@ -2661,7 +2661,7 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param], responses=SiteReferenceSerializer(many=True))
     @action(detail=False, methods=["get"], name="choices")
     def choices(self, request: Request) -> Response:
-        """Choices for the site filter on the captures and sessions lists."""
+        """Choices for the site filters on the captures, sessions, occurrences and taxa lists."""
         return station_ref_choices(self, request, Site, "research_site", SiteReferenceSerializer)
 
 
@@ -2694,7 +2694,7 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param], responses=DeviceReferenceSerializer(many=True))
     @action(detail=False, methods=["get"], name="choices")
     def choices(self, request: Request) -> Response:
-        """Choices for the device type filter on the captures and sessions lists."""
+        """Choices for the device type filters on the captures, sessions, occurrences and taxa lists."""
         return station_ref_choices(self, request, Device, "device", DeviceReferenceSerializer)
 
 
