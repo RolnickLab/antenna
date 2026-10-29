@@ -7384,6 +7384,15 @@ class TestDeviceAndSiteFilters(APITestCase):
             res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}={obj.pk}")
             self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
 
+    def test_device_or_site_used_by_a_station_filters_taxa(self):
+        """The taxa filter accepts what the device and site choices offer: a record one of the
+        project's stations uses, even when it belongs to no project (older data)."""
+        shared_device = Device.objects.create(name="Shared device", project=None)
+        shared_site = Site.objects.create(name="Shared site", project=None)
+        Deployment.objects.filter(pk=self.deployment_b.pk).update(device=shared_device, research_site=shared_site)
+        self.assertEqual(self._taxa_names(deployment__device=shared_device.pk), {"Vanessa atalanta"})
+        self.assertEqual(self._taxa_names(deployment__research_site=shared_site.pk), {"Vanessa atalanta"})
+
     def test_non_integer_id_returns_400_not_500(self):
         # A malformed id must be a client error on both endpoints, not an unhandled 500.
         # The taxa view validates the id before the existence lookup; the occurrence view

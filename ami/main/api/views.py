@@ -1958,11 +1958,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             if deployment_id:
                 Deployment.objects.get(id=deployment_id, project=project)
                 filters &= models.Q(**{field("deployment"): deployment_id})
+            # A device or site counts as the project's when one of its stations uses it, as in
+            # the filter choices: older stations use records owned by no project. See #1561.
+            in_project = models.Q(project=project) | models.Q(deployments__project=project)
             if device_id:
-                Device.objects.get(id=device_id, project=project)
+                if not Device.objects.filter(in_project, id=device_id).exists():
+                    raise Device.DoesNotExist("Device matching query does not exist.")
                 filters &= models.Q(**{field("deployment__device"): device_id})
             if site_id:
-                Site.objects.get(id=site_id, project=project)
+                if not Site.objects.filter(in_project, id=site_id).exists():
+                    raise Site.DoesNotExist("Site matching query does not exist.")
                 filters &= models.Q(**{field("deployment__research_site"): site_id})
             if event_id:
                 Event.objects.get(id=event_id, project=project)
