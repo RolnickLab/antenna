@@ -9,6 +9,8 @@ export const convertToFormData = (fieldValues: DeploymentFieldValues) => {
     data_source_regex: fieldValues.dataSourceRegex,
     description: fieldValues.description,
     device_id: fieldValues.deviceId,
+    frame_long_side_mm: fieldValues.frameLongSideMm,
+    frame_short_side_mm: fieldValues.frameShortSideMm,
     name: fieldValues.name,
     latitude: fieldValues.latitude,
     longitude: fieldValues.longitude,

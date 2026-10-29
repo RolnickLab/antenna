@@ -115,6 +115,16 @@ def regroup_events(deployment_id: int) -> None:
 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+def update_deployment_occurrence_sizes(deployment_id: int) -> None:
+    """Recalculate occurrence sizes after a station's field-of-view calibration changes."""
+    from ami.main.models import Occurrence
+    from ami.main.models_future.occurrence_size import update_occurrence_sizes_in_queryset
+
+    updated = update_occurrence_sizes_in_queryset(Occurrence.objects.filter(deployment_id=deployment_id))
+    logger.info(f"Updated the size of {updated} occurrences in deployment {deployment_id}")
+
+
+@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
 def save_model_instance(app_label: str, model_name: str, pk: int | str) -> bool:
     """
     Call the save method on a model instance.
