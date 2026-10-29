@@ -1,4 +1,6 @@
+import { API_ROUTES } from 'data-services/constants'
 import { CaptureSet } from 'data-services/models/capture-set'
+import { Device } from 'data-services/models/device'
 import { Entity, ServerEntity } from 'data-services/models/entity'
 import { StorageSource } from 'data-services/models/storage'
 import { FetchParams } from 'data-services/types'
@@ -14,6 +16,8 @@ const convertServerRecord = (collection: string, record: ServerEntity) => {
     return new StorageSource(record)
   } else if (collection === 'capture-set') {
     return new CaptureSet(record)
+  } else if (collection === API_ROUTES.DEVICES) {
+    return new Device(record)
   }
 
   return new Entity(record)
