@@ -309,9 +309,9 @@ def get_or_create_default_processing_service(
     Create the push-mode default processing service for a project, if one is configured.
 
     Returns None when no endpoint is configured, which is the normal case for a deployment
-    served by pull-mode workers. Returns None as well when the service's pipelines cannot be
-    registered: the failure is logged and the project is created without the service, so
-    project creation never fails because of it.
+    served by pull-mode workers: those register themselves for each project through
+    ``POST /projects/{id}/pipelines/``. Returns None as well when the service's pipelines
+    cannot be registered: the failure is logged and the project is created without it.
 
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
@@ -331,10 +331,9 @@ def get_or_create_default_processing_service(
         endpoint_url=endpoint_url,
     )
     if register_pipelines:
-        # Registration fetches the service's /info endpoint inside the request that creates the
-        # project. A failure is logged and the project is left unlinked, so it is not tied to a
-        # service it has no pipelines from. The savepoint keeps a database error from aborting
-        # the caller's transaction. See #1413.
+        # Registration calls the service's /info endpoint during the request. On failure the
+        # project is left unlinked, and the savepoint keeps a database error from aborting the
+        # caller's transaction. See #1566.
         try:
             with transaction.atomic():
                 service.create_pipelines(
