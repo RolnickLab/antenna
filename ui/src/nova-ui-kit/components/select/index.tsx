@@ -122,4 +122,22 @@ const Item = React.forwardRef<
 ))
 Item.displayName = 'Select.Item'
 
-export { Content, Item, Portal, Root, Trigger, Value }
+const Group = SelectPrimitive.Group
+Group.displayName = 'Select.Group'
+
+const Label = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Label
+    ref={ref}
+    className={cn(
+      'px-4 pt-3 pb-1 body-small font-semibold uppercase text-neutral-400',
+      className
+    )}
+    {...props}
+  />
+))
+Label.displayName = 'Select.Label'
+
+export { Content, Group, Item, Label, Portal, Root, Trigger, Value }

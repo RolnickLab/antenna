@@ -7,8 +7,10 @@ import pydantic
 from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from ami.base.model_references import model_reference
+from ami.jobs.schemas import JobGroup
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
@@ -27,16 +29,42 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = model_reference("capture_set", None, title="Capture set")
-    occurrence_id: int | None = model_reference("occurrence", None, title="Occurrence")
-    # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int = model_reference("taxa_list", ..., title="Species list")
-    # The source classifier whose terminal classifications are re-scored.
-    algorithm_id: int = model_reference("algorithm", ..., title="Classifier")
-    # When True (default), renormalise the kept classes' scores to sum to 1 after
-    # masking. When False, the kept classes retain their original absolute scores and
-    # the excluded classes are zeroed; the chosen species is identical either way.
-    reweight: bool = pydantic.Field(True, title="Re-weighted scores")
+    source_image_collection_id: int | None = model_reference(
+        "capture_set",
+        None,
+        title=_("Capture set"),
+        ami_widget="entity",
+        ami_entity="captures/collections",
+    )
+    # The admin's single-occurrence path; not offered in the Create Job dialog.
+    occurrence_id: int | None = model_reference(
+        "occurrence", None, title=_("Occurrence"), ami_widget="hidden", ami_entity="occurrences"
+    )
+    taxa_list_id: int = model_reference(
+        "taxa_list",
+        ...,
+        title=_("Species list"),
+        description=_("Classes outside this list are masked out."),
+        ami_widget="entity",
+        ami_entity="taxa/lists",
+    )
+    algorithm_id: int = model_reference(
+        "algorithm",
+        ...,
+        title=_("Classifier"),
+        description=_("Its terminal predictions are the ones re-scored."),
+        ami_widget="entity",
+        ami_entity="ml/algorithms",
+        ami_entity_filters={"task_type": "classification"},
+    )
+    reweight: bool = pydantic.Field(
+        True,
+        title=_("Re-weighted scores"),
+        description=_(
+            "Renormalise the kept classes to sum to 1. Off keeps raw absolute scores; "
+            "the chosen species is the same either way."
+        ),
+    )
 
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
@@ -304,6 +332,13 @@ def make_classifications_filtered_by_taxa_list(
 class ClassMaskingTask(BasePostProcessingTask):
     key = "class_masking"
     name = "Class masking"
+    label = _("Limit predictions to a species list")
+    group = JobGroup.REFINE_RESULTS
+    feature_flag = "class_masking"
+    description = _(
+        "Masks out classes whose taxon is not on the chosen list and renormalises each prediction over "
+        "what remains. The original classification is kept and demoted."
+    )
     config_schema = ClassMaskingConfig
     result_models = (ClassMaskingResultData,)
 

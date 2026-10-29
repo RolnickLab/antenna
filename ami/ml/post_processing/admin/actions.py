@@ -34,7 +34,7 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.html import format_html, format_html_join
 
-from ami.jobs.models import Job
+from ami.jobs.models import Job, PostProcessingJob
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -124,11 +124,14 @@ def default_build_jobs(
     job_pks: list[int] = []
     with transaction.atomic():
         for obj, model in validated:
+            params = {"task": task_cls.key, "config": model.dict()}
             job = Job.objects.create(
                 name=name_resolver(task_cls, obj),
                 project=project_resolver(obj),
-                job_type_key="post_processing",
-                params={"task": task_cls.key, "config": model.dict()},
+                job_type_key=PostProcessingJob.key,
+                params=params,
+                # Same columns as a job created through the API, so the jobs list filters agree.
+                **PostProcessingJob.column_ids(params),
             )
             job.enqueue()
             job_pks.append(job.pk)
