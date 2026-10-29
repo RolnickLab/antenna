@@ -4,8 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-    replaces = [("main", "0054_alter_project_options"), ("main", "0055_alter_project_options")]
-
     dependencies = [
         ("main", "0053_alter_classification_algorithm"),
     ]

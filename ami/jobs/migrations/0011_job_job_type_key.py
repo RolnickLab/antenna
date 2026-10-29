@@ -38,5 +38,5 @@ class Migration(migrations.Migration):
                 verbose_name="Job Type",
             ),
         ),
-        migrations.RunPython(set_job_type_key, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(set_job_type_key, reverse_code=migrations.RunPython.noop, elidable=True),
     ]
