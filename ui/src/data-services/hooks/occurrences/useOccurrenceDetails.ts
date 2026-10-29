@@ -10,7 +10,7 @@ const convertServerRecord = (record: ServerOccurrenceDetails) =>
   new OccurrenceDetails(record)
 
 export const useOccurrenceDetails = (
-  id: string
+  id: string | undefined
 ): {
   occurrence?: OccurrenceDetails
   isLoading: boolean
@@ -19,6 +19,7 @@ export const useOccurrenceDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerOccurrenceDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.OCCURRENCES, id],
       url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${id}/`,
     })
