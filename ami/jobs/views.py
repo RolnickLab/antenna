@@ -268,9 +268,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         capped by ``ChoicesPagination``. Failed and older jobs are included, since they may
         have written results.
         """
+        # A missing project_id is a 400 and an unknown project a 404, as in the rest of the API.
+        self.require_project = True
         project = self.get_active_project()
-        if project is None:
-            raise ValidationError({"project_id": "This parameter is required."})
         if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
             raise NotFound("Project not found.")
         queryset = (

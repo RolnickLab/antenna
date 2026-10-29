@@ -1780,9 +1780,11 @@ class TestJobChoices(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([row["name"] for row in response.json()["results"]], ["Newest", "Failed", "Oldest"])
 
-    def test_a_project_is_required(self):
+    def test_a_project_is_required_and_must_exist(self):
         response = self.client.get("/api/v2/jobs/choices/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.get("/api/v2/jobs/choices/?project_id=999999")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_jobs_in_a_draft_project_are_listed_for_members_only(self):
         draft_project = Project.objects.create(name="Draft job picker project", owner=self.user, draft=True)
