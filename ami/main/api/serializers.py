@@ -10,7 +10,12 @@ from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
 from ami.base.permissions import add_m2m_object_permissions
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
+from ami.base.serializers import (
+    DefaultSerializer,
+    MinimalNestedModelSerializer,
+    NoObjectPermissionsMixin,
+    reverse_with_params,
+)
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
@@ -272,6 +277,25 @@ class DeploymentNestedSerializer(DefaultSerializer):
         ]
 
 
+class DeviceReferenceSerializer(NoObjectPermissionsMixin, DeviceNestedSerializer):
+    pass
+
+
+class SiteReferenceSerializer(NoObjectPermissionsMixin, SiteNestedSerializer):
+    pass
+
+
+class DeploymentNestedSerializerWithDeviceAndSite(DeploymentNestedSerializer):
+    device = DeviceReferenceSerializer(read_only=True)
+    research_site = SiteReferenceSerializer(read_only=True)
+
+    class Meta(DeploymentNestedSerializer.Meta):
+        fields = DeploymentNestedSerializer.Meta.fields + [
+            "device",
+            "research_site",
+        ]
+
+
 class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
     class Meta:
         model = Deployment
@@ -451,7 +475,7 @@ class SourceImageQuickListSerializer(DefaultSerializer):
 
 
 class EventListSerializer(DefaultSerializer):
-    deployment = DeploymentNestedSerializer(
+    deployment = DeploymentNestedSerializerWithDeviceAndSite(
         read_only=True,
     )
     example_captures = ExampleSourceImageNestedSerializer(many=True, read_only=True)
@@ -822,13 +846,9 @@ class TaxaListTaxonSerializer(TaxonNoParentNestedSerializer):
     pass
 
 
-class CaptureTaxonSerializer(DefaultSerializer):
+class CaptureTaxonSerializer(NoObjectPermissionsMixin, DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
-
-    def get_permissions(self, instance, instance_data):
-        instance_data["user_permissions"] = []
-        return instance_data
 
     class Meta:
         model = Taxon
@@ -1192,11 +1212,7 @@ class ClassificationListSerializer(DefaultSerializer):
         ]
 
 
-class ClassificationNestedSerializer(ClassificationSerializer):
-    def get_permissions(self, instance, instance_data):
-        instance_data["user_permissions"] = []
-        return instance_data
-
+class ClassificationNestedSerializer(NoObjectPermissionsMixin, ClassificationSerializer):
     class Meta:
         model = Classification
         fields = [
@@ -1315,7 +1331,7 @@ class DetectionSerializer(DefaultSerializer):
 class SourceImageListSerializer(SourceImageThumbnailSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
-    deployment = DeploymentNestedSerializer(read_only=True)
+    deployment = DeploymentNestedSerializerWithDeviceAndSite(read_only=True)
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # Annotated in SourceImageViewSet.get_queryset (latest detection created_at).
@@ -1701,7 +1717,7 @@ class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):
 
 
 class EventSerializer(DefaultSerializer):
-    deployment = DeploymentNestedSerializer(
+    deployment = DeploymentNestedSerializerWithDeviceAndSite(
         read_only=True,
     )
     deployment_id = serializers.PrimaryKeyRelatedField(

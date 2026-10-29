@@ -2,6 +2,7 @@ from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from ami.base.serializers import NoObjectPermissionsMixin
 from ami.exports.models import DataExport
 from ami.main.api.serializers import (
     DefaultSerializer,
@@ -192,17 +193,12 @@ class MinimalJobSerializer(DefaultSerializer):
         fields = ["id", "pipeline_slug"]
 
 
-class JobChoiceSerializer(DefaultSerializer):
+class JobChoiceSerializer(NoObjectPermissionsMixin, DefaultSerializer):
     """What a job dropdown needs to name a job.
 
     The job counterpart of ``SourceImageCollectionNestedSerializer``, which serves the capture
     set choices: no counts or nested objects, so the choices query stays cheap.
     """
-
-    def get_permissions(self, instance, instance_data):
-        # A picker needs no per-job permissions, and resolving them costs several queries per row.
-        instance_data["user_permissions"] = []
-        return instance_data
 
     class Meta:
         model = Job

@@ -59,6 +59,20 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         return instance_data
 
 
+class NoObjectPermissionsMixin:
+    """
+    Return an empty ``user_permissions`` list instead of looking it up for each object.
+
+    Use it on read-only objects nested in other responses, where the client does not need
+    per-object permissions and the lookup would cost several queries per object.
+    List it before the serializer base class. See #1430 for removing the per-object cost everywhere.
+    """
+
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+
 class MinimalNestedModelSerializer(DefaultSerializer):
     """
     A nested serializer that only includes the id and the hyperlinked identity field.
@@ -165,21 +179,18 @@ class SingleParamSerializer(serializers.Serializer, typing.Generic[T]):
         self.fields[param_name] = field
 
 
-class FilterParamsSerializer(serializers.Serializer):
-    """
-    Serializer for validating query parameters in DRF views.
-    Typically in filters for list views.
+class DateRangeFilterSerializer(serializers.Serializer):
+    """Validate the ``date_start`` / ``date_end`` query parameters. Equal dates select a single day."""
 
-    A normal serializer with one helpful method to:
-    1) run .is_valid()
-    2) raise any validation exceptions
-    3) then return the cleaned data.
-    """
+    date_start = serializers.DateField(required=False)
+    date_end = serializers.DateField(required=False)
 
-    def clean(self) -> dict[str, typing.Any]:
-        if self.is_valid(raise_exception=True):
-            return self.validated_data
-        raise api_exceptions.ValidationError("Invalid filter parameters")
+    def validate(self, data):
+        start_date = data.get("date_start")
+        end_date = data.get("date_end")
+        if start_date and end_date and start_date > end_date:
+            raise api_exceptions.ValidationError({"date_start": "Start date must be on or before end date"})
+        return data
 
 
 class ModelRefSerializer(serializers.Serializer):

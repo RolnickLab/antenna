@@ -64,9 +64,13 @@ export const Captures = () => {
     <div className="flex flex-col gap-6 md:flex-row">
       <div className="space-y-6">
         <FilterSection defaultOpen>
-          <FilterControl field="deployment" />
           <FilterControl field="collections" />
           <FilterControl field="processed" />
+          <FilterControl field="deployment" />
+          <FilterControl field="deployment__device" />
+          <FilterControl field="deployment__research_site" />
+          <FilterControl field="date_start" />
+          <FilterControl field="date_end" />
         </FilterSection>
       </div>
       <div className="w-full overflow-hidden">

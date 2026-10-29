@@ -112,6 +112,14 @@ export class Capture {
     return this._capture.deployment?.name
   }
 
+  get deviceLabel(): string | undefined {
+    return this._capture.deployment?.device?.name
+  }
+
+  get researchSiteLabel(): string | undefined {
+    return this._capture.deployment?.research_site?.name
+  }
+
   get detections(): CaptureDetection[] {
     return this._detections
   }

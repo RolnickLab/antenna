@@ -2243,6 +2243,245 @@ class TestCapturesProcessedFilter(APITestCase):
         self.assertEqual(self._count("&has_detections=false"), 2)
 
 
+def list_with_query_count(client, url: str) -> tuple[list[dict], int]:
+    """Return a list endpoint's rows and how many queries the request made, with the query cache off."""
+    from cachalot.api import cachalot_disabled
+    from django.test.utils import CaptureQueriesContext
+
+    with cachalot_disabled(), CaptureQueriesContext(connection) as queries:
+        response = client.get(url)
+    assert response.status_code == status.HTTP_200_OK, response.content
+    return response.json()["results"], len(queries)
+
+
+class TestCapturesStationAndDateFilters(APITestCase):
+    """
+    The captures list filters by the station's device type (``deployment__device``),
+    by its research site (``deployment__research_site``) and by capture date
+    (``date_start`` / ``date_end``, both inclusive, in the station's local time).
+
+    Fixture: station A (device A, site A) has captures at 2024-06-01 23:30 and
+    2024-06-02 00:30; station B (device B, no site) has one at 2024-06-03 22:00.
+    """
+
+    def setUp(self) -> None:
+        self.project, deployment_a = setup_test_project(reuse=False)
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.unused_device = Device.objects.create(name="Unused device", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.unused_site = Site.objects.create(name="Unused site", project=self.project)
+        deployment_a.device = self.device_a
+        deployment_a.research_site = self.site_a
+        deployment_a.save()
+        deployment_b = Deployment.objects.create(
+            name="Station B", project=self.project, device=self.device_b, data_source=deployment_a.data_source
+        )
+        for deployment, timestamp in [
+            (deployment_a, datetime.datetime(2024, 6, 1, 23, 30)),
+            (deployment_a, datetime.datetime(2024, 6, 2, 0, 30)),
+            (deployment_b, datetime.datetime(2024, 6, 3, 22, 0)),
+        ]:
+            SourceImage.objects.create(deployment=deployment, timestamp=timestamp, path=f"{timestamp:%Y%m%d%H%M}.jpg")
+        self.user = User.objects.create_user(email="device-date-filter@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _get(self, query: str):
+        return self.client.get(f"{self.list_url}{query}")
+
+    def _count(self, query: str) -> int:
+        response = self._get(query)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return response.json()["count"]
+
+    def test_device_filter(self):
+        self.assertEqual(self._count(f"&deployment__device={self.device_a.pk}"), 2)
+        self.assertEqual(self._count(f"&deployment__device={self.device_b.pk}"), 1)
+        self.assertEqual(self._count(f"&deployment__device={self.unused_device.pk}"), 0)
+        self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_filter_choices_list_what_the_stations_use(self):
+        """
+        The device and site filter choices are the records the project's stations use, whoever
+        owns them (legacy stations use records with no project or another project's), and only
+        their names. Records no station of this project uses are left out.
+        """
+        shared_device = Device.objects.create(name="Shared device", project=None)
+        Deployment.objects.filter(project=self.project, device=self.device_b).update(device=shared_device)
+        other_project, other_station = setup_test_project(reuse=False)
+        borrowed_device = Device.objects.create(name="Borrowed device", project=other_project)
+        Deployment.objects.create(name="Station C", project=self.project, device=borrowed_device)
+        other_station.device = Device.objects.create(name="Other project's device", project=other_project)
+        other_station.save()
+
+        def choices(collection: str) -> list[dict]:
+            response = self.client.get(f"/api/v2/deployments/{collection}/choices/?project_id={self.project.pk}")
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+            return response.json()["results"]
+
+        devices = {row["name"] for row in choices("devices")}
+        self.assertTrue({"Device A", "Shared device", "Borrowed device"} <= devices, devices)
+        self.assertFalse({"Device B", "Unused device", "Other project's device"} & devices, devices)
+        sites = choices("sites")
+        self.assertIn("Site A", {row["name"] for row in sites})
+        self.assertNotIn("Unused site", {row["name"] for row in sites})
+        self.assertEqual(set(sites[0]), {"id", "name", "details", "user_permissions"})
+
+    def test_filter_choices_require_a_visible_project(self):
+        """A missing project is a 400; an unknown project, or a draft one the user cannot see, is a 404."""
+        url = "/api/v2/deployments/devices/choices/"
+        self.assertEqual(self.client.get(url).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.client.get(f"{url}?project_id=999999").status_code, status.HTTP_404_NOT_FOUND)
+        Project.objects.filter(pk=self.project.pk).update(draft=True)
+        self.client.force_authenticate(user=None)
+        response = self.client.get(f"{url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_rows_name_device_and_site_without_extra_queries(self):
+        rows, queries_with = list_with_query_count(self.client, self.list_url)
+        station_a_rows = [r for r in rows if r["deployment"]["device"]["name"] == "Device A"]
+        self.assertEqual(len(station_a_rows), 2)
+        self.assertEqual(station_a_rows[0]["deployment"]["research_site"]["name"], "Site A")
+
+        Deployment.objects.filter(project=self.project).update(device=None, research_site=None)
+        rows, queries_without = list_with_query_count(self.client, self.list_url)
+        self.assertIsNone(rows[0]["deployment"]["device"])
+        self.assertEqual(queries_with, queries_without)
+
+    def test_research_site_filter(self):
+        self.assertEqual(self._count(f"&deployment__research_site={self.site_a.pk}"), 2)
+        self.assertEqual(self._count(f"&deployment__research_site={self.unused_site.pk}"), 0)
+        self.assertEqual(self._get("&deployment__research_site=abc").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_date_range_filter_includes_both_end_dates(self):
+        # The end date includes captures up to midnight; the start date excludes the evening before.
+        self.assertEqual(self._count("&date_end=2024-06-01"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-02"), 2)
+        self.assertEqual(self._count("&date_start=2024-06-02&date_end=2024-06-02"), 1)
+        self.assertEqual(self._count("&date_start=2025-01-01"), 0)
+
+    def test_date_range_filter_rejects_invalid_dates(self):
+        self.assertEqual(self._get("&date_start=not-a-date").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self._get("&date_start=2024-06-03&date_end=2024-06-01").status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+
+class TestSessionsStationAndDateFilters(APITestCase):
+    """
+    The sessions list filters by the station's device type and research site, and by
+    date range. A session matches the date it starts on, so each night belongs to one
+    date and adjacent ranges never share a session.
+
+    Fixture: station A (device A, site A) has a session from 2024-06-01 21:00 to
+    2024-06-02 04:00. Station B (device B) has one on 2024-06-03 22:00-23:00 and one
+    starting 2024-06-05 21:00 with no end.
+    """
+
+    def setUp(self) -> None:
+        self.project, deployment_a = setup_test_project(reuse=False)
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        deployment_a.device = self.device_a
+        deployment_a.research_site = self.site_a
+        deployment_a.save()
+        deployment_b = Deployment.objects.create(
+            name="Station B", project=self.project, device=self.device_b, data_source=deployment_a.data_source
+        )
+        for deployment, start, end in [
+            (deployment_a, datetime.datetime(2024, 6, 1, 21, 0), datetime.datetime(2024, 6, 2, 4, 0)),
+            (deployment_b, datetime.datetime(2024, 6, 3, 22, 0), datetime.datetime(2024, 6, 3, 23, 0)),
+            (deployment_b, datetime.datetime(2024, 6, 5, 21, 0), None),
+        ]:
+            Event.objects.create(deployment=deployment, project=self.project, start=start, end=end)
+        self.user = User.objects.create_user(email="session-filters@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/events/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _get(self, query: str):
+        return self.client.get(f"{self.list_url}{query}")
+
+    def _count(self, query: str) -> int:
+        response = self._get(query)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return response.json()["count"]
+
+    def test_device_and_site_filters(self):
+        self.assertEqual(self._count(f"&deployment__device={self.device_a.pk}"), 1)
+        self.assertEqual(self._count(f"&deployment__device={self.device_b.pk}"), 2)
+        self.assertEqual(self._count(f"&deployment__research_site={self.site_a.pk}"), 1)
+        self.assertEqual(self._get("&deployment__device=abc").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rows_name_device_and_site_without_extra_queries(self):
+        rows, queries_with = list_with_query_count(self.client, self.list_url)
+        names = sorted(
+            (r["deployment"]["device"]["name"], (r["deployment"]["research_site"] or {}).get("name")) for r in rows
+        )
+        self.assertEqual(names, [("Device A", "Site A"), ("Device B", None), ("Device B", None)])
+
+        Deployment.objects.filter(project=self.project).update(device=None, research_site=None)
+        rows, queries_without = list_with_query_count(self.client, self.list_url)
+        self.assertIsNone(rows[0]["deployment"]["device"])
+        self.assertEqual(queries_with, queries_without)
+
+    def test_date_range_matches_sessions_by_start_date(self):
+        # The overnight session belongs to the date it started on, not the date it ended on.
+        self.assertEqual(self._count("&date_start=2024-06-01&date_end=2024-06-01"), 1)
+        self.assertEqual(self._count("&date_start=2024-06-02&date_end=2024-06-02"), 0)
+        self.assertEqual(self._count("&date_start=2024-06-03"), 2)
+        self.assertEqual(self._count("&date_end=2024-06-03"), 2)
+        self.assertEqual(self._count("&date_start=2024-06-05&date_end=2024-06-05"), 1)
+
+    def test_date_range_rejects_invalid_dates(self):
+        self.assertEqual(self._get("&date_end=not-a-date").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self._get("&date_start=2024-06-03&date_end=2024-06-01").status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+
+class TestSessionDetailStationDeviceAndSite(APITestCase):
+    """The session detail names its station's device type and research site, or null when unset."""
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(self.deployment, num_nights=1, images_per_night=2)
+        self.user = User.objects.create_user(email="session-station@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def _station(self) -> tuple[dict, int]:
+        """Return the session detail's station and the number of queries the request made."""
+        from cachalot.api import cachalot_disabled
+        from django.test.utils import CaptureQueriesContext
+
+        event = self.deployment.events.get()
+        with cachalot_disabled(), CaptureQueriesContext(connection) as queries:
+            response = self.client.get(f"/api/v2/events/{event.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["deployment"], len(queries)
+
+    def test_device_and_site_on_session_detail(self):
+        self.deployment.device = None
+        self.deployment.research_site = None
+        self.deployment.save()
+        station, queries_without = self._station()
+        self.assertIsNone(station["device"])
+        self.assertIsNone(station["research_site"])
+
+        self.deployment.device = Device.objects.create(name="Device A", project=self.project)
+        self.deployment.research_site = Site.objects.create(name="Site A", project=self.project)
+        self.deployment.save()
+        station, queries_with = self._station()
+        self.assertEqual(station["device"]["name"], "Device A")
+        self.assertEqual(station["research_site"]["name"], "Site A")
+        # Device and site come from joins on the session query, not extra queries.
+        self.assertEqual(queries_with, queries_without)
+
+
 class TestCapturesLastProcessed(APITestCase):
     """
     The captures list annotates and can order by ``last_processed`` — the most
@@ -7094,6 +7333,15 @@ class TestDeviceAndSiteFilters(APITestCase):
         for param, obj in (("deployment__device", other_device), ("deployment__research_site", other_site)):
             res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}={obj.pk}")
             self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_device_or_site_used_by_a_station_filters_taxa(self):
+        """The taxa filter accepts what the device and site choices offer: a record one of the
+        project's stations uses, even when it belongs to no project (older data)."""
+        shared_device = Device.objects.create(name="Shared device", project=None)
+        shared_site = Site.objects.create(name="Shared site", project=None)
+        Deployment.objects.filter(pk=self.deployment_b.pk).update(device=shared_device, research_site=shared_site)
+        self.assertEqual(self._taxa_names(deployment__device=shared_device.pk), {"Vanessa atalanta"})
+        self.assertEqual(self._taxa_names(deployment__research_site=shared_site.pk), {"Vanessa atalanta"})
 
     def test_non_integer_id_returns_400_not_500(self):
         # A malformed id must be a client error on both endpoints, not an unhandled 500.

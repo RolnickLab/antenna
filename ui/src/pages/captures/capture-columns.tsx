@@ -104,6 +104,20 @@ export const columns = ({
     },
   },
   {
+    id: 'device',
+    name: translate(STRING.FIELD_LABEL_DEVICE),
+    tooltip: translate(STRING.TOOLTIP_DEVICE),
+    renderCell: (item: Capture) => <BasicTableCell value={item.deviceLabel} />,
+  },
+  {
+    id: 'research-site',
+    name: translate(STRING.FIELD_LABEL_SITE),
+    tooltip: translate(STRING.TOOLTIP_SITE),
+    renderCell: (item: Capture) => (
+      <BasicTableCell value={item.researchSiteLabel} />
+    ),
+  },
+  {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
     tooltip: translate(STRING.TOOLTIP_SESSION),

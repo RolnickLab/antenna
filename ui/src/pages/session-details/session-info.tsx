@@ -22,6 +22,14 @@ export const SessionInfo = ({ session }: { session: SessionDetails }) => {
       }),
     },
     {
+      label: translate(STRING.FIELD_LABEL_DEVICE),
+      value: session.deviceLabel,
+    },
+    {
+      label: translate(STRING.FIELD_LABEL_SITE),
+      value: session.researchSiteLabel,
+    },
+    {
       label: translate(STRING.FIELD_LABEL_DATE),
       value: session.datespanLabel,
     },
