@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             name="logits",
             field=django.contrib.postgres.fields.ArrayField(
                 base_field=models.FloatField(),
-                help_text="The raw output of the last fully connected layer of the model. Not stored when it only repeats the scores.",
+                help_text="The raw output of the last fully connected layer of the model, one value per class. This is the per-class output to keep: scores are computed from it.",
                 null=True,
                 size=None,
             ),
@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
             name="scores",
             field=django.contrib.postgres.fields.ArrayField(
                 base_field=models.FloatField(),
-                help_text="The probability per class, calibrated by the model maker, usually softmax(logits). Not stored when it equals softmax(logits); read it with scores_or_softmax().",
+                help_text="The probability per class, calibrated by the model maker, usually softmax(logits). Stored only when it differs from softmax(logits), and to be removed once older classifications have logits; read it with scores_or_softmax().",
                 null=True,
                 size=None,
             ),
