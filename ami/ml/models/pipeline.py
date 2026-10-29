@@ -819,16 +819,19 @@ def create_classification(
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
             "not creating a new one, but filling a missing category map and applying the one-copy array rule"
         )
-        # Fill missing arrays from the response, then apply the same one-copy rule as a
-        # new row, so an old row gaining real logits drops scores that duplicate them.
-        final_scores, final_logits = arrays_to_store(
-            existing_classification.scores
-            if existing_classification.scores is not None
-            else classification_resp.scores,
-            existing_classification.logits
-            if existing_classification.logits is not None
-            else classification_resp.logits,
-        )
+        # A row with logits keeps its own arrays: taking scores from another run would mix two
+        # results. A row without logits takes them from the response. Either way the one-copy
+        # rule then applies, so scores that duplicate the logits are dropped.
+        if existing_classification.logits is not None:
+            merged_scores, merged_logits = existing_classification.scores, existing_classification.logits
+        else:
+            merged_scores = (
+                existing_classification.scores
+                if existing_classification.scores is not None
+                else classification_resp.scores
+            )
+            merged_logits = classification_resp.logits
+        final_scores, final_logits = arrays_to_store(merged_scores, merged_logits)
         new_values = {
             "logits": final_logits,
             "scores": final_scores,

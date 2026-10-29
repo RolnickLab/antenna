@@ -2374,13 +2374,13 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
 
 
 class TestClassificationArraysOnRerun(TestCase):
-    """A re-run that brings real logits for an existing classification keeps only one copy."""
+    """A re-run of an existing classification keeps only one copy of its per-class arrays."""
 
-    def test_existing_scores_dropped_when_rerun_adds_matching_logits(self):
+    def setUp(self):
         project = Project.objects.create(name="Rerun arrays project")
         deployment = Deployment.objects.create(project=project, name="dep")
         image = SourceImage.objects.create(deployment=deployment, project=project, path="rerun-arrays.jpg")
-        detection = Detection.objects.create(source_image=image, bbox=[0, 0, 1, 1])
+        self.detection = Detection.objects.create(source_image=image, bbox=[0, 0, 1, 1])
         labels = ["Rerun alpha", "Rerun beta", "Rerun gamma"]
         category_map = AlgorithmCategoryMap.objects.create(
             data=[{"index": i, "label": label} for i, label in enumerate(labels)], labels=labels, version="v1"
@@ -2388,27 +2388,47 @@ class TestClassificationArraysOnRerun(TestCase):
         algorithm = Algorithm.objects.create(
             name="Rerun classifier", key="rerun-classifier", task_type="classification", category_map=category_map
         )
-        logits = [1.0, 4.0, 2.0]
-        scores = softmax(logits).tolist()
-        response = ClassificationResponse(
+        self.algorithms = {algorithm.key: algorithm}
+        self.logits = [1.0, 4.0, 2.0]
+        self.scores = softmax(self.logits).tolist()
+        self.response = ClassificationResponse(
             classification="Rerun beta",
-            scores=scores,
-            logits=logits,
+            scores=self.scores,
+            logits=self.logits,
             algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
             timestamp=datetime.datetime.now(),
         )
+
+    def test_existing_scores_dropped_when_rerun_adds_matching_logits(self):
         # An older row: scores stored, logits never recorded.
         existing, created = create_classification(
-            detection, response.copy(update={"logits": None}), {algorithm.key: algorithm}
+            self.detection, self.response.copy(update={"logits": None}), self.algorithms
         )
         self.assertTrue(created)
-        self.assertEqual(existing.scores, scores)
+        self.assertEqual(existing.scores, self.scores)
         self.assertIsNone(existing.logits)
 
-        rerun, created = create_classification(detection, response, {algorithm.key: algorithm})
+        rerun, created = create_classification(self.detection, self.response, self.algorithms)
 
         self.assertFalse(created)
         rerun.refresh_from_db()
         self.assertEqual(rerun.pk, existing.pk)
         self.assertIsNone(rerun.scores)
-        self.assertEqual(rerun.logits, logits)
+        self.assertEqual(rerun.logits, self.logits)
+
+    def test_logits_only_row_ignores_rerun_scores(self):
+        """A row that stores only logits keeps them, and does not take scores from another run."""
+        existing, created = create_classification(self.detection, self.response, self.algorithms)
+        self.assertTrue(created)
+        self.assertIsNone(existing.scores)
+
+        # Same top score, so the re-run matches the row, but the lower classes differ.
+        other_scores = [self.scores[0] + 0.01, self.scores[1], self.scores[2] - 0.01]
+        rerun_response = self.response.copy(update={"scores": other_scores, "logits": None})
+        rerun, created = create_classification(self.detection, rerun_response, self.algorithms)
+
+        self.assertFalse(created)
+        rerun.refresh_from_db()
+        self.assertEqual(rerun.pk, existing.pk)
+        self.assertIsNone(rerun.scores)
+        self.assertEqual(rerun.logits, self.logits)
