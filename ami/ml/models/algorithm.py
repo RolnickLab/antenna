@@ -228,6 +228,9 @@ class AlgorithmTaskType(str, enum.Enum):
 class Algorithm(BaseModel):
     """A machine learning algorithm"""
 
+    reference_type = "algorithm"
+    reference_name_field = "name"
+
     name = models.CharField(max_length=255)
     key = models.SlugField(max_length=255, unique=True)
     task_type = models.CharField(

@@ -307,3 +307,27 @@ img.refresh_from_db()
 images = SourceImage.objects.annotate(det_count=Count('detections'))
 ```
 
+**❌ DON'T: Use `.iterator()` for a long scan that must report progress**
+
+django-cachalot calls `list()` on the chunked result so it can store it in Redis, so
+`.iterator()` reads, parses and caches the whole scope before yielding the first row.
+`chunk_size` bounds neither memory nor latency. On wide `Classification` rows this was about
+22 ms per row (61 s before the first row of a 2,798-row scope), long enough for the stalled-job
+reaper (`Job.STALLED_JOBS_MAX_MINUTES`) to cancel a job that has reported nothing. See #1404.
+
+**✅ DO: Read in primary-key batches, without the query cache, fetching only the columns you read**
+```python
+ids = list(scope.order_by().values_list("pk", flat=True))  # narrow, fast
+for start in range(0, len(ids), BATCH):
+    with no_query_cache():  # ami/utils/query_cache.py
+        rows = list(Model.objects.filter(pk__in=ids[start:start + BATCH])
+                    .defer("large_array_column_you_never_read")
+                    .select_related("fk", "fk__nested"))
+```
+Each batch is a short query and a natural progress heartbeat. Use `no_query_cache()`, not
+`cachalot_disabled()`: the latter leaves the cache off for the rest of the thread if a read raises.
+
+**⚠️ `EXPLAIN (ANALYZE)` cannot see this.** It never returns rows to the client, so it never
+detoasts or parses a large array column (23 ms planned against a 61 s real fetch). When rows
+are wide, quote a timed real fetch as well as the plan.
+

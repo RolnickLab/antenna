@@ -2,8 +2,10 @@ import collections
 import datetime
 
 from django.db.models import QuerySet
+from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.fields import SkipField
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
@@ -27,6 +29,7 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectQuerySet,
     ProjectSettingsMixin,
     S3StorageSource,
     Site,
@@ -35,6 +38,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    get_media_url,
 )
 
 
@@ -302,21 +306,52 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
         ]
 
 
+class ProjectLocationSerializer(serializers.Serializer):
+    """Where a project's stations are, from ProjectQuerySet.with_location(); null when none has coordinates."""
+
+    latitude = serializers.FloatField(source="centroid_latitude")
+    longitude = serializers.FloatField(source="centroid_longitude")
+
+    def get_attribute(self, instance):
+        # Left out of the response unless the list asked for it with ?with_location.
+        if not hasattr(instance, "centroid_latitude"):
+            raise SkipField
+        return instance if instance.centroid_latitude is not None else None
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
+    captures_count = serializers.IntegerField(read_only=True)
+    occurrences_count = serializers.IntegerField(read_only=True)
+    members_count = serializers.IntegerField(read_only=True)
+    last_capture_timestamp = serializers.DateTimeField(read_only=True)
+    last_occurrence_updated_at = serializers.DateTimeField(read_only=True)
+    last_job_updated_at = serializers.DateTimeField(read_only=True)
+    # Set on the page by add_taxa_counts().
+    taxa_observed_count = serializers.IntegerField(read_only=True)
+    location = ProjectLocationSerializer(source="*", read_only=True)
 
     class Meta:
         model = Project
-        fields = [
+        base_fields = [
             "id",
             "name",
             "description",
             "details",
-            "deployments_count",
             "created_at",
             "updated_at",
             "image",
             "draft",
+        ]
+        # The list always adds the activity dates. The totals and location are added when it asks for
+        # them with ?with_counts or ?with_location and left out otherwise, except deployments_count,
+        # which falls back to the model method.
+        fields = [
+            *base_fields,
+            *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
+            *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+            "taxa_observed_count",
+            "location",
         ]
 
 
@@ -392,7 +427,8 @@ class ProjectSerializer(DefaultSerializer):
 
     class Meta:
         model = Project
-        fields = ProjectListSerializer.Meta.fields + [
+        fields = ProjectListSerializer.Meta.base_fields + [
+            "deployments_count",
             "deployments",
             "summary_data",  # Conditionally included based on with_charts query param
             "owner",
@@ -618,16 +654,50 @@ class TagSerializer(DefaultSerializer):
         return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
 
 
+class ExampleOccurrenceSerializer(serializers.Serializer):
+    """One representative occurrence for a taxon's presence-verification Example column (#1320).
+
+    Read-only and not bound to a plain Occurrence: the view hydrates a page of example
+    occurrences with ``with_best_detection()`` plus an ``is_verified`` annotation and then
+    serializes them through this class. It is the single source of truth for the nested
+    shape the frontend renders (thumbnail + deep-link) and for the field's OpenAPI schema,
+    so the shape is declared here once rather than rebuilt as a dict literal in the view.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    detection_id = serializers.IntegerField(source="best_detection_id", read_only=True, allow_null=True)
+    image_url = serializers.SerializerMethodField()
+    score = serializers.FloatField(source="determination_score", read_only=True, allow_null=True)
+    verified = serializers.BooleanField(source="is_verified", read_only=True)
+
+    def get_image_url(self, obj) -> str | None:
+        path = getattr(obj, "best_detection_path", None)
+        return get_media_url(path) if path else None
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     tags = serializers.SerializerMethodField()
+    # Presence-verification Example column (#1320). Populated only when the request sets
+    # ?with_example_occurrences=true; otherwise the annotations are NULL. The nested object
+    # is hydrated for the whole page in one query and passed via serializer context.
+    example_occurrence = serializers.SerializerMethodField()
+    best_scoring_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
+    last_detected_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
 
     def get_tags(self, obj):
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
+
+    @extend_schema_field(ExampleOccurrenceSerializer)
+    def get_example_occurrence(self, obj) -> dict | None:
+        occurrence_id = getattr(obj, "example_occurrence_id", None)
+        if occurrence_id is None:
+            return None
+        return self.context.get("example_occurrence_map", {}).get(occurrence_id)
 
     class Meta:
         model = Taxon
@@ -641,6 +711,9 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences_count",
             "verified_count",
             "occurrences",
+            "example_occurrence",
+            "best_scoring_occurrence_id",
+            "last_detected_occurrence_id",
             "tags",
             "last_detected",
             "best_determination_score",
@@ -697,20 +770,38 @@ class TaxaListSerializer(DefaultSerializer):
         """
         Return the number of taxa in this list.
         Uses annotated_taxa_count if available (from ViewSet) for performance.
+
+        `getattr(obj, name, obj.taxa.count())` would evaluate `obj.taxa.count()`
+        as a default argument on every call regardless of whether the attribute
+        is present, running a COUNT query per row even when annotated.
         """
-        return getattr(obj, "annotated_taxa_count", obj.taxa.count())
+        annotated_count = getattr(obj, "annotated_taxa_count", None)
+        return annotated_count if annotated_count is not None else obj.taxa.count()
 
     def get_permissions(self, instance, instance_data):
+        # DRF's ListSerializer reuses one child instance across every row, and a
+        # fresh serializer is built per request, so caching on `self` resolves
+        # the project and the member's permissions once per request, not per row.
         request = self.context["request"]
-        project = get_active_project(request=request)
-        return add_m2m_object_permissions(request.user, instance, project, instance_data)
+        if not hasattr(self, "_active_project"):
+            self._active_project = get_active_project(request=request)
+        project = self._active_project
+
+        project_perms = None
+        if project and not request.user.is_superuser:
+            if not hasattr(self, "_project_perms"):
+                self._project_perms = set(get_perms(request.user, project))
+            project_perms = self._project_perms
+
+        return add_m2m_object_permissions(request.user, instance, project, instance_data, project_perms=project_perms)
 
     def get_projects(self, obj):
         """
-        Return list of project IDs this taxa list belongs to.
-        This is read-only and managed by the server.
+        Return list of project IDs this taxa list belongs to, sorted for a
+        deterministic response. Reads the `projects` prefetched by
+        TaxaListViewSet.get_queryset instead of querying per row.
         """
-        return list(obj.projects.values_list("id", flat=True))
+        return sorted(project.pk for project in obj.projects.all())
 
 
 class TaxaListTaxonInputSerializer(serializers.Serializer):
@@ -1048,6 +1139,7 @@ class ClassificationSerializer(DefaultSerializer):
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
     applied_to = ClassificationAppliedToSerializer(read_only=True)
+    job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this classification.")
 
     class Meta:
         model = Classification
@@ -1061,6 +1153,7 @@ class ClassificationSerializer(DefaultSerializer):
             "logits",
             "top_n",
             "applied_to",
+            "job",
             "created_at",
             "updated_at",
         ]
@@ -1206,6 +1299,7 @@ class DetectionSerializer(DefaultSerializer):
         queryset=Algorithm.objects.all(), source="detection_algorithm", write_only=True
     )
     classifications = ClassificationNestedSerializer(many=True, read_only=True)
+    job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this detection.")
 
     class Meta:
         model = Detection
@@ -1214,6 +1308,7 @@ class DetectionSerializer(DefaultSerializer):
             "detection_algorithm",
             "detection_algorithm_id",
             "classifications",
+            "job",
         ]
 
 

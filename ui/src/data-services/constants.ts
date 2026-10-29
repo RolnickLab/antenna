@@ -11,6 +11,7 @@ export const API_ROUTES = {
   EXPORTS: 'exports',
   IDENTIFICATIONS: 'identifications',
   JOBS: 'jobs',
+  JOB_CHOICES: 'jobs/choices',
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',
   ME: 'users/me',

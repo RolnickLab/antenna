@@ -3,6 +3,7 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
+import { useOccurrenceHistory } from 'data-services/hooks/occurrences/useOccurrenceHistory'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
 import { SearchIcon } from 'lucide-react'
 import {
@@ -26,8 +27,7 @@ import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
-import { HumanIdentification } from './identification-card/human-identification'
-import { MachinePrediction } from './identification-card/machine-prediction'
+import { OccurrenceTimeline } from './history/occurrence-timeline'
 import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
@@ -57,6 +57,10 @@ export const OccurrenceDetails = ({
   const navigate = useNavigate()
   const location = useLocation()
   const [suggestIdOpen, setSuggestIdOpen] = useState(false)
+  const history = useOccurrenceHistory({
+    occurrenceId: occurrence.id,
+    projectId,
+  })
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
 
   const blueprintItems = useMemo(
@@ -256,24 +260,13 @@ export const OccurrenceDetails = ({
                       </Box>
                     )}
 
-                    {occurrence.humanIdentifications.map((i) => (
-                      <HumanIdentification
-                        key={i.id}
-                        identification={i}
-                        occurrence={occurrence}
-                        user={i.user}
-                        currentUser={userInfo}
-                      />
-                    ))}
-
-                    {occurrence.machinePredictions.map((p) => (
-                      <MachinePrediction
-                        key={p.id}
-                        identification={p}
-                        occurrence={occurrence}
-                        currentUser={userInfo}
-                      />
-                    ))}
+                    <OccurrenceTimeline
+                      currentUser={userInfo}
+                      entries={history.entries}
+                      error={history.error}
+                      isLoading={history.isLoading}
+                      occurrence={occurrence}
+                    />
                   </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.RAW}>

@@ -12,8 +12,12 @@ import datetime
 import math
 import pathlib
 import uuid
+from unittest import mock
 
+from django.db import connection
+from django.db.models import QuerySet
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from ami.main.models import (
     Classification,
@@ -26,7 +30,7 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, AlgorithmCategoryMap
+from ami.ml.models import Algorithm, AlgorithmCategoryMap, AlgorithmResult
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.class_masking import ClassMaskingTask, make_classifications_filtered_by_taxa_list
 from ami.tests.fixtures.main import create_taxa, setup_test_project
@@ -253,6 +257,30 @@ class TestPostProcessingClassMasking(TestCase):
         occ.refresh_from_db()
         self.assertEqual(occ.determination, self.species_taxa[1], "Occurrence determination follows the masked result")
 
+    def test_task_run_records_the_job_on_new_classifications_only(self):
+        from ami.jobs.models import Job
+
+        logits = [0.5, 3.0, 3.5]
+        taxa_list = TaxaList.objects.create(name="Regional list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+        job = Job.objects.create(project=self.project, name="Class masking job test", job_type_key="post_processing")
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        ClassMaskingTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        ).run()
+
+        new_clf = Classification.objects.get(detection=det, terminal=True, applied_to=original)
+        self.assertEqual(new_clf.job_id, job.pk)
+        original.refresh_from_db()
+        self.assertIsNone(original.job_id, "The source classification keeps the job it had")
+
     def test_rerun_does_not_duplicate_masked_classifications(self):
         """Re-running the same mask must not create a second masked classification for
         a source already re-scored, even if that source became terminal again in between.
@@ -358,6 +386,101 @@ class TestPostProcessingClassMasking(TestCase):
         new_clf = Classification.objects.filter(detection=det, terminal=True).exclude(algorithm=self.algorithm).first()
         self.assertIsNotNone(new_clf)
         self.assertEqual(new_clf.taxon, self.species_taxa[0])
+
+    # ----- algorithm results -----------------------------------------------
+
+    def _masking_fixture(self, name: str = "History list") -> tuple[TaxaList, Detection, Occurrence]:
+        """One occurrence whose top class (index 2) the taxa list excludes, so masking re-scores it."""
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name=name)
+        taxa_list.taxa.set(self.species_taxa[:2])
+        det, occ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+        occ.save()
+        return taxa_list, det, occ
+
+    def test_a_rescored_occurrence_gets_one_result_linked_to_the_classification_it_created(self):
+        taxa_list, det, occ = self._masking_fixture()
+
+        # The second run finds nothing left to mask, so the first run's result stays the only one.
+        for _ in range(2):
+            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertIn(result.kind, {model.kind for model in ClassMaskingTask.result_models})
+        self.assertEqual(result.project_id, self.project.pk)
+        self.assertTrue(result.algorithm.key.startswith(f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"))
+        # Index 2 held e^5 / (e^2 + e^1 + e^5) of the probability and was excluded; index 0 was second.
+        scores = _softmax([2.0, 1.0, 5.0])
+        self.assertAlmostEqual(result.value, scores[2])
+        self.assertAlmostEqual(result.data.pop("excluded_probability"), scores[2])
+        self.assertEqual(
+            result.data,
+            {
+                "new_winner_original_rank": 2,
+                "determination_before_id": self.species_taxa[2].pk,
+                "determination_after_id": self.species_taxa[0].pk,
+                "extra": {},
+            },
+        )
+        masked = result.classifications.get()
+        self.assertEqual((masked.taxon, masked.terminal), (self.species_taxa[0], True))
+        # The top prediction before masking is the classification the masked one replaced.
+        self.assertEqual(masked.applied_to.taxon, self.species_taxa[2])
+        self.assertAlmostEqual(masked.applied_to.score, scores[2])
+        self.assertEqual(masked.applied_to.taxon, self.species_taxa[2])
+
+    def test_an_occurrence_masking_does_not_change_gets_no_result(self):
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name="Keeps everything")
+        taxa_list.taxa.set(self.species_taxa)
+        det, occ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=occ).exists())
+
+    def test_an_occurrence_spanning_batches_gets_one_result_covering_every_batch(self):
+        taxa_list, det1, occ = self._masking_fixture()
+        det2 = Detection.objects.create(source_image=self.collection.images.first(), bbox=[0, 0, 100, 100])
+        occ.detections.add(det2)
+        logits = [2.0, 1.0, 5.0]
+        self._create_classification_with_logits(det2, self.species_taxa[2], _softmax(logits), logits)
+        new_algorithm = Algorithm.objects.create(
+            name="masked_span",
+            key="masked_span_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(detection__in=[det1, det2]),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+            batch_size=1,
+        )
+
+        result = AlgorithmResult.objects.get(occurrence=occ)
+        self.assertEqual(result.data["determination_after_id"], self.species_taxa[0].pk)
+        self.assertEqual(
+            sorted(result.classifications.values_list("detection_id", flat=True)), sorted([det1.pk, det2.pk])
+        )
+
+    def test_an_occurrence_without_a_project_is_still_rescored_but_gets_no_result(self):
+        """A missing project must not fail a run after it has changed data; the result is skipped with a warning."""
+        taxa_list, det, occ = self._masking_fixture()
+        Occurrence.objects.filter(pk=occ.pk).update(project=None)
+
+        with self.assertLogs("ami.ml.models.algorithm_result", level="WARNING") as logs:
+            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        self.assertIn(f"Occurrence #{occ.pk}", logs.output[0])
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, self.species_taxa[0])
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=occ).exists())
+        self.assertIsNone(Classification.objects.get(applied_to__detection=det).algorithm_result)
 
     # ----- batched commit + heartbeat -------------------------------------
 
@@ -627,3 +750,200 @@ class TestPostProcessingClassMasking(TestCase):
 
         self.assertEqual(events[0], ("setup", 1), "Scope size is reported once, before the first batch")
         self.assertEqual([name for name, _ in events], ["setup", "batch"])
+
+    # ----- scope fetch shape ----------------------------------------------
+
+    def _make_scope(self, n: int, taxa_list_name: str) -> tuple[TaxaList, list[int]]:
+        """Build ``n`` maskable classifications and a taxa list that masks their winner."""
+        taxa_list = TaxaList.objects.create(name=taxa_list_name)
+        taxa_list.taxa.set(self.species_taxa[:2])
+        logits = [2.0, 1.0, 5.0]  # index 2 wins and is excluded, so every row is masked
+        pks = []
+        for _ in range(n):
+            det, _ = self._detection_with_occurrence()
+            pks.append(self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits).pk)
+        return taxa_list, pks
+
+    def _masking_algorithm(self, name: str) -> Algorithm:
+        return Algorithm.objects.create(
+            name=name,
+            key=name,
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+    def test_scope_is_read_one_batch_per_query(self):
+        """The scope is read by one query per batch, not through ``.iterator()``.
+
+        The query cache turns ``.iterator()`` into one read of the whole scope, so a large
+        run reports no progress until every row is loaded and is cancelled as stalled.
+        Reading each batch with its own query keeps the first progress report one batch
+        away. See #1404.
+        """
+        taxa_list, pks = self._make_scope(5, "Bounded batch list")
+        scope = Classification.objects.filter(pk__in=pks, terminal=True)
+
+        scope_pks = set(pks)
+        batch_sizes: list[int] = []
+        original_fetch_all = QuerySet._fetch_all
+
+        def _record(self_qs):
+            already_cached = self_qs._result_cache is not None
+            original_fetch_all(self_qs)
+            if already_cached:
+                return
+            rows = [r for r in self_qs._result_cache if isinstance(r, Classification) and r.pk in scope_pks]
+            if rows:
+                batch_sizes.append(len(rows))
+
+        with mock.patch.object(QuerySet, "_fetch_all", _record):
+            make_classifications_filtered_by_taxa_list(
+                classifications=scope,
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=self._masking_algorithm("masked_batched"),
+                batch_size=2,
+            )
+
+        self.assertGreaterEqual(
+            len(batch_sizes),
+            3,
+            f"5 rows at batch_size=2 should reach the loop in at least 3 queries, got {batch_sizes}",
+        )
+        self.assertLessEqual(max(batch_sizes), 2, f"A single query returned {max(batch_sizes)} scope rows")
+
+    def test_masked_row_does_not_copy_the_source_logits(self):
+        """A masked row stores no logits; they stay on the source row it was applied to.
+
+        A full copy per masked row doubles the size of every run for no new information.
+        """
+        taxa_list, pks = self._make_scope(1, "No logits copy list")
+        source = Classification.objects.get(pk=pks[0])
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=pks, terminal=True),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=self._masking_algorithm("masked_no_logits"),
+        )
+        masked = Classification.objects.get(applied_to=source)
+        self.assertIsNone(masked.logits)
+        self.assertIsNotNone(masked.scores)
+        self.assertEqual(masked.applied_to.logits, source.logits)
+
+    def test_query_cache_is_restored_when_a_batch_read_fails(self):
+        """A failed batch read must not leave the query cache off for the rest of the worker thread."""
+        from cachalot.api import LOCAL_STORAGE
+
+        taxa_list, pks = self._make_scope(2, "Failing read list")
+        self.addCleanup(setattr, LOCAL_STORAGE, "cachalot_enabled", getattr(LOCAL_STORAGE, "cachalot_enabled", True))
+        LOCAL_STORAGE.cachalot_enabled = True
+
+        original_fetch_all = QuerySet._fetch_all
+
+        def _fail_on_scope_rows(self_qs):
+            if self_qs.model is Classification and "scores" in self_qs.query.deferred_loading[0]:
+                raise RuntimeError("batch read failed")
+            original_fetch_all(self_qs)
+
+        with mock.patch.object(QuerySet, "_fetch_all", _fail_on_scope_rows):
+            with self.assertRaises(RuntimeError):
+                make_classifications_filtered_by_taxa_list(
+                    classifications=Classification.objects.filter(pk__in=pks, terminal=True),
+                    taxa_list=taxa_list,
+                    algorithm=self.algorithm,
+                    new_algorithm=self._masking_algorithm("masked_failing_read"),
+                )
+        self.assertTrue(LOCAL_STORAGE.cachalot_enabled)
+
+    def test_scope_does_not_fetch_the_unused_scores_column(self):
+        """``scores`` is never read while masking, and it is as large as ``logits``
+        (~140 kB per row for a 29,176-class algorithm), so fetching it doubles what
+        every batch transfers and parses for nothing."""
+        taxa_list, pks = self._make_scope(2, "Deferred scores list")
+        scope = Classification.objects.filter(pk__in=pks, terminal=True)
+
+        # Record how each scope row arrived the first time it was read, which is the
+        # batch read. Later reads of the same row come from occurrence.save()
+        # recomputing a determination, which legitimately selects every column.
+        scope_pks = set(pks)
+        deferred_on_arrival: dict[int, set[str]] = {}
+        original_fetch_all = QuerySet._fetch_all
+
+        def _record(self_qs):
+            already_cached = self_qs._result_cache is not None
+            original_fetch_all(self_qs)
+            if already_cached:
+                return
+            for row in self_qs._result_cache:
+                if isinstance(row, Classification) and row.pk in scope_pks:
+                    deferred_on_arrival.setdefault(row.pk, row.get_deferred_fields())
+
+        with mock.patch.object(QuerySet, "_fetch_all", _record):
+            make_classifications_filtered_by_taxa_list(
+                classifications=scope,
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=self._masking_algorithm("masked_deferred"),
+                batch_size=2,
+            )
+
+        self.assertEqual(len(deferred_on_arrival), 2, "Both scope rows should have been read")
+        self.assertTrue(
+            all("scores" in deferred for deferred in deferred_on_arrival.values()),
+            "Masking fetched the scores column, which it never reads",
+        )
+
+    def test_detection_is_not_queried_once_per_row(self):
+        """``classification.detection`` and ``detection.occurrence`` are read for every
+        masked row, so the task's scope brings both with each batch instead of costing a
+        query per row. The per-occurrence queries that ``occurrence.save()`` issues during
+        the flush are a separate cost and are not covered here."""
+        taxa_list, pks = self._make_scope(4, "Select related list")
+        task = ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        )
+        masking_algorithm = task._get_or_create_masking_algorithm(
+            self.algorithm, taxa_list, reweight=task.config.reweight
+        )
+        scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
+
+        with CaptureQueriesContext(connection) as ctx:
+            make_classifications_filtered_by_taxa_list(
+                classifications=scoped.filter(pk__in=pks),
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=masking_algorithm,
+                batch_size=4,
+            )
+
+        # A lazy foreign-key load selects the whole row by id. The flush's narrower
+        # per-occurrence reads (e.g. of ``determination_id``) start differently.
+        per_row_lookups = [
+            q["sql"]
+            for q in ctx.captured_queries
+            if any(
+                q["sql"].startswith(f'SELECT "{table}"."id", ') and f'WHERE "{table}"."id" = ' in q["sql"]
+                for table in ("main_detection", "main_occurrence")
+            )
+        ]
+        self.assertEqual(
+            per_row_lookups,
+            [],
+            f"{len(per_row_lookups)} per-row detection/occurrence lookups; expected both to come with the batch",
+        )
+
+    def test_non_positive_batch_size_is_rejected(self):
+        """A batch size of zero or less would skip the loop and report every row as
+        checked while masking none, so it is refused up front."""
+        taxa_list, pks = self._make_scope(1, "Batch size guard list")
+        for batch_size in (0, -1):
+            with self.subTest(batch_size=batch_size), self.assertRaises(ValueError):
+                make_classifications_filtered_by_taxa_list(
+                    classifications=Classification.objects.filter(pk__in=pks),
+                    taxa_list=taxa_list,
+                    algorithm=self.algorithm,
+                    new_algorithm=self._masking_algorithm(f"masked_guard_{abs(batch_size)}"),
+                    batch_size=batch_size,
+                )

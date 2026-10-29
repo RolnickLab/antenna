@@ -1,4 +1,5 @@
 import logging
+import typing
 from collections.abc import Callable
 
 import numpy as np
@@ -7,9 +8,16 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
+from ami.base.model_references import model_reference
 from ami.main.models import Classification, Occurrence, SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm, AlgorithmTaskType
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.results.schemas import DeterminationSnapshot
+from ami.ml.results.writer import AlgorithmResultWriter
+from ami.utils.query_cache import no_query_cache
+
+if typing.TYPE_CHECKING:
+    from ami.jobs.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +27,16 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # capture set is the bulk path; a single occurrence is the spot/dev path (fast
     # feedback while tuning a taxa list). This mirrors SmallSizeFilterConfig's
     # discriminated-scope shape — the shared pattern for per-occurrence triggers.
-    source_image_collection_id: int | None = None
-    occurrence_id: int | None = None
+    source_image_collection_id: int | None = model_reference("capture_set", None, title="Capture set")
+    occurrence_id: int | None = model_reference("occurrence", None, title="Occurrence")
     # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int
+    taxa_list_id: int = model_reference("taxa_list", ..., title="Species list")
     # The source classifier whose terminal classifications are re-scored.
-    algorithm_id: int
+    algorithm_id: int = model_reference("algorithm", ..., title="Classifier")
     # When True (default), renormalise the kept classes' scores to sum to 1 after
     # masking. When False, the kept classes retain their original absolute scores and
     # the excluded classes are zeroed; the chosen species is identical either way.
-    reweight: bool = True
+    reweight: bool = pydantic.Field(True, title="Re-weighted scores")
 
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
@@ -39,6 +47,18 @@ class ClassMaskingConfig(pydantic.BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+class ClassMaskingResultData(DeterminationSnapshot):
+    """Figures from the occurrence's winning detection: the one whose masked classification scores highest."""
+
+    kind: typing.ClassVar[str] = "class_masking"
+    value_field: typing.ClassVar[str | None] = "excluded_probability"
+
+    # One minus the kept mass of the unmasked softmax: what the list removed, not an out-of-distribution score.
+    excluded_probability: float
+    # Where the class that wins after masking ranked before it; 1 means it was already the top.
+    new_winner_original_rank: int | None = None
 
 
 def make_classifications_filtered_by_taxa_list(
@@ -52,6 +72,7 @@ def make_classifications_filtered_by_taxa_list(
     task_logger: logging.Logger = logger,
     on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
+    job: "Job | None" = None,
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
@@ -62,9 +83,9 @@ def make_classifications_filtered_by_taxa_list(
     (attributed to ``new_algorithm``, linked back via ``applied_to``) records the
     masked prediction. The original classification is demoted to non-terminal.
 
-    Commits in batches of ``batch_size`` so memory stays bounded and the job
-    health-check reaper sees regular heartbeats. ``on_batch`` is called after every
-    flush with running counters:
+    Reads and commits in batches of ``batch_size`` so memory stays bounded and the
+    job health-check reaper sees regular heartbeats. ``on_batch`` is called after
+    every flush with running counters:
     ``{"classifications_checked": i, "classifications_total": total,
        "classifications_masked": masked_count, "occurrences_updated": n_changed}``.
 
@@ -74,11 +95,27 @@ def make_classifications_filtered_by_taxa_list(
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
 
+    New classifications record ``job`` as the run that wrote them.
+
+    Every occurrence with a re-scored classification gets one algorithm result, written in
+    the same transaction as the batch that changes it, and its new classifications point at
+    that result (see ``AlgorithmResultWriter``). The result records the probability the list excluded
+    for the occurrence's winning detection; the original top prediction is the classification
+    the winning one replaced (``applied_to``).
+
     Returns final counters (checked / masked / occurrences updated) for stage metrics.
     """
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be positive, got {batch_size}")
+
     taxa_in_list = set(taxa_list.taxa.all())
 
-    total = classifications.count()
+    # Resolve the scope to ids up front, then read one batch per query. Do not go back
+    # to ``.iterator()``: the query cache reads an iterator to the end before yielding
+    # its first row, so the first progress report waited on the whole scope and wide
+    # runs were revoked as stalled (or killed for memory). See #1404.
+    scope_ids = list(classifications.order_by().values_list("pk", flat=True))
+    total = len(scope_ids)
     task_logger.info(f"Found {total} terminal classifications with scores to re-score.")
 
     if not algorithm.category_map:
@@ -116,113 +153,143 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
+    results = AlgorithmResultWriter(
+        kind=ClassMaskingResultData.kind,
+        algorithm=new_algorithm,
+        job=job,
+        timestamp=timestamp,
+    )
 
     # Sizing the scope and expanding the category map both take time on a large
     # classifier, so report before touching a row.
     if on_setup is not None:
         on_setup(total)
 
-    for i, classification in enumerate(classifications.iterator(chunk_size=batch_size), start=1):
-        logits = classification.logits
-        if not isinstance(logits, list) or not all(isinstance(x, (int, float)) for x in logits):
-            raise ValueError(f"Logits for classification {classification.pk} are not a list of numbers: {logits}")
-        elif len(logits) != num_categories:
-            task_logger.warning(
-                f"Classification {classification.pk}: {len(logits)} logits != {num_categories} categories; skipping"
+    i = 0
+    for start in range(0, total, batch_size):
+        # ``scores`` is never read while masking and is as large as ``logits``. The
+        # query cache is bypassed because each batch is read once, and caching it would
+        # leave tens of megabytes per batch in Redis.
+        with no_query_cache():
+            batch = list(
+                classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by().defer("scores")
             )
-        else:
-            # Everything is derived from ``logits`` alone — the stored ``scores`` field
-            # is being retired, so masking must not depend on it. Recompute the model's
-            # full softmax (over every class) from the logits, then drop the excluded
-            # classes to exactly zero. An excluded class can never win argmax or carry
-            # probability.
-            shifted = np.asarray(logits, dtype=float)
-            shifted -= shifted.max()  # stabilises exp without changing the softmax
-            full_softmax = np.exp(shifted)
-            full_softmax /= full_softmax.sum()  # p over all classes; matches the retired ``scores``
 
-            kept = full_softmax.copy()
-            kept[excluded_indices] = 0.0
-            kept_sum = kept.sum()  # > 0: at least one class is kept (guaranteed upstream)
-            top_index = int(np.argmax(kept))  # over kept classes only (excluded are 0)
-
-            if reweight:
-                # Renormalise: excluded classes stay 0; kept classes sum to 1.
-                new_scores_np = kept / kept_sum
-            else:
-                # No renormalisation: kept classes keep their original absolute
-                # probability; excluded classes are zeroed. Winner is unchanged.
-                new_scores_np = kept
-            new_scores = new_scores_np.tolist()
-            score = float(new_scores_np[top_index])
-
-            # No-change short-circuit: if masking shifted no probability (the classes
-            # this taxa list drops carried ~zero probability here), leave the row
-            # untouched. Compared against the unmasked softmax, not the stored scores.
-            if np.allclose(full_softmax, new_scores_np, atol=1e-9):
-                task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
-            else:
-                top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
-
-                classification.terminal = False
-                classification.updated_at = timestamp
-
-                new_classification = Classification(
-                    detection=classification.detection,
-                    taxon=top_taxon,
-                    algorithm=new_algorithm,
-                    category_map=new_algorithm.category_map,
-                    score=score,
-                    scores=new_scores,
-                    # Store the raw logits unchanged (JSON-safe): the mask is fully captured
-                    # by ``scores`` (dropped classes -> 0) and the ``applied_to`` lineage.
-                    logits=logits,
-                    terminal=True,
-                    timestamp=classification.timestamp,
-                    applied_to=classification,
-                    created_at=timestamp,
-                    updated_at=timestamp,
+        for classification in batch:
+            i += 1
+            logits = classification.logits
+            if not isinstance(logits, list) or not all(isinstance(x, (int, float)) for x in logits):
+                raise ValueError(f"Logits for classification {classification.pk} are not a list of numbers: {logits}")
+            elif len(logits) != num_categories:
+                task_logger.warning(
+                    f"Classification {classification.pk}: {len(logits)} logits "
+                    f"!= {num_categories} categories; skipping"
                 )
-                classifications_to_demote.append(classification)
-                classifications_to_add.append(new_classification)
-                masked_count += 1
+            else:
+                # Everything is derived from ``logits`` alone — the stored ``scores`` field
+                # is being retired, so masking must not depend on it. Recompute the model's
+                # full softmax (over every class) from the logits, then drop the excluded
+                # classes to exactly zero. An excluded class can never win argmax or carry
+                # probability.
+                shifted = np.asarray(logits, dtype=float)
+                shifted -= shifted.max()  # stabilises exp without changing the softmax
+                full_softmax = np.exp(shifted)
+                full_softmax /= full_softmax.sum()  # p over all classes; matches the retired ``scores``
 
-                detection = classification.detection
-                if detection is not None and detection.occurrence is not None:
-                    occurrences_to_update.add(detection.occurrence)
+                kept = full_softmax.copy()
+                kept[excluded_indices] = 0.0
+                kept_sum = kept.sum()  # > 0: at least one class is kept (guaranteed upstream)
+                top_index = int(np.argmax(kept))  # over kept classes only (excluded are 0)
 
-        # Flush every batch_size items and at the final item. The flush fires even
-        # when nothing was accumulated so the job health-check sees a heartbeat during
-        # stretches where masking is a no-op (all short-circuited).
-        if i % batch_size == 0 or i == total:
-            with transaction.atomic():
-                if classifications_to_demote:
-                    Classification.objects.bulk_update(classifications_to_demote, ["terminal", "updated_at"])
-                if classifications_to_add:
-                    Classification.objects.bulk_create(classifications_to_add)
-                # Count an occurrence only when saving its new terminal classification
-                # actually changes the determination. Re-saving recomputes it in place,
-                # so an occurrence pinned to a human identification keeps its taxon
-                # and must not inflate the metric.
-                for occurrence in occurrences_to_update:
-                    prev = occurrence.determination_id
-                    occurrence.save(update_determination=True)
-                    if occurrence.pk is not None and occurrence.determination_id != prev:
-                        changed_occurrence_ids.add(occurrence.pk)
+                if reweight:
+                    # Renormalise: excluded classes stay 0; kept classes sum to 1.
+                    new_scores_np = kept / kept_sum
+                else:
+                    # No renormalisation: kept classes keep their original absolute
+                    # probability; excluded classes are zeroed. Winner is unchanged.
+                    new_scores_np = kept
+                new_scores = new_scores_np.tolist()
+                score = float(new_scores_np[top_index])
 
-            classifications_to_demote.clear()
-            classifications_to_add.clear()
-            occurrences_to_update.clear()
+                # No-change short-circuit: if masking shifted no probability (the classes
+                # this taxa list drops carried ~zero probability here), leave the row
+                # untouched. Compared against the unmasked softmax, not the stored scores.
+                if np.allclose(full_softmax, new_scores_np, atol=1e-9):
+                    task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
+                else:
+                    top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
 
-            if on_batch is not None:
-                on_batch(
-                    {
-                        "classifications_checked": i,
-                        "classifications_total": total,
-                        "classifications_masked": masked_count,
-                        "occurrences_updated": len(changed_occurrence_ids),
-                    }
-                )
+                    classification.terminal = False
+                    classification.updated_at = timestamp
+
+                    new_classification = Classification(
+                        detection=classification.detection,
+                        taxon=top_taxon,
+                        algorithm=new_algorithm,
+                        category_map=new_algorithm.category_map,
+                        score=score,
+                        scores=new_scores,
+                        # Not copied: the source row keeps the logits, reachable through
+                        # ``applied_to``, and a copy per masked row filled a production disk.
+                        # ``scores`` holds the masked result. See #1404.
+                        logits=None,
+                        terminal=True,
+                        timestamp=classification.timestamp,
+                        applied_to=classification,
+                        job=job,
+                        created_at=timestamp,
+                        updated_at=timestamp,
+                    )
+                    classifications_to_demote.append(classification)
+                    classifications_to_add.append(new_classification)
+                    masked_count += 1
+
+                    detection = classification.detection
+                    if detection is not None and detection.occurrence is not None:
+                        occurrences_to_update.add(detection.occurrence)
+                        # The occurrence's result carries the figures of its winning detection:
+                        # the one whose masked classification scores highest (see AlgorithmResultWriter).
+                        results.note(
+                            detection.occurrence,
+                            {
+                                "excluded_probability": float(1.0 - kept_sum),
+                                "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                            },
+                            rank=score,
+                        )
+
+        # Flush after every batch, even when nothing was accumulated, so the job
+        # health-check sees a heartbeat during stretches where masking is a no-op.
+        with transaction.atomic():
+            if classifications_to_demote:
+                Classification.objects.bulk_update(classifications_to_demote, ["terminal", "updated_at"])
+            results.start_batch(occurrences_to_update, classifications_to_add)
+            if classifications_to_add:
+                Classification.objects.bulk_create(classifications_to_add)
+            # Count an occurrence only when saving its new terminal classification
+            # actually changes the determination. Re-saving recomputes it in place,
+            # so an occurrence pinned to a human identification keeps its taxon
+            # and must not inflate the metric.
+            for occurrence in occurrences_to_update:
+                prev = occurrence.determination_id
+                occurrence.save(update_determination=True)
+                if occurrence.pk is not None and occurrence.determination_id != prev:
+                    changed_occurrence_ids.add(occurrence.pk)
+            results.finish_batch(occurrences_to_update)
+
+        classifications_to_demote.clear()
+        classifications_to_add.clear()
+        occurrences_to_update.clear()
+
+        if on_batch is not None:
+            on_batch(
+                {
+                    "classifications_checked": i,
+                    "classifications_total": total,
+                    "classifications_masked": masked_count,
+                    "occurrences_updated": len(changed_occurrence_ids),
+                }
+            )
 
     task_logger.info(
         f"Re-scored {masked_count} of {total} classifications; updated {len(changed_occurrence_ids)} occurrences."
@@ -238,6 +305,7 @@ class ClassMaskingTask(BasePostProcessingTask):
     key = "class_masking"
     name = "Class masking"
     config_schema = ClassMaskingConfig
+    result_models = (ClassMaskingResultData,)
 
     def _get_or_create_masking_algorithm(
         self, source_algorithm: Algorithm, taxa_list: TaxaList, *, reweight: bool
@@ -368,6 +436,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             task_logger=self.logger,
             on_setup=_on_setup,
             on_batch=_on_batch,
+            job=self.job,
         )
         self.report_stage_metrics(metrics)
         self.logger.info(f"=== Completed {self.name} ===")

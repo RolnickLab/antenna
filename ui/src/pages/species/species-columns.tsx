@@ -46,6 +46,30 @@ export const columns: (project: {
     },
   },
   {
+    id: 'example',
+    name: translate(STRING.FIELD_LABEL_EXAMPLE),
+    tooltip: translate(STRING.TOOLTIP_VERIFY_EXAMPLE),
+    renderCell: (item: Species) => {
+      const example = item.verificationExample
+
+      return (
+        <ImageTableCell
+          images={example?.imageUrl ? [{ src: example.imageUrl }] : []}
+          theme={ImageCellTheme.Light}
+          to={
+            example
+              ? getAppRoute({
+                  to: APP_ROUTES.TAXA({ projectId }),
+                  filters: { verifyOccurrence: String(example.id) },
+                  keepSearchParams: true,
+                })
+              : undefined
+          }
+        />
+      )
+    },
+  },
+  {
     id: 'name',
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_TAXON),
@@ -83,7 +107,22 @@ export const columns: (project: {
     id: 'last-seen',
     sortField: 'last_detected',
     name: 'Last seen',
-    renderCell: (item: Species) => <DateTableCell date={item.lastSeen} />,
+    renderCell: (item: Species) =>
+      item.lastDetectedOccurrenceId ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.TAXA({ projectId }),
+            filters: {
+              verifyOccurrence: String(item.lastDetectedOccurrenceId),
+            },
+            keepSearchParams: true,
+          })}
+        >
+          <DateTableCell date={item.lastSeen} />
+        </Link>
+      ) : (
+        <DateTableCell date={item.lastSeen} />
+      ),
   },
   {
     id: 'occurrences',
@@ -125,17 +164,35 @@ export const columns: (project: {
     id: 'best-determination-score',
     name: translate(STRING.FIELD_LABEL_BEST_SCORE),
     sortField: 'best_determination_score',
-    renderCell: (item: Species) => (
-      <BasicTableCell>
-        <DeterminationScore
-          score={item.score}
-          scoreLabel={item.scoreLabel}
-          tooltip={translate(STRING.MACHINE_PREDICTION_SCORE, {
-            score: `${item.score}`,
+    renderCell: (item: Species) => {
+      const cell = (
+        <BasicTableCell>
+          <DeterminationScore
+            score={item.score}
+            scoreLabel={item.scoreLabel}
+            tooltip={translate(STRING.MACHINE_PREDICTION_SCORE, {
+              score: `${item.score}`,
+            })}
+          />
+        </BasicTableCell>
+      )
+
+      return item.bestScoringOccurrenceId ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.TAXA({ projectId }),
+            filters: {
+              verifyOccurrence: String(item.bestScoringOccurrenceId),
+            },
+            keepSearchParams: true,
           })}
-        />
-      </BasicTableCell>
-    ),
+        >
+          {cell}
+        </Link>
+      ) : (
+        cell
+      )
+    },
   },
   {
     id: 'created-at',

@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models import OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -32,12 +32,15 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
+from ami.main.api.occurrence_history.timeline import occurrence_timeline
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
+from ami.utils.fields import url_boolean_param
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -62,7 +65,9 @@ from ..models import (
     Taxon,
     TaxonRank,
     User,
+    add_taxa_counts,
     update_detection_counts,
+    verified_taxon_counts,
 )
 from .serializers import (
     BulkIdentificationRequestSerializer,
@@ -78,6 +83,7 @@ from .serializers import (
     EventListSerializer,
     EventSerializer,
     EventTimelineSerializer,
+    ExampleOccurrenceSerializer,
     IdentificationSerializer,
     ModelAgreementSerializer,
     OccurrenceListSerializer,
@@ -155,9 +161,21 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
     def get_count(self, queryset):
-        # The recent-activity orderings annotate correlated subqueries onto the
-        # queryset. They don't change the row count, so strip them (and ordering)
-        # before counting to keep the pagination COUNT query cheap.
+        # The overview totals and activity dates are correlated subqueries. They don't
+        # change the row count, so strip them (and ordering) before counting to keep the
+        # pagination COUNT query cheap.
+        return super().get_count(queryset.order_by().values("pk"))
+
+
+class TaxonPagination(LimitOffsetPaginationWithPermissions):
+    def get_count(self, queryset):
+        # The taxa list annotates several correlated subqueries (occurrence counts /
+        # scores, and — under ?with_example_occurrences — the example / best-scoring /
+        # last-detected occurrence ids). They don't change the row count, and because
+        # TagInverseFilter always applies ``.distinct()``, they would otherwise be pulled
+        # into the COUNT subquery and evaluated for every taxon in the project, not just
+        # the page. Strip annotations (and ordering) before counting to keep the COUNT
+        # cheap. See docs/claude/reference/hierarchical-rollup-query-performance.md.
         return super().get_count(queryset.order_by().values("pk"))
 
 
@@ -170,16 +188,13 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
+    search_fields = ["name", "description"]
     ordering_fields = [
         "name",
         "created_at",
         "updated_at",
-        # The three below are not Project fields; get_queryset annotates them on
-        # demand (see below). last_capture_timestamp mirrors the DeploymentViewSet
-        # ordering of the same name, but is a per-project rollup of capture times.
-        "last_capture_timestamp",
-        "last_occurrence_updated_at",
-        "last_job_updated_at",
+        *ProjectQuerySet.OVERVIEW_COUNT_FIELDS,
+        *ProjectQuerySet.RECENT_ACTIVITY_FIELDS,
     ]
 
     def get_queryset(self):
@@ -193,38 +208,25 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             if user:
                 qs = qs.filter_by_user(user)
 
-        # Annotate "recent activity" fields only when sorting by them, so the
-        # default list stays cheap. Each is a correlated subquery returning one
-        # row via a covering index, and only one is ever added per request.
+        if self.action == "list":
+            qs = qs.with_recent_activity()
+        # The totals feed the projects table, so they are added only when the table asks for them
+        # with ?with_counts, or when the list is sorted by one of them.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
-        if "last_capture_timestamp" in ordering:
-            # Live max capture time per project (Index Only Scan on
-            # main_source_proj_ts_desc_idx); kept live rather than reading the
-            # denormalized Deployment field so the sort never lags ingestion.
-            # timestamp is nullable, and DESC sorts NULLs first, so exclude them
-            # explicitly — otherwise a single undated capture masks the real max.
-            qs = qs.annotate(
-                last_capture_timestamp=Subquery(
-                    SourceImage.objects.filter(project=OuterRef("pk"), timestamp__isnull=False)
-                    .order_by("-timestamp")
-                    .values("timestamp")[:1]
-                )
-            )
-        if "last_occurrence_updated_at" in ordering:
-            qs = qs.annotate(
-                last_occurrence_updated_at=Subquery(
-                    Occurrence.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
-                )
-            )
-        if "last_job_updated_at" in ordering:
-            from ami.jobs.models import Job
-
-            qs = qs.annotate(
-                last_job_updated_at=Subquery(
-                    Job.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
-                )
-            )
+        if self.action == "list" and (
+            url_boolean_param(self.request, "with_counts") or ordering & set(ProjectQuerySet.OVERVIEW_COUNT_FIELDS)
+        ):
+            # The annotated deployments_count replaces counting prefetched deployments, so skip the prefetch.
+            qs = qs.prefetch_related(None).with_overview_counts(self.request.user)
+        if self.action == "list" and url_boolean_param(self.request, "with_location"):
+            qs = qs.with_location()
         return qs
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == "list" and url_boolean_param(self.request, "with_counts"):
+            add_taxa_counts(page)
+        return page
 
     def get_serializer_class(self):
         """
@@ -928,8 +930,8 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         return response
 
 
-class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
-    """Sends a whole project's capture set choices in one response.
+class ChoicesPagination(LimitOffsetPaginationWithPermissions):
+    """Sends a dropdown's choices in one response. Used by the capture set and job choices.
 
     Dropdowns cannot page, so the limit is set here rather than by each caller. It is
     capped as well as defaulted, so no caller can ask for a larger one.
@@ -1017,11 +1019,12 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         Returns only what those consumers need to name a capture set, most recently
         updated first, and enough of them that a dropdown never has to page. A project
         with more capture sets than the cap needs the search field in #1380.
+        ``JobViewSet.choices`` (ami/jobs/views.py) follows the same pattern.
         """
         # Sorting by a count would fail here, since the counts are never annotated.
         self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]
         queryset = self.filter_queryset(self.get_queryset())
-        paginator = CaptureSetChoicesPagination()
+        paginator = ChoicesPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = SourceImageCollectionNestedSerializer(page, many=True, context=self.get_serializer_context())
         return paginator.get_paginated_response(serializer.data)
@@ -1434,10 +1437,29 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceJobFilter(filters.BaseFilterBackend):
+    """
+    Filter occurrences created or updated by a job.
+    """
+
+    query_param = "job"
+
+    def filter_queryset(self, request, queryset, view):
+        job_id = SingleParamSerializer[int].clean(
+            param_name=self.query_param,
+            field=serializers.IntegerField(required=False, min_value=1),
+            data=request.query_params,
+        )
+        if job_id is None:
+            return queryset
+        return queryset.created_or_updated_by_job(job_id)
+
+
 OCCURRENCE_FILTER_BACKENDS = (
     CustomOccurrenceDeterminationFilter,
     OccurrenceCollectionFilter,
     OccurrenceAlgorithmFilter,
+    OccurrenceJobFilter,
     OccurrenceDateFilter,
     OccurrenceVerified,
     OccurrenceVerifiedByMeFilter,
@@ -1502,11 +1524,17 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    # Actions that read one occurrence's history. They build their own queries and never
+    # serialize the occurrence, and the default filters, which shape lists, do not hide it.
+    HISTORY_ACTIONS = ("history",)
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
         qs = super().get_queryset().valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
+        if self.action in self.HISTORY_ACTIONS:
+            return qs
         qs = qs.select_related(
             "determination",
             "deployment",
@@ -1544,10 +1572,35 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 required=False,
                 type=OpenApiTypes.INT,
             ),
+            OpenApiParameter(
+                name="job",
+                description="Filter occurrences created or updated by a job.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
         ]
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        operation_id="occurrences_history_retrieve",
+        parameters=[project_id_doc_param],
+        filters=False,
+        responses=OCCURRENCE_HISTORY_ENTRY_SCHEMA,
+    )
+    @action(detail=True, methods=["get"], name="history", pagination_class=None, filter_backends=[])
+    def history(self, request: Request, pk=None) -> Response:
+        """Everything that happened to this occurrence, newest first.
+
+        Merges post-processing results with the classifications they created, identifications
+        and predictions into one list. Available to anyone who can open the occurrence, including
+        for an occurrence that the project's default filters hide from lists and the detail view.
+        The list's filters do not apply: the history is for one occurrence, found by its id.
+        """
+        occurrence = self.get_object()
+        entries = occurrence_timeline(occurrence)
+        return Response(serialize_history(entries, {"request": request}))
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")
@@ -1800,6 +1853,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
+    pagination_class = TaxonPagination
     # ``?collection=`` is handled inside get_taxa_observed (via get_occurrence_filters
     # + TaxonQuerySet.with_observation_counts_aggregated + HAVING). A dedicated
     # filter_backends entry that re-applied the collection filter on the main queryset
@@ -1944,6 +1998,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset()
         project = self.get_active_project()
+        if project and not Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists():
+            # The taxa list annotates observed-occurrence data: per-taxon counts and, under
+            # ?with_example_occurrences, example occurrence ids plus detection crop URLs. None
+            # of that is visibility-gated by the annotating subqueries, so a hidden (draft)
+            # project would otherwise leak it to a non-member. Refuse the project the same way
+            # the sibling project-scoped taxa endpoints (top-identifiers, model-agreement) do.
+            raise NotFound("Project not found.")
         if project:
             qs = self.attach_tags_by_project(qs, project)
 
@@ -2038,14 +2099,102 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list" and "verified" in request.query_params:
             verified_param = BooleanField(required=False).clean(request.query_params.get("verified"))
 
-        return qs.with_verification_counts(
+        # Compute the verified-occurrence rollup once: with_verification_counts needs the
+        # per-taxon counts and the example-occurrence dispatch needs the verified-taxon set.
+        verified_counts = verified_taxon_counts(
+            project,
+            request,
+            occurrence_filters=direct_filters,
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        qs = qs.with_verification_counts(
             project,
             request,
             occurrence_filters=direct_filters,
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
             verified=verified_param,
+            verified_counts=verified_counts,
         )
+
+        return self.annotate_example_occurrences(
+            qs,
+            project,
+            occurrence_filters=direct_filters,
+            verified_taxon_ids=set(verified_counts.keys()),
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+
+    def annotate_example_occurrences(
+        self,
+        qs: QuerySet,
+        project: Project,
+        *,
+        occurrence_filters: models.Q,
+        verified_taxon_ids: set[int],
+        apply_default_score_filter=True,
+        apply_default_taxa_filter=True,
+    ) -> QuerySet:
+        """Add the ``example_occurrence_id`` / ``best_scoring_occurrence_id`` /
+        ``last_detected_occurrence_id`` annotations for the presence-verification Example
+        column (#1320).
+
+        Gated behind the ``with_example_occurrences`` opt-in param: the selecting
+        subqueries are index-served on the default path but degrade to per-row scans under
+        ``?collection=``, so they run only when the client asks for the column. When off,
+        the three ids are annotated ``NULL`` so the serialized shape stays stable.
+        """
+        include_examples = SingleParamSerializer[bool].clean(
+            param_name="with_example_occurrences",
+            field=serializers.BooleanField(required=False, default=False),
+            data=self.request.query_params,
+        )
+        if not include_examples:
+            return qs.annotate(
+                example_occurrence_id=models.Value(None, output_field=models.IntegerField()),
+                best_scoring_occurrence_id=models.Value(None, output_field=models.IntegerField()),
+                last_detected_occurrence_id=models.Value(None, output_field=models.IntegerField()),
+            )
+        return qs.with_example_occurrence_ids(
+            project,
+            self.request,
+            occurrence_filters=occurrence_filters,
+            verified_taxon_ids=verified_taxon_ids,
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+
+    def _build_example_occurrence_map(self, taxa) -> dict[int, dict]:
+        """Hydrate the page's ``example_occurrence_id`` annotations into nested objects for
+        the serializer, in one query for the whole page (no per-row lookups).
+
+        ``with_best_detection()`` supplies ``best_detection_id`` and ``best_detection_path``
+        from the same detection; ``ExampleOccurrenceSerializer`` owns the output shape."""
+        occurrence_ids = {getattr(taxon, "example_occurrence_id", None) for taxon in taxa}
+        occurrence_ids.discard(None)
+        if not occurrence_ids:
+            return {}
+        occurrences = (
+            Occurrence.objects.filter(id__in=occurrence_ids)
+            .with_best_detection()
+            .annotate(
+                is_verified=models.Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)),
+            )
+        )
+        return {occ.id: ExampleOccurrenceSerializer(occ).data for occ in occurrences}
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == "list":
+            self._example_occurrence_map = self._build_example_occurrence_map(page)
+        return page
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["example_occurrence_map"] = getattr(self, "_example_occurrence_map", {})
+        return context
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
         """
@@ -2106,6 +2255,10 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset()
         # Annotate with taxa count for better performance
         qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
+        # Prefetched once here so the serializer's get_projects() and the
+        # membership check in add_m2m_object_permissions() don't hit the
+        # database once per row.
+        qs = qs.prefetch_related("projects")
         project = self.get_active_project()
         if project:
             return qs.filter(projects=project)
