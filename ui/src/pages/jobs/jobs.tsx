@@ -31,13 +31,14 @@ export const Jobs = () => {
   const { projectId, id } = useParams()
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const { sort, setSort } = useSort({ field: 'created_at', order: 'desc' })
+  const { sort, setSort } = useSort({ field: 'updated_at', order: 'desc' })
   const { columnSettings, setColumnSettings } = useColumnSettings('jobs', {
     name: true,
     status: true,
     'job-type': true,
     pipeline: true,
     'created-at': true,
+    'updated-at': true,
   })
   const { jobs, userPermissions, total, isLoading, isFetching, error } =
     useJobs({
