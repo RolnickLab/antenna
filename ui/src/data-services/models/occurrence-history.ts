@@ -81,6 +81,47 @@ export interface SizeFilterResultData extends ServerDeterminationSnapshot {
   /** The filtered detection's box area as a fraction of its image. */
   relative_size: number
 }
+/** A taxon the machine labels named, with its name copied when the run recorded it. */
+export interface TrackingTaxonLabels {
+  taxon_id: number
+  name: string
+  /** Detections whose best classification names the taxon, and the mean and best score of those labels. */
+  detection_count: number
+  score_mean?: number | null
+  score_max: number | null
+}
+
+export interface TrackingResultData extends ServerDeterminationSnapshot {
+  detection_count: number
+  /** Distinct taxa among the detections' best classifications at the time of the run. */
+  distinct_taxa: number
+  /** The share of detections whose best classification names the determination after the run; null when none has one. */
+  label_agreement: number | null
+  /** Each of those distinct taxa, most detections first; missing on results recorded before it existed. */
+  taxa?: TrackingTaxonLabels[]
+  /** Seconds from the first capture to the last; null when fewer than two have a time. */
+  duration_seconds?: number | null
+  /** The lowest, mean and highest score of the detections' labels; null when no label has a score. */
+  score_min?: number | null
+  score_mean?: number | null
+  score_max?: number | null
+  /** One entry per detection in detection_ids: the cost of the link the run made from it, or null. */
+  link_costs: (number | null)[]
+  /** Occurrences the run folded into this one; they no longer exist. */
+  merged_occurrence_ids: number[]
+  /** The mean distance per step between detection centres as a fraction of the image diagonal. */
+  motion: number
+  /** The total distance between detection centres as a fraction of the image diagonal. */
+  path_length: number
+  /** The largest box area over the smallest. */
+  size_change: number
+  /** The grouping before the run: the detections in capture order and the occurrence each was in. */
+  detection_ids?: number[]
+  previous_occurrence_ids?: (number | null)[]
+  /** Identifications moved here, as [identification id, earlier occurrence id]. */
+  moved_identifications?: [number, number][]
+  withdrawn_identification_ids?: number[]
+}
 
 export interface ServerIdentificationDetails {
   comment: string
@@ -112,6 +153,8 @@ interface ServerResultEntry<Kind extends string, Data>
   determination_after: ServerHistoryTaxon | null
   determination_before: ServerHistoryTaxon | null
   kind: Kind
+  /** Other results of the same run, brought here by merging occurrences; `classifications` covers them all. */
+  results_merged_in: number
   type: 'algorithm_result'
   /** The kind's headline figure, for sorting and filtering; not a confidence. */
   value: number | null
@@ -125,9 +168,14 @@ export type SizeFilterResultEntry = ServerResultEntry<
   'size_filter',
   SizeFilterResultData
 >
+export type TrackingResultEntry = ServerResultEntry<
+  'tracking',
+  TrackingResultData
+>
 export type AlgorithmResultEntry =
   | ClassMaskingResultEntry
   | SizeFilterResultEntry
+  | TrackingResultEntry
 
 export interface IdentificationEntry extends ServerHistoryEntryBase {
   details: ServerIdentificationDetails
@@ -163,6 +211,7 @@ export type TimelineItem =
 const RESULT_KIND_LABELS: Record<AlgorithmResultEntry['kind'], STRING> = {
   class_masking: STRING.HISTORY_CLASS_MASKING,
   size_filter: STRING.HISTORY_SIZE_FILTER,
+  tracking: STRING.HISTORY_TRACKING,
 }
 
 /** What to call a result's kind, e.g. "Class masking". */
@@ -428,13 +477,31 @@ export const getJobConfigField = (job: ServerHistoryJob | null, key: string) =>
 /** Config fields the result card already shows in a row of their own. */
 const CONFIG_SHOWN_ELSEWHERE = ['size_threshold']
 
-/** A job's config fields to show as rows, leaving out unset ones and those shown elsewhere. */
+/** Config fields listing sessions, of which a card names only the occurrence's own. */
+const SESSION_LIST_CONFIG = ['event_ids']
+
+/**
+ * A job's config fields to show as rows, leaving out unset ones and those shown elsewhere. With
+ * `sessionId`, a list of sessions keeps only that one, since a run's other sessions say nothing about
+ * the occurrence, and is left out when it does not name it.
+ */
 export const getJobConfigFields = (
-  job: ServerHistoryJob | null
+  job: ServerHistoryJob | null,
+  sessionId?: string
 ): ServerJobConfigField[] =>
-  (job?.config ?? []).filter(
-    ({ key, value }) =>
-      value !== null &&
-      value !== undefined &&
-      !CONFIG_SHOWN_ELSEWHERE.includes(key)
-  )
+  (job?.config ?? [])
+    .map((field) =>
+      sessionId !== undefined && SESSION_LIST_CONFIG.includes(field.key)
+        ? {
+            ...field,
+            refs: field.refs.filter((ref) => `${ref.id}` === sessionId),
+          }
+        : field
+    )
+    .filter(
+      ({ key, value, refs }) =>
+        value !== null &&
+        value !== undefined &&
+        !CONFIG_SHOWN_ELSEWHERE.includes(key) &&
+        !(SESSION_LIST_CONFIG.includes(key) && !refs.length)
+    )

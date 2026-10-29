@@ -109,6 +109,12 @@ class AlgorithmResultEntrySerializer(HistoryEntryBaseSerializer):
     classifications = CreatedClassificationSerializer(
         many=True, help_text="The classifications the run created, best score first."
     )
+    results_merged_in = serializers.IntegerField(
+        help_text=(
+            "Other results of the same run, brought onto this occurrence by merging occurrences. The entry "
+            "shows the newest result, with the classifications all of them created."
+        )
+    )
 
 
 HISTORY_ENTRY_SERIALIZERS = {
