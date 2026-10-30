@@ -531,6 +531,9 @@ class TrainingResult(pydantic.BaseModel):
     incumbent_metrics: dict | None = pydantic.Field(default=None, description="The current head, on the same rows.")
     saved: dict[str, str] | None = None
     head_url: str | None = pydantic.Field(default=None, description="Where the uploaded head landed, if it was sent.")
+    pipeline_slug: str | None = pydantic.Field(
+        default=None, description="The pipeline that now serves the new head; also its classifier's algorithm key."
+    )
     trained_at: str | None = None
 
     class Config:
