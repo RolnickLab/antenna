@@ -18,15 +18,20 @@ from guardian.shortcuts import get_perms
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
 from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
-from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
+from ami.main.models import Deployment, OccurrenceSet, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.ml.training.config import TrainClassifierJobConfig
+from ami.ml.training.results import ClassifierTrainingResultData
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
+    from ami.ml.models import Algorithm
+    from ami.ml.models.processing_service import ProcessingService
     from ami.ml.results.schemas import AlgorithmResultData
+    from ami.ml.schemas import TrainingResult
 
 
 class JobDispatchMode(models.TextChoices):
@@ -1020,6 +1025,560 @@ class UnknownJobType(JobType):
         raise ValueError(f"Unknown job type '{job.job_type()}'")
 
 
+class TrainClassifierJob(JobType):
+    """
+    Retrain a classifier head from the species people have verified in this project.
+
+    Antenna prepares the training set and hands the processing service a URL to it, rather
+    than posting the rows: a project with a few hundred thousand verified labels runs to
+    hundreds of megabytes, which is fragile to send in one request and has to start over if
+    the connection drops.
+
+    The job does not wait for training to finish. It dispatches and leaves the job STARTED;
+    the service reports back through the job's result endpoint. Waiting inline would hit the
+    sub-task timeout on anything but a toy dataset.
+    """
+
+    name = "Train classifier"
+    key = "train_classifier"
+    config_schema = TrainClassifierJobConfig
+    user_creatable = True
+    result_models = (ClassifierTrainingResultData,)
+
+    # This job dispatches and then waits for the service to report back, writing nothing to
+    # its own row in between, so the default threshold reads a healthy run as a dead one.
+    # Matched to the life of the callback token: once that expires Antenna refuses the
+    # callback anyway, so a job still waiting past it can never finish.
+    stalled_after_minutes = 24 * 60
+
+    STAGE_PREPARE = "prepare"
+    STAGE_DISPATCH = "dispatch"
+    STAGE_TRAIN = "train"
+
+    # Reported by the service while it fits, and read back to move the training stage.
+    PARAM_EPOCH = "Epoch"
+    PARAM_TOTAL_EPOCHS = "Total epochs"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        from ami.ml.models import Algorithm
+        from ami.ml.training import NotEnoughVerifiedData, build_training_dataset
+
+        algorithm_key = cls.settings_for(job).algorithm_key
+
+        # A key is shared by every version of an algorithm, and embeddings are stored per
+        # version row, so the newest is chosen rather than whichever row came back first.
+        algorithm = Algorithm.objects.filter(key=algorithm_key).order_by("-version", "-pk").first()
+        if not algorithm:
+            raise ValueError(f"No algorithm with key '{algorithm_key}'.")
+        if not algorithm.trainable:
+            raise ValueError(
+                f"Algorithm '{algorithm_key}' is not marked trainable by its processing service. "
+                "Re-register the pipelines if the service has since been updated."
+            )
+
+        # Settled before any stage exists, so a bad setting is refused outright rather than
+        # failing halfway through a run that already looks started.
+        occurrence_set = cls.target_occurrence_set(job)
+        config = cls.config_for(job, algorithm)
+
+        job.progress.add_stage("Preparing training set", cls.STAGE_PREPARE)
+        job.progress.add_stage("Sending to processing service", cls.STAGE_DISPATCH)
+        job.progress.add_stage("Training", cls.STAGE_TRAIN)
+        # The work goes to an external service that reports back on its own, which is what
+        # this mode means. Set here rather than in Job.setup(), which reads it off the
+        # pipeline a training job does not have.
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.STARTED, progress=0)
+        job.save()
+
+        taxa_list = cls.target_taxa_list(job)
+        if not cls.settings_for(job).use_project_occurrences:
+            cls.run_from_offline_data_only(job, algorithm, taxa_list)
+            return
+        try:
+            dataset = build_training_dataset(
+                project=job.project,
+                algorithm=algorithm,
+                min_per_species=config.min_per_species,
+                test_fraction=config.test_fraction,
+                split_salt=config.split_salt,
+                taxa_list=taxa_list,
+                occurrence_set=occurrence_set,
+                job=job,
+            )
+        except NotEnoughVerifiedData as e:
+            # A data problem, not a crash. Say so plainly rather than failing with a traceback.
+            job.logger.error(str(e))
+            job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.FAILURE, progress=0)
+            job.finished_at = datetime.datetime.now()
+            job.result = {"error": str(e)}
+            job.update_status(JobState.FAILURE, save=True)
+            return
+
+        cls.record_training_set(job=job, algorithm=algorithm, dataset=dataset)
+
+        meta = dataset["metadata"]
+        job.logger.info(
+            f"Training set: {meta.rows} verified crops over {len(meta.classes)} species "
+            f"({meta.train} train / {meta.test} held out)"
+        )
+        if meta.taxa_list:
+            job.logger.info(
+                f"Species list comes from taxa list '{meta.taxa_list.name}' " f"({len(meta.classes)} species)"
+            )
+            without_data = meta.classes_without_verified_data or []
+            if without_data:
+                job.logger.info(
+                    f"{len(without_data)} species in the list have no verified crops yet. They keep "
+                    "whatever the current head already knows."
+                )
+        if meta.dropped_species:
+            job.logger.warning(
+                f"{len(meta.dropped_species)} verified species are not in the taxa list and were "
+                f"left out: {', '.join(meta.dropped_species[:5])}"
+                f"{' ...' if len(meta.dropped_species) > 5 else ''}"
+            )
+        if meta.verified_detections_without_embedding:
+            job.logger.warning(
+                f"{meta.verified_detections_without_embedding} verified detection(s) have no embedding "
+                "from this algorithm and were left out. Re-run the pipeline over them to include them."
+            )
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Rows", meta.rows)
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Species", len(meta.classes))
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Dataset", dataset["url"])
+        job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.SUCCESS, progress=1)
+        job.save()
+
+        service = cls.training_service(job, algorithm)
+        if not service:
+            # Pull-mode workers register with a null endpoint_url, so there is nothing to
+            # send a training request to. Supporting them means routing this through the
+            # task queue instead.
+            raise ValueError(
+                f"No push-mode processing service in this project serves '{algorithm_key}'. "
+                "Training cannot be dispatched to a pull-mode worker."
+            )
+
+        job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.STARTED, progress=0)
+        job.save()
+        cls.dispatch(job=job, service=service, algorithm=algorithm, dataset=dataset)
+
+    @classmethod
+    def record_training_set(cls, job: "Job", algorithm, dataset: dict) -> None:
+        """
+        Write down which occurrences this run trains and tests on, and which it left out and why.
+
+        Saved as two occurrence sets named after the job, kept in the job's result so the
+        registered version can point at them, and as one algorithm result per occurrence.
+        """
+        from ami.ml.training.results import record_training_occurrences, save_split_sets
+
+        occurrences = dataset["occurrences"]
+        sets = save_split_sets(job, occurrences)
+        job.result = {"occurrence_sets": {split: ref.dict() for split, ref in sets.items()}}
+        written = record_training_occurrences(job, algorithm, occurrences)
+        rejected = sum(1 for entry in occurrences.values() if entry.reject_reason)
+        job.logger.info(
+            f"Saved the splits as occurrence sets '{sets['train'].name}' and '{sets['test'].name}'; "
+            f"recorded {written} occurrence(s), {rejected} of them left out."
+        )
+
+    @classmethod
+    def config_for(cls, job: "Job", algorithm):
+        """
+        The training settings for this run, checked before anything uses them.
+
+        The algorithm's training_config holds the defaults its processing service
+        published; a job may override any of them for one run. Those overrides arrive in
+        job.params, which any member who can create a job sets, so they are validated here
+        instead of being read raw at each point of use.
+        """
+        import pydantic
+
+        from ami.ml.schemas import AlgorithmTrainingConfig
+
+        try:
+            return AlgorithmTrainingConfig.for_run(algorithm.training_config, job.params or {})
+        except pydantic.ValidationError as e:
+            problems = "; ".join(f"{'.'.join(str(part) for part in err['loc'])} {err['msg']}" for err in e.errors())
+            raise ValueError(f"This job's training settings are out of range: {problems}")
+
+    @classmethod
+    def training_service(cls, job: "Job", algorithm) -> "ProcessingService | None":
+        """The push-mode service in this project that serves the algorithm, which is where it is retrained."""
+        from ami.ml.models.processing_service import ProcessingService
+
+        return (
+            ProcessingService.objects.filter(
+                projects=job.project,
+                pipelines__algorithms=algorithm,
+                endpoint_url__isnull=False,
+            )
+            .exclude(endpoint_url="")
+            .distinct()
+            .first()
+        )
+
+    @classmethod
+    def offer_new_head(cls, job: "Job", parent) -> None:
+        """
+        Register the service's pipelines again, so the pipeline serving the new head can be run.
+
+        Runs from a task after the callback has answered (register_retrained_head_pipeline): the
+        service waits for that answer before it can serve /info again.
+        """
+        from ami.main.models import Project
+
+        service = cls.training_service(job, parent)
+        if not service:
+            job.logger.warning("No service to re-register pipelines from; the new head is not offered yet.")
+            return
+        service.create_pipelines(projects=Project.objects.filter(pk=job.project_id))
+        job.logger.info(f"Pipelines re-registered from {service}; the new head can now process captures.")
+
+    @classmethod
+    def settings_for(cls, job: "Job") -> TrainClassifierJobConfig:
+        """
+        The job's params as its schema reads them.
+
+        Parsed again here, not trusted from creation: a job made outside the API skips the serializer.
+        """
+        return TrainClassifierJobConfig.parse_obj(job.params or {})
+
+    @classmethod
+    def target_occurrence_set(cls, job: "Job") -> OccurrenceSet | None:
+        """
+        The set of occurrences this run learns from, or None for every verified one.
+
+        Naming a set is worth doing: a set is fixed once created, so the run can be repeated
+        and says for itself what it learned from. It is not required, because the common case
+        is retraining on everything verified so far, and making someone save a set first to
+        do that is a step with no decision in it.
+
+        The dataset file records which set was used, or that there was none, so a run without
+        one is still legible afterwards.
+        """
+        occurrence_set_id = cls.settings_for(job).occurrence_set_id
+        if not occurrence_set_id:
+            return None
+        # Scoped to the project, since params are set by any member who can create a job.
+        occurrence_set = OccurrenceSet.objects.for_project(job.project).filter(pk=occurrence_set_id).first()
+        if not occurrence_set:
+            raise ValueError(f"No occurrence set with id {occurrence_set_id} in this project.")
+        return occurrence_set
+
+    @classmethod
+    def target_taxa_list(cls, job: "Job"):
+        """
+        Which taxa list sets the head's species.
+
+        A job may name one; otherwise the project's default is used. Without either, the
+        class list falls back to whatever has been verified.
+        """
+        from ami.main.models import TaxaList
+
+        taxa_list_id = cls.settings_for(job).taxa_list_id
+        if taxa_list_id:
+            # Scoped for the same reason as the evaluation set above.
+            taxa_list = TaxaList.objects.filter(projects=job.project, pk=taxa_list_id).first()
+            if not taxa_list:
+                raise ValueError(f"No taxa list with id {taxa_list_id} in this project.")
+            return taxa_list
+        return job.project.default_taxa_list
+
+    @classmethod
+    def run_from_offline_data_only(cls, job: "Job", algorithm, taxa_list) -> None:
+        """
+        Retrain from the service's offline iNaturalist vectors alone: no data leaves Antenna.
+
+        The species list is the only input, so a run without one is refused.
+        """
+        from ami.main.models import TaxonRank
+
+        if taxa_list is None:
+            message = (
+                "Training from offline data alone needs a species list: "
+                "choose a taxa list or set the project's default."
+            )
+            job.logger.error(message)
+            job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.FAILURE, progress=0)
+            job.finished_at = datetime.datetime.now()
+            job.result = {"error": message}
+            job.update_status(JobState.FAILURE, save=True)
+            return
+        classes = sorted(taxa_list.taxa.filter(rank=TaxonRank.SPECIES.name).values_list("name", flat=True))
+        job.logger.info(
+            f"No project data: training on offline iNaturalist vectors for {len(classes)} species "
+            f"in taxa list '{taxa_list.name}'."
+        )
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Species", len(classes))
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Source", "Offline iNaturalist vectors")
+        job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.SUCCESS, progress=1)
+        job.save()
+
+        service = cls.training_service(job, algorithm)
+        if not service:
+            raise ValueError(f"No push-mode processing service in this project serves '{algorithm.key}'.")
+        job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.STARTED, progress=0)
+        job.save()
+        cls.dispatch(job=job, service=service, algorithm=algorithm, dataset=None, classes=classes)
+
+    @classmethod
+    def dispatch(cls, job: "Job", service, algorithm, dataset: dict | None, classes: list[str] | None = None) -> None:
+        """Hand the service the dataset URL and leave the job running until it reports back."""
+        from ami.ml.training import send_training_request
+
+        # Written before the request so the stage reads "0 of 300" while the service is
+        # still starting, rather than an empty pair of parameters.
+        config = cls.config_for(job, algorithm)
+        job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_EPOCH, 0)
+        job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_TOTAL_EPOCHS, config.epochs)
+
+        send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset, classes=classes)
+
+        # A fast run reports its result before the request it came from returns, so the
+        # job can already be finished here. Writing this copy's progress would put the
+        # training stage back to "started" on a job that is done.
+        job.refresh_from_db()
+        if job.status in JobState.final_states():
+            job.logger.info(f"{service.name} already reported its result.")
+            return
+
+        job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
+        job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.STARTED, progress=0)
+        job.save(update_fields=["progress", "updated_at"])
+        # Leaving the job STARTED is the point: a real training set outlasts the request
+        # that started it, and the result arrives at the job's callback.
+        job.logger.info(f"Training request accepted by {service.name}. Waiting for it to report back.")
+
+    @classmethod
+    def record_progress(cls, job: "Job", epoch: int, total_epochs: int | None = None) -> None:
+        """
+        Move the training stage to the epoch a service says it has reached.
+
+        Training is the long stage and the service is silent while it runs, so without this
+        the stage sits at nought for as long as the run takes. The epoch count is the only
+        progress the service has to report.
+        """
+        # As in record_result: a callback can arrive on a job whose stages were never set
+        # up, for instance after a restart.
+        if not any(stage.key == cls.STAGE_TRAIN for stage in job.progress.stages):
+            job.progress.add_stage("Training", cls.STAGE_TRAIN)
+
+        try:
+            reached = job.progress.get_stage_param(cls.STAGE_TRAIN, job.progress.make_key(cls.PARAM_EPOCH)).value
+        except ValueError:
+            reached = 0
+        # Pings can arrive late or out of order, and a stale one must not drag a run
+        # backwards past the epoch it actually reached.
+        if epoch <= (reached or 0):
+            return
+
+        total = total_epochs
+        if not total:
+            try:
+                total = job.progress.get_stage_param(
+                    cls.STAGE_TRAIN, job.progress.make_key(cls.PARAM_TOTAL_EPOCHS)
+                ).value
+            except ValueError:
+                total = None
+
+        job.progress.add_or_update_stage_param(cls.STAGE_TRAIN, cls.PARAM_EPOCH, epoch)
+        if total:
+            job.progress.add_or_update_stage_param(cls.STAGE_TRAIN, cls.PARAM_TOTAL_EPOCHS, total)
+        job.progress.update_stage(
+            cls.STAGE_TRAIN,
+            status=JobState.STARTED,
+            # Never a full stage: the result finishes it, not the last epoch, since the
+            # service still has to score the head and upload it.
+            progress=min(epoch / total, 0.99) if total else 0,
+        )
+        job.save(update_fields=["progress", "updated_at"])
+
+    @classmethod
+    def record_result(
+        cls,
+        job: "Job",
+        result: "TrainingResult",
+        dataset: dict | None = None,
+        dataset_url: str | None = None,
+    ) -> "Algorithm | None":
+        """
+        Store what the service reported, register the new version, and finish the job.
+
+        The result arrives one way only: through the callback, parsed at the view. A
+        service that also answers inline is acknowledged and its body ignored, so there is
+        a single shape to read here.
+        """
+        job.refresh_from_db(fields=["status", "result"])
+        if job.status in JobState.final_states():
+            # A retry of the callback, or a second service reporting on the same job. The
+            # first answer stands; recording this one would register a second version.
+            job.logger.info("A training result is already recorded for this job; ignoring a duplicate.")
+            return None
+
+        # Written when the training set was built; kept so the run still names its splits.
+        occurrence_sets = (job.result or {}).get("occurrence_sets")
+        job.result = {
+            "result": result.dict(),
+            "dataset": dataset,
+            "dataset_url": dataset_url,
+            "occurrence_sets": occurrence_sets,
+        }
+
+        # A result can arrive through the callback on a job whose stages were never set up,
+        # for instance after a restart. Make sure the stage exists before reporting into it.
+        if not any(stage.key == cls.STAGE_TRAIN for stage in job.progress.stages):
+            job.progress.add_stage("Training", cls.STAGE_TRAIN)
+        # A service that is reporting back plainly received the request, and the callback
+        # can arrive before the dispatching code closes that stage.
+        if any(stage.key == cls.STAGE_DISPATCH for stage in job.progress.stages):
+            job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
+
+        for warning in result.warnings:
+            job.logger.warning(warning)
+
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "New head top-1", result.candidate_metrics.get("top1"))
+        incumbent = result.incumbent_metrics or {}
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "Current head top-1", incumbent.get("top1"))
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "Better", result.promote)
+        job.logger.info(result.reason or "Training finished.")
+
+        from ami.ml.training.results import record_species_accuracy
+
+        if result.species_train_accuracy:
+            record_species_accuracy(job, result.species_train_accuracy)
+
+        new_version = cls.register_new_version(
+            job=job, result=result, dataset=dataset, dataset_url=dataset_url, occurrence_sets=occurrence_sets
+        )
+        if new_version:
+            job.progress.add_stage_param(cls.STAGE_TRAIN, "New version", new_version.key)
+            job.logger.info(f"Registered {new_version} as version {new_version.version}")
+            if result.pipeline_slug:
+                job.progress.add_stage_param(cls.STAGE_TRAIN, "Pipeline", result.pipeline_slug)
+                from ami.ml.models import Algorithm
+
+                parent_key = new_version.training_info.parent_algorithm_key
+                parent = Algorithm.objects.filter(key=parent_key).order_by("-version", "-pk").first()
+                if parent:
+                    from ami.ml.tasks import register_retrained_head_pipeline
+
+                    transaction.on_commit(
+                        lambda: register_retrained_head_pipeline.apply_async((job.pk, parent.pk), countdown=5)
+                    )
+
+        job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.SUCCESS, progress=1)
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=True)
+        job.save()
+        return new_version
+
+    @classmethod
+    def register_new_version(
+        cls,
+        job: "Job",
+        result: "TrainingResult",
+        dataset: dict | None = None,
+        dataset_url: str | None = None,
+        occurrence_sets: dict | None = None,
+    ):
+        """
+        Record the trained head as a new version of the algorithm it was trained from.
+
+        A Classification points at an Algorithm row, so a version that changed in place
+        would make past predictions untraceable. Each retrain therefore gets its own row:
+        same name, next version number, and a new key, because key is unique on its own.
+        """
+        import pydantic
+
+        from ami.ml.models import Algorithm, AlgorithmCategoryMap
+        from ami.ml.schemas import AlgorithmTrainingInfo, TrainingDatasetMetadata
+
+        # The service echoes the training set's own metadata, which is where the run's
+        # provenance comes from. Read leniently: a service echoing an older shape should
+        # still have its result recorded, and the only cost is a version that cannot say
+        # which set it learned from.
+        metadata = None
+        if dataset:
+            try:
+                metadata = TrainingDatasetMetadata.parse_obj(dataset)
+            except pydantic.ValidationError as e:
+                job.logger.warning(f"The service returned training set metadata Antenna could not read: {e}")
+
+        parent_key = (job.params or {}).get("algorithm_key")
+        parent = Algorithm.objects.filter(key=parent_key).first()
+        if not parent:
+            job.logger.warning(f"Cannot register a new version: no algorithm with key '{parent_key}'.")
+            return None
+
+        labels = result.labels
+        if not labels:
+            job.logger.warning("The service returned no class list, so no new version was registered.")
+            return None
+
+        trained_at = result.trained_at or ""
+        stamp = str(trained_at).replace(":", "").replace("-", "").replace(".", "")[:15] or f"job{job.pk}"
+        # How many times this algorithm has been retrained, counting this run.
+        lineage = parent.version + 1 + Algorithm.objects.filter(training_info__parent_algorithm_key=parent.key).count()
+        if result.pipeline_slug:
+            # The key the service serves the head under. Pipelines find their algorithms by key and
+            # version, and a service reports version 1, so registering its pipeline reuses this row.
+            key, version, name = result.pipeline_slug, 1, f"{parent.name} - retrained v{lineage}"
+        else:
+            key, version, name = f"{parent.key}-v{lineage}-{stamp}", lineage, parent.name
+
+        category_map = AlgorithmCategoryMap.objects.create(
+            labels=labels,
+            data=[{"label": label, "index": i} for i, label in enumerate(labels)],
+            version=stamp,
+            description=(
+                f"Retrained from {metadata.rows if metadata else len(labels)} verified crops in "
+                f"project '{job.project.name}' by job #{job.pk}."
+            ),
+        )
+
+        splits = occurrence_sets or {}
+        return Algorithm.objects.create(
+            name=name,
+            key=key,
+            # Where the weights are kept. Empty when the service did not upload them, in
+            # which case the head exists only on that service's own disk.
+            uri=result.head_url or "",
+            version=version,
+            version_name=f"retrained v{lineage} ({stamp})",
+            task_type=parent.task_type,
+            description=parent.description,
+            trainable=parent.trainable,
+            # Same frozen backbone, so the same vectors: without this the vectors the new
+            # head's pipeline sends are refused.
+            embedding_dimensions=parent.embedding_dimensions,
+            training_config=parent.training_config,
+            category_map=category_map,
+            training_info=AlgorithmTrainingInfo(
+                trained_at=trained_at or None,
+                dataset_url=dataset_url or (metadata.url if metadata else None),
+                occurrence_set_id=metadata.occurrence_set.id if metadata and metadata.occurrence_set else None,
+                occurrence_set_name=metadata.occurrence_set.name if metadata and metadata.occurrence_set else None,
+                train_occurrence_set_id=splits.get("train", {}).get("id"),
+                train_occurrence_set_name=splits.get("train", {}).get("name"),
+                test_occurrence_set_id=splits.get("test", {}).get("id"),
+                test_occurrence_set_name=splits.get("test", {}).get("name"),
+                dataset_rows=result.rows.get("kept"),
+                dataset_classes=len(labels),
+                metrics=result.candidate_metrics,
+                previous_metrics=result.incumbent_metrics or {},
+                parent_algorithm_key=parent.key,
+                job_id=job.pk,
+                warnings=result.warnings,
+            ),
+        )
+
+
 VALID_JOB_TYPES = [
     MLJob,
     SourceImageCollectionPopulateJob,
@@ -1028,6 +1587,7 @@ VALID_JOB_TYPES = [
     UnknownJobType,
     DataExportJob,
     PostProcessingJob,
+    TrainClassifierJob,
 ]
 
 
@@ -1064,7 +1624,8 @@ class Job(BaseModel):
     # Redis SREM-driven progress save, so this is effectively "no progress for
     # N minutes". 10 is conservative; raise if legitimate long-running jobs get
     # reaped.
-    STALLED_JOBS_MAX_MINUTES = 10
+    # The default deadline, owned by JobType so a job type can set its own.
+    STALLED_JOBS_MAX_MINUTES = JobType.stalled_after_minutes
     # Zombie-stream reaper: age threshold above which a NATS stream for a job
     # in a terminal state (or missing from Django) is considered safe to drop.
     # Kept well above :attr:`STALLED_JOBS_MAX_MINUTES` so newly-dispatched jobs

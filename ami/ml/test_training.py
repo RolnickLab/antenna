@@ -235,15 +235,22 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         self.assertEqual(response.status_code, 404)
 
     def test_the_split_ratio_moves_the_counts(self):
+        """
+        Compared across two ratios rather than asserted exactly.
+
+        Which side a given occurrence falls on is a hash of its id, so with a handful of
+        rows a particular ratio does not produce a particular count.
+        """
         for taxon in self.taxa:
             self.make_occurrence(taxon)
             self.make_occurrence(taxon)
 
-        everything_held_out = self._summary(test_fraction=0.99)
+        mostly_train = self._summary(test_fraction=0.01)
+        mostly_test = self._summary(test_fraction=0.99)
 
-        self.assertEqual(everything_held_out["test"], everything_held_out["rows"])
-        self.assertEqual(everything_held_out["train"], 0)
-        self.assertEqual(everything_held_out["settings"]["test_fraction"], 0.99)
+        self.assertEqual(mostly_test["rows"], mostly_train["rows"])
+        self.assertGreater(mostly_test["test"], mostly_train["test"])
+        self.assertEqual(mostly_test["settings"]["test_fraction"], 0.99)
 
     def test_a_ratio_no_run_could_use_is_refused(self):
         response = self.client.get(
@@ -276,3 +283,389 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         response = self.client.get(self.url, {"project_id": self.project.pk, "algorithm": self.algorithm.key})
 
         self.assertEqual(response.status_code, 403)
+
+
+class TestTheJobsOccurrenceSet(TrainingSetFixture):
+    def _job(self, **params):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        return Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key, **params},
+        )
+
+    def test_a_job_without_a_set_learns_from_everything_verified(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        self.assertIsNone(TrainClassifierJob.target_occurrence_set(self._job()))
+
+    def test_a_set_from_another_project_is_refused(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        other = Project.objects.create(name="Someone else", owner=self.user)
+        theirs = OccurrenceSet.objects.create(name="Theirs")
+        theirs.projects.add(other)
+
+        with self.assertRaises(ValueError) as caught:
+            TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=theirs.pk))
+
+        self.assertIn("in this project", str(caught.exception))
+
+    def test_a_set_in_this_project_is_used(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        mine = self.make_set("Mine", [self.make_occurrence(self.taxa[0])])
+
+        self.assertEqual(TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=mine.pk)), mine)
+
+
+class TestARetrainIsCheckedWhenItIsCreated(TrainingSetFixture):
+    """A setting no run could use is refused by the API, before a job exists to fail."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        ProjectManager.assign_user(self.user, self.project)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.url = f"{reverse('api:job-list')}?project_id={self.project.pk}"
+
+    def _create(self, **params):
+        from ami.jobs.models import TrainClassifierJob
+
+        return self.client.post(
+            self.url,
+            {
+                "project_id": self.project.pk,
+                "name": "Retrain",
+                "delay": 0,
+                "job_type_key": TrainClassifierJob.key,
+                "params": {"algorithm_key": self.algorithm.key, **params},
+            },
+            format="json",
+        )
+
+    def test_a_valid_retrain_is_stored_with_its_defaults(self):
+        from ami.jobs.models import Job
+
+        response = self._create(test_fraction=0.3)
+
+        self.assertEqual(response.status_code, 201, response.content)
+        params = Job.objects.get(pk=response.json()["id"]).params
+        self.assertEqual(params["use_project_occurrences"], True)
+        self.assertEqual(params["use_offline_inat"], False)
+        # Fitting overrides pass through untouched; the algorithm's defaults apply at run time.
+        self.assertEqual(params["test_fraction"], 0.3)
+        self.assertNotIn("epochs", params)
+
+    def test_a_missing_algorithm_is_named(self):
+        response = self._create(algorithm_key="")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("algorithm_key", response.json()["params"])
+
+    def test_an_out_of_range_fitting_setting_is_refused(self):
+        response = self._create(test_fraction=1.5)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("test_fraction", str(response.json()["params"]))
+
+    def test_a_retrain_with_no_data_source_is_refused(self):
+        response = self._create(use_project_occurrences=False)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at least one source", str(response.json()["params"]))
+
+    def test_a_retrain_from_offline_data_alone_is_accepted(self):
+        response = self._create(use_offline_inat=True, use_project_occurrences=False)
+
+        self.assertEqual(response.status_code, 201, response.content)
+
+
+class TestARetrainFromOfflineDataAlone(TrainingSetFixture):
+    """No data leaves Antenna: the service gets the species list and its own iNaturalist vectors."""
+
+    def _run(self, **params):
+        from unittest import mock
+
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain from iNat",
+            job_type_key=TrainClassifierJob.key,
+            params={
+                "algorithm_key": self.algorithm.key,
+                "use_offline_inat": True,
+                "use_project_occurrences": False,
+                **params,
+            },
+        )
+        with mock.patch.object(TrainClassifierJob, "training_service", return_value=mock.Mock(name="svc")), mock.patch(
+            "ami.ml.training.send_training_request"
+        ) as sent:
+            TrainClassifierJob.run(job)
+        job.refresh_from_db()
+        return job, sent
+
+    def test_the_species_list_is_sent_instead_of_a_dataset(self):
+        from ami.main.models import TaxaList
+
+        taxa_list = TaxaList.objects.create(name="NF demo")
+        taxa_list.taxa.set(self.taxa)
+        taxa_list.projects.add(self.project)
+
+        job, sent = self._run(taxa_list_id=taxa_list.pk)
+
+        self.assertEqual(sent.call_args.kwargs["dataset"], None)
+        self.assertEqual(sent.call_args.kwargs["classes"], sorted(t.name for t in self.taxa))
+
+    def test_without_a_species_list_the_run_fails_and_says_why(self):
+        job, sent = self._run()
+
+        self.assertEqual(job.status, "FAILURE")
+        self.assertIn("needs a species list", job.result["error"])
+        sent.assert_not_called()
+
+
+class TestTheTrainingStageFollowsTheEpochs(TrainingSetFixture):
+    """
+    Training is the long stage and the service is silent while it fits, so the epochs it
+    reports are the only thing that can move the stage while a run is going.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key},
+        )
+        self.job.progress.add_stage("Training", TrainClassifierJob.STAGE_TRAIN)
+        self.url = reverse("api:job-training-progress", args=[self.job.pk])
+
+    def _stage(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.get(pk=self.job.pk)
+        return job.progress.get_stage(TrainClassifierJob.STAGE_TRAIN)
+
+    def _param(self, name: str):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.get(pk=self.job.pk)
+        return job.progress.get_stage_param(TrainClassifierJob.STAGE_TRAIN, job.progress.make_key(name)).value
+
+    def _post(self, **payload):
+        from ami.ml.training import make_callback_token
+
+        return APIClient().post(
+            self.url,
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Token {make_callback_token(self.job)}",
+        )
+
+    def test_a_ping_moves_the_stage(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        response = self._post(epoch=150, total_epochs=300)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._param(TrainClassifierJob.PARAM_EPOCH), 150)
+        self.assertEqual(self._param(TrainClassifierJob.PARAM_TOTAL_EPOCHS), 300)
+        self.assertEqual(self._stage().progress, 0.5)
+
+    def test_the_stage_is_never_finished_by_an_epoch(self):
+        """The result finishes it: the service still has to score the head and upload it."""
+        self._post(epoch=300, total_epochs=300)
+
+        self.assertEqual(self._stage().progress, 0.99)
+
+    def test_a_ping_that_arrives_late_is_ignored(self):
+        self._post(epoch=200, total_epochs=300)
+        self._post(epoch=100, total_epochs=300)
+
+        from ami.jobs.models import TrainClassifierJob
+
+        self.assertEqual(self._param(TrainClassifierJob.PARAM_EPOCH), 200)
+
+    def test_a_ping_without_the_token_is_refused(self):
+        response = APIClient().post(self.url, {"epoch": 10}, format="json")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_ping_after_the_job_finished_changes_nothing(self):
+        from ami.jobs.models import JobState, TrainClassifierJob
+
+        self.job.status = JobState.SUCCESS
+        self.job.save()
+
+        response = self._post(epoch=10, total_epochs=300)
+
+        self.assertEqual(response.status_code, 200)
+        with self.assertRaises(ValueError):
+            self._param(TrainClassifierJob.PARAM_EPOCH)
+
+
+class TestTheResultComingBackFromAService(TrainingSetFixture):
+    """
+    The callback is the one way a result arrives, so its shape is the contract.
+
+    A service posts the result together with the training set's own metadata, echoed back
+    from the file Antenna wrote. That echo is where a registered version learns which
+    occurrence set it came from.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.occurrence_set = self.make_set("Mine", [self.make_occurrence(self.taxa[0])])
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key, "occurrence_set_id": self.occurrence_set.pk},
+        )
+        self.url = reverse("api:job-training-result", args=[self.job.pk])
+
+    def _dataset_echo(self, **overrides) -> dict:
+        """The metadata a service reads out of the training set and sends back."""
+        from ami.ml.schemas import (
+            NamedReference,
+            TrainedAlgorithmReference,
+            TrainingDatasetMetadata,
+            TrainingDatasetSettings,
+        )
+
+        metadata = TrainingDatasetMetadata(
+            url="/media/training/set.npz",
+            project=NamedReference(id=self.project.pk, name=self.project.name),
+            algorithm=TrainedAlgorithmReference(key=self.algorithm.key, name=self.algorithm.name, version=1),
+            dimensions=VECTOR_LENGTH,
+            dtype="float32",
+            classes=[t.name for t in self.taxa],
+            rows=6,
+            train=5,
+            test=1,
+            occurrence_set=NamedReference(id=self.occurrence_set.pk, name=self.occurrence_set.name),
+            settings=TrainingDatasetSettings(min_per_species=2, split_salt="antenna-head-v1", test_fraction=0.2),
+        )
+        return {**metadata.dict(), **overrides}
+
+    def _post(self, payload: dict):
+        from ami.ml.training import make_callback_token
+
+        return APIClient().post(
+            self.url,
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Token {make_callback_token(self.job)}",
+        )
+
+    def _result(self, **overrides) -> dict:
+        return {
+            "promote": False,
+            "reason": "The new head did not beat the current one.",
+            "warnings": ["Only 1 held-out row(s)."],
+            "labels": [t.name for t in self.taxa],
+            "rows": {"kept": 6, "dropped": 0},
+            "candidate_metrics": {"top1": 0.8},
+            "incumbent_metrics": {"top1": 0.9},
+            "trained_at": "2026-10-08T23:00:00",
+            "head_url": "/media/algorithms/head.npz",
+            **overrides,
+        }
+
+    def test_a_result_registers_a_version_that_says_what_it_learned_from(self):
+        from ami.jobs.models import Job
+        from ami.ml.models import Algorithm
+
+        response = self._post({"result": self._result(), "dataset": self._dataset_echo()})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        version = Algorithm.objects.get(key=response.data["algorithm"])
+        self.assertEqual(version.training_info.occurrence_set_id, self.occurrence_set.pk)
+        self.assertEqual(version.training_info.occurrence_set_name, "Mine")
+        self.assertEqual(version.training_info.dataset_rows, 6)
+        self.assertEqual(version.training_info.metrics, {"top1": 0.8})
+        self.assertEqual(version.training_info.previous_metrics, {"top1": 0.9})
+        self.assertEqual(Job.objects.get(pk=self.job.pk).status, "SUCCESS")
+
+    def test_a_head_the_service_serves_is_registered_under_its_key_and_offered(self):
+        """Its pipeline finds the version by key and version 1, and is registered for the project at once."""
+        from unittest import mock
+
+        from ami.jobs.models import TrainClassifierJob
+        from ami.ml.models import Algorithm
+        from ami.ml.tasks import register_retrained_head_pipeline
+
+        with mock.patch.object(register_retrained_head_pipeline, "apply_async") as queued:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self._post(
+                    {"result": self._result(pipeline_slug="bioclip-2-5-retrained-x"), "dataset": self._dataset_echo()}
+                )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        version = Algorithm.objects.get(key="bioclip-2-5-retrained-x")
+        self.assertEqual(version.version, 1)
+        self.assertIn("retrained v2", version.name)
+        self.assertEqual(version.embedding_dimensions, self.algorithm.embedding_dimensions)
+        # Queued for after the answer, not called inside the callback the service is waiting on.
+        queued.assert_called_once_with((self.job.pk, self.algorithm.pk), countdown=5)
+
+        service = mock.Mock()
+        with mock.patch.object(TrainClassifierJob, "training_service", return_value=service):
+            register_retrained_head_pipeline.run(self.job.pk, self.algorithm.pk)
+        self.assertEqual(list(service.create_pipelines.call_args.kwargs["projects"]), [self.project])
+
+    def test_an_echo_antenna_cannot_read_still_records_the_result(self):
+        """
+        A service echoing an older shape loses the provenance, not the run.
+
+        Refusing the whole callback would throw away a head that was trained successfully.
+        """
+        from ami.ml.models import Algorithm
+
+        response = self._post({"result": self._result(), "dataset": {"unexpected": "shape"}})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        version = Algorithm.objects.get(key=response.data["algorithm"])
+        self.assertIsNone(version.training_info.occurrence_set_id)
+
+    def test_a_run_with_no_current_head_to_compare_against_is_recorded(self):
+        """
+        A service reports a null incumbent rather than leaving the field out.
+
+        Refusing that would throw away the result of a first-ever retrain, which is the
+        one run guaranteed to have nothing to compare against.
+        """
+        from ami.ml.models import Algorithm
+
+        response = self._post({"result": self._result(incumbent_metrics=None), "dataset": self._dataset_echo()})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        version = Algorithm.objects.get(key=response.data["algorithm"])
+        self.assertEqual(version.training_info.previous_metrics, {})
+
+    def test_a_result_antenna_cannot_read_is_refused(self):
+        """The result is what the new version is built from, so a broken one is a 400."""
+        response = self._post({"result": {"labels": "not a list"}, "dataset": self._dataset_echo()})
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_second_callback_does_not_register_a_second_version(self):
+        from ami.ml.models import Algorithm
+
+        self._post({"result": self._result(), "dataset": self._dataset_echo()})
+        before = Algorithm.objects.count()
+        again = self._post({"result": self._result(), "dataset": self._dataset_echo()})
+
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.data["status"], "already recorded")
+        self.assertEqual(Algorithm.objects.count(), before)
