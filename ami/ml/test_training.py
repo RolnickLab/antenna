@@ -29,7 +29,12 @@ from ami.main.models import (
 from ami.ml.models import Algorithm, AlgorithmCategoryMap
 from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import NamedReference
-from ami.ml.training import NotEnoughVerifiedData, build_training_dataset, verified_training_rows
+from ami.ml.training import (
+    NotEnoughVerifiedData,
+    build_training_dataset,
+    count_missing_embeddings,
+    verified_training_rows,
+)
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 
@@ -92,9 +97,8 @@ class TrainingSetFixture(TestCase):
         return occurrence
 
     def make_set(self, name: str, occurrences: list[Occurrence]) -> OccurrenceSet:
-        occurrence_set = OccurrenceSet.objects.create(name=name)
-        occurrence_set.projects.add(self.project)
-        occurrence_set.occurrences.set(occurrences)
+        occurrence_set = OccurrenceSet.objects.create(name=name, project=self.project)
+        occurrence_set.add_members([o.pk for o in occurrences])
         return occurrence_set
 
 
@@ -154,6 +158,14 @@ class TestTheSetDecidesWhatIsLearnedFrom(TrainingSetFixture):
             NamedReference(id=occurrence_set.pk, name="Spring review"),
         )
         self.assertEqual(dataset["metadata"].rows, 8)
+
+    def test_missing_vectors_are_counted_inside_the_set_only(self):
+        inside = self.make_occurrence(self.taxa[0], with_vector=False)
+        self.make_occurrence(self.taxa[1], with_vector=False)
+        occurrence_set = self.make_set("Spring review", [inside])
+
+        self.assertEqual(count_missing_embeddings(self.project, self.algorithm), 2)
+        self.assertEqual(count_missing_embeddings(self.project, self.algorithm, occurrence_set), 1)
 
     def test_an_empty_set_has_nothing_to_train_on(self):
         self.make_occurrence(self.taxa[0])
@@ -224,8 +236,7 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
 
     def test_a_set_from_another_project_is_not_counted(self):
         other = Project.objects.create(name="Someone else", owner=self.user)
-        theirs = OccurrenceSet.objects.create(name="Theirs")
-        theirs.projects.add(other)
+        theirs = OccurrenceSet.objects.create(name="Theirs", project=other)
 
         response = self.client.get(
             self.url,

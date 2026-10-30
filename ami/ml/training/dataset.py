@@ -77,9 +77,9 @@ def verified_occurrence_ids(project: Project, occurrence_set: "OccurrenceSet | N
     The head classifies species, so a coarser or placeholder determination ("Not
     Identifiable" is UNKNOWN, "Not Lepidoptera" is an ORDER) is not a class to learn.
 
-    Narrowed to an occurrence set when one is given. A set is fixed once created, so a run
-    that names one can be repeated and says for itself what it learned from; without one the
-    pool is whatever happened to be verified that day, which no later reader can reconstruct.
+    Narrowed to an occurrence set when one is given. Sets can still change (a freeze is
+    planned in #1548), so the record of what a run learned from is the ``occurrence_ids``
+    saved with its training set, not the set itself.
     """
     identifications = Identification.objects.filter(
         withdrawn=False,
@@ -88,7 +88,7 @@ def verified_occurrence_ids(project: Project, occurrence_set: "OccurrenceSet | N
         occurrence__determination__rank=TaxonRank.SPECIES.name,
     )
     if occurrence_set is not None:
-        identifications = identifications.filter(occurrence__evaluation_sets=occurrence_set)
+        identifications = identifications.filter(occurrence__occurrence_sets=occurrence_set)
     return identifications.order_by().values_list("occurrence_id", flat=True).distinct()
 
 
@@ -119,7 +119,7 @@ def count_missing_embeddings(
     from ami.main.models import Detection
 
     return (
-        Detection.objects.filter(occurrence_id__in=verified_occurrence_ids(project))
+        Detection.objects.filter(occurrence_id__in=verified_occurrence_ids(project, occurrence_set))
         .exclude(embeddings__algorithm=algorithm)
         .count()
     )

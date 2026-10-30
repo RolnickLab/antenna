@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
                     ("sync_deployment", "Can sync images to a deployment"),
                     ("regroup_sessions_deployment", "Can regroup deployment captures into sessions"),
                     ("create_occurrenceset", "Can create an occurrence set"),
-                    ("update_occurrenceset", "Can rename or describe an occurrence set"),
+                    ("update_occurrenceset", "Can update an occurrence set and add or remove its occurrences"),
                     ("delete_occurrenceset", "Can delete an occurrence set"),
                     ("create_sourceimagecollection", "Can create a collection"),
                     ("update_sourceimagecollection", "Can update a collection"),
