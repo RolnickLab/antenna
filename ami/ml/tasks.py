@@ -160,3 +160,11 @@ def register_retrained_head_pipeline(self, job_id: int, parent_algorithm_id: int
             )
             return
         raise self.retry(exc=e, countdown=15)
+
+
+@celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
+def export_training_data_snapshot(snapshot_id: int | None = None) -> int:
+    """Export the verified species detections of all opted-in projects. Scheduled weekly, off by default."""
+    from ami.ml.training.export import run_snapshot
+
+    return run_snapshot(snapshot_id).pk
