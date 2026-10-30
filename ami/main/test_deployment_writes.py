@@ -3,7 +3,7 @@ Background work on a station must not overwrite a user's edits to it.
 
 Regroup, cached-count refreshes and storage syncs hold a copy of the Deployment
 loaded before their slow queries. They may write only the fields they compute,
-so an edit that commits in the meantime survives. See #1570.
+so an edit that commits in the meantime survives. See #1573.
 """
 
 from unittest import mock

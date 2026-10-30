@@ -1207,7 +1207,7 @@ class Deployment(BaseModel):
             qs.update(project=self.project)
 
     # Background refreshes often hold a copy of the row loaded before their slow queries.
-    # They save only these fields, so a user's edit made in the meantime is kept. See #1570.
+    # They save only these fields, so a user's edit made in the meantime is kept. See #1573.
     CALCULATED_FIELDS = [
         "data_source_total_files",
         "data_source_total_size",
