@@ -5,7 +5,11 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { JobDetailsForm } from './job-details-form/job-details-form'
-import { JOB_TYPE_TRAIN_CLASSIFIER } from './job-details-form/types'
+import {
+  JOB_TYPE_TRAIN_CLASSIFIER,
+  TRAINING_DATA_INAT,
+  TRAINING_DATA_PROJECT,
+} from './job-details-form/types'
 import styles from './job-details.module.scss'
 
 const CLOSE_TIMEOUT = 1000
@@ -40,9 +44,11 @@ export const NewJobDialog = () => {
             isSuccess={isSuccess}
             onSubmit={({
               algorithmKey,
+              dataSource,
               jobType,
               minPerSpecies,
               occurrenceSet,
+              taxaList,
               testFraction,
               ...data
             }) => {
@@ -53,9 +59,14 @@ export const NewJobDialog = () => {
                   jobType === JOB_TYPE_TRAIN_CLASSIFIER
                     ? {
                         algorithm_key: algorithmKey,
-                        occurrence_set_id: occurrenceSet
-                          ? Number(occurrenceSet)
-                          : undefined,
+                        use_project_occurrences:
+                          dataSource !== TRAINING_DATA_INAT,
+                        use_offline_inat: dataSource !== TRAINING_DATA_PROJECT,
+                        taxa_list_id: taxaList ? Number(taxaList) : undefined,
+                        occurrence_set_id:
+                          dataSource !== TRAINING_DATA_INAT && occurrenceSet
+                            ? Number(occurrenceSet)
+                            : undefined,
                         // A field left empty means the algorithm's own setting, so it
                         // is left out rather than sent as an empty string.
                         test_fraction: testFraction || undefined,

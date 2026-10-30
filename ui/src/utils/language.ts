@@ -212,6 +212,13 @@ export enum STRING {
   MESSAGE_TRAINING_DATA_EMPTY,
   MESSAGE_TRAINING_DATA_MISSING_EMBEDDINGS,
   MESSAGE_TRAINING_OCCURRENCE_SET,
+  FIELD_LABEL_TRAINING_DATA,
+  FIELD_LABEL_SPECIES_LIST,
+  MESSAGE_TRAINING_DATA_SOURCE,
+  MESSAGE_TRAINING_SPECIES_LIST,
+  TRAINING_DATA_PROJECT,
+  TRAINING_DATA_PROJECT_AND_INAT,
+  TRAINING_DATA_INAT,
   JOB_TYPE_ML,
   JOB_TYPE_TRAIN_CLASSIFIER,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
@@ -637,6 +644,16 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'The classifier to retrain. Only algorithms a processing service reports as trainable are listed.',
   [STRING.MESSAGE_TRAINING_OCCURRENCE_SET]:
     'Leave empty to train on every verified occurrence in this project.',
+  [STRING.FIELD_LABEL_TRAINING_DATA]: 'Training data',
+  [STRING.FIELD_LABEL_SPECIES_LIST]: 'Species list',
+  [STRING.MESSAGE_TRAINING_DATA_SOURCE]:
+    "Offline iNaturalist images are held by the processing service and filtered to the species list; they add training rows, while the comparison with the current head stays on this project's occurrences.",
+  [STRING.MESSAGE_TRAINING_SPECIES_LIST]:
+    "The species the new head covers. Leave empty to use the project's default taxa list. Required for offline iNaturalist data alone.",
+  [STRING.TRAINING_DATA_PROJECT]: "This project's verified occurrences",
+  [STRING.TRAINING_DATA_PROJECT_AND_INAT]:
+    "This project's verified occurrences + offline iNaturalist images",
+  [STRING.TRAINING_DATA_INAT]: 'Offline iNaturalist images only',
   [STRING.MESSAGE_TEST_FRACTION]:
     'Share of occurrences held back to score the new head. Leave empty to use the algorithm setting.',
   [STRING.MESSAGE_MIN_PER_SPECIES]:
