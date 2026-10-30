@@ -1,3 +1,10 @@
+# Local development stack.
+#
+# Every host port can be changed with an ANTENNA_* variable, and image, container and
+# volume names are scoped to the compose project. Together these let several copies of
+# the stack run on one machine: give each copy its own project name and its own ports,
+# for example in a .env file next to this one. See "Running more than one stack" in
+# README.md.
 volumes:
   ami_local_postgres_data: {}
   ami_local_postgres_data_backups:
@@ -15,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    image: ami_local_django
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -40,7 +46,7 @@ services:
       - path: .env
         required: false
     ports:
-      - "8000:8000"
+      - "${ANTENNA_DJANGO_PORT:-8000}:8000"
     command: /start
     networks:
       - default
@@ -51,7 +57,7 @@ services:
       context: .
       dockerfile: ./compose/local/postgres/Dockerfile
     ports:
-      - "5444:5432"
+      - "${ANTENNA_POSTGRES_PORT:-5444}:5432"
     volumes:
       - ami_local_postgres_data:/var/lib/postgresql/data
       - ami_local_postgres_data_backups:/backups
@@ -59,12 +65,11 @@ services:
       - ./.envs/.local/.postgres
 
   ui:
-    image: ami_local_ui
     build:
       context: ./ui
       dockerfile: ../compose/local/ui/Dockerfile
     ports:
-      - "4000:4000"
+      - "${ANTENNA_UI_PORT:-4000}:4000"
     depends_on:
       - django
     environment:
@@ -77,7 +82,7 @@ services:
       context: ./ui
       dockerfile: ../compose/local/ui/Dockerfile
     ports:
-      - "4000:4000"
+      - "${ANTENNA_UI_PORT:-4000}:4000"
     depends_on:
       - django
     volumes:
@@ -95,15 +100,13 @@ services:
 
   redis:
     image: redis:6
-    container_name: ami_local_redis
 
   nats:
     image: nats:2.10-alpine
-    container_name: ami_local_nats
     hostname: nats
     ports:
-      - "4222:4222" # Client port
-      - "8222:8222" # HTTP monitoring port
+      - "${ANTENNA_NATS_PORT:-4222}:4222" # Client port
+      - "${ANTENNA_NATS_MONITOR_PORT:-8222}:8222" # HTTP monitoring port
     command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
@@ -113,7 +116,6 @@ services:
 
   celeryworker:
     <<: *django
-    image: ami_local_celeryworker
     scale: 1
     ports: []
     command: /start-celeryworker
@@ -122,15 +124,13 @@ services:
 
   celerybeat:
     <<: *django
-    image: ami_local_celerybeat
     ports: []
     command: /start-celerybeat
 
   flower:
     <<: *django
-    image: ami_local_flower
     ports:
-      - "5555:5555"
+      - "${ANTENNA_FLOWER_PORT:-5555}:5555"
     command: /start-flower
     volumes:
       - ./data/flower/:/data/
@@ -138,8 +138,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${ANTENNA_RABBITMQ_PORT:-5672}:5672"
+      - "${ANTENNA_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     env_file:
       - ./.envs/.local/.django
     networks:
@@ -156,7 +156,7 @@ services:
     environment:
       - CONSOLE_SECURE_TLS_REDIRECT=off
     ports:
-      - "9001:9001"
+      - "${ANTENNA_MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -166,7 +166,7 @@ services:
   minio-proxy:
     image: nginx:alpine
     ports:
-      - "9000:9000"
+      - "${ANTENNA_MINIO_PORT:-9000}:9000"
     volumes:
       - ./compose/local/minio/nginx.conf:/etc/nginx/nginx.conf
     depends_on:
@@ -191,12 +191,14 @@ services:
     volumes:
       - ./processing_services/minimal/:/app
     ports:
-      - "2005:2000"
+      - "${ANTENNA_ML_BACKEND_PORT:-2005}:2000"
     networks:
       default:
         aliases:
           - processing_service
 
 networks:
+  # Shared with the stacks in processing_services/, which join it by this name.
+  # Give each copy of the stack its own name with ANTENNA_NETWORK.
   antenna_network:
-    name: antenna_network
+    name: ${ANTENNA_NETWORK:-antenna_network}
