@@ -25,6 +25,9 @@ from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
 
+if typing.TYPE_CHECKING:
+    from ami.ml.results.schemas import AlgorithmResultData
+
 
 class JobDispatchMode(models.TextChoices):
     """
@@ -445,6 +448,35 @@ class JobType:
     name: str
     key: str
 
+    # The shape of ``Job.params`` for this type, or None for a type that does not check them.
+    # The API validates params against it when a job is created and stores the validated
+    # values, defaults included, so a bad setting is a 400 when the job is made rather than a
+    # failure minutes later when it runs, and the job records exactly what it ran with.
+    config_schema: typing.ClassVar[type[pydantic.BaseModel] | None] = None
+
+    # Whether a person can start one from the UI. The rest are created by the platform:
+    # a data sync, an export, a regroup. Nothing should offer those as a choice.
+    user_creatable: bool = False
+
+    # How long a job of this type may go untouched before the stale-job check treats it as
+    # dead. A type that hands work to an external service and waits to be called back is
+    # silent on purpose, so silence is not evidence that it died; those override this.
+    stalled_after_minutes: int = 10
+
+    # The algorithm result kinds this type writes, which registers them (ami/ml/results/schemas.py).
+    result_models: typing.ClassVar[tuple[type["AlgorithmResultData"], ...]] = ()
+
+    @classmethod
+    def validated_params(cls, params: dict | None) -> dict:
+        """
+        ``params`` checked against ``config_schema`` and returned as stored JSON, defaults filled in.
+
+        Raises ``pydantic.ValidationError``. A type with no schema gets its params back unchanged.
+        """
+        if cls.config_schema is None:
+            return params or {}
+        return json.loads(cls.config_schema.parse_obj(params or {}).json())
+
     # @TODO Consider adding custom vocabulary for job types to be used in the UI
     # verb: str = "Sync"
     # present_participle: str = "syncing"
@@ -461,6 +493,10 @@ class JobType:
 class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
+    # The one type a person starts by hand today. A pipeline is not declared required here:
+    # single-capture runs created from a session page carry one, but the API has always
+    # accepted a job without it and failing it at creation would change that.
+    user_creatable = True
 
     @classmethod
     def run(cls, job: "Job"):
