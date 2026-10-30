@@ -39,8 +39,10 @@ from ami.main import charts
 # models.* for compatibility with migrations existing before this change.
 from ami.main.models_future.enums import DEFAULT_RANKS, TaxonRank  # noqa: F401
 from ami.main.models_future.filters import (
+    build_created_or_updated_by_job_q,
     build_occurrence_default_filters_q,
     build_occurrence_score_threshold_q,
+    build_processed_by_algorithm_q,
     build_taxa_recursive_filter_q,
 )
 from ami.main.models_future.identifications import Identification  # noqa: F401
@@ -3200,32 +3202,18 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
-    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
-        """Subquery matching occurrences with any result from the given algorithms —
-        a detection made by one (detectors) or a classification from one (classifiers
-        and post-processing algorithms such as class masking or a size filter)."""
-        return Exists(
-            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
-                models.Q(detection_algorithm__in=algorithm_ids)
-                | models.Q(classifications__algorithm__in=algorithm_ids)
-            )
-        )
-
     def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with at least one result from the given algorithms.
 
-        Matches detectors through Detection.detection_algorithm and classifiers or
-        post-processing algorithms through their classifications, so every algorithm
-        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
-        form returns each occurrence once; a join through
-        ``detections__classifications`` returns one row per matching result, which
-        inflates pagination counts and duplicates rows across pages.
+        Matches detectors through their detections, classifiers and post-processing algorithms
+        through their classifications or algorithm results, so every algorithm listed by
+        ``Algorithm.objects.used_in_project()`` can match here. See ``build_processed_by_algorithm_q``.
         """
-        return self.filter(self._processed_by_algorithm_q(algorithm_ids))
+        return self.filter(build_processed_by_algorithm_q(algorithm_ids))
 
     def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
         """Occurrences with no result from any of the given algorithms."""
-        return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
+        return self.exclude(build_processed_by_algorithm_q(algorithm_ids))
 
     def created_or_updated_by_job(self, job_id: int) -> "OccurrenceQuerySet":
         """Occurrences created or updated by the given job.
@@ -3233,15 +3221,10 @@ class OccurrenceQuerySet(BaseQuerySet):
         An occurrence matches when the job created one of its detections, a classification
         on one of them, or an algorithm result for it, so several jobs can match the same occurrence.
 
-        Identifications are not matched: people make them, not jobs. EXISTS subqueries return
-        each occurrence once, where a join would return one row per matching result.
+        Identifications are not matched: people make them, not jobs. See
+        ``build_created_or_updated_by_job_q``.
         """
-        AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
-        return self.filter(
-            Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
-            | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
-        )
+        return self.filter(build_created_or_updated_by_job_q(job_id))
 
     def with_timestamps(self):
         """

@@ -212,3 +212,50 @@ def build_occurrence_default_filters_q(
             filter_q &= taxa_q
 
     return filter_q
+
+
+def build_processed_by_algorithm_q(algorithm_ids: list[int]) -> Q:
+    """Matches occurrences that any of the given algorithms left a result on.
+
+    A result is a detection, a classification on one of the occurrence's detections, or an
+    algorithm result; ``build_created_or_updated_by_job_q`` reads the same tables, so a new kind of
+    output is added to both. EXISTS subqueries return each occurrence once, where a join would
+    return one row per matching result.
+    """
+    from django.apps import apps
+    from django.db.models import Exists, OuterRef
+
+    Detection = apps.get_model("main", "Detection")
+    AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
+
+    results_q = Exists(
+        Detection.objects.filter(occurrence=OuterRef("pk")).filter(
+            Q(detection_algorithm__in=algorithm_ids) | Q(classifications__algorithm__in=algorithm_ids)
+        )
+    )
+    # A second EXISTS joined by OR stops Postgres planning the first one as a semi-join, which
+    # slows the common one-classifier filter, so add it only when there is something to find.
+    algorithm_results = AlgorithmResult.objects.filter(algorithm__in=algorithm_ids)
+    if algorithm_results.exists():
+        results_q |= Exists(algorithm_results.filter(occurrence=OuterRef("pk")))
+    return results_q
+
+
+def build_created_or_updated_by_job_q(job_id: int) -> Q:
+    """Matches occurrences that the given job left a result on.
+
+    Reads the same tables as ``build_processed_by_algorithm_q``, so a new kind of output is added to
+    both.
+    """
+    from django.apps import apps
+    from django.db.models import Exists, OuterRef
+
+    Detection = apps.get_model("main", "Detection")
+    Classification = apps.get_model("main", "Classification")
+    AlgorithmResult = apps.get_model("ml", "AlgorithmResult")
+
+    return (
+        Exists(Detection.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+        | Exists(Classification.objects.filter(detection__occurrence=OuterRef("pk"), job_id=job_id))
+        | Exists(AlgorithmResult.objects.filter(occurrence=OuterRef("pk"), job_id=job_id))
+    )
