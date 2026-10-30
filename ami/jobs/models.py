@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
     from ami.ml.models import Algorithm
+    from ami.ml.models.processing_service import ProcessingService
     from ami.ml.results.schemas import AlgorithmResultData
     from ami.ml.schemas import TrainingResult
 
@@ -1059,7 +1060,6 @@ class TrainClassifierJob(JobType):
     @classmethod
     def run(cls, job: "Job"):
         from ami.ml.models import Algorithm
-        from ami.ml.models.processing_service import ProcessingService
         from ami.ml.training import NotEnoughVerifiedData, build_training_dataset
 
         algorithm_key = cls.settings_for(job).algorithm_key
@@ -1146,16 +1146,7 @@ class TrainClassifierJob(JobType):
         job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.SUCCESS, progress=1)
         job.save()
 
-        service = (
-            ProcessingService.objects.filter(
-                projects=job.project,
-                pipelines__algorithms=algorithm,
-                endpoint_url__isnull=False,
-            )
-            .exclude(endpoint_url="")
-            .distinct()
-            .first()
-        )
+        service = cls.training_service(job, algorithm)
         if not service:
             # Pull-mode workers register with a null endpoint_url, so there is nothing to
             # send a training request to. Supporting them means routing this through the
@@ -1188,6 +1179,43 @@ class TrainClassifierJob(JobType):
         except pydantic.ValidationError as e:
             problems = "; ".join(f"{'.'.join(str(part) for part in err['loc'])} {err['msg']}" for err in e.errors())
             raise ValueError(f"This job's training settings are out of range: {problems}")
+
+    @classmethod
+    def training_service(cls, job: "Job", algorithm) -> "ProcessingService | None":
+        """The push-mode service in this project that serves the algorithm, which is where it is retrained."""
+        from ami.ml.models.processing_service import ProcessingService
+
+        return (
+            ProcessingService.objects.filter(
+                projects=job.project,
+                pipelines__algorithms=algorithm,
+                endpoint_url__isnull=False,
+            )
+            .exclude(endpoint_url="")
+            .distinct()
+            .first()
+        )
+
+    @classmethod
+    def offer_new_head(cls, job: "Job", parent) -> None:
+        """
+        Register the service's pipelines again, so the pipeline serving the new head can be run.
+
+        A failure is logged, not raised: the head is trained and recorded either way, and
+        re-registering from the processing services page offers it later.
+        """
+        from ami.main.models import Project
+
+        service = cls.training_service(job, parent)
+        if not service:
+            job.logger.warning("No service to re-register pipelines from; the new head is not offered yet.")
+            return
+        try:
+            service.create_pipelines(projects=Project.objects.filter(pk=job.project_id))
+        except Exception as e:
+            job.logger.warning(f"Could not register the new head's pipeline from {service}: {e}")
+            return
+        job.logger.info(f"Pipelines re-registered from {service}; the new head can now process captures.")
 
     @classmethod
     def settings_for(cls, job: "Job") -> TrainClassifierJobConfig:
@@ -1357,6 +1385,14 @@ class TrainClassifierJob(JobType):
         if new_version:
             job.progress.add_stage_param(cls.STAGE_TRAIN, "New version", new_version.key)
             job.logger.info(f"Registered {new_version} as version {new_version.version}")
+            if result.pipeline_slug:
+                job.progress.add_stage_param(cls.STAGE_TRAIN, "Pipeline", result.pipeline_slug)
+                from ami.ml.models import Algorithm
+
+                parent_key = new_version.training_info.parent_algorithm_key
+                parent = Algorithm.objects.filter(key=parent_key).order_by("-version", "-pk").first()
+                if parent:
+                    cls.offer_new_head(job, parent)
 
         job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
@@ -1408,10 +1444,14 @@ class TrainClassifierJob(JobType):
 
         trained_at = result.trained_at or ""
         stamp = str(trained_at).replace(":", "").replace("-", "").replace(".", "")[:15] or f"job{job.pk}"
-        version = (
-            Algorithm.objects.filter(name=parent.name).order_by("-version").values_list("version", flat=True).first()
-            or parent.version
-        ) + 1
+        # How many times this algorithm has been retrained, counting this run.
+        lineage = parent.version + 1 + Algorithm.objects.filter(training_info__parent_algorithm_key=parent.key).count()
+        if result.pipeline_slug:
+            # The key the service serves the head under. Pipelines find their algorithms by key and
+            # version, and a service reports version 1, so registering its pipeline reuses this row.
+            key, version, name = result.pipeline_slug, 1, f"{parent.name} - retrained v{lineage}"
+        else:
+            key, version, name = f"{parent.key}-v{lineage}-{stamp}", lineage, parent.name
 
         category_map = AlgorithmCategoryMap.objects.create(
             labels=labels,
@@ -1424,13 +1464,13 @@ class TrainClassifierJob(JobType):
         )
 
         return Algorithm.objects.create(
-            name=parent.name,
-            key=f"{parent.key}-v{version}-{stamp}",
+            name=name,
+            key=key,
             # Where the weights are kept. Empty when the service did not upload them, in
             # which case the head exists only on that service's own disk.
             uri=result.head_url or "",
             version=version,
-            version_name=str(trained_at) or stamp,
+            version_name=f"retrained v{lineage} ({stamp})",
             task_type=parent.task_type,
             description=parent.description,
             trainable=parent.trainable,

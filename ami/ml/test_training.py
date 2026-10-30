@@ -552,6 +552,26 @@ class TestTheResultComingBackFromAService(TrainingSetFixture):
         self.assertEqual(version.training_info.previous_metrics, {"top1": 0.9})
         self.assertEqual(Job.objects.get(pk=self.job.pk).status, "SUCCESS")
 
+    def test_a_head_the_service_serves_is_registered_under_its_key_and_offered(self):
+        """Its pipeline finds the version by key and version 1, and is registered for the project at once."""
+        from unittest import mock
+
+        from ami.jobs.models import TrainClassifierJob
+        from ami.ml.models import Algorithm
+
+        service = mock.Mock()
+        with mock.patch.object(TrainClassifierJob, "training_service", return_value=service):
+            response = self._post(
+                {"result": self._result(pipeline_slug="bioclip-2-5-retrained-x"), "dataset": self._dataset_echo()}
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        version = Algorithm.objects.get(key="bioclip-2-5-retrained-x")
+        self.assertEqual(version.version, 1)
+        self.assertIn("retrained v2", version.name)
+        service.create_pipelines.assert_called_once()
+        self.assertEqual(list(service.create_pipelines.call_args.kwargs["projects"]), [self.project])
+
     def test_an_echo_antenna_cannot_read_still_records_the_result(self):
         """
         A service echoing an older shape loses the provenance, not the run.
