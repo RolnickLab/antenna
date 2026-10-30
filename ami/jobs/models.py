@@ -1197,8 +1197,8 @@ class TrainClassifierJob(JobType):
         """
         Register the service's pipelines again, so the pipeline serving the new head can be run.
 
-        A failure is logged, not raised: the head is trained and recorded either way, and
-        re-registering from the processing services page offers it later.
+        Runs from a task after the callback has answered (register_retrained_head_pipeline): the
+        service waits for that answer before it can serve /info again.
         """
         from ami.main.models import Project
 
@@ -1206,11 +1206,7 @@ class TrainClassifierJob(JobType):
         if not service:
             job.logger.warning("No service to re-register pipelines from; the new head is not offered yet.")
             return
-        try:
-            service.create_pipelines(projects=Project.objects.filter(pk=job.project_id))
-        except Exception as e:
-            job.logger.warning(f"Could not register the new head's pipeline from {service}: {e}")
-            return
+        service.create_pipelines(projects=Project.objects.filter(pk=job.project_id))
         job.logger.info(f"Pipelines re-registered from {service}; the new head can now process captures.")
 
     @classmethod
@@ -1388,7 +1384,11 @@ class TrainClassifierJob(JobType):
                 parent_key = new_version.training_info.parent_algorithm_key
                 parent = Algorithm.objects.filter(key=parent_key).order_by("-version", "-pk").first()
                 if parent:
-                    cls.offer_new_head(job, parent)
+                    from ami.ml.tasks import register_retrained_head_pipeline
+
+                    transaction.on_commit(
+                        lambda: register_retrained_head_pipeline.apply_async((job.pk, parent.pk), countdown=5)
+                    )
 
         job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
