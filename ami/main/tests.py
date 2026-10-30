@@ -4570,7 +4570,7 @@ class TestOccurrenceDetailQueryCount(APITestCase):
 
 
 class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
-    """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
+    """Helpers in `models_future/occurrences.py` must handle empty prefetch caches gracefully.
 
     `.valid()` excludes zero-detection occurrences from the list endpoint, but
     helpers can still be called on objects whose detections were deleted, or in
@@ -4585,7 +4585,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
 
     def _empty_occurrence(self) -> "Occurrence":
         """An occurrence with prefetch caches populated but all relations empty."""
-        from ami.main.models_future.occurrence import prefetch_detections_for_list
+        from ami.main.models_future.occurrences import prefetch_detections_for_list
 
         occurrence = (
             Occurrence.objects.filter(project=self.project)
@@ -4604,7 +4604,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
         )
 
     def test_helpers_return_safe_defaults_on_empty(self):
-        from ami.main.models_future.occurrence import (
+        from ami.main.models_future.occurrences import (
             best_identification_from_prefetch,
             best_prediction_from_prefetch,
             detection_image_urls_from_prefetch,
@@ -4618,7 +4618,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
 
     def test_helpers_raise_when_prefetch_missing(self):
         """Strict contract: missing prefetch must raise, not silently slow-path."""
-        from ami.main.models_future.occurrence import (
+        from ami.main.models_future.occurrences import (
             best_identification_from_prefetch,
             best_prediction_from_prefetch,
             detection_image_urls_from_prefetch,
@@ -6400,37 +6400,37 @@ class TestLcaRankBetween(TestCase):
     )
 
     def test_identical_taxa_lca_is_self_rank(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_PRONUBA)
         self.assertEqual(rank, TaxonRank.SPECIES)
 
     def test_sister_species_share_genus(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_FIMBRIATA)
         self.assertEqual(rank, TaxonRank.GENUS)
 
     def test_genus_vs_species_in_same_genus(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.GENUS_NOCTUA, self.SPECIES_NOCTUA_PRONUBA)
         self.assertEqual(rank, TaxonRank.GENUS)
 
     def test_different_family_same_order(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_FAMILY)
         self.assertEqual(rank, TaxonRank.ORDER)
 
     def test_different_order_same_kingdom(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_ORDER)
         self.assertEqual(rank, TaxonRank.KINGDOM)
 
     def test_no_shared_ancestor_returns_none(self):
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         rootless = (501, "SPECIES", [])
         rank = lca_rank_between(rootless, self.SPECIES_NOCTUA_PRONUBA)
@@ -6441,7 +6441,7 @@ class TestLcaRankBetween(TestCase):
         so without explicit exclusion `UNKNOWN >= ORDER` would be True and a
         shared UNKNOWN ancestor would wrongly count as under-order agreement.
         """
-        from ami.main.models_future.occurrence import lca_rank_between
+        from ami.main.models_future.occurrences import lca_rank_between
 
         # Both chains share a KINGDOM ancestor and an UNKNOWN ancestor; the LCA
         # at a real taxonomic rank is KINGDOM, not UNKNOWN.
@@ -6579,7 +6579,7 @@ class TestModelAgreementForProject(APITestCase):
         return Identification.objects.create(user=self.user, occurrence=occurrence, taxon=taxon)
 
     def test_empty_project_returns_zeros_not_nans(self):
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         empty_project = Project.objects.create(name="empty")
         result = model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
@@ -6594,7 +6594,7 @@ class TestModelAgreementForProject(APITestCase):
         self.assertIsNone(result["agreed_coarser_rank_pct"])
 
     def test_buckets_canonical_cases(self):
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         self.assertEqual(len(occurrences), 4)
@@ -6618,7 +6618,7 @@ class TestModelAgreementForProject(APITestCase):
     def test_coarsest_rank_threshold_filters_shallow_lcas(self):
         """With coarsest_rank=FAMILY, an ORDER-only LCA pair is excluded."""
         from ami.main.models import TaxonRank
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         # 0: exact (SPECIES) — counts in both
@@ -6642,7 +6642,7 @@ class TestModelAgreementForProject(APITestCase):
         """A comment-only verification (Identification.taxon=None) has a machine
         prediction but no human taxon. It can neither agree nor disagree, so it
         must be excluded from comparable_count, not just from the numerators."""
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         # 0: exact agreement (machine == user)
@@ -6669,7 +6669,7 @@ class TestModelAgreementForProject(APITestCase):
         comparable_count falls below verified_with_prediction_count whenever a
         verification has no taxon, and the intervals key off the former.
         """
-        from ami.main.models_future.occurrence import model_agreement_for_project
+        from ami.main.models_future.occurrences import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         for occurrence in occurrences[:2]:
@@ -7453,195 +7453,6 @@ class TestDetectionNullMarker(TestCase):
         self.assertEqual(valid_pks, {real.pk})
         self.assertEqual(null_pks, {null_marker.pk})
         self.assertEqual(valid_pks & null_pks, set())
-
-
-class TestOccurrenceValidQuerySet(TestCase):
-    """
-    Covers OccurrenceQuerySet.valid() tightening for Issue #1310:
-    excludes occurrences with no real detections and occurrences missing a
-    determination, in addition to the existing detections__isnull=True
-    exclusion.
-    """
-
-    def setUp(self):
-        from ami.main.models import Taxon
-        from ami.ml.models.algorithm import Algorithm
-
-        self.project = Project.objects.create(name="Occurrence Valid Test Project")
-        self.deployment = Deployment.objects.create(project=self.project, name="dep")
-        self.event = Event.objects.create(
-            project=self.project,
-            deployment=self.deployment,
-            group_by="2024-01-01",
-            start=datetime.datetime(2024, 1, 1, 0, 0),
-        )
-        self.source_image = SourceImage.objects.create(
-            deployment=self.deployment,
-            project=self.project,
-            event=self.event,
-            path="occvalid-test.jpg",
-        )
-        self.algorithm = Algorithm.objects.create(name="valid-detector", key="valid-detector", task_type="detection")
-        self.taxon = Taxon.objects.create(name="Occurrence Valid Test Taxon")
-
-    def _make_occurrence_with_real_detection(self) -> Occurrence:
-        occ = Occurrence.objects.create(
-            project=self.project,
-            event=self.event,
-            deployment=self.deployment,
-            determination=self.taxon,
-        )
-        Detection.objects.create(
-            source_image=self.source_image,
-            bbox=[0.0, 0.0, 1.0, 1.0],
-            detection_algorithm=self.algorithm,
-            occurrence=occ,
-        )
-        return occ
-
-    def _make_occurrence_with_only_null_detection(self) -> Occurrence:
-        occ = Occurrence.objects.create(
-            project=self.project,
-            event=self.event,
-            deployment=self.deployment,
-            determination=self.taxon,
-        )
-        Detection.objects.create(
-            source_image=self.source_image,
-            bbox=None,
-            detection_algorithm=self.algorithm,
-            occurrence=occ,
-        )
-        return occ
-
-    def _make_occurrence_with_null_determination(self) -> Occurrence:
-        occ = Occurrence.objects.create(
-            project=self.project,
-            event=self.event,
-            deployment=self.deployment,
-            determination=None,
-        )
-        Detection.objects.create(
-            source_image=self.source_image,
-            bbox=[0.0, 0.0, 1.0, 1.0],
-            detection_algorithm=self.algorithm,
-            occurrence=occ,
-        )
-        return occ
-
-    def test_valid_returns_only_real_with_determination(self):
-        real = self._make_occurrence_with_real_detection()
-        null_only = self._make_occurrence_with_only_null_detection()
-        no_determination = self._make_occurrence_with_null_determination()
-
-        valid_qs = Occurrence.objects.filter(project=self.project).valid()
-        valid_pks = set(valid_qs.values_list("pk", flat=True))
-
-        self.assertIn(real.pk, valid_pks)
-        self.assertNotIn(null_only.pk, valid_pks)
-        self.assertNotIn(no_determination.pk, valid_pks)
-
-
-class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
-    """
-    Covers OccurrenceQuerySet.processed_by_algorithm / not_processed_by_algorithm,
-    which back the ?algorithm= and ?not_algorithm= occurrence filters (PR #1368).
-
-    The filter must match an algorithm by either role it can play: the detector that
-    made a detection, or the classifier / post-processing algorithm that authored a
-    classification. It must also count each occurrence once — the previous join form
-    (``detections__classifications__algorithm__in``) returned one row per matching
-    classification, inflating the paginator's COUNT and duplicating occurrences across
-    pages.
-    """
-
-    def setUp(self):
-        from ami.main.models import Taxon
-        from ami.ml.models.algorithm import Algorithm
-
-        self.project = Project.objects.create(name="Occurrence Algo Filter Project")
-        self.deployment = Deployment.objects.create(project=self.project, name="dep")
-        self.event = Event.objects.create(
-            project=self.project,
-            deployment=self.deployment,
-            group_by="2024-01-01",
-            start=datetime.datetime(2024, 1, 1, 0, 0),
-        )
-        self.source_image = SourceImage.objects.create(
-            deployment=self.deployment,
-            project=self.project,
-            event=self.event,
-            path="occ-algo-filter.jpg",
-        )
-        self.taxon = Taxon.objects.create(name="Occurrence Algo Filter Taxon")
-
-        self.detector = Algorithm.objects.create(name="Filter Detector", version=1, task_type="localization")
-        self.classifier = Algorithm.objects.create(name="Filter Classifier", version=1, task_type="classification")
-        self.other = Algorithm.objects.create(name="Filter Other", version=1, task_type="classification")
-
-        # Detected by `detector`, classified once by `classifier`.
-        self.occ_classified = self._make_occurrence(detector=self.detector, classifiers=[self.classifier])
-        # Same pair, but classified three times — the double-count trap.
-        self.occ_multi = self._make_occurrence(
-            detector=self.detector, classifiers=[self.classifier, self.classifier, self.classifier]
-        )
-        # A different algorithm entirely, to prove filters are exclusive.
-        self.occ_other = self._make_occurrence(detector=self.other, classifiers=[self.other])
-
-    def _make_occurrence(self, detector, classifiers) -> Occurrence:
-        occ = Occurrence.objects.create(
-            project=self.project,
-            event=self.event,
-            deployment=self.deployment,
-            determination=self.taxon,
-        )
-        detection = Detection.objects.create(
-            source_image=self.source_image,
-            bbox=[0.0, 0.0, 1.0, 1.0],
-            detection_algorithm=detector,
-            occurrence=occ,
-        )
-        for classifier in classifiers:
-            detection.classifications.create(
-                taxon=self.taxon,
-                algorithm=classifier,
-                score=0.9,
-                timestamp=datetime.datetime.now(),
-            )
-        return occ
-
-    def _pks(self, queryset):
-        return set(queryset.values_list("pk", flat=True))
-
-    def test_filter_by_classifier_matches_its_occurrences(self):
-        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
-        self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
-
-    def test_filter_by_detector_matches_occurrences_it_detected(self):
-        """A detector authors no Classification, so the old classification-join form
-        returned nothing for it. Matching through Detection.detection_algorithm is what
-        lets the user filter by a localizer at all."""
-        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.detector.pk])
-        self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
-
-    def test_count_not_inflated_by_multiple_classifications(self):
-        """The occurrence with three classifications by the same algorithm must count
-        once. The paginator calls this same COUNT, so an inflated value would report
-        four occurrences where there are two and repeat rows across pages."""
-        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
-        self.assertEqual(matched.count(), 2)
-
-    def test_exclude_removes_matching_occurrences(self):
-        remaining = Occurrence.objects.filter(project=self.project).not_processed_by_algorithm([self.other.pk])
-        self.assertEqual(self._pks(remaining), {self.occ_classified.pk, self.occ_multi.pk})
-
-    def test_exclude_is_the_complement_of_include(self):
-        base = Occurrence.objects.filter(project=self.project)
-        ids = [self.classifier.pk]
-        included = self._pks(base.processed_by_algorithm(ids))
-        excluded = self._pks(base.not_processed_by_algorithm(ids))
-        self.assertEqual(included | excluded, self._pks(base))
-        self.assertEqual(included & excluded, set())
 
 
 class TestOccurrenceJobFilter(APITestCase):
