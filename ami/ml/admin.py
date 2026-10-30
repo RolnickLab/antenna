@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import transaction
 
 from ami.main.admin import AdminBase, ProjectPipelineConfigInline
 
@@ -7,6 +8,7 @@ from .models.algorithm_result import AlgorithmResult
 from .models.embedding import DetectionEmbedding
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
+from .models.training_data import TrainingDataSnapshot, TrainingDataSnapshotProject
 
 
 @admin.register(Algorithm)
@@ -153,3 +155,58 @@ class DetectionEmbeddingAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
+
+
+class TrainingDataSnapshotProjectInline(admin.TabularInline):
+    model = TrainingDataSnapshotProject
+    extra = 0
+    can_delete = False
+    fields = ("project", "project_name", "rows", "occurrences", "taxa")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(TrainingDataSnapshot)
+class TrainingDataSnapshotAdmin(admin.ModelAdmin):
+    """Saving a new snapshot here queues its export."""
+
+    list_display = (
+        "id",
+        "status",
+        "created_at",
+        "finished_at",
+        "rows",
+        "occurrences",
+        "taxa",
+        "file_size",
+        "pruned_at",
+    )
+    list_filter = ("status",)
+    inlines = [TrainingDataSnapshotProjectInline]
+    readonly_fields = (
+        "status",
+        "started_at",
+        "finished_at",
+        "error",
+        "triggered_by",
+        "storage_prefix",
+        "files",
+        "file_size",
+        "pruned_at",
+        "rows",
+        "occurrences",
+        "taxa",
+        "algorithms",
+        "rules",
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.triggered_by = request.user
+        super().save_model(request, obj, form, change)
+        if not change:
+            from ami.ml.tasks import export_training_data_snapshot
+
+            transaction.on_commit(lambda: export_training_data_snapshot.delay(obj.pk))
