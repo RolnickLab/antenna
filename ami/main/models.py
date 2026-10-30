@@ -18,7 +18,8 @@ from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.db.models import Exists, OuterRef, Q
+from django.db import IntegrityError, models
+from django.db.models import Q
 from django.db.models.fields.files import ImageFieldFile
 from django.db.models.functions import Coalesce
 from django.template.defaultfilters import filesizeformat
@@ -36,6 +37,7 @@ from ami.main import charts
 # models.* for compatibility with migrations existing before this change.
 from ami.main.models_future.enums import DEFAULT_RANKS, TaxonRank  # noqa: F401
 from ami.main.models_future.filters import build_occurrence_default_filters_q
+from ami.main.models_future.identifications import Identification  # noqa: F401
 from ami.main.models_future.occurrences import (  # noqa: F401
     BEST_IDENTIFICATION_ORDER,
     BEST_MACHINE_PREDICTION_ORDER,
@@ -44,7 +46,6 @@ from ami.main.models_future.occurrences import (  # noqa: F401
     OccurrenceQuerySet,
     update_occurrence_determination,
 )
-from ami.main.models_future.identifications import Identification  # noqa: F401
 from ami.main.models_future.projects import (  # noqa: F401
     _POST_TITLE_MAX_LENGTH,
     Project,
