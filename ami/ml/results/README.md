@@ -7,6 +7,10 @@ write them today. The determination never reads them; it still comes only from i
 classifications. The occurrence history (`ami/main/api/occurrence_history/`,
 `GET /occurrences/{id}/history/`) shows each result with the classifications its run created.
 
+A retrain (`TrainClassifierJob`) writes a `classifier_training` result on every verified
+occurrence it considered: its split, or why it was left out, and the label it was given
+(`ami/ml/training/results.py`).
+
 Processing services cannot write results yet: their contract (`ami/ml/schemas.py`) has no place for
 them and must not name occurrences, which Antenna creates. Classifications and feature vectors keep their
 own tables, with the same algorithm and job provenance.
@@ -20,7 +24,8 @@ own tables, with the same algorithm and job provenance.
    run alone knows: its config stays on the job, the new taxon on the classifications it creates, and
    the prediction it replaced on their `applied_to`. Anything else the method returns goes in
    `extra`, which nothing reads for logic.
-2. **Task**: declare the model in the task's `result_models` (which registers the kind), give every `config_schema` field a
+2. **Task**: declare the model in the task's `result_models` (which registers the kind; a job type
+   that writes results declares it the same way, as `TrainClassifierJob` does), give every `config_schema` field a
    `title`, and declare fields that hold a record id with `model_reference("capture_set", ...)`
    (`ami/base/model_references.py`); `ami/jobs/job_config.py` labels and links them. A new reference type
    is declared on its model (`reference_type`, `reference_name_field`) and routed in

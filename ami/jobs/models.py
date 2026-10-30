@@ -22,6 +22,7 @@ from ami.main.models import Deployment, OccurrenceSet, Project, SourceImage, Sou
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.ml.training.config import TrainClassifierJobConfig
+from ami.ml.training.results import ClassifierTrainingResultData
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -1042,6 +1043,7 @@ class TrainClassifierJob(JobType):
     key = "train_classifier"
     config_schema = TrainClassifierJobConfig
     user_creatable = True
+    result_models = (ClassifierTrainingResultData,)
 
     # This job dispatches and then waits for the service to report back, writing nothing to
     # its own row in between, so the default threshold reads a healthy run as a dead one.
@@ -1117,6 +1119,8 @@ class TrainClassifierJob(JobType):
             job.update_status(JobState.FAILURE, save=True)
             return
 
+        cls.record_training_set(job=job, algorithm=algorithm, dataset=dataset)
+
         meta = dataset["metadata"]
         job.logger.info(
             f"Training set: {meta.rows} verified crops over {len(meta.classes)} species "
@@ -1162,6 +1166,26 @@ class TrainClassifierJob(JobType):
         job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.STARTED, progress=0)
         job.save()
         cls.dispatch(job=job, service=service, algorithm=algorithm, dataset=dataset)
+
+    @classmethod
+    def record_training_set(cls, job: "Job", algorithm, dataset: dict) -> None:
+        """
+        Write down which occurrences this run trains and tests on, and which it left out and why.
+
+        Saved as two occurrence sets named after the job, kept in the job's result so the
+        registered version can point at them, and as one algorithm result per occurrence.
+        """
+        from ami.ml.training.results import record_training_occurrences, save_split_sets
+
+        occurrences = dataset["occurrences"]
+        sets = save_split_sets(job, occurrences)
+        job.result = {"occurrence_sets": {split: ref.dict() for split, ref in sets.items()}}
+        written = record_training_occurrences(job, algorithm, occurrences)
+        rejected = sum(1 for entry in occurrences.values() if entry.reject_reason)
+        job.logger.info(
+            f"Saved the splits as occurrence sets '{sets['train'].name}' and '{sets['test'].name}'; "
+            f"recorded {written} occurrence(s), {rejected} of them left out."
+        )
 
     @classmethod
     def config_for(cls, job: "Job", algorithm):
@@ -1398,7 +1422,14 @@ class TrainClassifierJob(JobType):
             job.logger.info("A training result is already recorded for this job; ignoring a duplicate.")
             return None
 
-        job.result = {"result": result.dict(), "dataset": dataset, "dataset_url": dataset_url}
+        # Written when the training set was built; kept so the run still names its splits.
+        occurrence_sets = (job.result or {}).get("occurrence_sets")
+        job.result = {
+            "result": result.dict(),
+            "dataset": dataset,
+            "dataset_url": dataset_url,
+            "occurrence_sets": occurrence_sets,
+        }
 
         # A result can arrive through the callback on a job whose stages were never set up,
         # for instance after a restart. Make sure the stage exists before reporting into it.
@@ -1418,7 +1449,14 @@ class TrainClassifierJob(JobType):
         job.progress.add_stage_param(cls.STAGE_TRAIN, "Better", result.promote)
         job.logger.info(result.reason or "Training finished.")
 
-        new_version = cls.register_new_version(job=job, result=result, dataset=dataset, dataset_url=dataset_url)
+        from ami.ml.training.results import record_species_accuracy
+
+        if result.species_train_accuracy:
+            record_species_accuracy(job, result.species_train_accuracy)
+
+        new_version = cls.register_new_version(
+            job=job, result=result, dataset=dataset, dataset_url=dataset_url, occurrence_sets=occurrence_sets
+        )
         if new_version:
             job.progress.add_stage_param(cls.STAGE_TRAIN, "New version", new_version.key)
             job.logger.info(f"Registered {new_version} as version {new_version.version}")
@@ -1448,6 +1486,7 @@ class TrainClassifierJob(JobType):
         result: "TrainingResult",
         dataset: dict | None = None,
         dataset_url: str | None = None,
+        occurrence_sets: dict | None = None,
     ):
         """
         Record the trained head as a new version of the algorithm it was trained from.
@@ -1504,6 +1543,7 @@ class TrainClassifierJob(JobType):
             ),
         )
 
+        splits = occurrence_sets or {}
         return Algorithm.objects.create(
             name=name,
             key=key,
@@ -1525,6 +1565,10 @@ class TrainClassifierJob(JobType):
                 dataset_url=dataset_url or (metadata.url if metadata else None),
                 occurrence_set_id=metadata.occurrence_set.id if metadata and metadata.occurrence_set else None,
                 occurrence_set_name=metadata.occurrence_set.name if metadata and metadata.occurrence_set else None,
+                train_occurrence_set_id=splits.get("train", {}).get("id"),
+                train_occurrence_set_name=splits.get("train", {}).get("name"),
+                test_occurrence_set_id=splits.get("test", {}).get("id"),
+                test_occurrence_set_name=splits.get("test", {}).get("name"),
                 dataset_rows=result.rows.get("kept"),
                 dataset_classes=len(labels),
                 metrics=result.candidate_metrics,

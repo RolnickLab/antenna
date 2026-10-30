@@ -24,10 +24,16 @@ from django.core.files.storage import default_storage
 from django.db.models import QuerySet
 from django.utils.text import slugify
 
-from ami.main.models import Identification, Project, TaxonRank
+from ami.main.models import Identification, Occurrence, Project, TaxonRank
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import NamedReference, TrainedAlgorithmReference, TrainingDatasetMetadata, TrainingDatasetSettings
+from ami.ml.training.results import (
+    REJECT_NO_EMBEDDING,
+    REJECT_NOT_IN_TAXA_LIST,
+    REJECT_TOO_FEW_EXAMPLES,
+    OccurrenceInTraining,
+)
 
 if TYPE_CHECKING:
     from ami.jobs.models import Job
@@ -238,6 +244,9 @@ def build_training_dataset(
     detection_ids = np.zeros(total, dtype=np.int64)
     occurrence_ids = np.zeros(total, dtype=np.int64)
     splits: list[str] = []
+    # What happened to each verified occurrence in scope, written on it as a classifier_training result.
+    considered: dict[int, OccurrenceInTraining] = {}
+    left_out_because = REJECT_NOT_IN_TAXA_LIST if taxa_list else REJECT_TOO_FEW_EXAMPLES
 
     kept = 0
     for embedding in rows.iterator(chunk_size=FETCH_BATCH_SIZE):
@@ -246,12 +255,19 @@ def build_training_dataset(
             continue
         name = occurrence.determination.name
         if name not in class_index:
+            considered.setdefault(
+                occurrence.pk,
+                OccurrenceInTraining(label_id=occurrence.determination_id, reject_reason=left_out_because),
+            )
             continue
+        considered[occurrence.pk] = OccurrenceInTraining(
+            label_id=occurrence.determination_id, split=split_for(occurrence.pk, split_salt, test_fraction)
+        )
         features[kept] = _vector_as_array(embedding.vector).astype(DATASET_DTYPE)
         labels[kept] = class_index[name]
         detection_ids[kept] = embedding.detection_id
         occurrence_ids[kept] = occurrence.pk
-        splits.append(split_for(occurrence.pk, split_salt, test_fraction))
+        splits.append(considered[occurrence.pk].split)
         kept += 1
 
     if not kept:
@@ -311,9 +327,17 @@ def build_training_dataset(
         metadata=metadata,
     )
 
+    # Verified occurrences with no embedding from this algorithm never reached the loop above.
+    verified = Occurrence.objects.filter(pk__in=verified_occurrence_ids(project, occurrence_set))
+    for occurrence_id, label_id in verified.values_list("pk", "determination_id").iterator(
+        chunk_size=FETCH_BATCH_SIZE
+    ):
+        if occurrence_id not in considered:
+            considered[occurrence_id] = OccurrenceInTraining(label_id=label_id, reject_reason=REJECT_NO_EMBEDDING)
+
     file_url = metadata.url
     logger.info(f"Wrote training dataset with {kept} rows over {len(classes)} species to {file_path}")
-    return {"path": file_path, "url": file_url, "metadata": metadata}
+    return {"path": file_path, "url": file_url, "metadata": metadata, "occurrences": considered}
 
 
 def dataset_path(project: Project, algorithm: Algorithm, job_id: int | None) -> str:

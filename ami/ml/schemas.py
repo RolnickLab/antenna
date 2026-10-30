@@ -544,6 +544,10 @@ class TrainingResult(pydantic.BaseModel):
         default=None, description="The pipeline that now serves the new head; also its classifier's algorithm key."
     )
     trained_at: str | None = None
+    species_train_accuracy: dict[str, float] = pydantic.Field(
+        default_factory=dict,
+        description="The new head's top-1 on its training rows, per label. Optional; empty when not reported.",
+    )
 
     class Config:
         extra = "allow"
@@ -564,6 +568,12 @@ class AlgorithmTrainingInfo(pydantic.BaseModel):
         default=None,
         description="Named as well as numbered, so a version still says what it learned from if the set is deleted.",
     )
+    # The run's own train and test splits, saved as occurrence sets so it can be repeated and
+    # its test set reused to evaluate later versions.
+    train_occurrence_set_id: int | None = None
+    train_occurrence_set_name: str | None = None
+    test_occurrence_set_id: int | None = None
+    test_occurrence_set_name: str | None = None
     dataset_rows: int | None = None
     dataset_classes: int | None = None
     metrics: dict = pydantic.Field(default_factory=dict, description="Scores on the held-out split.")
