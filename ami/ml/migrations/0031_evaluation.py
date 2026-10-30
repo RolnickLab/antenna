@@ -6,9 +6,9 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0100_evaluate_algorithm_job_permission"),
+        ("main", "0102_evaluate_algorithm_job_permission"),
         ("jobs", "0024_evaluate_algorithm_job_type"),
-        ("ml", "0028_normalize_empty_endpoint_url_to_null"),
+        ("ml", "0030_enable_pgvector"),
     ]
 
     operations = [

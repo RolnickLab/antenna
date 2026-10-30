@@ -18,7 +18,7 @@ class AlgorithmEvaluation(BaseModel):
 
     # Reached through the set it scored. Without this, visible_for_user() leaves these
     # rows unfiltered, because the base class treats "no project relation" as public.
-    project_accessor = "occurrence_set__projects"
+    project_accessor = "occurrence_set__project"
 
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="evaluations")
     occurrence_set = models.ForeignKey("main.OccurrenceSet", on_delete=models.CASCADE, related_name="evaluations")
@@ -63,7 +63,7 @@ class TaxonEvaluation(BaseModel):
     can be queried the other way round: every algorithm's score for a given species.
     """
 
-    project_accessor = "evaluation__occurrence_set__projects"
+    project_accessor = "evaluation__occurrence_set__project"
 
     evaluation = models.ForeignKey(AlgorithmEvaluation, on_delete=models.CASCADE, related_name="taxa")
     taxon = models.ForeignKey("main.Taxon", on_delete=models.CASCADE, related_name="evaluations")

@@ -69,6 +69,8 @@ def occurrences_to_score(occurrence_set: OccurrenceSet, algorithm: Algorithm) ->
         occurrence_set.occurrences.filter(
             Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)),
             determination__isnull=False,
+            # Members are always in the set's project; this keeps the scope explicit.
+            project_id=occurrence_set.project_id,
         )
         .select_related("determination")
         .order_by("pk")

@@ -19,7 +19,7 @@ DEFAULT_EVALUATION_LIMIT = 5
 
 def visible_sets(project: Project | None, user=None) -> models.QuerySet:
     """
-    The evaluation sets a caller may be shown: the project's own, plus the global ones.
+    The evaluation sets a caller may be shown: the project's own.
 
     Taxa and algorithms are shared across the platform but evaluation sets are not, so
     every read below has to be scoped or it reports another project's numbers.
@@ -28,13 +28,14 @@ def visible_sets(project: Project | None, user=None) -> models.QuerySet:
     detail endpoint needs: the algorithm detail route carries no project id, and scoping
     those reads to the global sets alone hid every score a project had recorded. Falling
     back to the user keeps a caller from seeing another project's sets while still
-    answering a request that simply did not name one. With neither, only the global sets.
+    answering a request that simply did not name one. With neither, none: every set
+    belongs to a project (#1543).
     """
     if project is not None:
         return OccurrenceSet.objects.for_project(project)
     if user is not None:
         return OccurrenceSet.objects.visible_for_user(user)
-    return OccurrenceSet.objects.filter(projects__isnull=True)
+    return OccurrenceSet.objects.none()
 
 
 def project_for(request) -> Project | None:

@@ -990,7 +990,8 @@ class EvaluateAlgorithmJob(JobType):
 
     Reads predictions that already exist rather than running anything, so an algorithm that
     has processed the set is scored in one pass with no GPU. Comparing two models means
-    scoring both on the same set, which is why the set's membership is fixed.
+    scoring both on the same set. Sets can still change until #1548's freeze, so two
+    scores are only comparable if nobody edited the set in between.
     """
 
     name = "Evaluate algorithm"

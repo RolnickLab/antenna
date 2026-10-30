@@ -51,8 +51,7 @@ class TestAlgorithmEvaluation(TestCase):
         self.algorithm.category_map = self.category_map
         self.algorithm.save()
 
-        self.occurrence_set = OccurrenceSet.objects.create(name="Blind set")
-        self.occurrence_set.projects.add(self.project)
+        self.occurrence_set = OccurrenceSet.objects.create(name="Blind set", project=self.project)
 
     def _occurrence(self, truth, predicted=None, index=0):
         """One verified occurrence, optionally with a prediction from the algorithm."""
@@ -71,7 +70,7 @@ class TestAlgorithmEvaluation(TestCase):
                 timestamp=datetime.datetime.now(),
                 category_map=self.category_map,
             )
-        self.occurrence_set.occurrences.add(occurrence)
+        self.occurrence_set.add_members([occurrence.pk])
         return occurrence
 
     def test_a_perfect_run_scores_one(self):
@@ -112,7 +111,7 @@ class TestAlgorithmEvaluation(TestCase):
         # (ami/ml/models/pipeline.py). Without it the fallback never runs and the
         # occurrence would be skipped for having no determination at all.
         update_occurrence_determination(occurrence)
-        self.occurrence_set.occurrences.add(occurrence)
+        self.occurrence_set.add_members([occurrence.pk])
         return occurrence
 
     def test_an_occurrence_nobody_identified_is_not_scored(self):
@@ -238,13 +237,6 @@ class TestAlgorithmEvaluation(TestCase):
             1,
         )
 
-    def test_a_set_with_no_project_is_global(self):
-        """One set can compare models across projects."""
-        shared = OccurrenceSet.objects.create(name="Shared across projects")
-        self.assertTrue(shared.is_global)
-        self.assertFalse(self.occurrence_set.is_global)
-        self.assertIn(shared, OccurrenceSet.objects.for_project(self.project))
-
 
 class TestEvaluationsAreNotExposedAcrossProjects(TestCase):
     """
@@ -262,23 +254,20 @@ class TestEvaluationsAreNotExposedAcrossProjects(TestCase):
 
         self.taxon = Taxon.objects.create(name="Exposus taxon", rank=TaxonRank.SPECIES.name)
 
-        self.global_set = OccurrenceSet.objects.create(name="Platform-wide set")
         self.their_project = Project.objects.create(name="Someone Else's Project", draft=True)
-        self.their_set = OccurrenceSet.objects.create(name="Their private set")
-        self.their_set.projects.add(self.their_project)
+        self.their_set = OccurrenceSet.objects.create(name="Their private set", project=self.their_project)
 
-        for occurrence_set in (self.global_set, self.their_set):
-            evaluation = AlgorithmEvaluation.objects.create(
-                algorithm=self.algorithm,
-                occurrence_set=occurrence_set,
-                micro_accuracy=0.9,
-                macro_accuracy=0.9,
-                occurrences_scored=10,
-                species_scored=1,
-            )
-            TaxonEvaluation.objects.create(
-                evaluation=evaluation, taxon=self.taxon, accuracy=0.9, occurrences_scored=10, correct=9
-            )
+        evaluation = AlgorithmEvaluation.objects.create(
+            algorithm=self.algorithm,
+            occurrence_set=self.their_set,
+            micro_accuracy=0.9,
+            macro_accuracy=0.9,
+            occurrences_scored=10,
+            species_scored=1,
+        )
+        TaxonEvaluation.objects.create(
+            evaluation=evaluation, taxon=self.taxon, accuracy=0.9, occurrences_scored=10, correct=9
+        )
 
     def _request_naming(self, project):
         """A DRF request, since get_active_project reads request.data."""
@@ -288,30 +277,23 @@ class TestEvaluationsAreNotExposedAcrossProjects(TestCase):
         request.user = self.user
         return request
 
-    def test_without_a_project_only_the_global_sets_are_shown(self):
-        """No project named must mean the platform-wide sets, not every project's."""
-        names = [row["occurrence_set"]["name"] for row in reporting.latest_evaluations(self.algorithm)]
+    def test_without_a_project_or_a_user_nothing_is_shown(self):
+        """Every set belongs to a project (#1543), so naming neither must not mean every project's."""
+        self.assertEqual(reporting.latest_evaluations(self.algorithm), [])
 
-        self.assertIn(self.global_set.name, names)
-        self.assertNotIn(self.their_set.name, names)
-
-    def test_a_taxon_without_a_project_shows_only_the_global_sets(self):
-        names = [row["occurrence_set"]["name"] for row in reporting.performance_for_taxon(self.taxon)]
-
-        self.assertIn(self.global_set.name, names)
-        self.assertNotIn(self.their_set.name, names)
+    def test_a_taxon_without_a_project_or_a_user_shows_nothing(self):
+        self.assertEqual(reporting.performance_for_taxon(self.taxon), [])
 
     def test_a_member_sees_their_own_project_s_scores_without_naming_it(self):
         """
-        The algorithm detail route carries no project id. Scoping that read to the global
-        sets alone hid every score a project had recorded, which is the whole evaluations
+        The algorithm detail route carries no project id. Scoping that read to no project
+        hid every score a project had recorded, which is the whole evaluations
         table on the algorithm page. Falling back to what the user may see restores it
         without widening the read to other projects.
         """
         mine = Project.objects.create(name="My Project")
         mine.members.add(self.user)
-        my_set = OccurrenceSet.objects.create(name="My project's set")
-        my_set.projects.add(mine)
+        my_set = OccurrenceSet.objects.create(name="My project's set", project=mine)
         AlgorithmEvaluation.objects.create(
             algorithm=self.algorithm,
             occurrence_set=my_set,
@@ -324,7 +306,6 @@ class TestEvaluationsAreNotExposedAcrossProjects(TestCase):
         names = [row["occurrence_set"]["name"] for row in reporting.latest_evaluations(self.algorithm, user=self.user)]
 
         self.assertIn(my_set.name, names, "a member's own project scores must show without a project id")
-        self.assertIn(self.global_set.name, names)
         self.assertNotIn(self.their_set.name, names, "another project's draft set still stays hidden")
 
     def test_a_project_the_caller_cannot_see_is_not_used(self):
@@ -362,7 +343,7 @@ class TestTaxaListQueryCount(APITestCase):
 
         self.taxon = Taxon.objects.create(name="Countus communis", rank=TaxonRank.SPECIES.name)
         algorithm = Algorithm.objects.create(name="Scored model", key="scored-model")
-        occurrence_set = OccurrenceSet.objects.create(name="Query count set")
+        occurrence_set = OccurrenceSet.objects.create(name="Query count set", project=self.project)
         evaluation = AlgorithmEvaluation.objects.create(
             algorithm=algorithm,
             occurrence_set=occurrence_set,
@@ -438,7 +419,7 @@ class TestPerformanceReporting(TestCase):
         self.taxa_list = TaxaList.objects.create(name="Reporting list")
         self.taxa_list.taxa.set([self.common, self.rare])
         self.taxa_list.projects.add(self.project)
-        self.occurrence_set = OccurrenceSet.objects.create(name="Reporting set")
+        self.occurrence_set = OccurrenceSet.objects.create(name="Reporting set", project=self.project)
 
     def _algorithm(self, key: str) -> Algorithm:
         return Algorithm.objects.create(name=key, key=key)
@@ -465,8 +446,7 @@ class TestPerformanceReporting(TestCase):
     def _other_project_evaluation(self):
         """An evaluation belonging to a different, private project, scoring the same taxa."""
         other = Project.objects.create(name="Someone Else's Project", draft=True)
-        their_set = OccurrenceSet.objects.create(name="Their private blind set")
-        their_set.projects.add(other)
+        their_set = OccurrenceSet.objects.create(name="Their private blind set", project=other)
         algorithm = self._algorithm("their-model")
         evaluation = AlgorithmEvaluation.objects.create(
             algorithm=algorithm,
@@ -512,13 +492,11 @@ class TestPerformanceReporting(TestCase):
 
         self.assertEqual(rows, [])
 
-    def test_a_global_set_is_visible_to_every_project(self):
-        """A set with no project is the platform-wide benchmark, so it must not be filtered out."""
+    def test_the_project_s_own_set_is_shown(self):
         mine = self._evaluation(self._algorithm("my-model"), micro=0.5, macro=0.5, per_taxon={self.common: (5, 10)})
 
         rows = reporting.performance_for_taxon(self.common, project=self.project)
 
-        # self.occurrence_set belongs to no project, so it is global.
         self.assertEqual([r["algorithm"]["id"] for r in rows], [mine.algorithm_id])
 
     def test_the_best_model_is_the_one_that_handles_the_rare_species(self):
@@ -533,12 +511,12 @@ class TestPerformanceReporting(TestCase):
             per_taxon={self.common: (8, 10), self.rare: (8, 10)},
         )
 
-        self.assertEqual(reporting.best_evaluation_for_taxa_list(self.taxa_list), even)
+        self.assertEqual(reporting.best_evaluation_for_taxa_list(self.taxa_list, project=self.project), even)
 
     def test_a_list_nothing_has_been_scored_on_has_no_best_model(self):
         from ami.ml import reporting
 
-        self.assertIsNone(reporting.best_evaluation_for_taxa_list(self.taxa_list))
+        self.assertIsNone(reporting.best_evaluation_for_taxa_list(self.taxa_list, project=self.project))
 
     def test_a_species_lists_every_algorithm_scored_on_it(self):
         from ami.ml import reporting
@@ -546,7 +524,7 @@ class TestPerformanceReporting(TestCase):
         self._evaluation(self._algorithm("first"), micro=1.0, macro=1.0, per_taxon={self.rare: (2, 2)})
         self._evaluation(self._algorithm("second"), micro=0.5, macro=0.5, per_taxon={self.rare: (1, 2)})
 
-        rows = reporting.performance_for_taxon(self.rare)
+        rows = reporting.performance_for_taxon(self.rare, project=self.project)
         self.assertEqual([row["algorithm"]["key"] for row in rows], ["first", "second"])
         self.assertEqual([row["accuracy"] for row in rows], [1.0, 0.5])
         self.assertEqual(rows[0]["occurrence_set"]["name"], self.occurrence_set.name)
@@ -554,14 +532,14 @@ class TestPerformanceReporting(TestCase):
     def test_a_species_nothing_has_been_scored_on_lists_nothing(self):
         from ami.ml import reporting
 
-        self.assertEqual(reporting.performance_for_taxon(self.common), [])
+        self.assertEqual(reporting.performance_for_taxon(self.common, project=self.project), [])
 
     def test_an_algorithm_lists_its_own_scores(self):
         from ami.ml import reporting
 
         algorithm = self._algorithm("scored-twice")
         self._evaluation(algorithm, micro=1.0, macro=1.0, per_taxon={self.common: (2, 2)})
-        other_set = OccurrenceSet.objects.create(name="Second set")
+        other_set = OccurrenceSet.objects.create(name="Second set", project=self.project)
         AlgorithmEvaluation.objects.create(
             algorithm=algorithm,
             occurrence_set=other_set,
@@ -571,9 +549,9 @@ class TestPerformanceReporting(TestCase):
             species_scored=1,
         )
 
-        rows = reporting.latest_evaluations(algorithm)
+        rows = reporting.latest_evaluations(algorithm, project=self.project)
         self.assertEqual({row["occurrence_set"]["name"] for row in rows}, {"Reporting set", "Second set"})
-        self.assertEqual(len(reporting.latest_evaluations(algorithm, limit=1)), 1)
+        self.assertEqual(len(reporting.latest_evaluations(algorithm, project=self.project, limit=1)), 1)
 
     def test_the_algorithms_list_does_not_query_per_row(self):
         """Evaluations are prefetched: adding scored algorithms must not add queries."""

@@ -11,7 +11,7 @@ Guardian reads **object-level** rows: ``get_perms(user, project)`` and
 show up there, so each project gets a row per role group.
 
 ``ProjectManager`` inherits ``MLDataManager``'s permissions, so both groups are covered.
-This mirrors ``0099_grant_occurrence_set_permissions``.
+This mirrors ``0101_grant_occurrence_set_permissions``.
 """
 
 from django.db import migrations
@@ -91,7 +91,7 @@ def revoke(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0100_evaluate_algorithm_job_permission"),
+        ("main", "0102_evaluate_algorithm_job_permission"),
         ("guardian", "0002_generic_permissions_index"),
     ]
 
