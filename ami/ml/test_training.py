@@ -321,6 +321,69 @@ class TestTheJobsOccurrenceSet(TrainingSetFixture):
         self.assertEqual(TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=mine.pk)), mine)
 
 
+class TestARetrainIsCheckedWhenItIsCreated(TrainingSetFixture):
+    """A setting no run could use is refused by the API, before a job exists to fail."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        ProjectManager.assign_user(self.user, self.project)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.url = f"{reverse('api:job-list')}?project_id={self.project.pk}"
+
+    def _create(self, **params):
+        from ami.jobs.models import TrainClassifierJob
+
+        return self.client.post(
+            self.url,
+            {
+                "project_id": self.project.pk,
+                "name": "Retrain",
+                "delay": 0,
+                "job_type_key": TrainClassifierJob.key,
+                "params": {"algorithm_key": self.algorithm.key, **params},
+            },
+            format="json",
+        )
+
+    def test_a_valid_retrain_is_stored_with_its_defaults(self):
+        from ami.jobs.models import Job
+
+        response = self._create(test_fraction=0.3)
+
+        self.assertEqual(response.status_code, 201, response.content)
+        params = Job.objects.get(pk=response.json()["id"]).params
+        self.assertEqual(params["use_project_occurrences"], True)
+        self.assertEqual(params["use_offline_inat"], False)
+        # Fitting overrides pass through untouched; the algorithm's defaults apply at run time.
+        self.assertEqual(params["test_fraction"], 0.3)
+        self.assertNotIn("epochs", params)
+
+    def test_a_missing_algorithm_is_named(self):
+        response = self._create(algorithm_key="")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("algorithm_key", response.json()["params"])
+
+    def test_an_out_of_range_fitting_setting_is_refused(self):
+        response = self._create(test_fraction=1.5)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("test_fraction", str(response.json()["params"]))
+
+    def test_a_retrain_with_no_data_source_is_refused(self):
+        response = self._create(use_project_occurrences=False)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at least one source", str(response.json()["params"]))
+
+    def test_offline_inat_data_is_not_offered_yet(self):
+        response = self._create(use_offline_inat=True)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not available", str(response.json()["params"]))
+
+
 class TestTheTrainingStageFollowsTheEpochs(TrainingSetFixture):
     """
     Training is the long stage and the service is silent while it fits, so the epochs it
