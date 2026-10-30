@@ -610,3 +610,8 @@ THUMBNAILS = {
     "STORAGE_PREFIX": "thumbnails/",
     "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}, "large": {"width": 2560}},
 }
+
+# Training-data export (ami.ml.training.export)
+# ------------------------------------------------------------------------------
+# How many successful snapshots keep their files in storage. Older ones keep only their counts.
+TRAINING_DATA_SNAPSHOTS_KEPT = env.int("TRAINING_DATA_SNAPSHOTS_KEPT", default=4)

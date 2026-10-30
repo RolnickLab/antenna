@@ -141,3 +141,11 @@ def check_processing_services_online():
         except Exception:
             logger.exception("Error checking service %s", service)
             continue
+
+
+@celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
+def export_training_data_snapshot(snapshot_id: int | None = None) -> int:
+    """Export the verified species detections of all opted-in projects. Scheduled weekly, off by default."""
+    from ami.ml.training.export import run_snapshot
+
+    return run_snapshot(snapshot_id).pk
