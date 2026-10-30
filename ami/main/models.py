@@ -39,6 +39,7 @@ from ami.main import charts
 # models.* for compatibility with migrations existing before this change.
 from ami.main.models_future.enums import DEFAULT_RANKS, TaxonRank  # noqa: F401
 from ami.main.models_future.filters import build_occurrence_default_filters_q
+from ami.main.models_future.identifications import Identification  # noqa: F401
 from ami.main.models_future.occurrences import (  # noqa: F401
     BEST_IDENTIFICATION_ORDER,
     BEST_MACHINE_PREDICTION_ORDER,
@@ -47,7 +48,6 @@ from ami.main.models_future.occurrences import (  # noqa: F401
     OccurrenceQuerySet,
     update_occurrence_determination,
 )
-from ami.main.models_future.identifications import Identification  # noqa: F401
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.main.models_future.storage import (  # noqa: F401
     S3StorageSource,
