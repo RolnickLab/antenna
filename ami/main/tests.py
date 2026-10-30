@@ -1260,7 +1260,7 @@ class TestImageGrouping(TestCase):
 
         image_width, image_height = 100, 100
 
-        captures = create_captures(deployment=self.deployment)
+        captures = create_captures(deployment=self.deployment, width=None, height=None)
         events = Event.objects.filter(captures__in=captures).distinct()
 
         for event in events:
@@ -1271,7 +1271,6 @@ class TestImageGrouping(TestCase):
             set_dimensions_for_collection(event=event)
 
             for capture in event.captures.all():
-                # print(capture.path, capture.width, capture.height)
                 assert (capture.width == image_width) and (capture.height == image_height)
 
 
