@@ -842,7 +842,10 @@ def _insert_or_update_batch_for_sync(
     if regroup_events_per_batch:
         group_images_into_events(deployment)
 
-    deployment.save(update_calculated_fields=False)
+    deployment.save(
+        update_calculated_fields=False,
+        update_fields=["data_source_total_files", "data_source_total_size", "data_source_last_checked", "updated_at"],
+    )
 
 
 def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
@@ -1085,18 +1088,15 @@ class Deployment(BaseModel):
                 job.update_progress()
 
             # If new images were added, ensure the regroup happens now, not queued as an async task.
-            self.save(regroup_async=False)
+            self.refresh_derived_state(regroup_async=False)
 
             if job:
                 job.progress.update_stage("Update deployment cache", progress=1)
                 job.update_progress()
         else:
             # Caller (e.g. DataStorageSyncJob) is responsible for running regroup as
-            # an explicit stage. Skip Deployment.save's autoregroup but still
-            # refresh cached counts and realign child Event/Occurrence/SourceImage
-            # project pointers — those normally run inside Deployment.save's
-            # update_calculated_fields branch, which we bypass here.
-            self.save(regroup_async=False, update_calculated_fields=False)
+            # an explicit stage. Skip the autoregroup but still refresh cached counts
+            # and realign child Event/Occurrence/SourceImage project pointers.
             self.update_calculated_fields(save=True)
             if self.project_id:
                 self.update_children()
@@ -1206,6 +1206,20 @@ class Deployment(BaseModel):
                 )
             qs.update(project=self.project)
 
+    # Background refreshes often hold a copy of the row loaded before their slow queries.
+    # They save only these fields, so a user's edit made in the meantime is kept. See #1570.
+    CALCULATED_FIELDS = [
+        "data_source_total_files",
+        "data_source_total_size",
+        "events_count",
+        "captures_count",
+        "detections_count",
+        "occurrences_count",
+        "taxa_count",
+        "first_capture_timestamp",
+        "last_capture_timestamp",
+    ]
+
     def update_calculated_fields(self, save=False):
         """Update calculated fields on the deployment."""
 
@@ -1227,22 +1241,32 @@ class Deployment(BaseModel):
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
         if save:
-            self.save(update_calculated_fields=False)
+            self.save(update_calculated_fields=False, update_fields=[*self.CALCULATED_FIELDS, "updated_at"])
 
     def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
-            if deployment_events_need_update(self):
-                logger.info(f"Deployment {self} has events that need to be regrouped")
-                if regroup_async:
-                    ami.tasks.regroup_events.delay(self.pk)
-                else:
-                    group_images_into_events(self)
-            self.update_calculated_fields(save=True)
-            if self.project:
-                self.update_children()
-                # @TODO this isn't working as a background task
-                # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+            self.refresh_derived_state(regroup_async=regroup_async)
+
+    def refresh_derived_state(self, regroup_async=True):
+        """
+        Regroup captures into sessions if needed, refresh cached counts and realign
+        the project of child objects. Never writes the fields a user edits, so code
+        that only needs this refresh should call it instead of save().
+        """
+        if deployment_events_need_update(self):
+            logger.info(f"Deployment {self} has events that need to be regrouped")
+            if regroup_async:
+                # Queue after commit, or the task can read the row as it was before this save.
+                pk = self.pk
+                transaction.on_commit(lambda: ami.tasks.regroup_events.delay(pk))
+            else:
+                group_images_into_events(self)
+        self.update_calculated_fields(save=True)
+        if self.project:
+            self.update_children()
+            # @TODO this isn't working as a background task
+            # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
 
 
 class EventQuerySet(BaseQuerySet):
@@ -1998,7 +2022,7 @@ def create_source_image_from_upload(
         test_image=True,
         uploaded_by=request.user if request else None,
     )
-    deployment.save(regroup_async=False)
+    deployment.refresh_derived_state(regroup_async=False)
     if process_now:
         from ami.ml.orchestration.processing import process_single_source_image
 
