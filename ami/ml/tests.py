@@ -22,8 +22,14 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, Pipeline, ProcessingService
-from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.main.models_future.classifications import logits_are_probabilities
+from ami.ml.models import Algorithm, AlgorithmCategoryMap, Pipeline, ProcessingService
+from ami.ml.models.pipeline import (
+    collect_images,
+    create_classification,
+    get_or_create_algorithm_and_category_map,
+    save_results,
+)
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -42,6 +48,7 @@ from ami.tests.fixtures.main import (
 )
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
+from ami.utils.stats import softmax
 
 
 class TestProcessingServiceAPI(APITestCase):
@@ -412,10 +419,14 @@ class TestPipelineWithProcessingService(TestCase):
         assert results is not None, "Expected results to be returned in a PipelineSaveResults object"
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
-            assert classification.scores
+            # Scores equal softmax(logits) for this classifier, so only the logits are stored,
+            # except when the random logits happen to look like probabilities.
+            assert classification.logits
+            if not logits_are_probabilities(classification.logits):
+                assert classification.scores is None
             taxa_with_scores = list(classification.predictions_with_taxa(sort=True))
             assert taxa_with_scores
-            assert classification.score == taxa_with_scores[0][1]
+            self.assertAlmostEqual(classification.score, taxa_with_scores[0][1], places=6)
             assert classification.taxon == taxa_with_scores[0][0]
 
     def test_top_n_alignment(self):
@@ -427,7 +438,8 @@ class TestPipelineWithProcessingService(TestCase):
         assert results.classifications, "Expected classifications to be returned in the results"
         for classification in results.classifications:
             top_n = classification.top_n(n=3)
-            assert classification.score == top_n[0]["score"]
+            # The stored score comes from the model; top_n recomputes it from the logits.
+            self.assertAlmostEqual(classification.score, top_n[0]["score"], places=6)
             assert classification.taxon == top_n[0]["taxon"]
 
     def test_pipeline_reprocessing(self):
@@ -2359,3 +2371,64 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestClassificationArraysOnRerun(TestCase):
+    """A re-run of an existing classification keeps only one copy of its per-class arrays."""
+
+    def setUp(self):
+        project = Project.objects.create(name="Rerun arrays project")
+        deployment = Deployment.objects.create(project=project, name="dep")
+        image = SourceImage.objects.create(deployment=deployment, project=project, path="rerun-arrays.jpg")
+        self.detection = Detection.objects.create(source_image=image, bbox=[0, 0, 1, 1])
+        labels = ["Rerun alpha", "Rerun beta", "Rerun gamma"]
+        category_map = AlgorithmCategoryMap.objects.create(
+            data=[{"index": i, "label": label} for i, label in enumerate(labels)], labels=labels, version="v1"
+        )
+        algorithm = Algorithm.objects.create(
+            name="Rerun classifier", key="rerun-classifier", task_type="classification", category_map=category_map
+        )
+        self.algorithms = {algorithm.key: algorithm}
+        self.logits = [1.0, 4.0, 2.0]
+        self.scores = softmax(self.logits).tolist()
+        self.response = ClassificationResponse(
+            classification="Rerun beta",
+            scores=self.scores,
+            logits=self.logits,
+            algorithm=AlgorithmReference(name=algorithm.name, key=algorithm.key),
+            timestamp=datetime.datetime.now(),
+        )
+
+    def test_existing_scores_dropped_when_rerun_adds_matching_logits(self):
+        # An older row: scores stored, logits never recorded.
+        existing, created = create_classification(
+            self.detection, self.response.copy(update={"logits": None}), self.algorithms
+        )
+        self.assertTrue(created)
+        self.assertEqual(existing.scores, self.scores)
+        self.assertIsNone(existing.logits)
+
+        rerun, created = create_classification(self.detection, self.response, self.algorithms)
+
+        self.assertFalse(created)
+        rerun.refresh_from_db()
+        self.assertEqual(rerun.pk, existing.pk)
+        self.assertIsNone(rerun.scores)
+        self.assertEqual(rerun.logits, self.logits)
+
+    def test_logits_only_row_ignores_rerun_scores(self):
+        """A row that stores only logits keeps them, and does not take scores from another run."""
+        existing, created = create_classification(self.detection, self.response, self.algorithms)
+        self.assertTrue(created)
+        self.assertIsNone(existing.scores)
+
+        # Same top score, so the re-run matches the row, but the lower classes differ.
+        other_scores = [self.scores[0] + 0.01, self.scores[1], self.scores[2] - 0.01]
+        rerun_response = self.response.copy(update={"scores": other_scores, "logits": None})
+        rerun, created = create_classification(self.detection, rerun_response, self.algorithms)
+
+        self.assertFalse(created)
+        rerun.refresh_from_db()
+        self.assertEqual(rerun.pk, existing.pk)
+        self.assertIsNone(rerun.scores)
+        self.assertEqual(rerun.logits, self.logits)

@@ -34,6 +34,7 @@ import ami.utils
 from ami.base.fields import DateStringField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
+from ami.main.models_future.classifications import probabilities
 
 # These models and enums must be re-exported so that they are referenced as
 # models.* for compatibility with migrations existing before this change.
@@ -2777,12 +2778,21 @@ class Classification(BaseModel):
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )
     logits = ArrayField(
-        models.FloatField(), null=True, help_text="The raw output of the last fully connected layer of the model"
+        models.FloatField(),
+        null=True,
+        help_text=(
+            "The raw output of the last fully connected layer of the model, one value per class. "
+            "This is the per-class output to keep: scores are computed from it."
+        ),
     )
     scores = ArrayField(
         models.FloatField(),
         null=True,
-        help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+        help_text=(
+            "The probability per class, calibrated by the model maker, usually softmax(logits). "
+            "Stored only when it differs from softmax(logits), and to be removed once older "
+            "classifications have logits; read it with scores_or_softmax()."
+        ),
     )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
@@ -2854,15 +2864,20 @@ class Classification(BaseModel):
             f"#{self.pk} to Taxon #{self.taxon_id} ({self.score:.2f}) by Algorithm #{self.algorithm_id} ({terminal})"
         )
 
+    def scores_or_softmax(self) -> list[float]:
+        """
+        Return the stored scores, or softmax(logits) when only the logits are stored.
+
+        Scores equal softmax(logits) for classifiers that record real logits, so the
+        scores array is not stored for them. See ``ami.main.models_future.classifications``.
+        """
+        return probabilities(self.scores, self.logits)
+
     def top_scores_with_index(self, n: int | None = None) -> typing.Iterable[tuple[int, float]]:
         """
         Return the scores with their index, but sorted by score.
         """
-        if self.scores:
-            top_scores_by_index = sorted(enumerate(self.scores), key=lambda x: x[1], reverse=True)[:n]
-            return top_scores_by_index
-        else:
-            return []
+        return sorted(enumerate(self.scores_or_softmax()), key=lambda x: x[1], reverse=True)[:n]
 
     def predictions(self, sort=True) -> typing.Iterable[tuple[str, float]]:
         """
@@ -2870,7 +2885,7 @@ class Classification(BaseModel):
         """
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
-        scores = self.scores or []
+        scores = self.scores_or_softmax()
         preds = zip(self.category_map.labels, scores)
         if sort:
             return sorted(preds, key=lambda x: x[1], reverse=True)
@@ -2886,7 +2901,7 @@ class Classification(BaseModel):
         """
         if not self.category_map:
             raise ValueError("Classification must have a category map to get predictions.")
-        scores = self.scores or []
+        scores = self.scores_or_softmax()
         category_data_with_taxa = self.category_map.with_taxa()
         taxa_sorted_by_index = [cat["taxon"] for cat in sorted(category_data_with_taxa, key=lambda cat: cat["index"])]
         preds = zip(taxa_sorted_by_index, scores)

@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import collections
 import math
+import typing
+
+import numpy as np
 
 # z-score for a 95% two-sided confidence interval (Wilson score).
 WILSON_Z_95 = 1.959963984540054
@@ -69,3 +72,11 @@ def cohens_kappa(pairs: list[tuple[int, int]]) -> float | None:
     if expected_agree >= 1.0:
         return None
     return round((observed_agree - expected_agree) / (1 - expected_agree), 4)
+
+
+def softmax(values: typing.Sequence[float]) -> np.ndarray:
+    """Softmax of a vector, computed in float64 and shifted by the maximum so exp cannot overflow."""
+    shifted = np.asarray(values, dtype=float)
+    shifted = shifted - shifted.max()
+    exps = np.exp(shifted)
+    return exps / exps.sum()
