@@ -98,6 +98,22 @@ class TrainingSetFixture(TestCase):
         return occurrence_set
 
 
+class TestOnlySpeciesAreLearned(TrainingSetFixture):
+    def test_a_placeholder_or_coarse_determination_is_not_a_class(self):
+        """'Not Identifiable' (UNKNOWN) and a genus are left out; a species head cannot learn them."""
+        species = self.make_occurrence(self.taxa[0])
+        placeholder = self.make_occurrence(Taxon.objects.create(name="Not Identifiable", rank=TaxonRank.UNKNOWN.name))
+        genus = self.make_occurrence(Taxon.objects.create(name="Trainus", rank=TaxonRank.GENUS.name))
+
+        rows = set(
+            verified_training_rows(self.project, self.algorithm).values_list("detection__occurrence", flat=True)
+        )
+
+        self.assertIn(species.pk, rows)
+        self.assertNotIn(placeholder.pk, rows)
+        self.assertNotIn(genus.pk, rows)
+
+
 class TestTheSetDecidesWhatIsLearnedFrom(TrainingSetFixture):
     def test_only_the_sets_occurrences_are_used(self):
         inside = [self.make_occurrence(self.taxa[0]), self.make_occurrence(self.taxa[1])]

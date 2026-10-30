@@ -24,7 +24,7 @@ from django.core.files.storage import default_storage
 from django.db.models import QuerySet
 from django.utils.text import slugify
 
-from ami.main.models import Identification, Project
+from ami.main.models import Identification, Project, TaxonRank
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.schemas import NamedReference, TrainedAlgorithmReference, TrainingDatasetMetadata, TrainingDatasetSettings
@@ -72,7 +72,10 @@ def split_for(
 
 def verified_occurrence_ids(project: Project, occurrence_set: "OccurrenceSet | None" = None) -> QuerySet:
     """
-    Occurrences a person has identified and not taken back.
+    Occurrences a person has identified to species and not taken back.
+
+    The head classifies species, so a coarser or placeholder determination ("Not
+    Identifiable" is UNKNOWN, "Not Lepidoptera" is an ORDER) is not a class to learn.
 
     Narrowed to an occurrence set when one is given. A set is fixed once created, so a run
     that names one can be repeated and says for itself what it learned from; without one the
@@ -82,6 +85,7 @@ def verified_occurrence_ids(project: Project, occurrence_set: "OccurrenceSet | N
         withdrawn=False,
         occurrence__project=project,
         occurrence__determination__isnull=False,
+        occurrence__determination__rank=TaxonRank.SPECIES.name,
     )
     if occurrence_set is not None:
         identifications = identifications.filter(occurrence__evaluation_sets=occurrence_set)
