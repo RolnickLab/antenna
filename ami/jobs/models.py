@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 if typing.TYPE_CHECKING:
     from ami.ml.models import Algorithm
     from ami.ml.models.processing_service import ProcessingService
+    from ami.ml.results.schemas import AlgorithmResultData
     from ami.ml.schemas import TrainingResult
 
 
@@ -465,6 +466,9 @@ class JobType:
     # dead. A type that hands work to an external service and waits to be called back is
     # silent on purpose, so silence is not evidence that it died; those override this.
     stalled_after_minutes: int = 10
+
+    # The algorithm result kinds this type writes, which registers them (ami/ml/results/schemas.py).
+    result_models: typing.ClassVar[tuple[type["AlgorithmResultData"], ...]] = ()
 
     @classmethod
     def validated_params(cls, params: dict | None) -> dict:
