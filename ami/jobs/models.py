@@ -21,6 +21,7 @@ from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, OccurrenceSet, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
+from ami.ml.training.config import TrainClassifierJobConfig
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
@@ -1038,7 +1039,7 @@ class TrainClassifierJob(JobType):
 
     name = "Train classifier"
     key = "train_classifier"
-    required_params = ("algorithm_key",)
+    config_schema = TrainClassifierJobConfig
     user_creatable = True
 
     # This job dispatches and then waits for the service to report back, writing nothing to
@@ -1061,10 +1062,7 @@ class TrainClassifierJob(JobType):
         from ami.ml.models.processing_service import ProcessingService
         from ami.ml.training import NotEnoughVerifiedData, build_training_dataset
 
-        params = job.params or {}
-        algorithm_key = params.get("algorithm_key")
-        if not algorithm_key:
-            raise ValueError("A train_classifier job needs an 'algorithm_key' in its params.")
+        algorithm_key = cls.settings_for(job).algorithm_key
 
         # A key is shared by every version of an algorithm, and embeddings are stored per
         # version row, so the newest is chosen rather than whichever row came back first.
@@ -1192,6 +1190,15 @@ class TrainClassifierJob(JobType):
             raise ValueError(f"This job's training settings are out of range: {problems}")
 
     @classmethod
+    def settings_for(cls, job: "Job") -> TrainClassifierJobConfig:
+        """
+        The job's params as its schema reads them.
+
+        Parsed again here, not trusted from creation: a job made outside the API skips the serializer.
+        """
+        return TrainClassifierJobConfig.parse_obj(job.params or {})
+
+    @classmethod
     def target_occurrence_set(cls, job: "Job") -> OccurrenceSet | None:
         """
         The set of occurrences this run learns from, or None for every verified one.
@@ -1204,7 +1211,7 @@ class TrainClassifierJob(JobType):
         The dataset file records which set was used, or that there was none, so a run without
         one is still legible afterwards.
         """
-        occurrence_set_id = (job.params or {}).get("occurrence_set_id")
+        occurrence_set_id = cls.settings_for(job).occurrence_set_id
         if not occurrence_set_id:
             return None
         # Scoped to the project, since params are set by any member who can create a job.
@@ -1223,7 +1230,7 @@ class TrainClassifierJob(JobType):
         """
         from ami.main.models import TaxaList
 
-        taxa_list_id = (job.params or {}).get("taxa_list_id")
+        taxa_list_id = cls.settings_for(job).taxa_list_id
         if taxa_list_id:
             # Scoped for the same reason as the evaluation set above.
             taxa_list = TaxaList.objects.for_project(job.project).filter(pk=taxa_list_id).first()
