@@ -2705,19 +2705,13 @@ class TestProjectListOverviewCounts(APITestCase):
         The per-row permission lookups the list serializer already makes are outside this check.
         Cachalot is off so every query is seen.
         """
-        from cachalot.api import cachalot_disabled
+        from ami.utils.query_cache import no_query_cache
 
         for i in range(5):
             project = Project.objects.create(name=f"Extra {i}", owner=self.owner, create_defaults=False)
             Deployment.objects.create(name=f"Extra station {i}", project=project)
-        disabled = cachalot_disabled()
-        disabled.__enter__()
-        try:
-            with CaptureQueriesContext(connection) as queries:
-                rows = self._rows()
-        finally:
-            # cachalot_disabled() does not restore itself when the block raises.
-            disabled.__exit__(None, None, None)
+        with no_query_cache(), CaptureQueriesContext(connection) as queries:
+            rows = self._rows()
         self.assertGreaterEqual(len(rows), 7)
         tables = ['"main_deployment"', '"main_userprojectmembership"', '"main_sourceimage"', '"jobs_job"']
         rollup_queries = [q["sql"] for q in queries if any(table in q["sql"] for table in tables)]
@@ -7747,7 +7741,7 @@ class TestOccurrenceJobFilter(APITestCase):
         """The filter adds no queries of its own: one statement for the rows and one for the count,
         with no ids read into Python first and no query per occurrence. Cachalot is off so every
         query counts."""
-        from ami.tests.fixtures.queries import no_query_cache
+        from ami.utils.query_cache import no_query_cache
 
         def filtered():
             return Occurrence.objects.filter(project=self.project).created_or_updated_by_job(self.job.pk)

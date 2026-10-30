@@ -207,7 +207,7 @@ which serves the same dedup role for the dense per-taxon counts.
 - **`cachalot` caches query results**, including across repeated benchmark runs — a second
   identical timing is a cache hit, not a real measurement. Flush between paths with
   `docker compose exec -T redis redis-cli FLUSHALL`, or wrap timing in
-  `from cachalot.api import cachalot_disabled` → `with cachalot_disabled(): ...`.
+  `from ami.utils.query_cache import no_query_cache` → `with no_query_cache(): ...`.
 - **`django-pydantic-field` `.values()` returns deserialised pydantic objects**, not
   dicts. `parents_json` elements may be `TaxonParent` objects depending on the query
   path, so read the id defensively:
