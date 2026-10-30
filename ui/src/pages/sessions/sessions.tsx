@@ -50,6 +50,10 @@ export const Sessions = () => {
       <div className="flex flex-col gap-6 md:flex-row">
         <FilterSection defaultOpen>
           <FilterControl field="deployment" />
+          <FilterControl field="deployment__device" />
+          <FilterControl field="deployment__research_site" />
+          <FilterControl field="date_start" />
+          <FilterControl field="date_end" />
         </FilterSection>
         <div className="w-full overflow-hidden">
           <PageHeader

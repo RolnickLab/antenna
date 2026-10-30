@@ -4,7 +4,7 @@ import { FilterProps } from './types'
 
 export const DeviceFilter = ({ onAdd, onClear, value }: FilterProps) => (
   <EntityPicker
-    collection={API_ROUTES.DEVICES}
+    collection={API_ROUTES.DEVICE_CHOICES}
     onValueChange={(value) => {
       if (value) {
         onAdd(value)

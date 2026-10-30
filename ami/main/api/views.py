@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -25,12 +25,12 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
+from ami.base.filters import DateRangeFilter, NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
-from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
+from ami.base.serializers import DateRangeFilterSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.occurrence_history.serializers import OCCURRENCE_HISTORY_ENTRY_SCHEMA, serialize_history
 from ami.main.api.occurrence_history.timeline import occurrence_timeline
@@ -79,6 +79,7 @@ from .serializers import (
     DeploymentSerializer,
     DetectionListSerializer,
     DetectionSerializer,
+    DeviceReferenceSerializer,
     DeviceSerializer,
     EventListSerializer,
     EventSerializer,
@@ -92,6 +93,7 @@ from .serializers import (
     PageSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    SiteReferenceSerializer,
     SiteSerializer,
     SourceImageCollectionNestedSerializer,
     SourceImageCollectionSerializer,
@@ -442,7 +444,8 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    filterset_fields = ["deployment"]
+    filter_backends = DefaultViewSetMixin.filter_backends + [DateRangeFilter.create("start")]
+    filterset_fields = ["deployment", "deployment__device", "deployment__research_site"]
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -473,7 +476,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.filter(deployment__isnull=False)
         qs = qs.annotate(
             duration=models.F("end") - models.F("start"),
-        ).select_related("deployment", "project")
+        ).select_related("deployment", "deployment__device", "deployment__research_site", "project")
 
         if self.action == "list":
             num_example_captures = 1
@@ -615,9 +618,12 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
+    filter_backends = DefaultViewSetMixin.filter_backends + [DateRangeFilter.create("timestamp")]
     filterset_fields = [
         "event",
         "deployment",
+        "deployment__device",
+        "deployment__research_site",
         "deployment__project",
         "collections",
         "project",
@@ -670,6 +676,8 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 "event",
                 "deployment",
                 "deployment__data_source",
+                "deployment__device",
+                "deployment__research_site",
                 "project",  # SourceImageThumbnailSerializer reads project.thumbnails_enabled per row
             )
             # with_thumbnails prefetches the rows SourceImage.thumbnail_urls needs for warm storage URLs.
@@ -931,7 +939,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
 
 
 class ChoicesPagination(LimitOffsetPaginationWithPermissions):
-    """Sends a dropdown's choices in one response. Used by the capture set and job choices.
+    """Sends a dropdown's choices in one response. Used by every ``choices`` action.
 
     Dropdowns cannot page, so the limit is set here rather than by each caller. It is
     capped as well as defaulted, so no caller can ask for a larger one.
@@ -1351,33 +1359,16 @@ class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
         return queryset
 
 
-class DateRangeFilterSerializer(FilterParamsSerializer):
-    date_start = serializers.DateField(required=False)
-    date_end = serializers.DateField(required=False)
-
-    def validate(self, data):
-        """
-        Additionally validate that the start date is before the end date.
-        """
-        start_date = data.get("date_start")
-        end_date = data.get("date_end")
-        if start_date and end_date and start_date > end_date:
-            raise api_exceptions.ValidationError({"date_start": "Start date must be before end date"})
-        return data
-
-
 class OccurrenceDateFilter(filters.BaseFilterBackend):
     """
     Filter occurrences within a date range that their detections were observed.
     """
 
     def filter_queryset(self, request, queryset, view):
-        # Validate and clean the query params. They should be in ISO format.
-        cleaned_data = DateRangeFilterSerializer(data=request.query_params).clean()
-
-        # Access the validated dates
-        start_date = cleaned_data.get("date_start")
-        end_date = cleaned_data.get("date_end")
+        serializer = DateRangeFilterSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        start_date = serializer.validated_data.get("date_start")
+        end_date = serializer.validated_data.get("date_end")
 
         if start_date:
             queryset = queryset.filter(detections__timestamp__date__gte=start_date)
@@ -1967,11 +1958,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             if deployment_id:
                 Deployment.objects.get(id=deployment_id, project=project)
                 filters &= models.Q(**{field("deployment"): deployment_id})
+            # A device or site counts as the project's when one of its stations uses it, as in
+            # the filter choices: older stations use records owned by no project. See #1561.
+            in_project = models.Q(project=project) | models.Q(deployments__project=project)
             if device_id:
-                Device.objects.get(id=device_id, project=project)
+                if not Device.objects.filter(in_project, id=device_id).exists():
+                    raise Device.DoesNotExist("Device matching query does not exist.")
                 filters &= models.Q(**{field("deployment__device"): device_id})
             if site_id:
-                Site.objects.get(id=site_id, project=project)
+                if not Site.objects.filter(in_project, id=site_id).exists():
+                    raise Site.DoesNotExist("Site matching query does not exist.")
                 filters &= models.Q(**{field("deployment__research_site"): site_id})
             if event_id:
                 Event.objects.get(id=event_id, project=project)
@@ -2620,6 +2616,27 @@ class IdentificationViewSet(DefaultViewSet):
             raise PermissionDenied("You do not have permission to identify occurrences in this project.")
 
 
+def station_ref_choices(view, request: Request, model, station_field: str, serializer_class) -> Response:
+    """Choices for the device and site filters: the records the project's stations use.
+
+    Follows the capture set choices pattern (``SourceImageCollectionViewSet.choices``): a slim
+    serializer and one response capped by ``ChoicesPagination``. A station can use a record
+    owned by no project or by another one (legacy data), so this matches on the stations, not
+    the owner. Only names are returned, never the record's other stations. See #1561.
+    """
+    # A missing project_id is a 400 and an unknown project a 404, as in the rest of the API.
+    view.require_project = True
+    project = view.get_active_project()
+    if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+        raise NotFound("Project not found.")
+    stations = Deployment.objects.filter(project=project, **{station_field: OuterRef("pk")})
+    queryset = model.objects.filter(Exists(stations)).only("id", "name").order_by("name", "pk")
+    paginator = ChoicesPagination()
+    page = paginator.paginate_queryset(queryset, request, view=view)
+    serializer = serializer_class(page, many=True, context=view.get_serializer_context())
+    return paginator.get_paginated_response(serializer.data)
+
+
 class SiteViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows sites to be viewed or edited.
@@ -2645,6 +2662,12 @@ class SiteViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=SiteReferenceSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for the site filters on the captures, sessions, occurrences and taxa lists."""
+        return station_ref_choices(self, request, Site, "research_site", SiteReferenceSerializer)
 
 
 class DeviceViewSet(DefaultViewSet, ProjectMixin):
@@ -2672,6 +2695,12 @@ class DeviceViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=DeviceReferenceSerializer(many=True))
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for the device type filters on the captures, sessions, occurrences and taxa lists."""
+        return station_ref_choices(self, request, Device, "device", DeviceReferenceSerializer)
 
 
 class StorageSourceConnectionTestSerializer(serializers.Serializer):
