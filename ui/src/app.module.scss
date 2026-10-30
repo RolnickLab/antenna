@@ -37,6 +37,12 @@
   }
 }
 
+// Room below the content on pages with a date filter, so its calendar can scroll into view
+// even when the page is short (no results). The calendar always opens downward. See #1561.
+.main:not(.fullscreen):has([data-date-filter]) {
+  padding-bottom: 320px;
+}
+
 @media print {
   .wrapper {
     height: auto;

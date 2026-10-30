@@ -4,7 +4,7 @@ import { FilterProps } from './types'
 
 export const SiteFilter = ({ onAdd, onClear, value }: FilterProps) => (
   <EntityPicker
-    collection={API_ROUTES.SITES}
+    collection={API_ROUTES.SITE_CHOICES}
     onValueChange={(value) => {
       if (value) {
         onAdd(value)

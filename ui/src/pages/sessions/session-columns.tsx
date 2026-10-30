@@ -74,6 +74,20 @@ export const columns = ({
     ),
   },
   {
+    id: 'device',
+    name: translate(STRING.FIELD_LABEL_DEVICE),
+    tooltip: translate(STRING.TOOLTIP_DEVICE),
+    renderCell: (item: Session) => <BasicTableCell value={item.deviceLabel} />,
+  },
+  {
+    id: 'research-site',
+    name: translate(STRING.FIELD_LABEL_SITE),
+    tooltip: translate(STRING.TOOLTIP_SITE),
+    renderCell: (item: Session) => (
+      <BasicTableCell value={item.researchSiteLabel} />
+    ),
+  },
+  {
     id: 'date',
     name: translate(STRING.FIELD_LABEL_DATE),
     sortField: 'start',

@@ -17,6 +17,7 @@ canonical but was undocumented.
 | Stats endpoints | `docs/claude/reference/api-stats-pattern.md` | Aggregate/leaderboard/chart endpoints: `GenericViewSet` + `@action` per stat kind, pure querysets in `ami/main/models_future/<entity>.py`, scalar dicts (not paginated lists) |
 | Pydantic schemas | `ami/<app>/schemas.py` (exists in `base`, `utils`, `jobs`, `ml`, `main/api`, `main/checks`) | All structured payloads. Don't pass raw dicts where a schema exists |
 | Queryset construction | Override `get_queryset()` | That's the method overridden everywhere else — don't build querysets inside individual actions |
+| Dropdown / filter choices | `SourceImageCollectionViewSet.choices` (`ami/main/api/views.py:1024`), `JobViewSet.choices` (`ami/jobs/views.py:263`), `station_ref_choices` for devices and sites (`ami/main/api/views.py:2614`); UI routes `*_CHOICES` in `ui/src/data-services/constants.ts` | Any picker or filter options. A `@action(detail=False)` named `choices` that requires `project_id`, returns a slim name serializer, and caps one response with `ChoicesPagination` (`:941`). Don't add a query-param mode to the general list endpoint: it inherits the full serializer and its fields |
 | API responses | DRF serializers | Not hand-built dict responses |
 | Test data | `ami/tests/fixtures/` (main.py, images.py, ml.py), `ami/users/tests/factories.py` | Use fixtures/factories, not manual model instantiation |
 | Query-count assertion | `ami/ml/tests.py:1006` | `assertNumQueries` example — pair with a multi-row fixture |
@@ -34,3 +35,7 @@ canonical but was undocumented.
 See `ui/CLAUDE.md` for frontend conventions, and
 `docs/claude/reference/react-form-to-drf-values.md` for the form-value → DRF serializer
 behavior reference.
+
+Filter and picker options come from a backend `choices` endpoint (see the Backend table): add an
+`API_ROUTES.*_CHOICES` route in `ui/src/data-services/constants.ts` and pass it to `EntityPicker`
+as `collection`, as `components/filtering/filters/capture-set-filter.tsx` and `device-filter.tsx` do.

@@ -149,8 +149,11 @@ DJANGO_ACCOUNT_ALLOW_REGISTRATION=True
 WEB_CONCURRENCY=4
 
 # Default processing service
-DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"
-DEFAULT_PROCESSING_SERVICE_ENDPOINT=https://ml.antenna.insectai.org/
+# Only needed when a single processing service is reached over HTTP at a fixed address.
+# Workers that poll for tasks register themselves and need no endpoint here. If this address
+# does not answer, new projects are still created, but without this service or its pipelines.
+# DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"
+# DEFAULT_PROCESSING_SERVICE_ENDPOINT=https://ml.example.org/
 DEFAULT_PIPELINES_ENABLED=global_moths_2024,quebec_vermont_moths_2023,panama_moths_2023,uk_denmark_moths_2023
 
 # NATS
