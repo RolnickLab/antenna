@@ -45,9 +45,6 @@ class TrainClassifierJobConfig(pydantic.BaseModel):
             raise ValueError("Choose at least one source of training data.")
         if values.get("occurrence_set_id") is not None and not values.get("use_project_occurrences"):
             raise ValueError("An occurrence set narrows this project's occurrences, which are switched off.")
-        if values.get("use_offline_inat"):
-            # Not offered until the processing service can train from it.
-            raise ValueError("Offline iNaturalist data is not available for training yet.")
         return values
 
     @pydantic.root_validator(skip_on_failure=True)

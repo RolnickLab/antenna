@@ -387,11 +387,56 @@ class TestARetrainIsCheckedWhenItIsCreated(TrainingSetFixture):
         self.assertEqual(response.status_code, 400)
         self.assertIn("at least one source", str(response.json()["params"]))
 
-    def test_offline_inat_data_is_not_offered_yet(self):
-        response = self._create(use_offline_inat=True)
+    def test_a_retrain_from_offline_data_alone_is_accepted(self):
+        response = self._create(use_offline_inat=True, use_project_occurrences=False)
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("not available", str(response.json()["params"]))
+        self.assertEqual(response.status_code, 201, response.content)
+
+
+class TestARetrainFromOfflineDataAlone(TrainingSetFixture):
+    """No data leaves Antenna: the service gets the species list and its own iNaturalist vectors."""
+
+    def _run(self, **params):
+        from unittest import mock
+
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain from iNat",
+            job_type_key=TrainClassifierJob.key,
+            params={
+                "algorithm_key": self.algorithm.key,
+                "use_offline_inat": True,
+                "use_project_occurrences": False,
+                **params,
+            },
+        )
+        with mock.patch.object(TrainClassifierJob, "training_service", return_value=mock.Mock(name="svc")), mock.patch(
+            "ami.ml.training.send_training_request"
+        ) as sent:
+            TrainClassifierJob.run(job)
+        job.refresh_from_db()
+        return job, sent
+
+    def test_the_species_list_is_sent_instead_of_a_dataset(self):
+        from ami.main.models import TaxaList
+
+        taxa_list = TaxaList.objects.create(name="NF demo")
+        taxa_list.taxa.set(self.taxa)
+        taxa_list.projects.add(self.project)
+
+        job, sent = self._run(taxa_list_id=taxa_list.pk)
+
+        self.assertEqual(sent.call_args.kwargs["dataset"], None)
+        self.assertEqual(sent.call_args.kwargs["classes"], sorted(t.name for t in self.taxa))
+
+    def test_without_a_species_list_the_run_fails_and_says_why(self):
+        job, sent = self._run()
+
+        self.assertEqual(job.status, "FAILURE")
+        self.assertIn("needs a species list", job.result["error"])
+        sent.assert_not_called()
 
 
 class TestTheTrainingStageFollowsTheEpochs(TrainingSetFixture):
@@ -580,6 +625,7 @@ class TestTheResultComingBackFromAService(TrainingSetFixture):
         version = Algorithm.objects.get(key="bioclip-2-5-retrained-x")
         self.assertEqual(version.version, 1)
         self.assertIn("retrained v2", version.name)
+        self.assertEqual(version.embedding_dimensions, self.algorithm.embedding_dimensions)
         # Queued for after the answer, not called inside the callback the service is waiting on.
         queued.assert_called_once_with((self.job.pk, self.algorithm.pk), countdown=5)
 
