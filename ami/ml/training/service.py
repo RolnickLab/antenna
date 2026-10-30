@@ -113,7 +113,13 @@ def absolute_media_url(url: str, base_url: str | None = None) -> str:
     return urljoin(base.rstrip("/") + "/", url.lstrip("/"))
 
 
-def send_training_request(job: "Job", service: "ProcessingService", algorithm: "Algorithm", dataset: dict) -> None:
+def send_training_request(
+    job: "Job",
+    service: "ProcessingService",
+    algorithm: "Algorithm",
+    dataset: dict | None,
+    classes: list[str] | None = None,
+) -> None:
     """
     Ask a processing service to retrain a head.
 
@@ -127,8 +133,15 @@ def send_training_request(job: "Job", service: "ProcessingService", algorithm: "
     # the settings the training set was actually made under. Reading job.params again here
     # would let the two drift, and would send values nothing had checked.
     config = AlgorithmTrainingConfig.for_run(algorithm.training_config, job.params or {})
+    from ami.ml.training.config import TrainClassifierJobConfig
+
+    settings_ = TrainClassifierJobConfig.parse_obj(job.params or {})
     request = TrainingRequest(
-        dataset_url=absolute_media_url(dataset["url"]),
+        # None when the run learns from the service's offline data alone; classes then
+        # names the species.
+        dataset_url=absolute_media_url(dataset["url"]) if dataset else None,
+        use_offline_inat=settings_.use_offline_inat,
+        classes=classes,
         algorithm_key=algorithm.key,
         job_id=job.pk,
         name=f"{algorithm.key}-job-{job.pk}",
