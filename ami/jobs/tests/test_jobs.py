@@ -1804,7 +1804,7 @@ class TestJobChoices(APITestCase):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
-        from ami.tests.fixtures.queries import no_query_cache
+        from ami.utils.query_cache import no_query_cache
 
         self.client.force_authenticate(self.user)  # The owner is a member of their project.
 

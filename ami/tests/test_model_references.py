@@ -12,7 +12,7 @@ from ami.base.model_references import (
 )
 from ami.main.models import Event, TaxaList
 from ami.ml.models import Algorithm
-from ami.tests.fixtures.queries import no_query_cache
+from ami.utils.query_cache import no_query_cache
 
 
 class ReferenceTestCase(TestCase):
