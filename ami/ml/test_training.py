@@ -569,18 +569,24 @@ class TestTheResultComingBackFromAService(TrainingSetFixture):
 
         from ami.jobs.models import TrainClassifierJob
         from ami.ml.models import Algorithm
+        from ami.ml.tasks import register_retrained_head_pipeline
 
-        service = mock.Mock()
-        with mock.patch.object(TrainClassifierJob, "training_service", return_value=service):
-            response = self._post(
-                {"result": self._result(pipeline_slug="bioclip-2-5-retrained-x"), "dataset": self._dataset_echo()}
-            )
+        with mock.patch.object(register_retrained_head_pipeline, "apply_async") as queued:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self._post(
+                    {"result": self._result(pipeline_slug="bioclip-2-5-retrained-x"), "dataset": self._dataset_echo()}
+                )
 
         self.assertEqual(response.status_code, 200, response.data)
         version = Algorithm.objects.get(key="bioclip-2-5-retrained-x")
         self.assertEqual(version.version, 1)
         self.assertIn("retrained v2", version.name)
-        service.create_pipelines.assert_called_once()
+        # Queued for after the answer, not called inside the callback the service is waiting on.
+        queued.assert_called_once_with((self.job.pk, self.algorithm.pk), countdown=5)
+
+        service = mock.Mock()
+        with mock.patch.object(TrainClassifierJob, "training_service", return_value=service):
+            register_retrained_head_pipeline.run(self.job.pk, self.algorithm.pk)
         self.assertEqual(list(service.create_pipelines.call_args.kwargs["projects"]), [self.project])
 
     def test_an_echo_antenna_cannot_read_still_records_the_result(self):
