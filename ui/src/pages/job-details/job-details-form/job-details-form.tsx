@@ -25,7 +25,12 @@ import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { TrainClassifierFields } from './train-classifier-fields'
-import { JOB_TYPE_ML, JOB_TYPE_TRAIN_CLASSIFIER, JobFormValues } from './types'
+import {
+  JOB_TYPE_ML,
+  JOB_TYPE_TRAIN_CLASSIFIER,
+  JobFormValues,
+  TRAINING_DATA_PROJECT,
+} from './types'
 
 const config: FormConfig = {
   algorithmKey: {
@@ -47,6 +52,14 @@ const config: FormConfig = {
     rules: {
       min: 1,
     },
+  },
+  dataSource: {
+    label: translate(STRING.FIELD_LABEL_TRAINING_DATA),
+    description: translate(STRING.MESSAGE_TRAINING_DATA_SOURCE),
+  },
+  taxaList: {
+    label: translate(STRING.FIELD_LABEL_SPECIES_LIST),
+    description: translate(STRING.MESSAGE_TRAINING_SPECIES_LIST),
   },
   occurrenceSet: {
     label: translate(STRING.FIELD_LABEL_OCCURRENCE_SET),
@@ -118,6 +131,7 @@ export const JobDetailsForm = ({
       // Empty rather than unset: a retrain leaves these to the algorithm's own settings.
       testFraction: '',
       minPerSpecies: '',
+      dataSource: TRAINING_DATA_PROJECT,
     },
     mode: 'onChange',
     // Each job type shows its own fields, and the ones hidden must not hold back a
