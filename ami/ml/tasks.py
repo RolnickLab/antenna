@@ -141,3 +141,22 @@ def check_processing_services_online():
         except Exception:
             logger.exception("Error checking service %s", service)
             continue
+
+
+@celery_app.task(bind=True, soft_time_limit=120, time_limit=150, max_retries=4)
+def register_retrained_head_pipeline(self, job_id: int, parent_algorithm_id: int):
+    """Offer a retrained head as a pipeline once the service that trained it can describe it again."""
+    from ami.jobs.models import Job, TrainClassifierJob
+    from ami.ml.models import Algorithm
+
+    job = Job.objects.get(pk=job_id)
+    parent = Algorithm.objects.get(pk=parent_algorithm_id)
+    try:
+        TrainClassifierJob.offer_new_head(job, parent)
+    except Exception as e:
+        if self.request.retries >= self.max_retries:
+            job.logger.warning(
+                f"Could not register the new head's pipeline: {e}. Register the service's pipelines again to offer it."
+            )
+            return
+        raise self.retry(exc=e, countdown=15)
