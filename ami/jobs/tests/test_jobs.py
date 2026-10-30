@@ -1,7 +1,9 @@
 # from rich import print
 import logging
 from typing import Any
+from unittest import mock
 
+import pydantic
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
 from rest_framework import status
@@ -275,6 +277,30 @@ class TestJobView(APITestCase):
         resp = self.client.post(jobs_create_url, job_data)
         # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
         self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_create_job_validates_params_against_the_type_config_schema(self):
+        class ProbeConfig(pydantic.BaseModel):
+            size: int = pydantic.Field(..., ge=1)
+            label: str = "default"
+
+        jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        job_data = {
+            "project_id": self.project.pk,
+            "source_image_collection_id": self.source_image_collection.pk,
+            "name": "Schema-checked job",
+            "delay": 0,
+            "job_type_key": SourceImageCollectionPopulateJob.key,
+        }
+        self.client.force_authenticate(user=self.user)
+        with mock.patch.object(SourceImageCollectionPopulateJob, "config_schema", ProbeConfig):
+            refused = self.client.post(jobs_create_url, {**job_data, "params": {"size": 0}}, format="json")
+            accepted = self.client.post(jobs_create_url, {**job_data, "params": {"size": 3}}, format="json")
+
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn("size", refused.json()["params"])
+        self.assertEqual(accepted.status_code, 201)
+        # Stored as validated, defaults included, so the job records what it ran with.
+        self.assertEqual(Job.objects.get(pk=accepted.json()["id"]).params, {"size": 3, "label": "default"})
 
     def _create_job(self, name: str, start_now: bool = True):
         jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})

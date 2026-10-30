@@ -1,3 +1,4 @@
+import pydantic
 from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -181,12 +182,15 @@ class JobListSerializer(DefaultSerializer):
         # side effect are also posted directly by existing clients. It says which types a
         # job form should offer as a choice, which is the UI's question, not the API's.
 
-        params = attrs.get("params") or {}
-        missing_params = [name for name in job_type.required_params if not params.get(name)]
-        if missing_params:
-            raise serializers.ValidationError(
-                {"params": f"A {job_type.name} job needs {', '.join(missing_params)} in its params."}
-            )
+        try:
+            attrs["params"] = job_type.validated_params(attrs.get("params"))
+        except pydantic.ValidationError as e:
+            # Keyed by the param at fault, so a form can show each error next to its field.
+            errors: dict[str, list[str]] = {}
+            for err in e.errors():
+                key = ".".join(str(part) for part in err["loc"] if part != "__root__") or "non_field_errors"
+                errors.setdefault(key, []).append(err["msg"])
+            raise serializers.ValidationError({"params": errors})
         return attrs
 
     @extend_schema_field(

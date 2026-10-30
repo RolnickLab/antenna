@@ -445,10 +445,11 @@ class JobType:
     name: str
     key: str
 
-    # Keys a job of this type cannot run without, inside ``Job.params``. The API refuses
-    # to create one that is missing any of these, so a gap is a 400 when the job is made
-    # rather than a failure minutes later when it runs.
-    required_params: tuple[str, ...] = ()
+    # The shape of ``Job.params`` for this type, or None for a type that does not check them.
+    # The API validates params against it when a job is created and stores the validated
+    # values, defaults included, so a bad setting is a 400 when the job is made rather than a
+    # failure minutes later when it runs, and the job records exactly what it ran with.
+    config_schema: typing.ClassVar[type[pydantic.BaseModel] | None] = None
 
     # Whether a person can start one from the UI. The rest are created by the platform:
     # a data sync, an export, a regroup. Nothing should offer those as a choice.
@@ -458,6 +459,17 @@ class JobType:
     # dead. A type that hands work to an external service and waits to be called back is
     # silent on purpose, so silence is not evidence that it died; those override this.
     stalled_after_minutes: int = 10
+
+    @classmethod
+    def validated_params(cls, params: dict | None) -> dict:
+        """
+        ``params`` checked against ``config_schema`` and returned as stored JSON, defaults filled in.
+
+        Raises ``pydantic.ValidationError``. A type with no schema gets its params back unchanged.
+        """
+        if cls.config_schema is None:
+            return params or {}
+        return json.loads(cls.config_schema.parse_obj(params or {}).json())
 
     # @TODO Consider adding custom vocabulary for job types to be used in the UI
     # verb: str = "Sync"
