@@ -25,3 +25,5 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 TEMPLATES[0]["OPTIONS"]["debug"] = True  # type: ignore # noqa: F405
 # Your stuff...
 # ------------------------------------------------------------------------------
+# Fail fast on unreachable processing services instead of sleeping between retries.
+HTTP_RETRY_BACKOFF_FACTOR = 0
