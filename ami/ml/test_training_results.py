@@ -109,7 +109,7 @@ class TestTheSplitsAreSavedAsSets(TrainingResultsFixture):
             occurrence_set = OccurrenceSet.objects.get(pk=sets[split]["id"])
             expected = {o.pk for o in self.trained if split_for(o.pk, test_fraction=0.5) == split}
             self.assertEqual(set(occurrence_set.occurrences.values_list("pk", flat=True)), expected)
-            self.assertEqual(list(occurrence_set.projects.all()), [self.project])
+            self.assertEqual(occurrence_set.project, self.project)
 
     def test_a_held_out_set_can_be_trained_against_again(self):
         """The test set is a normal set: a later run in the project can name it."""

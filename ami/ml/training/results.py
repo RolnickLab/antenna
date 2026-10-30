@@ -69,30 +69,30 @@ def save_split_sets(job: Job, occurrences: dict[int, OccurrenceInTraining]) -> d
     """
     Store the train and test occurrences of this run as two occurrence sets named after the job.
 
-    A re-run of the same job refills its own sets rather than adding two more. Kept apart from
-    the rest so the switch to the newer set model (#1543) touches only this function.
+    A re-run of the same job refills its own sets rather than adding two more.
     """
-    from ami.main.models import OccurrenceSet
+    from ami.main.models import OccurrenceSet, OccurrenceSetMember
     from ami.ml.training.dataset import SPLITS
 
     sets: dict[str, OccurrenceSet] = {}
     with transaction.atomic():
         for split in SPLITS:
             name = f"Job #{job.pk} {split} set"
-            occurrence_set = OccurrenceSet.objects.filter(name=name, projects=job.project).first()
+            occurrence_set = OccurrenceSet.objects.filter(name=name, project=job.project).first()
             if occurrence_set is None:
                 occurrence_set = OccurrenceSet.objects.create(
                     name=name,
-                    description=f"The {split} split of training job #{job.pk} ({job.name}). Fixed once written.",
+                    project=job.project,
+                    description=f"The {split} split of training job #{job.pk} ({job.name}).",
                 )
-                occurrence_set.projects.add(job.project)
             sets[split] = occurrence_set
 
-        through = OccurrenceSet.occurrences.through
-        through.objects.filter(occurrenceset_id__in=[s.pk for s in sets.values()]).delete()
-        through.objects.bulk_create(
+        # Replace the members rather than add to them (add_members() merges). The ids are
+        # this project's verified occurrences, so add_members()'s project check is not needed.
+        OccurrenceSetMember.objects.filter(occurrence_set_id__in=[s.pk for s in sets.values()]).delete()
+        OccurrenceSetMember.objects.bulk_create(
             (
-                through(occurrenceset_id=sets[entry.split].pk, occurrence_id=occurrence_id)
+                OccurrenceSetMember(occurrence_set_id=sets[entry.split].pk, occurrence_id=occurrence_id)
                 for occurrence_id, entry in occurrences.items()
                 if entry.split in sets
             ),
