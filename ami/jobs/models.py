@@ -1223,8 +1223,9 @@ class TrainClassifierJob(JobType):
         """
         The set of occurrences this run learns from, or None for every verified one.
 
-        Naming a set is worth doing: a set is fixed once created, so the run can be repeated
-        and says for itself what it learned from. It is not required, because the common case
+        Naming a set says what the run was meant to learn from. Sets can still change until
+        #1548's freeze, so the dataset's saved occurrence ids are the exact record. It is not
+        required, because the common case
         is retraining on everything verified so far, and making someone save a set first to
         do that is a step with no decision in it.
 

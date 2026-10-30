@@ -316,8 +316,7 @@ class TestTheJobsOccurrenceSet(TrainingSetFixture):
         from ami.jobs.models import TrainClassifierJob
 
         other = Project.objects.create(name="Someone else", owner=self.user)
-        theirs = OccurrenceSet.objects.create(name="Theirs")
-        theirs.projects.add(other)
+        theirs = OccurrenceSet.objects.create(name="Theirs", project=other)
 
         with self.assertRaises(ValueError) as caught:
             TrainClassifierJob.target_occurrence_set(self._job(occurrence_set_id=theirs.pk))
