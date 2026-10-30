@@ -487,7 +487,10 @@ class TrainingRequest(pydantic.BaseModel):
     down in one place, the way the pipeline request and response already are.
     """
 
-    dataset_url: str = pydantic.Field(description="Where the service downloads the training set from.")
+    dataset_url: str | None = pydantic.Field(
+        default=None,
+        description="Where the service downloads the training set from. None when it trains from offline data alone.",
+    )
     algorithm_key: str = pydantic.Field(description="The head to retrain. Its current weights are the baseline.")
     job_id: int
     name: str
@@ -507,6 +510,12 @@ class TrainingRequest(pydantic.BaseModel):
     callback_token: str
     head_upload_url: str | None = None
     progress_url: str | None = None
+    use_offline_inat: bool = pydantic.Field(
+        default=False, description="Also learn from the service's offline iNaturalist vectors for these species."
+    )
+    classes: list[str] | None = pydantic.Field(
+        default=None, description="The species the head covers, when there is no dataset to read them from."
+    )
 
 
 class TrainingResult(pydantic.BaseModel):

@@ -1094,6 +1094,9 @@ class TrainClassifierJob(JobType):
         job.save()
 
         taxa_list = cls.target_taxa_list(job)
+        if not cls.settings_for(job).use_project_occurrences:
+            cls.run_from_offline_data_only(job, algorithm, taxa_list)
+            return
         try:
             dataset = build_training_dataset(
                 project=job.project,
@@ -1257,14 +1260,51 @@ class TrainClassifierJob(JobType):
         taxa_list_id = cls.settings_for(job).taxa_list_id
         if taxa_list_id:
             # Scoped for the same reason as the evaluation set above.
-            taxa_list = TaxaList.objects.for_project(job.project).filter(pk=taxa_list_id).first()
+            taxa_list = TaxaList.objects.filter(projects=job.project, pk=taxa_list_id).first()
             if not taxa_list:
                 raise ValueError(f"No taxa list with id {taxa_list_id} in this project.")
             return taxa_list
         return job.project.default_taxa_list
 
     @classmethod
-    def dispatch(cls, job: "Job", service, algorithm, dataset: dict) -> None:
+    def run_from_offline_data_only(cls, job: "Job", algorithm, taxa_list) -> None:
+        """
+        Retrain from the service's offline iNaturalist vectors alone: no data leaves Antenna.
+
+        The species list is the only input, so a run without one is refused.
+        """
+        from ami.main.models import TaxonRank
+
+        if taxa_list is None:
+            message = (
+                "Training from offline data alone needs a species list: "
+                "choose a taxa list or set the project's default."
+            )
+            job.logger.error(message)
+            job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.FAILURE, progress=0)
+            job.finished_at = datetime.datetime.now()
+            job.result = {"error": message}
+            job.update_status(JobState.FAILURE, save=True)
+            return
+        classes = sorted(taxa_list.taxa.filter(rank=TaxonRank.SPECIES.name).values_list("name", flat=True))
+        job.logger.info(
+            f"No project data: training on offline iNaturalist vectors for {len(classes)} species "
+            f"in taxa list '{taxa_list.name}'."
+        )
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Species", len(classes))
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Source", "Offline iNaturalist vectors")
+        job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.SUCCESS, progress=1)
+        job.save()
+
+        service = cls.training_service(job, algorithm)
+        if not service:
+            raise ValueError(f"No push-mode processing service in this project serves '{algorithm.key}'.")
+        job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.STARTED, progress=0)
+        job.save()
+        cls.dispatch(job=job, service=service, algorithm=algorithm, dataset=None, classes=classes)
+
+    @classmethod
+    def dispatch(cls, job: "Job", service, algorithm, dataset: dict | None, classes: list[str] | None = None) -> None:
         """Hand the service the dataset URL and leave the job running until it reports back."""
         from ami.ml.training import send_training_request
 
@@ -1274,7 +1314,7 @@ class TrainClassifierJob(JobType):
         job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_EPOCH, 0)
         job.progress.add_stage_param(cls.STAGE_TRAIN, cls.PARAM_TOTAL_EPOCHS, config.epochs)
 
-        send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
+        send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset, classes=classes)
 
         # A fast run reports its result before the request it came from returns, so the
         # job can already be finished here. Writing this copy's progress would put the
@@ -1474,6 +1514,9 @@ class TrainClassifierJob(JobType):
             task_type=parent.task_type,
             description=parent.description,
             trainable=parent.trainable,
+            # Same frozen backbone, so the same vectors: without this the vectors the new
+            # head's pipeline sends are refused.
+            embedding_dimensions=parent.embedding_dimensions,
             training_config=parent.training_config,
             category_map=category_map,
             training_info=AlgorithmTrainingInfo(
