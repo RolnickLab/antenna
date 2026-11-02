@@ -13,5 +13,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(normalize_empty_endpoint_url, migrations.RunPython.noop),
+        migrations.RunPython(normalize_empty_endpoint_url, migrations.RunPython.noop, elidable=True),
     ]

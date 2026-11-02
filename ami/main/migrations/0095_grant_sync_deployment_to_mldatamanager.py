@@ -109,6 +109,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(
             grant_sync_to_mldatamanager,
-            revoke_sync_from_mldatamanager,
+            revoke_sync_from_mldatamanager, elidable=True,
         ),
     ]

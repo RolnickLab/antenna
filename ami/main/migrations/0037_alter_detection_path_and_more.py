@@ -21,5 +21,5 @@ class Migration(migrations.Migration):
             name="path",
             field=models.CharField(blank=True, max_length=255, null=True),
         ),
-        migrations.RunPython(convert_blank_path_to_null, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(convert_blank_path_to_null, reverse_code=migrations.RunPython.noop, elidable=True),
     ]

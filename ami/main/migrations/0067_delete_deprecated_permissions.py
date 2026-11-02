@@ -30,5 +30,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(delete_deprecated_permissions, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(delete_deprecated_permissions, reverse_code=migrations.RunPython.noop, elidable=True),
     ]

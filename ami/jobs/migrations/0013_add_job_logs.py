@@ -48,6 +48,6 @@ class Migration(migrations.Migration):
         ),
         migrations.RunPython(
             migrate_logs_forward,
-            migrate_logs_backward,
+            migrate_logs_backward, elidable=True,
         ),
     ]
