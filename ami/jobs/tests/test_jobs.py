@@ -1,6 +1,7 @@
 # from rich import print
 import logging
 from typing import Any
+from unittest.mock import patch
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
@@ -1608,6 +1609,40 @@ class TestRegroupEventsJob(TestCase):
         with patch("ami.main.models.group_images_into_events", side_effect=RuntimeError("boom")):
             with self.assertRaises(RuntimeError):
                 job.run()
+
+
+class TestJobEnqueue(TestCase):
+    def test_enqueue_marks_the_job_pending_without_asking_the_result_backend(self):
+        """Creating a job must not depend on the result backend, whose idle connection
+        can be reset and turn the request into a 500."""
+        project = Project.objects.create(name="Enqueue Project")
+        job = Job.objects.create(name="Enqueue test", project=project, job_type_key=RegroupEventsJob.key)
+
+        with patch("ami.jobs.models.AsyncResult") as async_result:
+            job.enqueue()
+
+        async_result.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.PENDING.value)
+        self.assertIsNotNone(job.task_id)
+
+    def test_enqueue_saves_pending_before_the_task_is_sent(self):
+        """The task must be sent only after PENDING is saved, or a fast worker's STARTED
+        state could be overwritten by the enqueue save."""
+        project = Project.objects.create(name="Enqueue Project")
+        job = Job.objects.create(name="Enqueue test", project=project, job_type_key=RegroupEventsJob.key)
+        status_at_dispatch = []
+
+        def record_status(*args, **kwargs):
+            status_at_dispatch.append(Job.objects.get(pk=job.pk).status)
+
+        # Outside a transaction on_commit runs the callback at once; simulate that here.
+        with patch("ami.jobs.models.run_job.apply_async", side_effect=record_status), patch(
+            "ami.jobs.models.transaction.on_commit", side_effect=lambda fn: fn()
+        ):
+            job.enqueue()
+
+        self.assertEqual(status_at_dispatch, [JobState.PENDING.value])
 
 
 class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
