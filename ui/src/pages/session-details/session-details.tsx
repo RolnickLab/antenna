@@ -18,6 +18,7 @@ import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
 import { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
@@ -45,10 +46,16 @@ export const SessionDetailsPage = () => {
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId } = useActiveCaptureId()
-  const { session, isLoading, error } = useSessionDetails(id as string, {
+  // A route id that isn't a positive integer can't be a session pk (see
+  // isDetailRouteId), so skip the fetch and go straight to not-found.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { session, isLoading, error } = useSessionDetails(validId, {
     capture: activeCaptureId,
     occurrence: activeOccurrences[0],
   })
+  const notFoundError = validId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   useEffect(() => {
     setDetailBreadcrumb(session ? { title: session.label } : undefined)
@@ -67,7 +74,7 @@ export const SessionDetailsPage = () => {
   }
 
   if (!session || error) {
-    return <ErrorState error={error} />
+    return <ErrorState error={error ?? notFoundError} />
   }
 
   return (
