@@ -11,6 +11,7 @@ from .pipelines import (
     ZeroShotHFClassifierPipeline,
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
+    ZeroShotObjectDetectorWithGlobalMothClassifierPipeline,
     ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
 )
 from .schemas import (
@@ -41,6 +42,7 @@ pipelines: list[type[Pipeline]] = [
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
     ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
+    ZeroShotObjectDetectorWithGlobalMothClassifierPipeline,
 ]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
@@ -62,7 +64,7 @@ async def info() -> ProcessingServiceInfoResponse:
     info = ProcessingServiceInfoResponse(
         name="Custom ML Backend",
         description=("A template for running custom models locally."),
-        pipelines=[pipeline.config for pipeline in pipelines],
+        pipelines=[pipeline.get_config() for pipeline in pipelines],
         # algorithms=list(algorithm_choices.values()),
     )
     return info

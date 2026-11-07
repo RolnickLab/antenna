@@ -3,8 +3,6 @@ import logging
 import math
 import random
 
-import torch
-
 from .schemas import (
     AlgorithmCategoryMapResponse,
     AlgorithmConfigResponse,
@@ -14,23 +12,12 @@ from .schemas import (
     Detection,
     SourceImage,
 )
+from .utils import get_best_device
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 SAVED_MODELS = {}
-
-
-def get_best_device() -> str:
-    """
-    Returns the best available device for running the model.
-
-    MPS is not supported by the current algoritms.
-    """
-    if torch.cuda.is_available():
-        return f"cuda:{torch.cuda.current_device()}"
-    else:
-        return "cpu"
 
 
 class Algorithm:

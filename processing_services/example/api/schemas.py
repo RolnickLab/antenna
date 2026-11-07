@@ -89,11 +89,17 @@ class ClassificationResponse(pydantic.BaseModel):
     )
     scores: list[float] = pydantic.Field(
         default_factory=list,
-        description="The calibrated probabilities for each class label, most commonly the softmax output.",
+        description=(
+            "The calibrated probabilities for each class label, most commonly the softmax output. "
+            "May be left empty when the model returns logits, from which probabilities can be derived."
+        ),
     )
     logits: list[float] = pydantic.Field(
         default_factory=list,
-        description="The raw logits output by the model, before any calibration or normalization.",
+        description=(
+            "The raw logits output by the model, before any calibration or normalization, "
+            "one per class in the order of the algorithm's category map."
+        ),
     )
     inference_time: float | None = None
     algorithm: AlgorithmReference
@@ -127,7 +133,7 @@ class DetectionRequest(pydantic.BaseModel):
 class DetectionResponse(pydantic.BaseModel):
     # these fields are populated with values from a Detection, excluding source_image details
     source_image_id: str
-    bbox: BoundingBox
+    bbox: BoundingBox | None = None
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
@@ -213,6 +219,7 @@ PipelineChoice = typing.Literal[
     "zero-shot-object-detector-pipeline",
     "zero-shot-object-detector-with-constant-classifier-pipeline",
     "zero-shot-object-detector-with-random-species-classifier-pipeline",
+    "zero-shot-object-detector-with-global-moth-classifier-pipeline",
 ]
 
 

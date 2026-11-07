@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import PIL.Image
 import PIL.ImageFile
 import requests
+import torch
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -38,11 +39,26 @@ def is_base64(s: str) -> bool:
         return False
 
 
+# (connect, read) timeouts in seconds. The read timeout applies between received chunks, not to the whole download,
+# so large model weights are fine as long as data keeps arriving.
+DOWNLOAD_TIMEOUT = (10, 60)
+
+# Log download progress roughly this often (in bytes) instead of once per chunk.
+DOWNLOAD_LOG_INTERVAL_BYTES = 10 * 1024 * 1024
+
+
+def get_cache_root() -> pathlib.Path:
+    """Directory holding downloaded model files and other cached downloads."""
+    return pathlib.Path("/app/cache") if pathlib.Path("/app").exists() else pathlib.Path.home() / ".antenna_cache"
+
+
 def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
     """
-    Fetch a file from a URL or local path. If the path is a URL, download the file.
-    If the URL has already been downloaded, return the existing local path.
-    If the path is a local path, return the path.
+    Fetch a file from a URL or local path.
+
+    A local path is returned as-is (and must exist). A URL is downloaded into the cache directory under
+    `tempdir_prefix`, or reused if a file with the same name was already downloaded. The download is streamed to a
+    temporary file and renamed into place, so an interrupted download never leaves a truncated file in the cache.
 
     >>> filepath = get_or_download_file("https://example.uk/images/31-20230919033000-snapshot.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=451d406b7eb1113e1bb05c083ce51481%2F20240429%2F") # noqa: E501
     >>> filepath.name
@@ -52,33 +68,62 @@ def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
     '31-20230919033000-snapshot.jpg'
     """
     if not path_or_url:
-        raise Exception("Specify a URL or path to fetch file from.")
+        raise ValueError("Specify a URL or path to fetch file from.")
 
-    # If path is a local path instead of a URL then urlretrieve will just return that path
+    path_or_url = str(path_or_url)
+    if not is_url(path_or_url):
+        local_path = pathlib.Path(path_or_url)
+        if not local_path.exists():
+            raise FileNotFoundError(f"Local file does not exist: {local_path}")
+        logger.info(f"Using local file: {local_path}")
+        return local_path
 
-    destination_dir = pathlib.Path(tempfile.mkdtemp(prefix=tempdir_prefix))
-    fname = pathlib.Path(urlparse(path_or_url).path).name
-    if not destination_dir.exists():
-        destination_dir.mkdir(parents=True, exist_ok=True)
-    local_filepath = pathlib.Path(destination_dir) / fname
+    destination_dir = get_cache_root() / tempdir_prefix
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    local_filepath = destination_dir / pathlib.Path(urlparse(path_or_url).path).name
 
-    if local_filepath and local_filepath.exists():
-        logger.info(f"Using existing {local_filepath}")
+    if local_filepath.exists():
+        logger.info(f"Using cached file: {local_filepath}")
         return local_filepath
 
+    logger.info(f"Downloading {path_or_url} to {local_filepath}")
+    response = requests.get(path_or_url, stream=True, headers={"User-Agent": USER_AGENT}, timeout=DOWNLOAD_TIMEOUT)
+    response.raise_for_status()
+    total_size = int(response.headers.get("content-length", 0))
+
+    with tempfile.NamedTemporaryFile(dir=destination_dir, prefix=".download-", delete=False) as partial_file:
+        partial_path = pathlib.Path(partial_file.name)
+        try:
+            downloaded = 0
+            next_log_at = DOWNLOAD_LOG_INTERVAL_BYTES
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                partial_file.write(chunk)
+                downloaded += len(chunk)
+                if downloaded >= next_log_at:
+                    percent = f" ({downloaded / total_size:.0%})" if total_size else ""
+                    logger.info(f"   Downloaded {downloaded // (1024 * 1024)} MB{percent}")
+                    next_log_at += DOWNLOAD_LOG_INTERVAL_BYTES
+            if total_size and downloaded != total_size:
+                raise OSError(f"Incomplete download of {path_or_url}: got {downloaded} of {total_size} bytes")
+        except BaseException:
+            partial_path.unlink(missing_ok=True)
+            raise
+
+    partial_path.chmod(0o644)  # NamedTemporaryFile creates owner-only files, which breaks shared cache mounts.
+    partial_path.replace(local_filepath)
+    logger.info(f"Download completed: {local_filepath.resolve()}")
+    return local_filepath.resolve()
+
+
+def get_best_device() -> str:
+    """
+    Returns the best available device for running the model.
+    MPS is not supported by the current algorithms.
+    """
+    if torch.cuda.is_available():
+        return f"cuda:{torch.cuda.current_device()}"
     else:
-        logger.info(f"Downloading {path_or_url} to {local_filepath}")
-        headers = {"User-Agent": USER_AGENT}
-        response = requests.get(path_or_url, stream=True, headers=headers)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-
-        with open(local_filepath, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        resulting_filepath = pathlib.Path(local_filepath).resolve()
-        logger.info(f"Downloaded to {resulting_filepath}")
-        return resulting_filepath
+        return "cpu"
 
 
 def open_image(fp: str | bytes | pathlib.Path | io.BytesIO, raise_exception: bool = True) -> PIL.Image.Image | None:
