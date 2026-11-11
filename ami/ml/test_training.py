@@ -293,6 +293,16 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_the_training_data_list_reports_collection_permissions(self):
+        """Like every other list endpoint, the response carries the caller's collection permissions."""
+        self.make_occurrence(self.taxa[0])
+
+        url = reverse("api:training-data-list")
+        response = self.client.get(url, {"project_id": self.project.pk, "algorithm": self.algorithm.key})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn("user_permissions", response.data)
+
 
 class TestTheJobsOccurrenceSet(TrainingSetFixture):
     def _job(self, **params):
