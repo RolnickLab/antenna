@@ -54,7 +54,7 @@
       ```
       _**Note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
       for the `ui-dev` service, and is written by a `root` user.
-      It will need to be removed, or you will need to modify its access permissions with the `chown` command if you later want to work on the frontend using the [instructions here](#frontend)._
+      It will need to be removed, or you will need to modify its access permissions with the `chown` command if you later want to work on the frontend using the instructions in `ui/README.md`.
 
 
 4) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
