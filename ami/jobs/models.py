@@ -1204,8 +1204,9 @@ class TrainClassifierJob(JobType):
         try:
             return AlgorithmTrainingConfig.for_run(algorithm.training_config, job.params or {})
         except pydantic.ValidationError as e:
-            problems = "; ".join(f"{'.'.join(str(part) for part in err['loc'])} {err['msg']}" for err in e.errors())
-            raise ValueError(f"This job's training settings are out of range: {problems}")
+            raise ValueError(
+                f"This job's training settings are out of range: {AlgorithmTrainingConfig.format_errors(e)}"
+            )
 
     @classmethod
     def training_service(cls, job: "Job", algorithm) -> "ProcessingService | None":

@@ -422,7 +422,7 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
         except pydantic.ValidationError as e:
             # The same bounds a job is held to, refused here rather than reported as stats
             # computed under settings no run could use.
-            raise api_exceptions.ValidationError({"detail": e.errors()})
+            raise api_exceptions.ValidationError({"detail": AlgorithmTrainingConfig.format_errors(e)})
 
     def get_queryset(self) -> QuerySet[DetectionEmbedding]:
         project = self._get_project_for_training()
