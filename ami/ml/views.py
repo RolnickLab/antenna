@@ -10,12 +10,11 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.base.pagination import TrainingDataPagination
-from ami.base.permissions import ProjectPipelineConfigPermission
+from ami.base.permissions import ProjectPipelineConfigPermission, TrainingDataPermission
 from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
@@ -328,10 +327,9 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
     queryset = DetectionEmbedding.objects.none()
     serializer_class = TrainingDataRowSerializer
     require_project = True
-    # The project permission is checked per request, in _get_project_for_training().
-    # ObjectPermission's has_object_permission only runs for detail actions, and both
-    # actions here are detail=False, so a viewset-level class would never see the project.
-    permission_classes = [IsAuthenticated]
+    # Both actions are detail=False, so the gate lives in TrainingDataPermission.has_permission,
+    # which reads the active project and checks the retrain permission against it.
+    permission_classes = [TrainingDataPermission]
     filter_backends: list = []
     pagination_class = TrainingDataPagination
 
@@ -348,8 +346,6 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
         project = self.get_active_project()
         if not project:
             raise Http404("Project not found.")
-        if not self.request.user.has_perm(Project.Permissions.RUN_TRAIN_CLASSIFIER_JOB, project):
-            raise api_exceptions.PermissionDenied("You do not have permission to retrain classifiers in this project.")
         return project
 
     def _get_algorithm(self) -> Algorithm:
@@ -426,18 +422,11 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
         except pydantic.ValidationError as e:
             # The same bounds a job is held to, refused here rather than reported as stats
             # computed under settings no run could use.
-            raise api_exceptions.ValidationError({"detail": e.errors()})
+            raise api_exceptions.ValidationError({"detail": AlgorithmTrainingConfig.format_errors(e)})
 
     def get_queryset(self) -> QuerySet[DetectionEmbedding]:
         project = self._get_project_for_training()
-        qs = training.verified_training_rows(project, self._get_algorithm(), self._get_occurrence_set(project))
-
-        self._split_filter = SingleParamSerializer[str].clean(
-            "split",
-            serializers.ChoiceField(choices=list(training.SPLITS), required=False, allow_null=True, default=None),
-            self.request.query_params,
-        )
-        return qs
+        return training.verified_training_rows(project, self._get_algorithm(), self._get_occurrence_set(project))
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -455,15 +444,7 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
-        response = super().list(request, *args, **kwargs)
-        split = getattr(self, "_split_filter", None)
-        if split:
-            # Filtering by split in Python rather than SQL: the assignment is a hash of the
-            # occurrence id, which Postgres cannot compute. Callers that need whole splits
-            # should page through everything and group client-side.
-            results = [row for row in response.data["results"] if row["split"] == split]
-            response.data["results"] = results
-        return response
+        return super().list(request, *args, **kwargs)
 
     @extend_schema(parameters=[project_id_doc_param])
     @action(detail=False, methods=["get"])

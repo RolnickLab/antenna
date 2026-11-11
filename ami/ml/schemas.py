@@ -165,6 +165,17 @@ class AlgorithmTrainingConfig(pydantic.BaseModel):
         taken = {key: value for key, value in (overrides or {}).items() if key in allowed}
         return cls(**{**current, **taken})
 
+    @staticmethod
+    def format_errors(error: pydantic.ValidationError) -> str:
+        """
+        One readable line from a pydantic error.
+
+        The fitting bounds are checked in more than one place -- on the job form, when a job
+        runs, and when the summary is previewed -- so the message they raise is built here,
+        once, rather than formatted slightly differently at each call site.
+        """
+        return "; ".join(f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in error.errors())
+
 
 class AlgorithmConfigResponse(pydantic.BaseModel):
     name: str

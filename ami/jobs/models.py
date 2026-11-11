@@ -1204,8 +1204,9 @@ class TrainClassifierJob(JobType):
         try:
             return AlgorithmTrainingConfig.for_run(algorithm.training_config, job.params or {})
         except pydantic.ValidationError as e:
-            problems = "; ".join(f"{'.'.join(str(part) for part in err['loc'])} {err['msg']}" for err in e.errors())
-            raise ValueError(f"This job's training settings are out of range: {problems}")
+            raise ValueError(
+                f"This job's training settings are out of range: {AlgorithmTrainingConfig.format_errors(e)}"
+            )
 
     @classmethod
     def training_service(cls, job: "Job", algorithm) -> "ProcessingService | None":
@@ -1246,8 +1247,13 @@ class TrainClassifierJob(JobType):
         The job's params as its schema reads them.
 
         Parsed again here, not trusted from creation: a job made outside the API skips the serializer.
+        Cached on the job: several steps of one run read it.
         """
-        return TrainClassifierJobConfig.parse_obj(job.params or {})
+        cached = getattr(job, "_train_settings", None)
+        if cached is None:
+            cached = TrainClassifierJobConfig.parse_obj(job.params or {})
+            job._train_settings = cached
+        return cached
 
     @classmethod
     def target_occurrence_set(cls, job: "Job") -> OccurrenceSet | None:

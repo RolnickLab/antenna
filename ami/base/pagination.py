@@ -31,7 +31,7 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
         return None
 
 
-class TrainingDataPagination(LimitOffsetPagination):
+class TrainingDataPagination(LimitOffsetPaginationWithPermissions):
     """
     Paging for embedding rows, which are far bigger than a normal API row.
 

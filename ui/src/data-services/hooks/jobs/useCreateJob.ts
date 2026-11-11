@@ -6,7 +6,9 @@ import { useUser } from 'utils/user/userContext'
 
 interface JobFieldValues {
   delay?: number
+  jobType?: string
   name: string
+  params?: Record<string, unknown>
   projectId: string
   pipeline?: string
   sourceImage?: string
@@ -21,6 +23,10 @@ const convertToServerFieldValues = (fieldValues: JobFieldValues) => ({
   pipeline_id: fieldValues.pipeline,
   source_image_collection_id: fieldValues.sourceImages,
   source_image_single_id: fieldValues.sourceImage,
+  // Left out unless set, so the API keeps applying its own defaults: an ML job with no
+  // type, and no params for a type that reads none.
+  ...(fieldValues.jobType ? { job_type_key: fieldValues.jobType } : {}),
+  ...(fieldValues.params ? { params: fieldValues.params } : {}),
 })
 
 export const useCreateJob = (onSuccess?: (id: string) => void) => {

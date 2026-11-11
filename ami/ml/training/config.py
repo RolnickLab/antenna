@@ -53,5 +53,5 @@ class TrainClassifierJobConfig(pydantic.BaseModel):
         try:
             AlgorithmTrainingConfig.for_run(AlgorithmTrainingConfig(), values)
         except pydantic.ValidationError as e:
-            raise ValueError("; ".join(f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()))
+            raise ValueError(AlgorithmTrainingConfig.format_errors(e))
         return values

@@ -24,6 +24,18 @@ export class Algorithm extends Entity {
     return this._algorithm.uri
   }
 
+  get trainable(): boolean {
+    return !!this._algorithm.trainable
+  }
+
+  /** Settings a retrain would use, which the training job form starts from. */
+  get trainingConfig(): {
+    min_per_species?: number
+    test_fraction?: number
+  } {
+    return this._algorithm.training_config ?? {}
+  }
+
   get taskType(): string {
     return snakeCaseToSentenceCase(this._algorithm.task_type)
   }

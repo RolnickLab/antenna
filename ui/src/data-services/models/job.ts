@@ -22,6 +22,7 @@ export const SERVER_JOB_TYPES = [
   'populate_captures_collection',
   'data_export',
   'post_processing',
+  'train_classifier',
   'unknown',
 ] as const
 
@@ -166,6 +167,7 @@ export class Job extends Entity {
       populate_captures_collection: 'Populate captures collection',
       data_export: 'Data export',
       post_processing: 'Post-processing',
+      train_classifier: 'Train classifier',
       unknown: 'Unknown',
     }[key]
 

@@ -222,6 +222,15 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         self.assertEqual(summary["occurrence_set"], {"id": mine.pk, "name": "Mine"})
         self.assertEqual(summary["occurrences"], 1)
 
+    def test_a_set_narrows_the_missing_embedding_count(self):
+        inside = self.make_occurrence(self.taxa[0], with_vector=False)
+        self.make_occurrence(self.taxa[1], with_vector=False)
+        mine = self.make_set("Mine", [inside])
+
+        summary = self._summary(occurrence_set=mine.pk)
+
+        self.assertEqual(summary["verified_detections_without_embedding"], 1)
+
     def test_a_set_from_another_project_is_not_counted(self):
         other = Project.objects.create(name="Someone else", owner=self.user)
         theirs = OccurrenceSet.objects.create(name="Theirs")
@@ -284,6 +293,16 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_the_training_data_list_reports_collection_permissions(self):
+        """Like every other list endpoint, the response carries the caller's collection permissions."""
+        self.make_occurrence(self.taxa[0])
+
+        url = reverse("api:training-data-list")
+        response = self.client.get(url, {"project_id": self.project.pk, "algorithm": self.algorithm.key})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn("user_permissions", response.data)
+
 
 class TestTheJobsOccurrenceSet(TrainingSetFixture):
     def _job(self, **params):
@@ -295,6 +314,15 @@ class TestTheJobsOccurrenceSet(TrainingSetFixture):
             job_type_key=TrainClassifierJob.key,
             params={"algorithm_key": self.algorithm.key, **params},
         )
+
+    def test_settings_are_parsed_once_per_job(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        job = self._job()
+        first = TrainClassifierJob.settings_for(job)
+        second = TrainClassifierJob.settings_for(job)
+
+        self.assertIs(first, second)
 
     def test_a_job_without_a_set_learns_from_everything_verified(self):
         from ami.jobs.models import TrainClassifierJob
