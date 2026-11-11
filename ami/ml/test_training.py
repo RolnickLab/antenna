@@ -222,6 +222,15 @@ class TestTheSummaryTheFormShows(TrainingSetFixture):
         self.assertEqual(summary["occurrence_set"], {"id": mine.pk, "name": "Mine"})
         self.assertEqual(summary["occurrences"], 1)
 
+    def test_a_set_narrows_the_missing_embedding_count(self):
+        inside = self.make_occurrence(self.taxa[0], with_vector=False)
+        self.make_occurrence(self.taxa[1], with_vector=False)
+        mine = self.make_set("Mine", [inside])
+
+        summary = self._summary(occurrence_set=mine.pk)
+
+        self.assertEqual(summary["verified_detections_without_embedding"], 1)
+
     def test_a_set_from_another_project_is_not_counted(self):
         other = Project.objects.create(name="Someone else", owner=self.user)
         theirs = OccurrenceSet.objects.create(name="Theirs")

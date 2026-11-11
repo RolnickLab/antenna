@@ -125,7 +125,7 @@ def count_missing_embeddings(
     from ami.main.models import Detection
 
     return (
-        Detection.objects.filter(occurrence_id__in=verified_occurrence_ids(project))
+        Detection.objects.filter(occurrence_id__in=verified_occurrence_ids(project, occurrence_set))
         .exclude(embeddings__algorithm=algorithm)
         .count()
     )
