@@ -315,6 +315,15 @@ class TestTheJobsOccurrenceSet(TrainingSetFixture):
             params={"algorithm_key": self.algorithm.key, **params},
         )
 
+    def test_settings_are_parsed_once_per_job(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        job = self._job()
+        first = TrainClassifierJob.settings_for(job)
+        second = TrainClassifierJob.settings_for(job)
+
+        self.assertIs(first, second)
+
     def test_a_job_without_a_set_learns_from_everything_verified(self):
         from ami.jobs.models import TrainClassifierJob
 

@@ -1247,8 +1247,13 @@ class TrainClassifierJob(JobType):
         The job's params as its schema reads them.
 
         Parsed again here, not trusted from creation: a job made outside the API skips the serializer.
+        Cached on the job: several steps of one run read it.
         """
-        return TrainClassifierJobConfig.parse_obj(job.params or {})
+        cached = getattr(job, "_train_settings", None)
+        if cached is None:
+            cached = TrainClassifierJobConfig.parse_obj(job.params or {})
+            job._train_settings = cached
+        return cached
 
     @classmethod
     def target_occurrence_set(cls, job: "Job") -> OccurrenceSet | None:
