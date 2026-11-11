@@ -426,14 +426,7 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
 
     def get_queryset(self) -> QuerySet[DetectionEmbedding]:
         project = self._get_project_for_training()
-        qs = training.verified_training_rows(project, self._get_algorithm(), self._get_occurrence_set(project))
-
-        self._split_filter = SingleParamSerializer[str].clean(
-            "split",
-            serializers.ChoiceField(choices=list(training.SPLITS), required=False, allow_null=True, default=None),
-            self.request.query_params,
-        )
-        return qs
+        return training.verified_training_rows(project, self._get_algorithm(), self._get_occurrence_set(project))
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -451,15 +444,7 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
-        response = super().list(request, *args, **kwargs)
-        split = getattr(self, "_split_filter", None)
-        if split:
-            # Filtering by split in Python rather than SQL: the assignment is a hash of the
-            # occurrence id, which Postgres cannot compute. Callers that need whole splits
-            # should page through everything and group client-side.
-            results = [row for row in response.data["results"] if row["split"] == split]
-            response.data["results"] = results
-        return response
+        return super().list(request, *args, **kwargs)
 
     @extend_schema(parameters=[project_id_doc_param])
     @action(detail=False, methods=["get"])
