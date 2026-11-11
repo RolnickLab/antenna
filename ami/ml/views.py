@@ -10,12 +10,11 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.base.pagination import TrainingDataPagination
-from ami.base.permissions import ProjectPipelineConfigPermission
+from ami.base.permissions import ProjectPipelineConfigPermission, TrainingDataPermission
 from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
@@ -328,10 +327,9 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
     queryset = DetectionEmbedding.objects.none()
     serializer_class = TrainingDataRowSerializer
     require_project = True
-    # The project permission is checked per request, in _get_project_for_training().
-    # ObjectPermission's has_object_permission only runs for detail actions, and both
-    # actions here are detail=False, so a viewset-level class would never see the project.
-    permission_classes = [IsAuthenticated]
+    # Both actions are detail=False, so the gate lives in TrainingDataPermission.has_permission,
+    # which reads the active project and checks the retrain permission against it.
+    permission_classes = [TrainingDataPermission]
     filter_backends: list = []
     pagination_class = TrainingDataPagination
 
@@ -348,8 +346,6 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
         project = self.get_active_project()
         if not project:
             raise Http404("Project not found.")
-        if not self.request.user.has_perm(Project.Permissions.RUN_TRAIN_CLASSIFIER_JOB, project):
-            raise api_exceptions.PermissionDenied("You do not have permission to retrain classifiers in this project.")
         return project
 
     def _get_algorithm(self) -> Algorithm:

@@ -227,6 +227,24 @@ class OccurrenceSetPermission(ObjectPermission):
         return super().has_permission(request, view)
 
 
+class TrainingDataPermission(ObjectPermission):
+    """
+    Permission for the training-data route, whose actions have no object yet.
+
+    These actions return a project's whole training set -- every verified label with the
+    vector for each crop -- so they are gated on the same permission as the training job
+    itself, not on mere project visibility.
+    """
+
+    def has_permission(self, request, view):
+        from ami.main.models import Project
+
+        project = view.get_active_project()
+        if not project:
+            return False
+        return request.user.has_perm(Project.Permissions.RUN_TRAIN_CLASSIFIER_JOB, project)
+
+
 class UserMembershipPermission(ObjectPermission):
     """
     Custom permission for UserProjectMembershipViewSet.
