@@ -24,5 +24,5 @@ class Migration(migrations.Migration):
 
     # operations = []
     operations = [
-        migrations.RunPython(update_deployment_aggregates, migrations.RunPython.noop),
+        migrations.RunPython(update_deployment_aggregates, migrations.RunPython.noop, elidable=True),
     ]

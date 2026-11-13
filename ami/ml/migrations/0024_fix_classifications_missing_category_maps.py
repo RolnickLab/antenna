@@ -75,6 +75,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(
             fix_unlinked_classifications,
-            reverse_fix_unlinked_classifications,
+            reverse_fix_unlinked_classifications, elidable=True,
         ),
     ]

@@ -38,5 +38,5 @@ class Migration(migrations.Migration):
             name="occurrences_count",
             field=models.IntegerField(blank=True, null=True),
         ),
-        migrations.RunPython(update_event_counts, reverse_code=migrations.RunPython.noop),
+        migrations.RunPython(update_event_counts, reverse_code=migrations.RunPython.noop, elidable=True),
     ]

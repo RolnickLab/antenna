@@ -157,6 +157,6 @@ class Migration(migrations.Migration):
         ),
         migrations.RunPython(
             grant_new_permissions,
-            revoke_new_permissions,
+            revoke_new_permissions, elidable=True,
         ),
     ]

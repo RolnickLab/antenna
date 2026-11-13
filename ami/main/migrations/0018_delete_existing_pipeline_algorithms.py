@@ -12,5 +12,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL("", ""),
+        migrations.RunSQL("", "", elidable=True),
     ]

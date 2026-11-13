@@ -18,5 +18,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(populate_pipeline_slugs, migrations.RunPython.noop),
+        migrations.RunPython(populate_pipeline_slugs, migrations.RunPython.noop, elidable=True),
     ]
