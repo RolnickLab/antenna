@@ -8,7 +8,8 @@ from django.template.defaultfilters import filesizeformat
 from django.test import TestCase
 
 import ami.tasks
-from ami.main.models import Deployment, Project, S3StorageSource, SourceImage
+from ami.main.models import Deployment, S3StorageSource, SourceImage
+from ami.main.models_future.projects import Project
 from ami.tests.fixtures.main import create_captures, create_captures_from_files, setup_test_project
 from ami.tests.fixtures.storage import S3_TEST_CONFIG
 from ami.utils import s3

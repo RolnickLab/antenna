@@ -3,7 +3,8 @@ import logging
 
 from django.conf import settings
 
-from ami.main.models import Project, S3StorageSource
+from ami.main.models import S3StorageSource
+from ami.main.models_future.projects import Project
 from ami.tests.fixtures.images import GeneratedTestFrame, generate_moth_series
 from ami.utils import s3
 
