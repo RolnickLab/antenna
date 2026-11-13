@@ -100,8 +100,36 @@ const classMasking: ServerOccurrenceHistoryEntry = {
   job: JOB,
   kind: 'class_masking',
   score: null,
+  results_merged_in: 0,
   type: 'algorithm_result',
   value: 0.38,
+}
+
+const tracking: ServerOccurrenceHistoryEntry = {
+  ...base,
+  algorithm: { id: 8, key: 'tracking', name: 'Occurrence tracking' },
+  classifications: [],
+  data: {
+    detection_count: 3,
+    determination_after_id: 3,
+    determination_before_id: 3,
+    distinct_taxa: 1,
+    extra: {},
+    label_agreement: null,
+    link_costs: [0.12, 0.2, null],
+    merged_occurrence_ids: [11, 12],
+    motion: 0.0071,
+    path_length: 0.0141,
+    size_change: 1.15,
+  },
+  determination_after: NOCTUA,
+  determination_before: NOCTUA,
+  id: 6,
+  kind: 'tracking',
+  score: null,
+  results_merged_in: 0,
+  type: 'algorithm_result',
+  value: 0.0071,
 }
 
 const ownIdentification: HumanIdentification = {
@@ -140,6 +168,18 @@ describe('getTimelineItems', () => {
       'algorithm_result',
       'identification',
       'prediction',
+    ])
+  })
+
+  test('builds a card for a tracking result', () => {
+    const items = getTimelineItems({
+      entries: [tracking],
+      identifications: [],
+      predictions: [],
+    })
+
+    expect(items).toMatchObject([
+      { type: 'algorithm_result', entry: { kind: 'tracking' } },
     ])
   })
 
@@ -187,10 +227,10 @@ describe('getTimelineItems', () => {
   })
 
   test('leaves out results of a kind it has no card for, and entries it cannot build a card from', () => {
-    // A kind the server added before the UI has a card for it, e.g. tracking.
+    // A kind the server added before the UI has a card for it, e.g. a rank roll-up.
     const unknown = {
       ...classMasking,
-      kind: 'tracking',
+      kind: 'rank_rollup',
     } as unknown as ServerOccurrenceHistoryEntry
 
     expect(
@@ -367,6 +407,32 @@ describe('getJobConfigFields', () => {
       field('reweight', true),
       field('taxa_list_id', 2, [deletedList]),
     ])
+  })
+
+  test("names only the occurrence's own session of the sessions a run tracked", () => {
+    const session = (id: number) => ({
+      type: 'session',
+      id,
+      name: `Session ${id}`,
+    })
+    const job = {
+      id: 1,
+      name: 'Tracking',
+      config: [
+        {
+          key: 'event_ids',
+          label: 'Sessions',
+          value: [7, 8, 9],
+          refs: [session(7), session(8), session(9)],
+        },
+      ],
+    }
+
+    expect(getJobConfigFields(job, '8')).toEqual([
+      { ...job.config[0], refs: [session(8)] },
+    ])
+    expect(getJobConfigFields(job, '99')).toEqual([])
+    expect(getJobConfigFields(job)).toEqual(job.config)
   })
 
   test('is empty for a job without config', () => {

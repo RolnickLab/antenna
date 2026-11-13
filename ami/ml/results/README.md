@@ -42,7 +42,8 @@ validates `data` against the registry, and the API publishes `data` as JSON.
 ## Rules
 
 - **Results are only added.** Each run adds one result per occurrence it touches; running a method
-  twice leaves two. A retried job reuses its own results. A list that needs an algorithm's latest
+  twice leaves two. A retried job folds into its own results, including one that a merge moved onto
+  the kept occurrence, so it leaves one per occurrence. A list that needs an algorithm's latest
   value takes the latest by timestamp.
 - **A run gets its own `Algorithm` only when it changes what can be output.** Class masking makes one
   per source classifier and species list, because the list changes which species can be named. The
@@ -50,6 +51,12 @@ validates `data` against the registry, and the API publishes `data` as JSON.
 - **Demote only what the run replaced**, set `job` on every row it creates, and never call
   `.distinct()` on a classification queryset that includes the `scores` or `logits` arrays (#1376).
 - **Occurrences without a project** get no result and a warning; the run carries on (#1188).
+- **Merges move results.** Merge occurrences only through `merge_occurrences` in
+  `ami/main/models_future/occurrence_merges.py`, which moves an absorbed occurrence's results to the
+  kept one before deleting it. Any new link to an occurrence needs a rule in its `MERGE_RULES`, and a
+  test in `ami/main/test_occurrence_merges.py` fails until it has one. The kept occurrence can then hold
+  several results of one run; its history shows them as one entry, the newest, with every
+  classification they created (`_one_entry_per_run` in `ami/main/api/occurrence_history/timeline.py`).
 - **A result belongs to an occurrence, for now.** Class masking and the size filter work per
   detection, so a result keeps the figures of one detection per occurrence: the winning one for
   masking, the smallest flagged one for the size filter. Detections and captures are expected to

@@ -9,9 +9,10 @@ import {
   getResultKindLabel,
   getResultPrediction,
   ServerHistoryTaxon,
+  TrackingTaxonLabels,
 } from 'data-services/models/occurrence-history'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { FilterIcon, LucideIcon, RulerIcon } from 'lucide-react'
+import { FilterIcon, LucideIcon, RouteIcon, RulerIcon } from 'lucide-react'
 import { BasicTooltip, IdentificationCard } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { getModelRefLabel } from 'utils/model-references'
@@ -24,6 +25,7 @@ import { MachinePrediction } from './machine-prediction'
 const KIND_ICONS: Record<AlgorithmResultEntry['kind'], LucideIcon> = {
   class_masking: FilterIcon,
   size_filter: RulerIcon,
+  tracking: RouteIcon,
 }
 
 const formatConfigValue = (value: unknown) => {
@@ -57,6 +59,59 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
 /** A fraction as a percentage with at most one decimal, e.g. 0.0315 reads "3.2%". */
 const formatPercent = (fraction: number) =>
   `${Math.round(fraction * 1000) / 10}%`
+/** A score as a percentage, or "not available" when it is missing. */
+const formatScore = (score?: number | null) =>
+  score === null || score === undefined
+    ? translate(STRING.VALUE_NOT_AVAILABLE)
+    : formatPercent(score)
+
+/** A span of seconds, e.g. "40 s", "3 min 20 s" or "2 hours 5 min". */
+const formatDuration = (seconds: number) => {
+  const whole = Math.round(seconds)
+  if (whole < 60) {
+    return translate(STRING.HISTORY_TRACKING_DURATION_SECONDS, {
+      seconds: `${whole}`,
+    })
+  }
+  if (whole < 3600) {
+    return translate(STRING.HISTORY_TRACKING_DURATION_MINUTES, {
+      minutes: `${Math.floor(whole / 60)}`,
+      seconds: `${whole % 60}`,
+    })
+  }
+
+  return translate(STRING.HISTORY_TRACKING_DURATION_HOURS, {
+    hours: `${Math.floor(whole / 3600)}`,
+    minutes: `${Math.floor((whole % 3600) / 60)}`,
+  })
+}
+
+/** Each taxon the labels named, its detections and best score; the name is the copy saved with the result. */
+const TaxaNamed = ({
+  projectId,
+  taxa,
+}: {
+  projectId: string
+  taxa: TrackingTaxonLabels[]
+}) => (
+  <ul className="flex flex-col gap-1">
+    {taxa.map((taxon) => (
+      <li key={taxon.taxon_id}>
+        <ModelRefValue
+          projectId={projectId}
+          reference={{ type: 'taxon', id: taxon.taxon_id, name: taxon.name }}
+        />{' '}
+        <span className="text-muted-foreground">
+          {translate(STRING.HISTORY_TRACKING_TAXON_VALUE, {
+            count: `${taxon.detection_count}`,
+            mean: formatScore(taxon.score_mean),
+            score: formatScore(taxon.score_max),
+          })}
+        </span>
+      </li>
+    ))}
+  </ul>
+)
 
 /** The determination row, left out when there was no determination before or after. */
 const getDeterminationStats = (
@@ -98,62 +153,147 @@ export const AlgorithmResult = ({
     occurrence.determinationTaxon?.id
   )
 
-  const stats: HistoryStat[] = getDeterminationStats(
-    entry.determination_before,
-    entry.determination_after
-  )
-  switch (entry.kind) {
-    case 'class_masking': {
-      stats.push({
-        label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
-        value: formatPercent(entry.data.excluded_probability),
-      })
-      // The top prediction before masking: what the run's best classification replaced.
-      const replaced = entry.classifications.find(
-        (c) => c.taxon !== null
-      )?.replaced
-      if (replaced?.taxon) {
+  // With other results of the run merged in, the figures and determination of any one of them may
+  // describe an absorbed occurrence, so the card shows only the count and the classifications.
+  const mergedIn = entry.results_merged_in > 0
+  const stats: HistoryStat[] = mergedIn
+    ? []
+    : getDeterminationStats(
+        entry.determination_before,
+        entry.determination_after
+      )
+  if (!mergedIn) {
+    switch (entry.kind) {
+      case 'class_masking': {
         stats.push({
-          label: translate(STRING.HISTORY_ORIGINAL_PREDICTION),
-          value:
-            replaced.score !== null
-              ? `${replaced.taxon.name} (${replaced.score.toFixed(2)})`
-              : replaced.taxon.name,
+          label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
+          value: formatPercent(entry.data.excluded_probability),
         })
+        // The top prediction before masking: what the run's best classification replaced.
+        const replaced = entry.classifications.find(
+          (c) => c.taxon !== null
+        )?.replaced
+        if (replaced?.taxon) {
+          stats.push({
+            label: translate(STRING.HISTORY_ORIGINAL_PREDICTION),
+            value:
+              replaced.score !== null
+                ? `${replaced.taxon.name} (${replaced.score.toFixed(2)})`
+                : replaced.taxon.name,
+          })
+        }
+        break
       }
-      break
-    }
-    case 'size_filter': {
-      const threshold = getJobConfigField(entry.job, 'size_threshold')?.value
-      stats.push({
-        label: translate(STRING.HISTORY_DETECTION_SIZE),
-        value:
-          typeof threshold === 'number'
-            ? translate(STRING.HISTORY_DETECTION_SIZE_WITH_THRESHOLD, {
-                size: formatPercent(entry.data.relative_size),
-                threshold: formatPercent(threshold),
-              })
-            : translate(STRING.HISTORY_DETECTION_SIZE_VALUE, {
-                size: formatPercent(entry.data.relative_size),
-              }),
-      })
-      break
+      case 'size_filter': {
+        const threshold = getJobConfigField(entry.job, 'size_threshold')?.value
+        stats.push({
+          label: translate(STRING.HISTORY_DETECTION_SIZE),
+          value:
+            typeof threshold === 'number'
+              ? translate(STRING.HISTORY_DETECTION_SIZE_WITH_THRESHOLD, {
+                  size: formatPercent(entry.data.relative_size),
+                  threshold: formatPercent(threshold),
+                })
+              : translate(STRING.HISTORY_DETECTION_SIZE_VALUE, {
+                  size: formatPercent(entry.data.relative_size),
+                }),
+        })
+        break
+      }
+      case 'tracking': {
+        const { data } = entry
+        stats.push(
+          {
+            label: translate(STRING.HISTORY_TRACKING_DETECTIONS),
+            value: data.detection_count,
+          },
+          ...(data.duration_seconds !== undefined &&
+          data.duration_seconds !== null
+            ? [
+                {
+                  label: translate(STRING.FIELD_LABEL_DURATION),
+                  value: formatDuration(data.duration_seconds),
+                },
+              ]
+            : []),
+          {
+            label: translate(STRING.HISTORY_TRACKING_MOVEMENT),
+            value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
+              distance: formatPercent(data.motion),
+            }),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_PATH_LENGTH),
+            value: translate(STRING.HISTORY_TRACKING_MOVEMENT_VALUE, {
+              distance: formatPercent(data.path_length),
+            }),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE),
+            value: translate(STRING.HISTORY_TRACKING_SIZE_CHANGE_VALUE, {
+              ratio: `${Math.round(data.size_change * 100) / 100}`,
+            }),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_TAXA),
+            value: data.taxa?.length ? (
+              <TaxaNamed projectId={projectId as string} taxa={data.taxa} />
+            ) : (
+              data.distinct_taxa
+            ),
+          },
+          {
+            label: translate(STRING.HISTORY_TRACKING_LABEL_AGREEMENT),
+            value:
+              data.label_agreement !== null
+                ? formatPercent(data.label_agreement)
+                : translate(STRING.VALUE_NOT_AVAILABLE),
+          },
+          ...(data.score_mean !== undefined && data.score_mean !== null
+            ? [
+                {
+                  label: translate(STRING.HISTORY_TRACKING_SCORE_RANGE),
+                  value: translate(STRING.HISTORY_TRACKING_SCORE_RANGE_VALUE, {
+                    min: formatScore(data.score_min),
+                    max: formatScore(data.score_max),
+                    mean: formatScore(data.score_mean),
+                  }),
+                },
+              ]
+            : []),
+          {
+            label: translate(STRING.HISTORY_TRACKING_MERGED),
+            value: data.merged_occurrence_ids.length,
+          }
+        )
+        break
+      }
     }
   }
-  stats.push({
-    label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
-    value: new Set(entry.classifications.map((c) => c.detection_id)).size,
-  })
-  getJobConfigFields(entry.job).forEach(({ label, value, refs }) => {
+  if (entry.classifications.length) {
     stats.push({
-      label,
-      value: refs.length ? (
-        <ModelRefValues projectId={projectId as string} references={refs} />
-      ) : (
-        formatConfigValue(value)
-      ),
+      label: translate(STRING.HISTORY_DETECTIONS_AFFECTED),
+      value: new Set(entry.classifications.map((c) => c.detection_id)).size,
     })
-  })
+  }
+  if (entry.results_merged_in) {
+    stats.push({
+      label: translate(STRING.HISTORY_RESULTS_MERGED_IN),
+      value: entry.results_merged_in,
+    })
+  }
+  getJobConfigFields(entry.job, occurrence.sessionId).forEach(
+    ({ label, value, refs }) => {
+      stats.push({
+        label,
+        value: refs.length ? (
+          <ModelRefValues projectId={projectId as string} references={refs} />
+        ) : (
+          formatConfigValue(value)
+        ),
+      })
+    }
+  )
   if (entry.algorithm) {
     stats.push({
       label: translate(STRING.FIELD_LABEL_ALGORITHM),
