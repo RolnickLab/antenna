@@ -14,6 +14,10 @@ class BoundingBox(pydantic.BaseModel):
     x2: float
     y2: float
 
+    def as_coords(self) -> list[float]:
+        """The box as ``[x1, y1, x2, y2]``, the order ``from_coords`` reads and detections store."""
+        return [self.x1, self.y1, self.x2, self.y2]
+
     @classmethod
     def from_coords(cls, coords: typing.Any, raise_on_error: bool = True) -> "BoundingBox | None":
         """
@@ -116,6 +120,14 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         description="A URI to the weight or model details, could be a public web URL or object store path.",
     )
     category_map: AlgorithmCategoryMapResponse | None = None
+    embedding_dimensions: int | None = pydantic.Field(
+        default=None,
+        gt=0,
+        description=(
+            "The length of the feature vectors this algorithm returns in detection embeddings. Required for any "
+            "algorithm that returns them: Antenna refuses vectors from an algorithm that does not declare it."
+        ),
+    )
 
     class Config:
         extra = "ignore"
@@ -168,6 +180,16 @@ class DetectionRequest(pydantic.BaseModel):
     algorithm: AlgorithmReference
 
 
+class EmbeddingResponse(pydantic.BaseModel):
+    """A feature vector for one detection, and the algorithm that produced it.
+
+    Only vectors from the same algorithm are comparable, and they are stored in half precision.
+    """
+
+    features: list[float] = pydantic.Field(description="The feature vector.")
+    algorithm: AlgorithmReference
+
+
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
     bbox: BoundingBox | None = None
@@ -176,6 +198,14 @@ class DetectionResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     crop_image_url: str | None = None
     classifications: list[ClassificationResponse] = []
+    embeddings: list[EmbeddingResponse] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Feature vectors for this detection, at most one per algorithm. Each algorithm must declare "
+            "embedding_dimensions in /info. To return several vectors from one ML model, register one algorithm "
+            "per output (see processing_services/README.md, 'Returning feature vectors')."
+        ),
+    )
 
 
 class PipelineRequestConfigParameters(dict):

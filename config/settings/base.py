@@ -297,6 +297,11 @@ CACHES = {
 }
 REDIS_URL = env("REDIS_URL", default=None)
 
+# Feature vectors are several kilobytes per row and are rarely read twice, so the query cache would
+# fill Redis (which also holds async job state) with them. ``django_migrations`` is cachalot's default.
+# See docs/claude/reference/feature-vectors.md.
+CACHALOT_UNCACHABLE_TABLES = frozenset(("django_migrations", "ml_detectionembedding"))
+
 
 # Redis DB numbering convention:
 #   DB 0 = Django cache (REDIS_URL, used by django-redis CACHES above)

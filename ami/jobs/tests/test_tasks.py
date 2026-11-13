@@ -353,6 +353,34 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         args, _ = mock_fail.call_args
         self.assertIn("Job state keys not found in Redis", args[1])
 
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_results_that_do_not_match_the_pipeline_fail_the_job_without_redelivery(
+        self, mock_manager_class, mock_ack, mock_fail
+    ):
+        """Results the registered pipeline cannot store (an unknown algorithm, a refused vector) fail the
+        same way on every delivery, so the task acks the message once and fails the job. If this regresses,
+        NATS redelivers the message until it is dead-lettered and the job keeps running."""
+        from ami.ml.embeddings.writer import EmbeddingRefused
+
+        self._setup_mock_nats(mock_manager_class)
+        result = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+        ).dict()
+
+        with patch.object(Pipeline, "save_results", side_effect=EmbeddingRefused("vector of length 3, expected 4")):
+            process_nats_pipeline_result(job_id=self.job.pk, result_data=result, reply_subject="reply.refused")
+
+        mock_ack.assert_called_once()
+        mock_fail.assert_called_once()
+        self.assertIn("vector of length 3, expected 4", mock_fail.call_args.args[1])
+
     @patch("ami.jobs.tasks._ack_task_via_nats")
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_ack_deferred_until_after_results_stage_srem(self, mock_manager_class, mock_ack):

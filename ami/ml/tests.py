@@ -1051,6 +1051,104 @@ class TestPipeline(TestCase):
         result = list(filter_processed_images([image], self.pipeline))
         self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
 
+    def test_filter_processed_images_does_not_wait_for_classifications_from_a_feature_extractor(self):
+        """An image classified by every classifier counts as processed even if the pipeline also has a
+        feature extractor, which never writes classifications."""
+        from ami.ml.models.algorithm import AlgorithmTaskType
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detection = Detection.objects.create(
+            source_image=image, detection_algorithm=self.algorithms["random-detector"], bbox=[0.1, 0.2, 0.3, 0.4]
+        )
+        taxon = Taxon.objects.create(name="Test Species With Vectors")
+        for key in ["random-binary-classifier", "random-species-classifier"]:
+            Classification.objects.create(
+                detection=detection,
+                taxon=taxon,
+                algorithm=self.algorithms[key],
+                score=0.9,
+                timestamp=datetime.datetime.now(),
+            )
+        extractor = Algorithm.objects.create(
+            name="Feature extractor", key="test-feature-extractor", task_type=AlgorithmTaskType.EMBEDDING.value
+        )
+        self.pipeline.algorithms.add(extractor)
+
+        self.assertEqual(list(filter_processed_images([image], self.pipeline)), [])
+
+    def test_filter_processed_images_yields_classified_image_until_every_vector_is_stored(self):
+        """A detection classified by every classifier still needs processing while it lacks a vector from
+        an algorithm that declares a vector length, whatever that algorithm's task type, so a normal job
+        fills in missing vectors. Once every vector is stored the image is skipped."""
+        from ami.ml.models import DetectionEmbedding
+        from ami.ml.models.algorithm import AlgorithmTaskType
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detection = Detection.objects.create(
+            source_image=image, detection_algorithm=self.algorithms["random-detector"], bbox=[0.1, 0.2, 0.3, 0.4]
+        )
+        taxon = Taxon.objects.create(name="Test Species Missing Vectors")
+        for key in ["random-binary-classifier", "random-species-classifier"]:
+            Classification.objects.create(
+                detection=detection,
+                taxon=taxon,
+                algorithm=self.algorithms[key],
+                score=0.9,
+                timestamp=datetime.datetime.now(),
+            )
+        # A classifier that also returns its backbone's vectors, and a feature extractor.
+        species_classifier = self.algorithms["random-species-classifier"]
+        species_classifier.embedding_dimensions = 4
+        species_classifier.save()
+        extractor = Algorithm.objects.create(
+            name="Feature extractor",
+            key="test-feature-extractor",
+            task_type=AlgorithmTaskType.EMBEDDING.value,
+            embedding_dimensions=3,
+        )
+        self.pipeline.algorithms.add(extractor)
+
+        self.assertEqual(list(filter_processed_images([image], self.pipeline)), [image])
+
+        DetectionEmbedding.objects.create(
+            detection=detection, algorithm=species_classifier, project=self.project, vector=[0.1] * 4
+        )
+        self.assertEqual(list(filter_processed_images([image], self.pipeline)), [image])
+
+        DetectionEmbedding.objects.create(
+            detection=detection, algorithm=extractor, project=self.project, vector=[0.1] * 3
+        )
+        self.assertEqual(list(filter_processed_images([image], self.pipeline)), [])
+
+    def test_filter_processed_images_skips_image_with_every_vector_when_pipeline_has_no_classifiers(self):
+        """A pipeline of a detector and a feature extractor counts an image as processed once each real
+        detection has its vector, instead of reprocessing every image as a detector-only pipeline does."""
+        from ami.ml.models import DetectionEmbedding
+        from ami.ml.models.algorithm import AlgorithmTaskType
+        from ami.ml.models.pipeline import filter_processed_images
+
+        extractor = Algorithm.objects.create(
+            name="Feature extractor",
+            key="test-feature-extractor",
+            task_type=AlgorithmTaskType.EMBEDDING.value,
+            embedding_dimensions=3,
+        )
+        pipeline = Pipeline.objects.create(name="Detector And Extractor Pipeline")
+        pipeline.algorithms.set([self.algorithms["random-detector"], extractor])
+        with_vector, without_vector = self.test_images[0], self.test_images[1]
+        for image in (with_vector, without_vector):
+            detection = Detection.objects.create(
+                source_image=image, detection_algorithm=self.algorithms["random-detector"], bbox=[0.1, 0.2, 0.3, 0.4]
+            )
+            if image is with_vector:
+                DetectionEmbedding.objects.create(
+                    detection=detection, algorithm=extractor, project=self.project, vector=[0.1] * 3
+                )
+
+        self.assertEqual(list(filter_processed_images([with_vector, without_vector], pipeline)), [without_vector])
+
     def test_filter_processed_images_empty_input(self):
         """An empty iterable should yield nothing and run no per-image queries."""
         from ami.ml.models.pipeline import filter_processed_images

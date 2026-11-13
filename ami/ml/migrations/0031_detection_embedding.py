@@ -1,0 +1,104 @@
+# Additive: an empty table and a nullable column on Algorithm. The vector column is stored uncompressed out of
+# line (STORAGE EXTERNAL): vectors do not compress, and it keeps the table's rows small. See #1462.
+
+import django.db.models.deletion
+import pgvector.django.halfvec
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("main", "0097_detection_and_classification_job_indexes"),
+        ("jobs", "0023_alter_job_job_type_key"),
+        ("ml", "0030_enable_pgvector"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="algorithm",
+            name="embedding_dimensions",
+            field=models.PositiveIntegerField(
+                blank=True,
+                help_text=(
+                    "The length of the feature vectors this algorithm returns, as declared by its processing "
+                    "service and recorded when the service first registers it. Vectors of any other length are "
+                    "refused, because vectors of different lengths cannot be compared."
+                ),
+                null=True,
+            ),
+        ),
+        migrations.CreateModel(
+            name="DetectionEmbedding",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "vector",
+                    pgvector.django.halfvec.HalfVectorField(help_text="The feature vector, in half precision."),
+                ),
+                (
+                    "algorithm",
+                    models.ForeignKey(
+                        db_index=False,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="%(class)ss",
+                        to="ml.algorithm",
+                    ),
+                ),
+                (
+                    "detection",
+                    models.ForeignKey(
+                        db_index=False,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="embeddings",
+                        to="main.detection",
+                    ),
+                ),
+                (
+                    "job",
+                    models.ForeignKey(
+                        blank=True,
+                        db_index=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)ss",
+                        to="jobs.job",
+                    ),
+                ),
+                (
+                    "project",
+                    models.ForeignKey(
+                        db_index=False,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="%(class)ss",
+                        to="main.project",
+                    ),
+                ),
+            ],
+        ),
+        migrations.AddConstraint(
+            model_name="detectionembedding",
+            constraint=models.UniqueConstraint(
+                fields=("detection", "algorithm"), name="ml_detectionembedding_unique_detection_algorithm"
+            ),
+        ),
+        migrations.AddIndex(
+            model_name="detectionembedding",
+            index=models.Index(fields=["project", "algorithm", "detection"], name="ml_detemb_proj_algo_det"),
+        ),
+        migrations.AddIndex(
+            model_name="detectionembedding",
+            index=models.Index(fields=["algorithm", "detection"], name="ml_detemb_algo_det"),
+        ),
+        migrations.AddIndex(
+            model_name="detectionembedding",
+            index=models.Index(
+                condition=models.Q(("job__isnull", False)), fields=["job", "detection"], name="ml_detemb_job_det"
+            ),
+        ),
+        migrations.RunSQL(
+            sql="ALTER TABLE ml_detectionembedding ALTER COLUMN vector SET STORAGE EXTERNAL",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+    ]
