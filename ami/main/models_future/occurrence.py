@@ -61,7 +61,11 @@ def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) 
             # applied_to__algorithm: post-processed classifications (class masking,
             # rank rollup) serialize their provenance parent; pull it here so the
             # nested applied_to render doesn't issue a query per classification.
-            queryset=Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm"),
+            # The per-class arrays hold one float per class the model knows and are never
+            # rendered in nested views; loading them made a long track take minutes.
+            queryset=Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm").defer(
+                "logits", "scores", "applied_to__logits", "applied_to__scores"
+            ),
         )
     ).order_by(*ordering)
     if with_source_image:
