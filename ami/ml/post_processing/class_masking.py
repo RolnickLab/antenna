@@ -5,7 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import pydantic
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.utils import timezone
 
 from ami.base.model_references import model_reference
@@ -76,8 +76,8 @@ def make_classifications_filtered_by_taxa_list(
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
 
-    For each terminal classification produced by ``algorithm``, the logits of
-    classes whose taxon is not in ``taxa_list`` are masked, the softmax is
+    For each terminal classification produced by ``algorithm``, the probability of
+    classes whose taxon is not in ``taxa_list`` is set to zero and the rest is
     renormalised over the remaining classes (or, when ``reweight=False``, the kept
     classes retain their original absolute scores), and a new terminal classification
     (attributed to ``new_algorithm``, linked back via ``applied_to``) records the
@@ -116,7 +116,7 @@ def make_classifications_filtered_by_taxa_list(
     # runs were revoked as stalled (or killed for memory). See #1404.
     scope_ids = list(classifications.order_by().values_list("pk", flat=True))
     total = len(scope_ids)
-    task_logger.info(f"Found {total} terminal classifications with scores to re-score.")
+    task_logger.info(f"Found {total} terminal classifications with scores or logits to re-score.")
 
     if not algorithm.category_map:
         raise ValueError(f"Algorithm {algorithm} does not have a category map.")
@@ -167,38 +167,32 @@ def make_classifications_filtered_by_taxa_list(
 
     i = 0
     for start in range(0, total, batch_size):
-        # ``scores`` is never read while masking and is as large as ``logits``. The
-        # query cache is bypassed because each batch is read once, and caching it would
+        # The query cache is bypassed because each batch is read once, and caching it would
         # leave tens of megabytes per batch in Redis.
         with no_query_cache():
-            batch = list(
-                classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by().defer("scores")
-            )
+            batch = list(classifications.filter(pk__in=scope_ids[start : start + batch_size]).order_by())
 
         for classification in batch:
             i += 1
-            logits = classification.logits
-            if not isinstance(logits, list) or not all(isinstance(x, (int, float)) for x in logits):
-                raise ValueError(f"Logits for classification {classification.pk} are not a list of numbers: {logits}")
-            elif len(logits) != num_categories:
+            # Probabilities come from the stored scores, or from softmax(logits) when only
+            # the logits are stored. Rows whose "logits" are probabilities are read as such.
+            probs = np.asarray(classification.scores_or_softmax(), dtype=float)
+            if len(probs) != num_categories:
                 task_logger.warning(
-                    f"Classification {classification.pk}: {len(logits)} logits "
+                    f"Classification {classification.pk}: {len(probs)} scores "
                     f"!= {num_categories} categories; skipping"
                 )
+            elif not np.isfinite(probs).all() or not probs[included_indices].sum() > 0.0:
+                # Stored scores can round every kept class to exactly zero; nothing to rescale.
+                task_logger.warning(
+                    f"Classification {classification.pk}: no finite probability on kept classes; skipping"
+                )
             else:
-                # Everything is derived from ``logits`` alone — the stored ``scores`` field
-                # is being retired, so masking must not depend on it. Recompute the model's
-                # full softmax (over every class) from the logits, then drop the excluded
-                # classes to exactly zero. An excluded class can never win argmax or carry
-                # probability.
-                shifted = np.asarray(logits, dtype=float)
-                shifted -= shifted.max()  # stabilises exp without changing the softmax
-                full_softmax = np.exp(shifted)
-                full_softmax /= full_softmax.sum()  # p over all classes; matches the retired ``scores``
-
-                kept = full_softmax.copy()
+                # Drop the excluded classes to exactly zero, so an excluded class can never
+                # win argmax or carry probability.
+                kept = probs.copy()
                 kept[excluded_indices] = 0.0
-                kept_sum = kept.sum()  # > 0: at least one class is kept (guaranteed upstream)
+                kept_sum = kept.sum()
                 top_index = int(np.argmax(kept))  # over kept classes only (excluded are 0)
 
                 if reweight:
@@ -213,8 +207,8 @@ def make_classifications_filtered_by_taxa_list(
 
                 # No-change short-circuit: if masking shifted no probability (the classes
                 # this taxa list drops carried ~zero probability here), leave the row
-                # untouched. Compared against the unmasked softmax, not the stored scores.
-                if np.allclose(full_softmax, new_scores_np, atol=1e-9):
+                # untouched.
+                if np.allclose(probs, new_scores_np, atol=1e-9):
                     task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
                 else:
                     top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
@@ -253,7 +247,7 @@ def make_classifications_filtered_by_taxa_list(
                             detection.occurrence,
                             {
                                 "excluded_probability": float(1.0 - kept_sum),
-                                "new_winner_original_rank": int((full_softmax > full_softmax[top_index]).sum()) + 1,
+                                "new_winner_original_rank": int((probs > probs[top_index]).sum()) + 1,
                             },
                             rank=score,
                         )
@@ -363,15 +357,13 @@ class ClassMaskingTask(BasePostProcessingTask):
             Classification.objects.filter(
                 terminal=True,
                 algorithm=source_algorithm,
-                scores__isnull=False,
-                logits__isnull=False,
             )
+            .filter(Q(scores__isnull=False) | Q(logits__isnull=False))
             # If another task needs this replay guard, hoist it to a
             # ClassificationQuerySet method (e.g. not_derived_by(algorithm))
             # rather than copying the exclude.
-            .exclude(derived_classifications__algorithm=masking_algorithm).select_related(
-                "detection", "detection__occurrence"
-            )
+            .exclude(derived_classifications__algorithm=masking_algorithm)
+            .select_related("detection", "detection__occurrence")
         )
 
         if config.occurrence_id is not None:

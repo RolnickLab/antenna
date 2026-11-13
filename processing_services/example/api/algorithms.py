@@ -136,7 +136,6 @@ class ZeroShotObjectDetector(Algorithm):
                                 classification=prediction["label"],
                                 labels=[prediction["label"]],
                                 scores=[prediction["score"]],
-                                logits=[prediction["score"]],
                                 inference_time=elapsed_time,
                                 timestamp=datetime.datetime.now(),
                                 algorithm=AlgorithmReference(
@@ -227,7 +226,6 @@ class HFImageClassifier(Algorithm):
                     classification=classification,
                     labels=labels,
                     scores=scores,
-                    logits=scores,
                     inference_time=elapsed_time,
                     timestamp=datetime.datetime.now(),
                     algorithm=AlgorithmReference(
