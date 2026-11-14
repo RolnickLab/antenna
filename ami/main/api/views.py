@@ -37,7 +37,7 @@ from ami.main.api.occurrence_history.timeline import occurrence_timeline
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
-from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.main.models_future.occurrences import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.fields import url_boolean_param
