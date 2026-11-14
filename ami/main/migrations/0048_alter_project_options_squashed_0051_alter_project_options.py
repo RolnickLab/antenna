@@ -4,13 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-    replaces = [
-        ("main", "0048_alter_project_options"),
-        ("main", "0049_alter_project_options"),
-        ("main", "0050_alter_project_options"),
-        ("main", "0051_alter_project_options"),
-    ]
-
     dependencies = [
         ("main", "0044_alter_project_options_squashed_0047_alter_project_options"),
     ]

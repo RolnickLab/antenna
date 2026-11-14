@@ -6,20 +6,6 @@ import django_pydantic_field.fields
 
 
 class Migration(migrations.Migration):
-    replaces = [
-        ("ml", "0007_backend"),
-        ("ml", "0008_remove_pipeline_endpoint_url_pipeline_backend"),
-        ("ml", "0009_remove_pipeline_backend_backend_pipelines"),
-        ("ml", "0010_backend_created_at_backend_updated_at"),
-        ("ml", "0011_alter_pipeline_stages"),
-        ("ml", "0012_backend_last_checked_backend_last_checked_live"),
-        ("ml", "0013_backend_description_backend_name_backend_slug_and_more"),
-        ("ml", "0014_remove_backend_version_remove_backend_version_name_and_more"),
-        ("ml", "0015_processingservice_delete_backend"),
-        ("ml", "0016_alter_processingservice_options"),
-        ("ml", "0017_remove_processingservice_slug_and_more"),
-    ]
-
     dependencies = [
         ("main", "0038_alter_detection_path_alter_sourceimage_event_and_more"),
         ("ml", "0006_alter_pipeline_endpoint_url_alter_pipeline_projects"),

@@ -90,7 +90,7 @@ class Migration(migrations.Migration):
                 blank=True, related_name="new_pipelines", through="ml.ProjectPipelineConfig", to="main.Project"
             ),
         ),
-        migrations.RunPython(transfer_m2m_data, reverse_code=revert_m2m_data),
+        migrations.RunPython(transfer_m2m_data, reverse_code=revert_m2m_data, elidable=True),
         migrations.RemoveField(
             model_name="pipeline",
             name="projects",

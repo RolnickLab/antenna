@@ -18,5 +18,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(update_occurrence_scores, migrations.RunPython.noop),
+        migrations.RunPython(update_occurrence_scores, migrations.RunPython.noop, elidable=True),
     ]
