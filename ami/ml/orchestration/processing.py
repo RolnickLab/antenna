@@ -20,7 +20,7 @@ def process_single_source_image(
     assert source_image.deployment is not None, "SourceImage must belong to a deployment"
 
     if not source_image.event:
-        source_image.deployment.save(regroup_async=False)
+        source_image.deployment.refresh_derived_state(regroup_async=False)
         source_image.refresh_from_db()
     assert source_image.event is not None, "SourceImage must belong to an event"
 
