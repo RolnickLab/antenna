@@ -17,13 +17,20 @@ import inputStyles from 'nova-ui-kit/components/input/input.module.scss'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
 export const ExportDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
-  const { exportDetails, isLoading, error } = useExportDetails(id)
+  // A route id that isn't a positive integer can't be an export pk (see
+  // isDetailRouteId), so skip the fetch and show not-found instead.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { exportDetails, isLoading, error } = useExportDetails(validId)
+  const notFoundError = validId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   return (
     <Dialog.Root
@@ -42,7 +49,7 @@ export const ExportDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
-        error={error}
+        error={error ?? notFoundError}
       >
         <Dialog.Header
           title={translate(STRING.ENTITY_DETAILS, {

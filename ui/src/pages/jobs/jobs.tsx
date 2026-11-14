@@ -19,6 +19,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { isDetailRouteId } from 'utils/isDetailRouteId'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
@@ -108,7 +109,13 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { job, isLoading, isFetching, error } = useJobDetails(id)
+  // A route id that isn't a positive integer can't be a job pk (see
+  // isDetailRouteId), so skip the fetch and show not-found instead.
+  const validId = isDetailRouteId(id) ? id : undefined
+  const { job, isLoading, isFetching, error } = useJobDetails(validId)
+  const notFoundError = validId
+    ? undefined
+    : { message: translate(STRING.MESSAGE_NOT_FOUND) }
 
   useEffect(() => {
     setDetailBreadcrumb(job ? { title: job.name } : undefined)
@@ -131,7 +138,7 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
         isLoading={isLoading}
-        error={error}
+        error={error ?? notFoundError}
       >
         {job ? (
           <JobDetails
