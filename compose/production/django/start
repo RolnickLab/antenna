@@ -4,7 +4,11 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-python /app/manage.py collectstatic --noinput
+if [ "${DISABLE_COLLECTSTATIC:-0}" = "1" ]; then
+    echo "Skipping collectstatic (DISABLE_COLLECTSTATIC=1)"
+else
+    python /app/manage.py collectstatic --noinput
+fi
 
 # Gunicorn natively reads WEB_CONCURRENCY as its --workers default.
 # If not set, default to CPU core count.
