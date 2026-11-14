@@ -27,6 +27,12 @@ class Command(BaseCommand):
             choices=[mode.value for mode in JobDispatchMode],
             help="Job dispatch mode",
         )
+        parser.add_argument(
+            "--timeout",
+            type=int,
+            default=0,
+            help="Fail if the job has not finished after this many seconds (0 waits forever)",
+        )
 
     def _resolve_inputs(self, options):
         """Resolve and validate project, collection, and pipeline from command options."""
@@ -92,22 +98,26 @@ class Command(BaseCommand):
         self.stdout.write("(Press Ctrl+C to stop monitoring)\n")
 
         try:
-            self._monitor_job(job, start_time)
+            self._monitor_job(job, start_time, options["timeout"])
         except KeyboardInterrupt:
             self.stdout.write("\n\n⚠ Stopped monitoring (job continues running)")
             self.stdout.write(f"  Job ID: {job.pk}")
 
-    def _monitor_job(self, job, start_time):
+    def _monitor_job(self, job, start_time, timeout: int = 0):
         last_progress = {}
 
         while True:
             elapsed = time.time() - start_time
             job.refresh_from_db()
 
-            # Check if finished
+            # Check if finished. A non-zero exit lets CI fail on an unsuccessful job.
             if job.status in JobState.final_states():
                 self._show_final_results(job, start_time)
+                if job.status != JobState.SUCCESS:
+                    raise CommandError(f"Job {job.pk} ended with status {job.status}")
                 break
+            if timeout and elapsed > timeout:
+                raise CommandError(f"Job {job.pk} did not finish within {timeout}s (status {job.status})")
 
             # Show progress
             self._show_progress(job, elapsed, last_progress)
