@@ -1,6 +1,7 @@
 import typing
 
 import requests
+from django.conf import settings
 from django.forms import BooleanField, FloatField
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter
@@ -14,7 +15,7 @@ if typing.TYPE_CHECKING:
 
 def create_session(
     retries: int = 3,
-    backoff_factor: int = 2,
+    backoff_factor: float | None = None,
     status_forcelist: tuple[int, ...] = (500, 502, 503, 504),
 ) -> requests.Session:
     """
@@ -22,12 +23,14 @@ def create_session(
 
     Args:
         retries: Maximum number of retries
-        backoff_factor: Backoff factor for retries
+        backoff_factor: Backoff factor for retries; defaults to settings.HTTP_RETRY_BACKOFF_FACTOR
         status_forcelist: HTTP status codes to retry on
 
     Returns:
         Session configured with retry behavior
     """
+    if backoff_factor is None:
+        backoff_factor = settings.HTTP_RETRY_BACKOFF_FACTOR
     session = requests.Session()
     retry = Retry(
         total=retries,

@@ -97,7 +97,8 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
 
 # Timeout per sync service in the periodic beat task. Shorter than the default (90s for
 # cold-start waits) since a missed check just waits for the next beat cycle.
-# Worst case: 4 attempts (initial + 3 retries) × 8s timeout + backoff (0 + 2 + 4) = 38s per service.
+# Worst case: 4 attempts (initial + 3 retries) × 8s timeout + backoff (0 + 4 + 8) = 44s per service,
+# with the default HTTP_RETRY_BACKOFF_FACTOR of 2.
 _BEAT_STATUS_TIMEOUT = 8
 
 # Discard queued copies that built up while the worker was unavailable — the next
