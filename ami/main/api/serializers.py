@@ -1160,6 +1160,12 @@ class ClassificationSerializer(DefaultSerializer):
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
     applied_to = ClassificationAppliedToSerializer(read_only=True)
     job = serializers.PrimaryKeyRelatedField(read_only=True, help_text="The job that wrote this classification.")
+    scores = serializers.SerializerMethodField(
+        help_text="Probability per class: the stored scores, or softmax(logits) when only the logits are stored."
+    )
+
+    def get_scores(self, obj: Classification) -> list[float] | None:
+        return obj.scores_or_softmax() or None
 
     class Meta:
         model = Classification

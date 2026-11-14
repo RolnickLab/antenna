@@ -38,6 +38,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.main.models_future.classifications import arrays_to_store
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
@@ -803,6 +804,8 @@ def create_classification(
         logger=logger,
     )
 
+    scores, logits = arrays_to_store(classification_resp.scores, classification_resp.logits)
+
     existing_classification = Classification.objects.filter(
         detection=detection,
         taxon=taxon,
@@ -811,27 +814,41 @@ def create_classification(
     ).first()
 
     if existing_classification:
-        # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
-        NEW_FIELDS = ["logits", "scores", "terminal", "category_map"]
         logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
-            f"not creating a new one, but updating new fields if they are None ({NEW_FIELDS})"
+            "not creating a new one, but filling a missing category map and applying the one-copy array rule"
         )
-        fields_to_update = []
-        for field in NEW_FIELDS:
-            # update new fields if they are None
-            if getattr(existing_classification, field) is None:
-                fields_to_update.append(field)
+        # A row with logits keeps its own arrays: taking scores from another run would mix two
+        # results. A row without logits takes them from the response. Either way the one-copy
+        # rule then applies, so scores that duplicate the logits are dropped.
+        if existing_classification.logits is not None:
+            merged_scores, merged_logits = existing_classification.scores, existing_classification.logits
+        else:
+            merged_scores = (
+                existing_classification.scores
+                if existing_classification.scores is not None
+                else classification_resp.scores
+            )
+            merged_logits = classification_resp.logits
+        final_scores, final_logits = arrays_to_store(merged_scores, merged_logits)
+        new_values = {
+            "logits": final_logits,
+            "scores": final_scores,
+            "category_map": classification_algo.category_map,
+        }
+        fields_to_update = [
+            field for field in ("scores", "logits") if getattr(existing_classification, field) != new_values[field]
+        ]
+        fields_to_update += [
+            field
+            for field in ("category_map",)
+            if getattr(existing_classification, field) is None and new_values[field] is not None
+        ]
         if fields_to_update:
             logger.info(f"Updating fields {fields_to_update} for existing classification {existing_classification}")
             for field in fields_to_update:
-                if field == "category_map":
-                    # Use the foreign key from the classification algorithm
-                    setattr(existing_classification, field, classification_algo.category_map)
-                else:
-                    # Get the value from the classification response
-                    setattr(existing_classification, field, getattr(classification_resp, field))
+                setattr(existing_classification, field, new_values[field])
             existing_classification.save(update_fields=fields_to_update)
             logger.info(f"Updated existing classification {existing_classification}")
 
@@ -844,8 +861,8 @@ def create_classification(
             algorithm=classification_algo,
             score=max(classification_resp.scores),
             timestamp=classification_resp.timestamp or now(),
-            logits=classification_resp.logits,
-            scores=classification_resp.scores,
+            logits=logits,
+            scores=scores,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
             job_id=job_id,

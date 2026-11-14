@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 
 from ami.main.models import SourceImageCollection, TaxaList
 from ami.ml.models.algorithm import Algorithm
@@ -48,13 +49,15 @@ class Command(BaseCommand):
 
         # Mirrors ClassMaskingTask._scoped_classifications; do not add .distinct(),
         # see #1376.
-        classification_count = Classification.objects.filter(
-            detection__source_image__collections=collection,
-            terminal=True,
-            algorithm=algorithm,
-            scores__isnull=False,
-            logits__isnull=False,
-        ).count()
+        classification_count = (
+            Classification.objects.filter(
+                detection__source_image__collections=collection,
+                terminal=True,
+                algorithm=algorithm,
+            )
+            .filter(Q(scores__isnull=False) | Q(logits__isnull=False))
+            .count()
+        )
 
         taxa_count = taxa_list.taxa.count()
 
@@ -66,7 +69,9 @@ class Command(BaseCommand):
         )
 
         if classification_count == 0:
-            raise CommandError("No terminal classifications with scores found for this collection/algorithm.")
+            raise CommandError(
+                "No terminal classifications with scores or logits found for this collection/algorithm."
+            )
 
         if dry_run:
             self.stdout.write(self.style.WARNING("Dry run — no changes made."))
