@@ -3,7 +3,9 @@ import datetime
 import pathlib
 import unittest
 import uuid
+from unittest import mock
 
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -18,12 +20,18 @@ from ami.main.models import (
     Project,
     SourceImage,
     SourceImageCollection,
+    TaxaList,
     Taxon,
     TaxonRank,
     group_images_into_events,
 )
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
-from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.models.pipeline import (
+    collect_images,
+    get_or_create_algorithm_and_category_map,
+    get_or_create_taxon_for_classification,
+    save_results,
+)
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -2359,3 +2367,50 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestGetOrCreateTaxonForClassificationRace(TestCase):
+    """Two result-saving tasks can both miss a new taxon and both try to create it. See #1529."""
+
+    def setUp(self):
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.label = "Newly seen species"
+        self.response = ClassificationResponse(
+            classification=self.label,
+            scores=[0.9] + [0.0] * (len(self.algorithm.category_map.data) - 1),
+            algorithm=AlgorithmReference(name=self.algorithm.name, key=self.algorithm.key),
+            timestamp=datetime.datetime.now(),
+        )
+
+    def test_concurrent_creation_reuses_existing_taxon(self):
+        # The other task commits its taxon after this task's lookup missed.
+        winner = Taxon.objects.create(name=self.label)
+        real_filter = Taxon.objects.filter
+        calls = []
+
+        def stale_first_lookup(*args, **kwargs):
+            calls.append(1)
+            return Taxon.objects.none() if len(calls) == 1 else real_filter(*args, **kwargs)
+
+        with mock.patch.object(Taxon.objects, "filter", side_effect=stale_first_lookup):
+            taxon = get_or_create_taxon_for_classification(self.algorithm, self.response)
+
+        self.assertTrue(calls)
+        self.assertEqual(taxon.pk, winner.pk)
+        self.assertEqual(Taxon.objects.filter(name=self.label).count(), 1)
+        taxa_list = TaxaList.objects.get(name=f"Taxa returned by {self.algorithm.name}")
+        self.assertIn(winner, taxa_list.taxa.all())
+
+    def test_inactive_taxon_with_same_name_is_reused(self):
+        # Not a race. Before this change a label naming an inactive taxon raised IntegrityError.
+        retired = Taxon.objects.create(name=self.label, active=False)
+        taxon = get_or_create_taxon_for_classification(self.algorithm, self.response)
+        self.assertEqual(taxon.pk, retired.pk)
+
+    def test_display_name_conflict_is_not_hidden(self):
+        # "<genus> sp." is the display name of the genus, so the label's own display name collides.
+        Taxon.objects.create(name="Scoparia", rank=TaxonRank.GENUS)
+        response = self.response.copy(update={"classification": "Scoparia sp."})
+        with transaction.atomic():
+            with self.assertRaises(IntegrityError):
+                get_or_create_taxon_for_classification(self.algorithm, response)
