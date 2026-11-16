@@ -21,7 +21,6 @@ from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
-    BlogPost,
     Classification,
     Deployment,
     Detection,
@@ -87,11 +86,6 @@ class AdminBase(admin.ModelAdmin):
         self.message_user(request, f"Saving {len(instance_pks)} instances in background in batches of {batch_size}.")
 
     actions = [save_async]
-
-
-@admin.register(BlogPost)
-class BlogPostAdmin(admin.ModelAdmin[BlogPost]):
-    """Admin panel example for ``BlogPost`` model."""
 
 
 @admin.register(Project)

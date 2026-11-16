@@ -3,7 +3,6 @@ import datetime
 import functools
 import logging
 import operator
-import textwrap
 import time
 import typing
 import urllib.parse
@@ -2723,29 +2722,6 @@ class Detection(BaseModel):
 
     def __str__(self) -> str:
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
-
-
-@final
-class BlogPost(BaseModel):
-    """
-    This model is used just as an example.
-
-    With it we show how one can:
-    - Use fixtures and factories
-    - Use migrations testing
-
-    """
-
-    title = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
-    body = models.TextField()
-
-    class Meta:
-        verbose_name = "Blog Post"  # You can probably use `gettext` for this
-        verbose_name_plural = "Blog Posts"
-
-    def __str__(self) -> str:
-        """All django models should have this method."""
-        return textwrap.wrap(self.title, _POST_TITLE_MAX_LENGTH // 4)[0]
 
 
 @final
