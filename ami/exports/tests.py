@@ -96,7 +96,6 @@ class DataExportTest(TestCase):
             project=self.project,
             format=format_type,
             filters={"collection_id": self.collection.pk},
-            job=None,
         )
 
         # Run export and get the file URL
@@ -165,7 +164,6 @@ class DataExportTest(TestCase):
             project=self.project,
             format="occurrences_simple_csv",
             filters={"collection_id": self.collection.pk},
-            job=None,
         )
 
         # Run export and get the file URL
@@ -361,7 +359,6 @@ class ExportNewFieldsTest(TestCase):
             user=self.user,
             project=self.project,
             format="occurrences_simple_csv",
-            job=None,
         )
         file_url = data_export.run_export()
         self.assertIsNotNone(file_url)

@@ -1472,7 +1472,7 @@ class TestTaxonomy(TestCase):
         from ami.main.models import Taxon
 
         tree = Taxon.objects.tree()
-        self.assertDictContainsSubset({"taxon": Taxon.objects.get(name="Lepidoptera")}, tree)
+        self.assertEqual(tree["taxon"], Taxon.objects.get(name="Lepidoptera"))
 
     def test_rank_formatting(self):
         """
