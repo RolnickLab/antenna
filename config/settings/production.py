@@ -187,5 +187,20 @@ SPECTACULAR_SETTINGS["SERVERS"] = [  # noqa: F405
     {"url": "https://app.insectai.org", "description": "Production server"},
     {"url": "https://app.preview.insectai.org", "description": "Staging server"},
 ]
+# Rate limits per client, so one crawler cannot occupy every web worker. Anonymous clients
+# are counted per IP address, signed-in users and processing services per account. An
+# empty rate turns that limit off. Only production settings enable them, so local and CI
+# test runs are never throttled.
+REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = (  # noqa: F405
+    "rest_framework.throttling.AnonRateThrottle",
+    "rest_framework.throttling.UserRateThrottle",
+)
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {  # noqa: F405
+    "anon": env("DJANGO_API_ANON_RATE_LIMIT", default="1000/hour") or None,
+    "user": env("DJANGO_API_USER_RATE_LIMIT", default="20000/hour") or None,
+}
+# Reverse proxies in front of Django. With the default (none), every anonymous client
+# behind a proxy shares the proxy's address and one rate limit.
+REST_FRAMEWORK["NUM_PROXIES"] = env.int("DJANGO_API_NUM_PROXIES", default=None)  # noqa: F405
 # Your stuff...
 # ------------------------------------------------------------------------------
