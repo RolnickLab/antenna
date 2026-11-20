@@ -8,7 +8,7 @@ Current models will be moved to:
 models/
 ├── __init__.py         # Import everything for backward compatibility
 ├── base.py             # BaseModel and mixins
-├── content.py          # Page, BlogPost
+├── pages.py            # Page
 ├── enums.py            # TaxonRank and other enums
 ├── detection.py        # Detection, Classification
 ├── identifications.py  # Identification
