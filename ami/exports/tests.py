@@ -1,10 +1,12 @@
 import csv
 import json
 import logging
+from collections import Counter
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
+from django.urls import resolve
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
@@ -17,6 +19,7 @@ from ami.tests.fixtures.main import (
     group_images_into_events,
     setup_test_project,
 )
+from config.api_router import router
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +212,18 @@ class DataExportTest(TestCase):
 
         # Clean up the exported file after the test
         default_storage.delete(file_path)
+
+
+class ExportRouteRegistrationTest(SimpleTestCase):
+    """Each API route is registered once."""
+
+    def test_router_basenames_are_unique(self):
+        counts = Counter(basename for _prefix, _viewset, basename in router.registry)
+        self.assertEqual({name: n for name, n in counts.items() if n > 1}, {})
+
+    def test_exports_urls_resolve(self):
+        self.assertEqual(resolve("/api/v2/exports/").url_name, "dataexport-list")
+        self.assertEqual(resolve("/api/v2/exports/1/").url_name, "dataexport-detail")
 
 
 class DataExportPermissionTest(TestCase):

@@ -60,7 +60,6 @@ router.register(r"classifications", views.ClassificationViewSet)
 router.register(r"identifications", views.IdentificationViewSet)
 router.register(r"jobs", job_views.JobViewSet)
 router.register(r"pages", views.PageViewSet)
-router.register(r"exports", export_views.ExportViewSet)
 router.register(
     r"labelstudio/captures", labelstudio_views.LabelStudioSourceImageViewSet, basename="labelstudio-captures"
 )
