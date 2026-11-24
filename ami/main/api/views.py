@@ -2342,7 +2342,12 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
 
 
 class TagViewSet(DefaultViewSet, ProjectMixin):
-    queryset = Tag.objects.all()
+    # Without a project the list returns every tag on the platform with its taxa, which
+    # crawlers requested thousands of times a day. The site always passes a project.
+    require_project_for_list = True
+    queryset = Tag.objects.select_related("project").prefetch_related(
+        Prefetch("taxa", queryset=Taxon.objects.select_related(None).only("id", "name"))
+    )
     serializer_class = TagSerializer
     filterset_fields = ["taxa"]
 
