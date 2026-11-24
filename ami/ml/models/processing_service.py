@@ -196,7 +196,8 @@ class ProcessingService(BaseModel):
         If the service is a v1/push-mode/interactive service with an endpoint URL, this method will ping the
         /readyz endpoint to check if it's live.
 
-        Uses urllib3 Retry with exponential backoff to handle cold starts and transient failures.
+        Uses urllib3 Retry with exponential backoff (see ``HTTP_RETRY_BACKOFF_FACTOR``) to handle cold starts
+        and transient failures.
         The timeout is set to 90s per attempt to accommodate serverless cold starts, especially for
         services that need to load multiple models into memory. With automatic retries, transient
         connection errors are handled gracefully.
@@ -239,7 +240,6 @@ class ProcessingService(BaseModel):
         # Create session with retry logic for connection errors and timeouts
         session = create_session(
             retries=3,
-            backoff_factor=2,  # 0s, 2s, 4s delays between retries
             status_forcelist=(500, 502, 503, 504),
         )
 
