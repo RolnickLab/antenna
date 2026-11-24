@@ -944,6 +944,49 @@ class TestPostProcessingClassMasking(TestCase):
         self.assertTrue(any("not re-scored again" in line for line in logs.output))
         self.assertEqual(Classification.objects.filter(detection=det, terminal=True).count(), 1)
 
+    def test_a_run_says_how_many_rows_an_earlier_run_already_rescored(self):
+        """A run at another weight does not re-score what an earlier run re-scored, also
+        when other rows are still in scope. The log gives their number, so a hard-mask
+        run that leaves an out-of-list determination in place says why."""
+        taxa_list, det, occ = self._masking_fixture("Partly rescored list")
+        # A second detection that no weight changes: its class outside the list has no probability.
+        in_list_logits = [5.0, 1.0, -60.0]
+        other_det = Detection.objects.create(source_image=self.collection.images.first(), bbox=[0, 0, 100, 100])
+        occ.detections.add(other_det)
+        untouched = self._create_classification_with_logits(
+            other_det, self.species_taxa[0], _softmax(in_list_logits), in_list_logits
+        )
+
+        def run(weight: float) -> list[str]:
+            with self.assertLogs("ami.post_processing.class_masking", level="INFO") as logs:
+                ClassMaskingTask(
+                    occurrence_id=occ.pk,
+                    taxa_list_id=taxa_list.pk,
+                    algorithm_id=self.algorithm.pk,
+                    out_of_list_weight=weight,
+                ).run()
+            return logs.output
+
+        # The first run has nothing earlier to report. It keeps the species outside the list.
+        self.assertFalse(any("already re-scored" in line for line in run(0.1)))
+        self.assertEqual(Classification.objects.get(detection=det, terminal=True).taxon, self.species_taxa[2])
+
+        second_run = run(0.0)
+
+        # The untouched row is still in scope, so the empty-scope warning does not cover this run.
+        self.assertTrue(any("Found 1 terminal classifications" in line for line in second_run))
+        self.assertFalse(any("No terminal classifications" in line for line in second_run))
+        self.assertTrue(
+            any(
+                line.startswith("WARNING") and "already re-scored 1 of the classifications" in line
+                for line in second_run
+            ),
+            second_run,
+        )
+        self.assertEqual(Classification.objects.get(detection=det, terminal=True).taxon, self.species_taxa[2])
+        untouched.refresh_from_db()
+        self.assertTrue(untouched.terminal)
+
     # ----- run_class_masking management command -----------------------------
 
     def test_command_passes_the_weight_to_the_task(self):

@@ -29,6 +29,9 @@ DEFAULT_OUT_OF_LIST_WEIGHT = 0.01
 WEIGHT_DECIMALS = 4
 # The smallest weight above 0 that those decimals can hold.
 SMALLEST_OUT_OF_LIST_WEIGHT = 10**-WEIGHT_DECIMALS
+# What every class masking Algorithm key holds between the source classifier's key and
+# the taxa list's id. See ``ClassMaskingTask._get_or_create_masking_algorithm``.
+MASKING_KEY_INFIX = "_filtered_by_taxa_list_"
 
 
 class ClassMaskingConfig(pydantic.BaseModel):
@@ -424,7 +427,7 @@ class ClassMaskingTask(BasePostProcessingTask):
         persisted — earlier code set it in memory only, so masked classifications
         referenced a null map.
         """
-        base_key = f"{source_algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"
+        base_key = f"{source_algorithm.key}{MASKING_KEY_INFIX}{taxa_list.pk}"
         if out_of_list_weight > 0:
             key = f"{base_key}_weight_{_weight_token(out_of_list_weight)}"
             summary = f"out-of-list weight {out_of_list_weight:g}"
@@ -451,13 +454,27 @@ class ClassMaskingTask(BasePostProcessingTask):
             algorithm.save(update_fields=["category_map"])
         return algorithm
 
+    def _scope_lookup(self, config: ClassMaskingConfig) -> tuple[dict[str, typing.Any], str]:
+        """The filter that limits classifications to the config's scope, and its description.
+
+        ``config_schema`` guarantees exactly one scope id is set, so the single
+        ``else`` branch is sound.
+        """
+        if config.occurrence_id is not None:
+            if not Occurrence.objects.filter(pk=config.occurrence_id).exists():
+                raise ValueError(f"Occurrence {config.occurrence_id} not found")
+            return {"detection__occurrence_id": config.occurrence_id}, f"occurrence {config.occurrence_id}"
+
+        try:
+            collection = SourceImageCollection.objects.get(pk=config.source_image_collection_id)
+        except SourceImageCollection.DoesNotExist:
+            raise ValueError(f"SourceImageCollection {config.source_image_collection_id} not found")
+        return {"detection__source_image__collections": collection}, f"collection {collection.pk}"
+
     def _scoped_classifications(
         self, config: ClassMaskingConfig, source_algorithm: Algorithm, masking_algorithm: Algorithm
     ) -> tuple[QuerySet[Classification], str]:
         """Resolve the terminal classifications to re-score from the config's scope.
-
-        ``config_schema`` guarantees exactly one scope id is set, so the single
-        ``else`` branch is sound.
 
         Do not add ``.distinct()`` while both scopes filter a to-one path: neither
         can duplicate a row, and de-duplicating sorts the ``logits`` and ``scores``
@@ -486,22 +503,36 @@ class ClassMaskingTask(BasePostProcessingTask):
             )
         )
 
-        if config.occurrence_id is not None:
-            if not Occurrence.objects.filter(pk=config.occurrence_id).exists():
-                raise ValueError(f"Occurrence {config.occurrence_id} not found")
-            return (
-                base.filter(detection__occurrence_id=config.occurrence_id),
-                f"occurrence {config.occurrence_id}",
-            )
+        scope_lookup, scope_desc = self._scope_lookup(config)
+        return base.filter(**scope_lookup), scope_desc
 
-        try:
-            collection = SourceImageCollection.objects.get(pk=config.source_image_collection_id)
-        except SourceImageCollection.DoesNotExist:
-            raise ValueError(f"SourceImageCollection {config.source_image_collection_id} not found")
-        return (
-            base.filter(detection__source_image__collections=collection),
-            f"collection {collection.pk}",
+    def _count_rescored_by_another_masking_algorithm(
+        self, config: ClassMaskingConfig, source_algorithm: Algorithm, masking_algorithm: Algorithm
+    ) -> int:
+        """Count the terminal classifications in scope that another masking algorithm wrote.
+
+        A run re-scores only terminal classifications of the source classifier, and a
+        run demotes every classification it re-scores. So a classification that a run
+        with another taxa list, weight or score mode already re-scored is out of scope
+        for this run, and its occurrence keeps the result of that run. This count is
+        what lets ``run`` say so in the job log when the scope is not empty.
+
+        The other masking algorithms of the source classifier are found by key (see
+        ``_get_or_create_masking_algorithm``). When there are none, which is the case
+        for the first run on a classifier, no classification is counted.
+        """
+        other_masking_algorithms = list(
+            Algorithm.objects.filter(key__startswith=f"{source_algorithm.key}{MASKING_KEY_INFIX}")
+            .exclude(pk=masking_algorithm.pk)
+            .values_list("pk", flat=True)
         )
+        if not other_masking_algorithms:
+            return 0
+        scope_lookup, _ = self._scope_lookup(config)
+        # A count needs no de-duplication and reads no score array; see ``_scoped_classifications``.
+        return Classification.objects.filter(
+            terminal=True, algorithm__in=other_masking_algorithms, **scope_lookup
+        ).count()
 
     def run(self) -> None:
         config: ClassMaskingConfig = self.config  # type: ignore[assignment]
@@ -526,6 +557,15 @@ class ClassMaskingTask(BasePostProcessingTask):
             f"Applying class masking on {scope_desc} using taxa list {taxa_list.pk} "
             f"with out-of-list weight {config.out_of_list_weight:g}"
         )
+        already_rescored = self._count_rescored_by_another_masking_algorithm(
+            config, source_algorithm, masking_algorithm
+        )
+        if already_rescored:
+            self.logger.warning(
+                f"An earlier class masking run of this classifier, with another taxa list, weight or score "
+                f"mode, already re-scored {already_rescored} of the classifications in {scope_desc}. They are "
+                "not re-scored again and keep the result of that run."
+            )
 
         def _on_setup(total: int) -> None:
             self.update_progress(0.0)
