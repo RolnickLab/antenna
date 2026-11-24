@@ -3,10 +3,12 @@ import { API_ROUTES } from 'data-services/constants'
 import { Algorithm } from './algorithm'
 import { HumanIdentification, MachinePrediction } from './occurrence-details'
 import {
+  ClassMaskingResultEntry,
   getFallbackTimelineItems,
   getJobConfigFields,
   getResultPrediction,
   getTimelineItems,
+  isWeightedClassMasking,
   ServerOccurrenceHistoryEntry,
 } from './occurrence-history'
 import { Taxon } from './taxa'
@@ -325,6 +327,70 @@ describe('getResultPrediction', () => {
 describe('getOccurrenceHistoryQueryKey', () => {
   test('sits under the occurrences key that mutations invalidate', () => {
     expect(getOccurrenceHistoryQueryKey('100')[0]).toBe(API_ROUTES.OCCURRENCES)
+  })
+})
+
+describe('isWeightedClassMasking', () => {
+  const run = (
+    weight: number | undefined,
+    figures: Partial<ClassMaskingResultEntry['data']> = {}
+  ): ClassMaskingResultEntry => ({
+    ...base,
+    classifications: [],
+    data: {
+      determination_after_id: 3,
+      determination_before_id: 4,
+      excluded_probability: 0.94,
+      extra: {},
+      new_winner_original_rank: 2,
+      ...figures,
+    },
+    determination_after: NOCTUA,
+    determination_before: XESTIA,
+    id: 5,
+    job:
+      weight === undefined
+        ? null
+        : {
+            ...JOB,
+            config: [
+              ...JOB.config,
+              {
+                key: 'out_of_list_weight',
+                label: 'Weight for species outside the list',
+                value: weight,
+                refs: [],
+              },
+            ],
+          },
+    kind: 'class_masking',
+    type: 'algorithm_result',
+    value: 0.94,
+  })
+
+  test("follows the weight in the job's config", () => {
+    expect(isWeightedClassMasking(run(0.01))).toBe(true)
+    expect(isWeightedClassMasking(run(0))).toBe(false)
+  })
+
+  test("reads the result's own figures when it has no job", () => {
+    expect(
+      isWeightedClassMasking(
+        run(undefined, { excluded_probability_after: 0.13 })
+      )
+    ).toBe(true)
+    expect(
+      isWeightedClassMasking(run(undefined, { winner_in_list: false }))
+    ).toBe(true)
+    expect(
+      isWeightedClassMasking(
+        run(undefined, { excluded_probability_after: 0, winner_in_list: true })
+      )
+    ).toBe(false)
+  })
+
+  test('is false for a result stored without the figures and without a job', () => {
+    expect(isWeightedClassMasking(run(undefined))).toBe(false)
   })
 })
 

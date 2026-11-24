@@ -8,6 +8,7 @@ import {
   getJobConfigFields,
   getResultKindLabel,
   getResultPrediction,
+  isWeightedClassMasking,
   ServerHistoryTaxon,
 } from 'data-services/models/occurrence-history'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
@@ -42,12 +43,9 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
   if (entry.kind === 'class_masking') {
     const refFor = (key: string) => getJobConfigField(entry.job, key)?.refs[0]
     const classifier = refFor('algorithm_id')
-    // A weight above 0 down-weights the classes outside the list; without one they are removed.
-    const weight = getJobConfigField(entry.job, 'out_of_list_weight')?.value
-    const subTitle =
-      typeof weight === 'number' && weight > 0
-        ? STRING.HISTORY_WEIGHTING_SUBTITLE
-        : STRING.HISTORY_MASKING_SUBTITLE
+    const subTitle = isWeightedClassMasking(entry)
+      ? STRING.HISTORY_WEIGHTING_SUBTITLE
+      : STRING.HISTORY_MASKING_SUBTITLE
 
     return translate(subTitle, {
       algorithm: classifier
