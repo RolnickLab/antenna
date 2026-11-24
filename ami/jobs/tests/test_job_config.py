@@ -27,6 +27,7 @@ class JobConfigFieldsTestCase(TestCase):
         taxa_list = TaxaList.objects.create(name="Kept species")
         classifier = Algorithm.objects.create(name="Classifier", key="config-test-classifier")
         config = {
+            "out_of_list_weight": 0.01,
             "reweight": True,
             "algorithm_id": classifier.pk,
             "taxa_list_id": taxa_list.pk,
@@ -45,7 +46,8 @@ class JobConfigFieldsTestCase(TestCase):
                 JobConfigField(
                     "algorithm_id", "Classifier", classifier.pk, [ModelRef("algorithm", classifier.pk, "Classifier")]
                 ),
-                JobConfigField("reweight", "Re-weighted scores", True),
+                JobConfigField("reweight", "Renormalised scores", True),
+                JobConfigField("out_of_list_weight", "Weight for species outside the list", 0.01),
             ],
         )
 

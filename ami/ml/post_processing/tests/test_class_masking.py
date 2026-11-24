@@ -1,19 +1,25 @@
 """Domain tests for the class masking post-processing task.
 
 Class masking re-scores a classifier's terminal predictions against a taxa list:
-classes whose taxon is not in the list are masked, the softmax is renormalised
-over the rest, and a new terminal classification (linked back via ``applied_to``)
-records the masked result. These tests cover the masking maths (including that an
-excluded class can never win even when it had the highest logit), the provenance
-link, the persisted output algorithm, and both admin scopes (collection / single
-occurrence) end to end through ``ClassMaskingTask.run()``.
+classes whose taxon is not in the list are down-weighted (removed at weight 0),
+the softmax is renormalised, and a new terminal classification (linked back via
+``applied_to``) records the result. These tests cover the masking maths (a hard
+mask never lets an excluded class win; a soft mask lets a confident one through),
+the provenance link, the persisted output algorithm, and both admin scopes
+(collection / single occurrence) end to end through ``ClassMaskingTask.run()``.
+
+Tests that pin a hard-mask outcome pass ``out_of_list_weight=0.0`` themselves, so
+they do not depend on the default weight.
 """
 import datetime
+import io
 import math
 import pathlib
 import uuid
 from unittest import mock
 
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection
 from django.db.models import QuerySet
 from django.test import TestCase
@@ -32,7 +38,12 @@ from ami.main.models import (
 )
 from ami.ml.models import Algorithm, AlgorithmCategoryMap, AlgorithmResult
 from ami.ml.models.algorithm import AlgorithmTaskType
-from ami.ml.post_processing.class_masking import ClassMaskingTask, make_classifications_filtered_by_taxa_list
+from ami.ml.post_processing.class_masking import (
+    DEFAULT_OUT_OF_LIST_WEIGHT,
+    ClassMaskingTask,
+    _weight_token,
+    make_classifications_filtered_by_taxa_list,
+)
 from ami.tests.fixtures.main import create_taxa, setup_test_project
 
 
@@ -118,8 +129,8 @@ class TestPostProcessingClassMasking(TestCase):
     # ----- make_classifications_filtered_by_taxa_list ---------------------
 
     def test_excluded_class_never_wins_even_with_highest_logit(self):
-        """The core guarantee: a masked class cannot be selected, even if it had
-        the single highest logit before masking."""
+        """The hard-mask guarantee: at weight 0 a masked class cannot be selected, even
+        if it had the single highest logit before masking."""
         # index 2 (excluded) has the highest logit, so it is the original top.
         logits = [2.0, 1.0, 5.0]
         scores = _softmax(logits)
@@ -142,6 +153,7 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list=taxa_list,
             algorithm=self.algorithm,
             new_algorithm=new_algorithm,
+            out_of_list_weight=0.0,
         )
 
         original.refresh_from_db()
@@ -173,6 +185,7 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list=taxa_list,
             algorithm=self.algorithm,
             new_algorithm=new_algorithm,
+            out_of_list_weight=0.0,
         )
         new_clf = Classification.objects.get(detection=det, terminal=True)
         self.assertAlmostEqual(new_clf.scores[0], 1.0, places=5)
@@ -240,11 +253,12 @@ class TestPostProcessingClassMasking(TestCase):
             source_image_collection_id=self.collection.pk,
             taxa_list_id=taxa_list.pk,
             algorithm_id=self.algorithm.pk,
+            out_of_list_weight=0.0,
         ).run()
 
-        # The per-(source algorithm, taxa list, reweight mode) masking algorithm
-        # exists and kept its category map (the bug being guarded: it used to be
-        # set in memory only). Default reweight=True → the "reweighted" mode.
+        # The hard mask's per-(source algorithm, taxa list, reweight mode) masking
+        # algorithm exists and kept its category map (the bug being guarded: it used
+        # to be set in memory only). Default reweight=True → the "reweighted" mode.
         masking_algo = Algorithm.objects.get(
             key=f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}_reweighted"
         )
@@ -302,6 +316,7 @@ class TestPostProcessingClassMasking(TestCase):
                 source_image_collection_id=self.collection.pk,
                 taxa_list_id=taxa_list.pk,
                 algorithm_id=self.algorithm.pk,
+                out_of_list_weight=0.0,
             ).run()
 
         run()
@@ -329,7 +344,7 @@ class TestPostProcessingClassMasking(TestCase):
         )
 
     def test_reweight_modes_get_distinct_masking_algorithms(self):
-        """The reweight mode is part of the masking algorithm's identity.
+        """The reweight mode is part of a hard mask's algorithm identity.
 
         reweight=True and reweight=False persist different score semantics
         (renormalised vs original absolute), so they must resolve to different
@@ -349,6 +364,7 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list_id=taxa_list.pk,
             algorithm_id=self.algorithm.pk,
             reweight=True,
+            out_of_list_weight=0.0,
         ).run()
 
         det_f, _ = self._detection_with_occurrence()
@@ -358,6 +374,7 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list_id=taxa_list.pk,
             algorithm_id=self.algorithm.pk,
             reweight=False,
+            out_of_list_weight=0.0,
         ).run()
 
         base = f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"
@@ -381,6 +398,7 @@ class TestPostProcessingClassMasking(TestCase):
             occurrence_id=occ.pk,
             taxa_list_id=taxa_list.pk,
             algorithm_id=self.algorithm.pk,
+            out_of_list_weight=0.0,
         ).run()
 
         new_clf = Classification.objects.filter(detection=det, terminal=True).exclude(algorithm=self.algorithm).first()
@@ -404,7 +422,12 @@ class TestPostProcessingClassMasking(TestCase):
 
         # The second run finds nothing left to mask, so the first run's result stays the only one.
         for _ in range(2):
-            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+            ClassMaskingTask(
+                occurrence_id=occ.pk,
+                taxa_list_id=taxa_list.pk,
+                algorithm_id=self.algorithm.pk,
+                out_of_list_weight=0.0,
+            ).run()
 
         result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
         self.assertIn(result.kind, {model.kind for model in ClassMaskingTask.result_models})
@@ -418,6 +441,9 @@ class TestPostProcessingClassMasking(TestCase):
             result.data,
             {
                 "new_winner_original_rank": 2,
+                # A hard mask leaves no probability outside the list, so the winner is always in it.
+                "excluded_probability_after": 0.0,
+                "winner_in_list": True,
                 "determination_before_id": self.species_taxa[2].pk,
                 "determination_after_id": self.species_taxa[0].pk,
                 "extra": {},
@@ -460,6 +486,7 @@ class TestPostProcessingClassMasking(TestCase):
             algorithm=self.algorithm,
             new_algorithm=new_algorithm,
             batch_size=1,
+            out_of_list_weight=0.0,
         )
 
         result = AlgorithmResult.objects.get(occurrence=occ)
@@ -474,7 +501,12 @@ class TestPostProcessingClassMasking(TestCase):
         Occurrence.objects.filter(pk=occ.pk).update(project=None)
 
         with self.assertLogs("ami.ml.models.algorithm_result", level="WARNING") as logs:
-            ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+            ClassMaskingTask(
+                occurrence_id=occ.pk,
+                taxa_list_id=taxa_list.pk,
+                algorithm_id=self.algorithm.pk,
+                out_of_list_weight=0.0,
+            ).run()
 
         self.assertIn(f"Occurrence #{occ.pk}", logs.output[0])
         occ.refresh_from_db()
@@ -572,6 +604,7 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list=taxa_list,
             algorithm=self.algorithm,
             new_algorithm=new_algorithm,
+            out_of_list_weight=0.0,
         )
 
         self.assertEqual(metrics["classifications_masked"], 2, "Both classifications are modified by masking")
@@ -584,9 +617,9 @@ class TestPostProcessingClassMasking(TestCase):
     # ----- reweight toggle ------------------------------------------------
 
     def test_reweight_false_winner_identical_scores_differ(self):
-        """With reweight=False the winning taxon is identical to reweight=True, but the
-        stored score equals the winner's original absolute probability (not renormalised)
-        and the kept-class scores do not sum to 1.
+        """For a hard mask, reweight=False gives the same winning taxon as reweight=True,
+        but the stored score equals the winner's original absolute probability (not
+        renormalised) and the kept-class scores do not sum to 1.
 
         logits = [2, 1, 5]: index 2 is excluded, so index 0 wins in both modes.
         reweight=True:  new_scores renormalised — sums to 1, score = renormalised p(index 0).
@@ -611,6 +644,7 @@ class TestPostProcessingClassMasking(TestCase):
             algorithm=self.algorithm,
             new_algorithm=new_alg_true,
             reweight=True,
+            out_of_list_weight=0.0,
         )
 
         # --- reweight=False ---
@@ -628,6 +662,7 @@ class TestPostProcessingClassMasking(TestCase):
             algorithm=self.algorithm,
             new_algorithm=new_alg_false,
             reweight=False,
+            out_of_list_weight=0.0,
         )
 
         new_clf_t = Classification.objects.get(detection=det_t, terminal=True)
@@ -656,6 +691,354 @@ class TestPostProcessingClassMasking(TestCase):
         # Stored confidence: reweight=False uses the original pre-mask probability.
         self.assertAlmostEqual(new_clf_f.score, scores[0], places=6)
         self.assertNotAlmostEqual(new_clf_t.score, scores[0], places=2)
+
+    # ----- soft masking (out-of-list weight above 0) ------------------------
+
+    def test_soft_mask_equals_adding_the_log_weight_to_out_of_list_logits(self):
+        """Down-weighting a class by ``w`` is the same as adding ``ln(w)`` to its logit
+        before the softmax, so the stored scores are a proper distribution in which the
+        out-of-list class keeps some probability."""
+        logits = [2.0, 1.0, 5.0]
+        weight = 0.1
+        taxa_list, pks = self._make_scope(1, "Logit shift list")
+
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=pks),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=self._masking_algorithm("masked_logit_shift"),
+            out_of_list_weight=weight,
+        )
+
+        new_clf = Classification.objects.get(applied_to_id=pks[0])
+        expected = _softmax([logits[0], logits[1], logits[2] + math.log(weight)])
+        for stored, wanted in zip(new_clf.scores, expected, strict=True):
+            self.assertAlmostEqual(stored, wanted, places=9)
+        self.assertAlmostEqual(sum(new_clf.scores), 1.0, places=9)
+        self.assertGreater(new_clf.scores[2], 0.0, "A soft mask leaves the out-of-list class some probability")
+
+    def test_a_confident_out_of_list_class_still_wins_and_the_result_says_so(self):
+        """At weight 0.1 an out-of-list class wins when it is more than 10 times as likely
+        as the best class in the list. The result records that the winner is outside the
+        list, and how much probability sat outside the list before and after."""
+        taxa_list, det, occ = self._masking_fixture("Soft winner list")
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, self.species_taxa[2])
+
+        ClassMaskingTask(
+            occurrence_id=occ.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            out_of_list_weight=0.1,
+        ).run()
+
+        scores = _softmax([2.0, 1.0, 5.0])
+        new_clf = Classification.objects.get(detection=det, terminal=True)
+        self.assertEqual(new_clf.taxon, self.species_taxa[2])
+        self.assertTrue(new_clf.algorithm.key.endswith(f"_filtered_by_taxa_list_{taxa_list.pk}_weight_0p1"))
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, self.species_taxa[2], "The determination is unchanged")
+
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertIs(result.data["winner_in_list"], False)
+        self.assertEqual(result.data["new_winner_original_rank"], 1)
+        # The probability outside the list is the classifier's own, whatever the weight.
+        self.assertAlmostEqual(result.data["excluded_probability"], scores[2])
+        self.assertAlmostEqual(result.value, scores[2])
+        self.assertAlmostEqual(result.data["excluded_probability_after"], new_clf.scores[2])
+        self.assertAlmostEqual(result.data["excluded_probability_after"], 0.5949, places=4)
+        self.assertEqual(result.data["determination_after_id"], self.species_taxa[2].pk)
+
+    def test_an_out_of_list_winner_is_rescored_even_when_its_scores_do_not_change(self):
+        """When the classes in the list hold almost no probability, down-weighting the
+        winner moves no score by more than the no-change tolerance. The row is re-scored
+        anyway, so the most confident species outside the list has a result that says it
+        was kept. A row that a species in the list wins, and that the weight does not
+        change, is left untouched."""
+        taxa_list = TaxaList.objects.create(name="Certain outsider list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        # The classes in the list hold about 1e-17 of the probability.
+        certain_logits = [0.0, 0.0, 40.0]
+        det, occ = self._detection_with_occurrence()
+        source = self._create_classification_with_logits(
+            det, self.species_taxa[2], _softmax(certain_logits), certain_logits
+        )
+        # The class outside the list holds about 1e-28 of the probability.
+        in_list_logits = [5.0, 1.0, -60.0]
+        other_det, other_occ = self._detection_with_occurrence()
+        untouched = self._create_classification_with_logits(
+            other_det, self.species_taxa[0], _softmax(in_list_logits), in_list_logits
+        )
+
+        metrics = make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=[source.pk, untouched.pk]),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=self._masking_algorithm("masked_certain_outsider"),
+            out_of_list_weight=0.01,
+        )
+
+        self.assertEqual(metrics["classifications_masked"], 1)
+        new_clf = Classification.objects.get(applied_to=source)
+        self.assertEqual((new_clf.taxon, new_clf.terminal), (self.species_taxa[2], True))
+        for stored, original in zip(new_clf.scores, _softmax(certain_logits), strict=True):
+            self.assertAlmostEqual(stored, original, places=9)
+        source.refresh_from_db()
+        self.assertFalse(source.terminal)
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertIs(result.data["winner_in_list"], False)
+        self.assertEqual(result.data["new_winner_original_rank"], 1)
+        self.assertAlmostEqual(result.data["excluded_probability_after"], 1.0)
+
+        untouched.refresh_from_db()
+        self.assertTrue(untouched.terminal)
+        self.assertFalse(Classification.objects.filter(applied_to=untouched).exists())
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=other_occ).exists())
+
+    def test_the_default_weight_is_a_soft_mask(self):
+        """A task configured without a weight down-weights out-of-list classes by the
+        default; it does not remove them."""
+        logits = [2.0, 1.0, 5.0]
+        taxa_list, det, occ = self._masking_fixture("Default weight list")
+
+        ClassMaskingTask(occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk).run()
+
+        self.assertGreater(DEFAULT_OUT_OF_LIST_WEIGHT, 0)
+        expected = _softmax([logits[0], logits[1], logits[2] + math.log(DEFAULT_OUT_OF_LIST_WEIGHT)])
+        expected_winner = expected.index(max(expected))
+        new_clf = Classification.objects.get(detection=det, terminal=True)
+        for stored, wanted in zip(new_clf.scores, expected, strict=True):
+            self.assertAlmostEqual(stored, wanted, places=9)
+        self.assertGreater(new_clf.scores[2], 0.0)
+        self.assertEqual(new_clf.taxon, self.species_taxa[expected_winner])
+        self.assertTrue(new_clf.algorithm.key.endswith(f"_weight_{_weight_token(DEFAULT_OUT_OF_LIST_WEIGHT)}"))
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertIs(result.data["winner_in_list"], expected_winner != 2)
+
+    def test_a_class_with_no_taxon_is_removed_at_any_weight(self):
+        """A class whose label matches no taxon cannot become a determination, so it gets
+        no probability even when out-of-list classes are only down-weighted."""
+        labels = [self.species_taxa[0].name, self.species_taxa[1].name, "A label that matches no taxon"]
+        category_map = AlgorithmCategoryMap.objects.create(
+            data=[{"index": i, "label": label} for i, label in enumerate(labels)],
+            labels=labels,
+            version="v1.0",
+        )
+        classifier = Algorithm.objects.create(
+            name="Classifier with an unmatched class",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=category_map,
+        )
+        taxa_list = TaxaList.objects.create(name="Keep the first species")
+        taxa_list.taxa.set(self.species_taxa[:1])
+
+        # The unmatched class (index 2) is by far the most likely; the out-of-list species
+        # (index 1) beats the in-list one even at half weight.
+        logits = [1.0, 2.0, 6.0]
+        det, _ = self._detection_with_occurrence()
+        source = Classification.objects.create(
+            detection=det,
+            taxon=None,
+            score=max(_softmax(logits)),
+            scores=_softmax(logits),
+            logits=logits,
+            terminal=True,
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+            algorithm=classifier,
+        )
+
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk=source.pk),
+            taxa_list=taxa_list,
+            algorithm=classifier,
+            new_algorithm=Algorithm.objects.create(
+                name="masked_unmatched",
+                key="masked_unmatched",
+                task_type=AlgorithmTaskType.CLASSIFICATION.value,
+                category_map=category_map,
+            ),
+            out_of_list_weight=0.5,
+        )
+
+        new_clf = Classification.objects.get(applied_to=source)
+        self.assertEqual(new_clf.scores[2], 0.0)
+        self.assertIsNotNone(new_clf.taxon)
+        self.assertEqual(new_clf.taxon, self.species_taxa[1])
+
+    def test_each_weight_gets_its_own_masking_algorithm(self):
+        """The weight changes which species can be named, so it is part of the masking
+        algorithm's identity. A hard mask keeps the key it has always had."""
+        taxa_list = TaxaList.objects.create(name="Weight identity list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        task = ClassMaskingTask(occurrence_id=1, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk)
+
+        def get(weight: float) -> Algorithm:
+            return task._get_or_create_masking_algorithm(
+                self.algorithm, taxa_list, reweight=True, out_of_list_weight=weight
+            )
+
+        base = f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"
+        algorithms = {weight: get(weight) for weight in (0.0, 0.01, 0.1)}
+        self.assertEqual(
+            {weight: algorithm.key for weight, algorithm in algorithms.items()},
+            {0.0: f"{base}_reweighted", 0.01: f"{base}_weight_0p01", 0.1: f"{base}_weight_0p1"},
+        )
+        self.assertEqual(len({algorithm.pk for algorithm in algorithms.values()}), 3)
+        self.assertEqual(get(0.01).pk, algorithms[0.01].pk, "The same weight reuses its algorithm")
+        # The key is a slug, so the weight is written without a dot.
+        algorithms[0.01].full_clean()
+
+    def test_a_row_whose_kept_classes_all_underflow_is_skipped(self):
+        """When every class the list keeps has a probability too small to represent,
+        there is nothing to renormalise: the row is left alone with a warning."""
+        logits = [0.0, 0.0, 800.0]
+        taxa_list = TaxaList.objects.create(name="Underflow list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        det, _ = self._detection_with_occurrence()
+        source = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        with self.assertLogs("ami.ml.post_processing.class_masking", level="WARNING") as logs:
+            metrics = make_classifications_filtered_by_taxa_list(
+                classifications=Classification.objects.filter(pk=source.pk),
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=self._masking_algorithm("masked_underflow"),
+                out_of_list_weight=0.0,
+            )
+
+        self.assertTrue(any(f"Classification {source.pk}" in line for line in logs.output))
+        self.assertEqual(metrics["classifications_masked"], 0)
+        source.refresh_from_db()
+        self.assertTrue(source.terminal)
+        self.assertFalse(Classification.objects.filter(applied_to=source).exists())
+
+    def test_a_weight_the_maths_cannot_use_is_rejected(self):
+        """The weight must be in [0, 1), and scores that are not renormalised need a hard
+        mask. The config schema reports this to users; the function guards direct callers."""
+        taxa_list, pks = self._make_scope(1, "Weight guard list")
+        for index, kwargs in enumerate(
+            ({"out_of_list_weight": -0.1}, {"out_of_list_weight": 1.0}, {"out_of_list_weight": 0.1, "reweight": False})
+        ):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                make_classifications_filtered_by_taxa_list(
+                    classifications=Classification.objects.filter(pk__in=pks),
+                    taxa_list=taxa_list,
+                    algorithm=self.algorithm,
+                    new_algorithm=self._masking_algorithm(f"masked_weight_guard_{index}"),
+                    **kwargs,
+                )
+
+    def test_an_empty_scope_warns_that_rescored_rows_are_not_rescored_again(self):
+        """A second run at another weight finds nothing, because the first run demoted its
+        sources. The log says so instead of reporting a silent zero."""
+        taxa_list, det, occ = self._masking_fixture("Second weight list")
+        ClassMaskingTask(
+            occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk, out_of_list_weight=0.0
+        ).run()
+
+        with self.assertLogs("ami.post_processing.class_masking", level="WARNING") as logs:
+            ClassMaskingTask(
+                occurrence_id=occ.pk, taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk, out_of_list_weight=0.1
+            ).run()
+
+        self.assertTrue(any("not re-scored again" in line for line in logs.output))
+        self.assertEqual(Classification.objects.filter(detection=det, terminal=True).count(), 1)
+
+    def test_a_run_says_how_many_rows_an_earlier_run_already_rescored(self):
+        """A run at another weight does not re-score what an earlier run re-scored, also
+        when other rows are still in scope. The log gives their number, so a hard-mask
+        run that leaves an out-of-list determination in place says why."""
+        taxa_list, det, occ = self._masking_fixture("Partly rescored list")
+        # A second detection that no weight changes: its class outside the list has no probability.
+        in_list_logits = [5.0, 1.0, -60.0]
+        other_det = Detection.objects.create(source_image=self.collection.images.first(), bbox=[0, 0, 100, 100])
+        occ.detections.add(other_det)
+        untouched = self._create_classification_with_logits(
+            other_det, self.species_taxa[0], _softmax(in_list_logits), in_list_logits
+        )
+
+        def run(weight: float) -> list[str]:
+            with self.assertLogs("ami.post_processing.class_masking", level="INFO") as logs:
+                ClassMaskingTask(
+                    occurrence_id=occ.pk,
+                    taxa_list_id=taxa_list.pk,
+                    algorithm_id=self.algorithm.pk,
+                    out_of_list_weight=weight,
+                ).run()
+            return logs.output
+
+        # The first run has nothing earlier to report. It keeps the species outside the list.
+        self.assertFalse(any("already re-scored" in line for line in run(0.1)))
+        self.assertEqual(Classification.objects.get(detection=det, terminal=True).taxon, self.species_taxa[2])
+
+        second_run = run(0.0)
+
+        # The untouched row is still in scope, so the empty-scope warning does not cover this run.
+        self.assertTrue(any("Found 1 terminal classifications" in line for line in second_run))
+        self.assertFalse(any("No terminal classifications" in line for line in second_run))
+        self.assertTrue(
+            any(
+                line.startswith("WARNING") and "already re-scored 1 of the classifications" in line
+                for line in second_run
+            ),
+            second_run,
+        )
+        self.assertEqual(Classification.objects.get(detection=det, terminal=True).taxon, self.species_taxa[2])
+        untouched.refresh_from_db()
+        self.assertTrue(untouched.terminal)
+
+    # ----- run_class_masking management command -----------------------------
+
+    def test_command_passes_the_weight_to_the_task(self):
+        taxa_list, pks = self._make_scope(1, "Command weight list")
+
+        call_command(
+            "run_class_masking",
+            collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            out_of_list_weight=0.0,
+            stdout=io.StringIO(),
+        )
+
+        # Weight 0 is the hard mask, which keeps its own algorithm key.
+        masking_algo = Algorithm.objects.get(
+            key=f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}_reweighted"
+        )
+        self.assertTrue(Classification.objects.filter(applied_to_id=pks[0], algorithm=masking_algo).exists())
+
+    def test_command_rejects_an_invalid_weight_before_doing_anything(self):
+        taxa_list, pks = self._make_scope(1, "Command invalid weight list")
+
+        with self.assertRaises(CommandError):
+            call_command(
+                "run_class_masking",
+                collection_id=self.collection.pk,
+                taxa_list_id=taxa_list.pk,
+                algorithm_id=self.algorithm.pk,
+                out_of_list_weight=2.0,
+                stdout=io.StringIO(),
+            )
+
+        self.assertFalse(Classification.objects.filter(applied_to_id=pks[0]).exists())
+
+    def test_command_dry_run_reports_the_weight_and_writes_nothing(self):
+        taxa_list, pks = self._make_scope(1, "Command dry run list")
+        algorithms_before = Algorithm.objects.count()
+        out = io.StringIO()
+
+        call_command(
+            "run_class_masking",
+            collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            dry_run=True,
+            stdout=out,
+        )
+
+        self.assertIn(f"Out-of-list weight: {DEFAULT_OUT_OF_LIST_WEIGHT:g}", out.getvalue())
+        self.assertEqual(Algorithm.objects.count(), algorithms_before, "A dry run creates no Algorithm row")
+        self.assertFalse(Classification.objects.filter(applied_to_id=pks[0]).exists())
 
     # ----- scope query shape ----------------------------------------------
 
@@ -687,7 +1070,10 @@ class TestPostProcessingClassMasking(TestCase):
             algorithm_id=self.algorithm.pk,
         )
         masking_algorithm = task._get_or_create_masking_algorithm(
-            self.algorithm, taxa_list, reweight=task.config.reweight
+            self.algorithm,
+            taxa_list,
+            reweight=task.config.reweight,
+            out_of_list_weight=task.config.out_of_list_weight,
         )
         scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
 
@@ -716,7 +1102,10 @@ class TestPostProcessingClassMasking(TestCase):
             with self.subTest(**kwargs):
                 task = ClassMaskingTask(taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk, **kwargs)
                 masking_algorithm = task._get_or_create_masking_algorithm(
-                    self.algorithm, taxa_list, reweight=task.config.reweight
+                    self.algorithm,
+                    taxa_list,
+                    reweight=task.config.reweight,
+                    out_of_list_weight=task.config.out_of_list_weight,
                 )
                 scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
                 self.assertFalse(scoped.query.distinct)
@@ -905,7 +1294,10 @@ class TestPostProcessingClassMasking(TestCase):
             algorithm_id=self.algorithm.pk,
         )
         masking_algorithm = task._get_or_create_masking_algorithm(
-            self.algorithm, taxa_list, reweight=task.config.reweight
+            self.algorithm,
+            taxa_list,
+            reweight=task.config.reweight,
+            out_of_list_weight=task.config.out_of_list_weight,
         )
         scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
 

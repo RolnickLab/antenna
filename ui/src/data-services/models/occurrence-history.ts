@@ -71,10 +71,14 @@ interface ServerDeterminationSnapshot {
 }
 
 export interface ClassMaskingResultData extends ServerDeterminationSnapshot {
-  /** The share of the source classifier's probability outside the species list. */
+  /** The source classifier's probability outside the species list, before the list was applied. */
   excluded_probability: number
+  /** The share of the stored scores outside the species list; 0 for a hard mask. Not every result has it. */
+  excluded_probability_after?: number | null
   /** Where the class that wins after masking ranked before it; 1 means it was already the top. */
   new_winner_original_rank: number | null
+  /** False when a species outside the list still won. Not every result has it. */
+  winner_in_list?: boolean | null
 }
 
 export interface SizeFilterResultData extends ServerDeterminationSnapshot {
@@ -424,6 +428,27 @@ export const getResultPrediction = (
 /** One field of a job's config, when the job set it. */
 export const getJobConfigField = (job: ServerHistoryJob | null, key: string) =>
   job?.config.find((field) => field.key === key)
+
+/**
+ * Whether a class masking run down-weighted the classes outside the list, as opposed to removing
+ * them. The weight in the job's config decides. A result has no job when the run was started from
+ * the command line or the job was deleted, and then its own figures decide: only a weighted run
+ * leaves probability outside the list or lets a species outside the list win.
+ */
+export const isWeightedClassMasking = ({
+  data,
+  job,
+}: ClassMaskingResultEntry) => {
+  const weight = getJobConfigField(job, 'out_of_list_weight')?.value
+  if (typeof weight === 'number') {
+    return weight > 0
+  }
+  const after = data.excluded_probability_after
+
+  return (
+    (typeof after === 'number' && after > 0) || data.winner_in_list === false
+  )
+}
 
 /** Config fields the result card already shows in a row of their own. */
 const CONFIG_SHOWN_ELSEWHERE = ['size_threshold']

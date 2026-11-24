@@ -6,15 +6,18 @@ from ami.main.models import Occurrence, TaxaList
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
+from ami.ml.post_processing.class_masking import DEFAULT_OUT_OF_LIST_WEIGHT
 
 
 class ClassMaskingActionForm(BasePostProcessingActionForm):
     """Knobs surfaced when an admin triggers Class masking.
 
-    The operator picks the source classifier and the taxa list to keep; the
-    scope (which collection or occurrence) is supplied by the admin entry point,
-    not the form. Selections are model instances, so ``to_config`` hands the
-    schema their primary keys (``ClassMaskingConfig`` expects ``*_id`` ints).
+    The operator picks the source classifier, the taxa list and the weight for
+    classes outside that list; the scope (which collection or occurrence) is
+    supplied by the admin entry point, not the form. Selections are model
+    instances, so ``to_config`` hands the schema their primary keys
+    (``ClassMaskingConfig`` expects ``*_id`` ints). The other fields carry the
+    schema's field names, so a schema error shows next to the field it is about.
     """
 
     algorithm_id = forms.ModelChoiceField(
@@ -24,19 +27,31 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
     )
     taxa_list_id = forms.ModelChoiceField(
         queryset=TaxaList.objects.all().order_by("name"),
-        label="Taxa list to keep",
+        label="Taxa list",
         help_text=(
-            "Classes whose taxon is not in this list are masked out; each "
-            "classification's softmax is renormalised over the classes that remain."
+            "Classes whose taxon is in this list keep their score. Other classes are "
+            "down-weighted by the weight below (removed at weight 0), then the scores are renormalised."
+        ),
+    )
+    out_of_list_weight = forms.FloatField(
+        min_value=0,
+        max_value=1,
+        initial=DEFAULT_OUT_OF_LIST_WEIGHT,
+        label="Weight for classes outside the list",
+        help_text=(
+            "0 removes these classes (a hard mask). With 0.01, a class outside the list wins only "
+            "when its probability is more than 100 times that of the best class in the list; "
+            "with 0.1, more than 10 times. Rows that an earlier class masking run re-scored are "
+            "not re-scored again."
         ),
     )
     reweight = forms.BooleanField(
         required=False,
         initial=True,
-        label="Reweight (renormalise) scores",
+        label="Renormalise scores",
         help_text=(
-            "Renormalise the kept classes to sum to 1. "
-            "Off = keep the model's raw absolute scores; the chosen species is unchanged either way."
+            "Renormalise the scores to sum to 1. Off = the classes in the list keep the model's "
+            "absolute scores; that needs a weight of 0."
         ),
     )
 
@@ -72,5 +87,6 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
         return {
             "algorithm_id": self.cleaned_data["algorithm_id"].pk,
             "taxa_list_id": self.cleaned_data["taxa_list_id"].pk,
+            "out_of_list_weight": self.cleaned_data["out_of_list_weight"],
             "reweight": self.cleaned_data["reweight"],
         }

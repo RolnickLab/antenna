@@ -8,6 +8,7 @@ import {
   getJobConfigFields,
   getResultKindLabel,
   getResultPrediction,
+  isWeightedClassMasking,
   ServerHistoryTaxon,
 } from 'data-services/models/occurrence-history'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
@@ -42,8 +43,11 @@ const getSubTitle = (entry: AlgorithmResultEntry) => {
   if (entry.kind === 'class_masking') {
     const refFor = (key: string) => getJobConfigField(entry.job, key)?.refs[0]
     const classifier = refFor('algorithm_id')
+    const subTitle = isWeightedClassMasking(entry)
+      ? STRING.HISTORY_WEIGHTING_SUBTITLE
+      : STRING.HISTORY_MASKING_SUBTITLE
 
-    return translate(STRING.HISTORY_MASKING_SUBTITLE, {
+    return translate(subTitle, {
       algorithm: classifier
         ? getModelRefLabel(classifier)
         : entry.algorithm?.name ?? translate(STRING.VALUE_NOT_AVAILABLE),
@@ -104,10 +108,27 @@ export const AlgorithmResult = ({
   )
   switch (entry.kind) {
     case 'class_masking': {
+      // A soft mask leaves some probability outside the list, so the row shows what it was reduced to.
+      const {
+        excluded_probability: before,
+        excluded_probability_after: after,
+      } = entry.data
       stats.push({
         label: translate(STRING.HISTORY_EXCLUDED_PROBABILITY),
-        value: formatPercent(entry.data.excluded_probability),
+        value:
+          typeof after === 'number' && after > 0
+            ? translate(STRING.HISTORY_EXCLUDED_PROBABILITY_REDUCED, {
+                after: formatPercent(after),
+                before: formatPercent(before),
+              })
+            : formatPercent(before),
       })
+      if (entry.data.winner_in_list === false) {
+        stats.push({
+          label: translate(STRING.HISTORY_WINNER_OUTSIDE_LIST),
+          value: translate(STRING.YES),
+        })
+      }
       // The top prediction before masking: what the run's best classification replaced.
       const replaced = entry.classifications.find(
         (c) => c.taxon !== null

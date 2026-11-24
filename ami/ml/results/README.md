@@ -45,8 +45,9 @@ validates `data` against the registry, and the API publishes `data` as JSON.
   twice leaves two. A retried job reuses its own results. A list that needs an algorithm's latest
   value takes the latest by timestamp.
 - **A run gets its own `Algorithm` only when it changes what can be output.** Class masking makes one
-  per source classifier and species list, because the list changes which species can be named. The
-  rest of the config stays on the job: the size filter uses one algorithm whatever its threshold.
+  per source classifier, species list and out-of-list weight, because both the list and the weight
+  change which species can be named. A hard mask (weight 0) also keeps one per score mode. The rest
+  of the config stays on the job: the size filter uses one algorithm whatever its threshold.
 - **Demote only what the run replaced**, set `job` on every row it creates, and never call
   `.distinct()` on a classification queryset that includes the `scores` or `logits` arrays (#1376).
 - **Occurrences without a project** get no result and a warning; the run carries on (#1188).
