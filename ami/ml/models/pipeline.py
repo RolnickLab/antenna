@@ -16,7 +16,7 @@ import uuid
 from urllib.parse import urljoin
 
 import requests
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
@@ -744,11 +744,16 @@ def get_or_create_taxon_for_classification(
         active=True,
     ).first()
     if not taxon:
-        taxon = Taxon.objects.create(
-            name=returned_taxon_name,
-            rank=label_data.get("taxon_rank", TaxonRank.UNKNOWN),
-        )
-        logger.info(f"Registered new taxon {taxon}")
+        taxon = Taxon(name=returned_taxon_name, rank=label_data.get("taxon_rank", TaxonRank.UNKNOWN))
+        try:
+            # Savepoint around the insert only: another task may create this name first. See #1529.
+            with transaction.atomic():
+                taxon.save(update_calculated_fields=False)
+        except IntegrityError:
+            taxon = Taxon.objects.get(name=returned_taxon_name)
+        else:
+            taxon.update_calculated_fields(save=True)
+            logger.info(f"Registered new taxon {taxon}")
 
     taxa_list.taxa.add(taxon)
     return taxon
