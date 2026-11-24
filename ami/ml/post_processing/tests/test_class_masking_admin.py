@@ -28,6 +28,11 @@ from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionFo
 from ami.ml.post_processing.class_masking import DEFAULT_OUT_OF_LIST_WEIGHT, ClassMaskingConfig
 from ami.users.models import User
 
+# What the rendered form posts for the weight when the operator leaves it alone.
+FORM_INITIAL_WEIGHT = f"{DEFAULT_OUT_OF_LIST_WEIGHT:g}"
+# A weight above 0 that does not depend on the default.
+SOFT_WEIGHT = "0.1"
+
 
 class TestClassMaskingConfig(TestCase):
     def test_collection_scope_is_valid(self):
@@ -157,8 +162,8 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
                 "confirm": "yes",
                 "taxa_list_id": str(self.taxa_list.pk),
                 "algorithm_id": str(self.algorithm.pk),
-                # As the rendered form submits them: the default weight needs renormalised scores.
-                "out_of_list_weight": "0.01",
+                # As the rendered form submits them: its initial weight, with "Renormalise scores" checked.
+                "out_of_list_weight": FORM_INITIAL_WEIGHT,
                 "reweight": "on",
             }
         )
@@ -180,7 +185,7 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
                 "confirm": "yes",
                 "taxa_list_id": str(self.taxa_list.pk),
                 "algorithm_id": str(self.algorithm.pk),
-                "out_of_list_weight": "0.01",
+                "out_of_list_weight": FORM_INITIAL_WEIGHT,
                 "reweight": "on",
             },
         )
@@ -194,7 +199,7 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
 class TestClassMaskingFormReweight(_PostProcessingAdminCase):
     """The admin form exposes the weight and the reweight toggle and passes both to the job config."""
 
-    def _post_collection_reweight(self, include_reweight: bool, out_of_list_weight: str = "0.01"):
+    def _post_collection_reweight(self, include_reweight: bool, out_of_list_weight: str = FORM_INITIAL_WEIGHT):
         data = {
             "action": "run_class_masking",
             django_admin.helpers.ACTION_CHECKBOX_NAME: [str(self.collection.pk)],
@@ -242,7 +247,7 @@ class TestClassMaskingFormReweight(_PostProcessingAdminCase):
     def test_unchecked_reweight_with_a_weight_above_zero_creates_no_job(self):
         """The schema refuses the combination, so the form is shown again with the error
         on the weight field and nothing is enqueued."""
-        response = self._post_collection_reweight(include_reweight=False, out_of_list_weight="0.01")
+        response = self._post_collection_reweight(include_reweight=False, out_of_list_weight=SOFT_WEIGHT)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"set the weight to 0", response.content)
         self.assertFalse(Job.objects.filter(project=self.project).exists())
