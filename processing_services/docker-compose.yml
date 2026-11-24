@@ -16,6 +16,8 @@ services:
       context: ./example
     volumes:
       - ./example/:/app:z
+    environment:
+      - MODEL_BASE_URL  # Optional: mirror or local directory for model weights
     ports:
       - "2003:2000"
     extra_hosts:
