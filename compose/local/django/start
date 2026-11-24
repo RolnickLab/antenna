@@ -6,6 +6,14 @@ set -o nounset
 
 python manage.py migrate
 
+# Idempotent bootstrap for local dev and CI. Creates the default superuser
+# (from DJANGO_SUPERUSER_* env vars) and a named project so processing-service
+# containers can self-register against Antenna with no manual setup.
+# Safe to run in production: gated behind ENSURE_DEFAULT_PROJECT=1.
+if [ "${ENSURE_DEFAULT_PROJECT:-0}" = "1" ]; then
+    python manage.py ensure_default_project || echo "ensure_default_project failed, continuing"
+fi
+
 # Set USE_UVICORN=1 to use the original raw uvicorn dev server instead of gunicorn
 if [ "${USE_UVICORN:-0}" = "1" ]; then
     if [ "${DEBUGGER:-0}" = "1" ]; then

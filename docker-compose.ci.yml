@@ -103,3 +103,23 @@ services:
       default:
         aliases:
           - processing_service
+
+  # The minimal service in pull (async) mode: it registers with Antenna and polls for
+  # async_api jobs. Started only by scripts/ci/async_processing_service_e2e.sh.
+  ml_backend_worker:
+    profiles: ["async"]
+    build:
+      context: ./processing_services/minimal
+    volumes:
+      - ./processing_services/minimal/:/app
+    environment:
+      MODE: worker
+      ANTENNA_API_URL: http://django:8000
+      ANTENNA_DEFAULT_PROJECT_NAME: Default Project
+      ANTENNA_SERVICE_NAME: minimal-worker-ci
+      # The CI superuser from .envs/.ci/.django.
+      ANTENNA_USER: antenna@insectai.org
+      ANTENNA_PASSWORD: localadmin
+      WORKER_POLL_INTERVAL_SECONDS: "2"
+      WORKER_BATCH_SIZE: "4"
+      WORKER_REQUEST_TIMEOUT_SECONDS: "30"

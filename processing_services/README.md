@@ -16,6 +16,43 @@ In this directory, we define locally-run processing services as FastAPI apps. A 
 
 If your goal is to run an ML backend locally, simply copy the `example` app and follow the steps below.
 
+## v1 vs v2 processing services
+
+Antenna supports two processing-service paradigms:
+
+- **v1 (push / synchronous):** the service exposes `/info`, `/livez`, `/readyz`, `/process`. Antenna POSTs a `PipelineRequest` to `/process` when a job runs. Good for interactive/playground requests on a single image and for exposing pipeline schema at `/api/v2/docs/`.
+- **v2 (pull / async / worker):** a worker polls Antenna's job-queue HTTP endpoints (`POST /api/v2/jobs/{id}/tasks/`, `POST /api/v2/jobs/{id}/result/`) and processes tasks queued by Antenna in NATS JetStream. Antenna proxies NATS internally so the worker only talks HTTP. Good for long-running workloads, firewall-isolated GPU fleets, and horizontal scaling.
+
+The `minimal` container supports **both modes** and is driven by a `MODE` env var:
+
+- `MODE=api` (default; what CI uses) — v1 FastAPI only.
+- `MODE=worker` — v2 worker poll loop only.
+- `MODE=api+worker` — both, in one container. Used by `processing_services/docker-compose.yml` for local dev. Exercises the real v2 pull path (Redis / NATS / Celery / Celery Beat) with lightweight stub pipelines, no ML dependencies.
+
+See `docs/claude/planning/2026-04-17-minimal-worker-design.md` for the design.
+
+### Running the v2 path locally
+
+```bash
+docker compose up -d                                             # Antenna core
+docker compose -f processing_services/docker-compose.yml up -d   # minimal container in api+worker mode
+```
+
+The minimal container self-registers a `ProcessingService` (no `endpoint_url`, async-mode) against the "Default Project" seeded by `ami/main/management/commands/ensure_default_project.py`. Submit an `async_api` job for the `constant` or `random-detection-random-species` pipeline and the worker picks it up.
+
+### What a pull-mode worker must do
+
+These rules come from Antenna's job API, and the AMI Data Companion's worker follows them too:
+
+- Authenticate with `Authorization: Token <token>`.
+- Find work with one call for all of its pipelines: `GET /api/v2/jobs/?pipeline__slug__in=<slugs>&ids_only=1&incomplete_only=1&dispatch_mode=async_api`. Each listed job carries its `pipeline_slug`. Antenna treats this call as the worker's heartbeat, so a service that stops polling shows as offline after about a minute.
+- Reserve tasks with `POST /api/v2/jobs/{id}/tasks/` and return one result per task to `POST /api/v2/jobs/{id}/result/`, carrying the task's `reply_subject`. Include the task's image in the result's `source_images` even when nothing was detected, because that is how Antenna counts the image as processed. A failure is reported as `{"error": "...", "image_id": "..."}` so the task is still acknowledged.
+- Register the pipelines it serves with `POST /api/v2/projects/{id}/pipelines/`, listing every algorithm its results can name.
+- Expect `503` from either endpoint when Antenna's queue is briefly unavailable, and retry.
+
+The CI job `test-async-processing-service` runs `scripts/ci/async_processing_service_e2e.sh`, which runs an `async_api` job through the minimal worker end to end.
+
+
 ## Environment Set Up
 
 1. Update `processing_services/example/requirements.txt` with required packages (i.e. PyTorch, etc)
