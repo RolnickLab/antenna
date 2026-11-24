@@ -53,4 +53,24 @@ describe('useAuthorizedQuery', () => {
       headers: undefined,
     })
   })
+
+  // React Query v4 has no "idle" status, so a disabled query that never runs would
+  // otherwise report isLoading true forever. A details dialog skipping its fetch for
+  // a not-yet-known id relies on isLoading settling to false instead of spinning.
+  test('reports isLoading false, not stuck true, when enabled is false', async () => {
+    const axiosGetSpy = jest.spyOn(axios, 'get')
+    axiosGetSpy.mockClear()
+
+    const { result } = renderHook(
+      () =>
+        useAuthorizedQuery({
+          enabled: false,
+          url: EXAMPLE_URL,
+        }),
+      { wrapper: AppMock }
+    )
+
+    expect(result.current.isLoading).toBe(false)
+    expect(axiosGetSpy).not.toHaveBeenCalled()
+  })
 })

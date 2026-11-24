@@ -6,7 +6,7 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerTaxaList) => new TaxaList(record)
 
 export const useTaxaListDetails = (
-  id: string,
+  id: string | undefined,
   projectId: string
 ): {
   taxaList?: TaxaList
@@ -16,6 +16,7 @@ export const useTaxaListDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerTaxaList>({
+      enabled: !!id,
       queryKey: [API_ROUTES.TAXA_LISTS, projectId, id],
       url: `${API_URL}/${API_ROUTES.TAXA_LISTS}/${id}/?project_id=${projectId}`,
     })
