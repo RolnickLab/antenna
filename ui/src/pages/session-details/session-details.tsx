@@ -29,6 +29,7 @@ import { useActiveOccurrences } from './hooks/useActiveOccurrences'
 import { Process } from './process/process'
 import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
+import { SessionStats } from './session-stats'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
 import { ViewSettings } from './view-settings'
@@ -157,6 +158,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </Tabs.Content>
             <Tabs.Content className="overflow-x-auto" value={TABS.CHARTS}>
               <div className="w-96 grid gap-6">
+                <SessionStats session={session} />
                 <SessionPlots session={session} />
               </div>
             </Tabs.Content>
