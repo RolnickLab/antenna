@@ -34,6 +34,11 @@ class TrainClassifierJobConfig(pydantic.BaseModel):
         title="Offline iNaturalist data",
         description="Images the processing service already holds, filtered to the species list.",
     )
+    training_snapshot_id: int | None = pydantic.Field(
+        None,
+        title="Training-data snapshot",
+        description="Learn from an exported platform-wide snapshot instead of this project's " "verified occurrences.",
+    )
 
     class Config:
         # Fitting overrides pass through to AlgorithmTrainingConfig; see the module docstring.
@@ -41,7 +46,11 @@ class TrainClassifierJobConfig(pydantic.BaseModel):
 
     @pydantic.root_validator(skip_on_failure=True)
     def _sources_make_sense(cls, values: dict) -> dict:
-        if not (values.get("use_project_occurrences") or values.get("use_offline_inat")):
+        if not (
+            values.get("use_project_occurrences")
+            or values.get("use_offline_inat")
+            or values.get("training_snapshot_id") is not None
+        ):
             raise ValueError("Choose at least one source of training data.")
         if values.get("occurrence_set_id") is not None and not values.get("use_project_occurrences"):
             raise ValueError("An occurrence set narrows this project's occurrences, which are switched off.")

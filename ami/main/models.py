@@ -396,6 +396,8 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
     async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
+    # Whether the project's verified species identifications may go into the platform-wide training-data export
+    share_verified_data_for_training: bool = False
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:

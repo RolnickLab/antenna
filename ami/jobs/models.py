@@ -1062,7 +1062,7 @@ class TrainClassifierJob(JobType):
     @classmethod
     def run(cls, job: "Job"):
         from ami.ml.models import Algorithm
-        from ami.ml.training import NotEnoughVerifiedData, build_training_dataset
+        from ami.ml.training import NotEnoughVerifiedData, build_training_dataset, build_training_dataset_from_snapshot
 
         algorithm_key = cls.settings_for(job).algorithm_key
 
@@ -1096,20 +1096,35 @@ class TrainClassifierJob(JobType):
         job.save()
 
         taxa_list = cls.target_taxa_list(job)
-        if not cls.settings_for(job).use_project_occurrences:
+        snapshot_id = cls.settings_for(job).training_snapshot_id
+        if snapshot_id is None and not cls.settings_for(job).use_project_occurrences:
             cls.run_from_offline_data_only(job, algorithm, taxa_list)
             return
         try:
-            dataset = build_training_dataset(
-                project=job.project,
-                algorithm=algorithm,
-                min_per_species=config.min_per_species,
-                test_fraction=config.test_fraction,
-                split_salt=config.split_salt,
-                taxa_list=taxa_list,
-                occurrence_set=occurrence_set,
-                job=job,
-            )
+            if snapshot_id is not None:
+                # An exported platform-wide snapshot stands in for this project's occurrences:
+                # the labels and vectors are read from its Parquet files, not the database.
+                dataset = build_training_dataset_from_snapshot(
+                    snapshot=cls.target_snapshot(job),
+                    project=job.project,
+                    algorithm=algorithm,
+                    min_per_species=config.min_per_species,
+                    test_fraction=config.test_fraction,
+                    split_salt=config.split_salt,
+                    taxa_list=taxa_list,
+                    job=job,
+                )
+            else:
+                dataset = build_training_dataset(
+                    project=job.project,
+                    algorithm=algorithm,
+                    min_per_species=config.min_per_species,
+                    test_fraction=config.test_fraction,
+                    split_salt=config.split_salt,
+                    taxa_list=taxa_list,
+                    occurrence_set=occurrence_set,
+                    job=job,
+                )
         except NotEnoughVerifiedData as e:
             # A data problem, not a crash. Say so plainly rather than failing with a traceback.
             job.logger.error(str(e))
@@ -1276,6 +1291,25 @@ class TrainClassifierJob(JobType):
         if not occurrence_set:
             raise ValueError(f"No occurrence set with id {occurrence_set_id} in this project.")
         return occurrence_set
+
+    @classmethod
+    def target_snapshot(cls, job: "Job"):
+        """
+        The exported training-data snapshot this run learns from.
+
+        Resolved only when the job names one. A missing or unfinished snapshot is refused
+        here rather than failing partway through a run that already looks started.
+        """
+        from ami.ml.models import TrainingDataSnapshot
+        from ami.ml.models.training_data import TrainingDataSnapshotStatus
+
+        snapshot_id = cls.settings_for(job).training_snapshot_id
+        snapshot = TrainingDataSnapshot.objects.filter(pk=snapshot_id).first()
+        if not snapshot:
+            raise ValueError(f"No training-data snapshot with id {snapshot_id}.")
+        if snapshot.status != TrainingDataSnapshotStatus.SUCCESS:
+            raise ValueError(f"Training-data snapshot #{snapshot_id} is not finished (status: {snapshot.status}).")
+        return snapshot
 
     @classmethod
     def target_taxa_list(cls, job: "Job"):

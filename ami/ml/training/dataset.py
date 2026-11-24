@@ -38,6 +38,7 @@ from ami.ml.training.results import (
 if TYPE_CHECKING:
     from ami.jobs.models import Job
     from ami.main.models import OccurrenceSet, TaxaList
+    from ami.ml.models import TrainingDataSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +339,156 @@ def build_training_dataset(
     file_url = metadata.url
     logger.info(f"Wrote training dataset with {kept} rows over {len(classes)} species to {file_path}")
     return {"path": file_path, "url": file_url, "metadata": metadata, "occurrences": considered}
+
+
+def build_training_dataset_from_snapshot(
+    snapshot: "TrainingDataSnapshot",
+    project: Project,
+    algorithm: Algorithm,
+    min_per_species: int = 2,
+    split_salt: str = DEFAULT_SPLIT_SALT,
+    test_fraction: float = DEFAULT_TEST_FRACTION,
+    taxa_list: "TaxaList | None" = None,
+    job: "Job | None" = None,
+) -> dict[str, typing.Any]:
+    """
+    Build the same npz as build_training_dataset, but from an exported platform-wide snapshot.
+
+    A snapshot already holds every opted-in project's verified labels and their vectors as
+    Parquet, with the train/test split decided once at export time. This reads the manifest
+    and this algorithm's vectors, joins them on detection, and writes the file the training
+    service consumes - identical in shape to a dataset built straight from the database.
+
+    Raises NotEnoughVerifiedData rather than writing a file nothing can be trained on.
+    """
+    import pyarrow.parquet as pq
+
+    vectors_key = f"vectors:{algorithm.key}"
+    if vectors_key not in snapshot.files:
+        raise NotEnoughVerifiedData(
+            f"Snapshot #{snapshot.pk} holds no vectors for algorithm '{algorithm.key}', so there is "
+            "nothing to train on. Re-run the export once the pipeline has embedded these detections."
+        )
+
+    def _read_table(path: str):
+        with default_storage.open(path) as handle:
+            return pq.read_table(handle)
+
+    manifest = _read_table(snapshot.files["manifest"])
+    vectors = _read_table(snapshot.files[vectors_key])
+
+    # detection_id -> vector, the join key. One algorithm per file, so one vector each.
+    vector_by_detection = dict(zip(vectors.column("detection_id").to_pylist(), vectors.column("vector").to_pylist()))
+
+    manifest_detection_ids = manifest.column("detection_id").to_pylist()
+    manifest_occurrence_ids = manifest.column("occurrence_id").to_pylist()
+    manifest_taxon_names = manifest.column("taxon_name").to_pylist()
+    manifest_splits = manifest.column("split").to_pylist()
+
+    # A row is usable only when it carries both a label and a vector for this algorithm.
+    counts: dict[str, int] = {}
+    for name, detection_id in zip(manifest_taxon_names, manifest_detection_ids):
+        if name and detection_id in vector_by_detection:
+            counts[name] = counts.get(name, 0) + 1
+
+    taxa_list = taxa_list or project.default_taxa_list
+    if taxa_list:
+        # The taxa list decides what the head can predict; the usable rows only decide how
+        # well it predicts each one. Mirrors build_training_dataset.
+        classes = sorted(taxa_list.taxa.exclude(name="").values_list("name", flat=True))
+        if not classes:
+            raise NotEnoughVerifiedData(f"Taxa list '{taxa_list}' is empty, so there is nothing to train.")
+        keep = set(classes)
+        outside = sorted(name for name in counts if name and name not in keep)
+    else:
+        keep = species_with_enough_examples(counts, min_per_species)
+        if not keep:
+            raise NotEnoughVerifiedData(
+                f"No species in snapshot #{snapshot.pk} has at least {min_per_species} verified crops "
+                f"with an embedding from {algorithm.key}."
+            )
+        classes = sorted(keep)
+        outside = sorted(set(counts) - keep)
+
+    class_index = {name: i for i, name in enumerate(classes)}
+
+    feature_rows: list = []
+    labels: list[int] = []
+    detection_ids: list[int] = []
+    occurrence_ids: list[int] = []
+    splits: list[str] = []
+    for name, detection_id, occurrence_id, split in zip(
+        manifest_taxon_names, manifest_detection_ids, manifest_occurrence_ids, manifest_splits
+    ):
+        if not name or name not in class_index:
+            continue
+        vector = vector_by_detection.get(detection_id)
+        if vector is None:
+            continue
+        feature_rows.append(vector)
+        labels.append(class_index[name])
+        detection_ids.append(detection_id)
+        occurrence_ids.append(occurrence_id or 0)
+        splits.append(split)
+
+    kept = len(feature_rows)
+    if not kept:
+        raise NotEnoughVerifiedData("No detection in the snapshot has both a label in scope and an embedding.")
+
+    features = np.array(feature_rows, dtype=DATASET_DTYPE)
+    dimensions = int(features.shape[1])
+    split_array = np.array(splits)
+
+    n_train = int((split_array == SPLIT_TRAIN).sum())
+    n_test = int((split_array == SPLIT_TEST).sum())
+    if not n_train or not n_test:
+        raise NotEnoughVerifiedData(
+            f"The split left {n_train} training and {n_test} held-out rows. Both sides need rows "
+            "before a new head can be compared against the current one."
+        )
+
+    file_path = dataset_path(project, algorithm, job.pk if job else None)
+    metadata = TrainingDatasetMetadata(
+        url=f"{settings.MEDIA_URL}{file_path}",
+        project=NamedReference(id=project.pk, name=project.name),
+        algorithm=TrainedAlgorithmReference(key=algorithm.key, name=algorithm.name, version=algorithm.version),
+        dimensions=dimensions,
+        dtype=np.dtype(DATASET_DTYPE).name,
+        classes=classes,
+        counts={name: counts.get(name, 0) for name in classes},
+        taxa_list=NamedReference(id=taxa_list.pk, name=taxa_list.name) if taxa_list else None,
+        occurrence_set=None,
+        classes_without_verified_data=sorted(name for name in classes if not counts.get(name)),
+        dropped_species=outside,
+        rows=kept,
+        train=n_train,
+        test=n_test,
+        verified_detections_without_embedding=0,
+        settings=TrainingDatasetSettings(
+            min_per_species=min_per_species,
+            split_salt=split_salt,
+            test_fraction=test_fraction,
+        ),
+    )
+
+    file_path = _save(
+        file_path=file_path,
+        arrays={
+            "features": features,
+            "labels": np.array(labels, dtype=np.int64),
+            "detection_ids": np.array(detection_ids, dtype=np.int64),
+            "occurrence_ids": np.array(occurrence_ids, dtype=np.int64),
+            "split": split_array,
+            "classes": np.array(classes),
+        },
+        metadata=metadata,
+    )
+
+    logger.info(
+        f"Wrote training dataset with {kept} rows over {len(classes)} species from snapshot "
+        f"#{snapshot.pk} to {file_path}"
+    )
+    return {"path": file_path, "url": metadata.url, "metadata": metadata, "occurrences": {}}
 
 
 def dataset_path(project: Project, algorithm: Algorithm, job_id: int | None) -> str:
