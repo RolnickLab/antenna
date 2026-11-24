@@ -55,5 +55,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(enable_async_pipeline_workers, disable_async_pipeline_workers),
+        migrations.RunPython(enable_async_pipeline_workers, disable_async_pipeline_workers, elidable=True),
     ]
