@@ -25,7 +25,7 @@ from ami.main.models import (
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionForm
-from ami.ml.post_processing.class_masking import ClassMaskingConfig
+from ami.ml.post_processing.class_masking import DEFAULT_OUT_OF_LIST_WEIGHT, ClassMaskingConfig
 from ami.users.models import User
 
 
@@ -59,9 +59,44 @@ class TestClassMaskingConfig(TestCase):
         config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3)
         self.assertTrue(config.reweight)
 
-    def test_reweight_can_be_set_false(self):
-        config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, reweight=False)
+    def test_reweight_can_be_set_false_for_a_hard_mask(self):
+        config = ClassMaskingConfig(
+            source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, reweight=False, out_of_list_weight=0
+        )
         self.assertFalse(config.reweight)
+        self.assertEqual(config.out_of_list_weight, 0.0)
+
+    def test_reweight_false_needs_a_hard_mask(self):
+        """Scores that are not renormalised are only defined for a hard mask, so the
+        default (soft) weight and any other weight above 0 are refused."""
+        for extra in ({}, {"out_of_list_weight": 0.1}):
+            with self.subTest(**extra), self.assertRaises(pydantic.ValidationError) as raised:
+                ClassMaskingConfig(
+                    source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, reweight=False, **extra
+                )
+            # Reported on the weight field, so the admin form shows it next to that field.
+            self.assertEqual([error["loc"] for error in raised.exception.errors()], [("out_of_list_weight",)])
+
+    def test_out_of_list_weight_defaults_to_a_soft_mask(self):
+        config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3)
+        self.assertEqual(config.out_of_list_weight, DEFAULT_OUT_OF_LIST_WEIGHT)
+        self.assertGreater(config.out_of_list_weight, 0)
+
+    def test_out_of_list_weight_outside_its_range_is_invalid(self):
+        """The weight is at least 0 and below 1 after rounding to four decimals; a value
+        above 0 that rounds to 0 is refused instead of silently becoming a hard mask."""
+        for weight in (-0.1, 1, 1.5, 0.99996, 0.00001):
+            with self.subTest(weight=weight), self.assertRaises(pydantic.ValidationError):
+                ClassMaskingConfig(
+                    source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, out_of_list_weight=weight
+                )
+
+    def test_out_of_list_weight_is_rounded_to_four_decimals(self):
+        """Rounding keeps one masking algorithm per weight, whatever float noise a caller sends."""
+        config = ClassMaskingConfig(
+            source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, out_of_list_weight=0.010000001
+        )
+        self.assertEqual(config.out_of_list_weight, 0.01)
 
 
 class _PostProcessingAdminCase(TestCase):
@@ -111,7 +146,14 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
 
     def test_valid_post_creates_collection_scoped_job(self):
         response = self._post_collection(
-            {"confirm": "yes", "taxa_list_id": str(self.taxa_list.pk), "algorithm_id": str(self.algorithm.pk)}
+            {
+                "confirm": "yes",
+                "taxa_list_id": str(self.taxa_list.pk),
+                "algorithm_id": str(self.algorithm.pk),
+                # As the rendered form submits them: the default weight needs renormalised scores.
+                "out_of_list_weight": "0.01",
+                "reweight": "on",
+            }
         )
         self.assertEqual(response.status_code, 302)
         job = Job.objects.get(project=self.project, job_type_key="post_processing")
@@ -131,6 +173,8 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
                 "confirm": "yes",
                 "taxa_list_id": str(self.taxa_list.pk),
                 "algorithm_id": str(self.algorithm.pk),
+                "out_of_list_weight": "0.01",
+                "reweight": "on",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -141,15 +185,16 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
 
 
 class TestClassMaskingFormReweight(_PostProcessingAdminCase):
-    """The admin form exposes a reweight toggle and passes it through to the job config."""
+    """The admin form exposes the weight and the reweight toggle and passes both to the job config."""
 
-    def _post_collection_reweight(self, include_reweight: bool):
+    def _post_collection_reweight(self, include_reweight: bool, out_of_list_weight: str = "0.01"):
         data = {
             "action": "run_class_masking",
             django_admin.helpers.ACTION_CHECKBOX_NAME: [str(self.collection.pk)],
             "confirm": "yes",
             "taxa_list_id": str(self.taxa_list.pk),
             "algorithm_id": str(self.algorithm.pk),
+            "out_of_list_weight": out_of_list_weight,
         }
         if include_reweight:
             data["reweight"] = "on"
@@ -168,11 +213,32 @@ class TestClassMaskingFormReweight(_PostProcessingAdminCase):
         self.assertTrue(job.params["config"]["reweight"])
 
     def test_to_config_includes_reweight_false_when_unchecked(self):
-        """An unchecked reweight box (no value in POST) yields reweight=False in the job config."""
-        response = self._post_collection_reweight(include_reweight=False)
+        """An unchecked reweight box (no value in POST) yields reweight=False in the job config.
+        It goes with a weight of 0, the only weight that mode accepts."""
+        response = self._post_collection_reweight(include_reweight=False, out_of_list_weight="0")
         self.assertEqual(response.status_code, 302)
         job = Job.objects.get(project=self.project, job_type_key="post_processing")
         self.assertFalse(job.params["config"]["reweight"])
+
+    def test_form_has_out_of_list_weight_field(self):
+        form = ClassMaskingActionForm()
+        self.assertIn("out_of_list_weight", form.fields)
+        self.assertEqual(form.fields["out_of_list_weight"].initial, DEFAULT_OUT_OF_LIST_WEIGHT)
+
+    def test_to_config_includes_the_weight(self):
+        """The weight the operator types reaches the job config; 0 asks for a hard mask."""
+        response = self._post_collection_reweight(include_reweight=True, out_of_list_weight="0")
+        self.assertEqual(response.status_code, 302)
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+        self.assertEqual(job.params["config"]["out_of_list_weight"], 0.0)
+
+    def test_unchecked_reweight_with_a_weight_above_zero_creates_no_job(self):
+        """The schema refuses the combination, so the form is shown again with the error
+        on the weight field and nothing is enqueued."""
+        response = self._post_collection_reweight(include_reweight=False, out_of_list_weight="0.01")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"set the weight to 0", response.content)
+        self.assertFalse(Job.objects.filter(project=self.project).exists())
 
 
 class TestClassMaskingFormScopeFiltering(TestCase):

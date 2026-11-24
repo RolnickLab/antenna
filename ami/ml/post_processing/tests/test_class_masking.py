@@ -12,11 +12,14 @@ Tests that pin a hard-mask outcome pass ``out_of_list_weight=0.0`` themselves, s
 they do not depend on the default weight.
 """
 import datetime
+import io
 import math
 import pathlib
 import uuid
 from unittest import mock
 
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection
 from django.db.models import QuerySet
 from django.test import TestCase
@@ -894,6 +897,59 @@ class TestPostProcessingClassMasking(TestCase):
 
         self.assertTrue(any("not re-scored again" in line for line in logs.output))
         self.assertEqual(Classification.objects.filter(detection=det, terminal=True).count(), 1)
+
+    # ----- run_class_masking management command -----------------------------
+
+    def test_command_passes_the_weight_to_the_task(self):
+        taxa_list, pks = self._make_scope(1, "Command weight list")
+
+        call_command(
+            "run_class_masking",
+            collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            out_of_list_weight=0.0,
+            stdout=io.StringIO(),
+        )
+
+        # Weight 0 is the hard mask, which keeps its own algorithm key.
+        masking_algo = Algorithm.objects.get(
+            key=f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}_reweighted"
+        )
+        self.assertTrue(Classification.objects.filter(applied_to_id=pks[0], algorithm=masking_algo).exists())
+
+    def test_command_rejects_an_invalid_weight_before_doing_anything(self):
+        taxa_list, pks = self._make_scope(1, "Command invalid weight list")
+
+        with self.assertRaises(CommandError):
+            call_command(
+                "run_class_masking",
+                collection_id=self.collection.pk,
+                taxa_list_id=taxa_list.pk,
+                algorithm_id=self.algorithm.pk,
+                out_of_list_weight=2.0,
+                stdout=io.StringIO(),
+            )
+
+        self.assertFalse(Classification.objects.filter(applied_to_id=pks[0]).exists())
+
+    def test_command_dry_run_reports_the_weight_and_writes_nothing(self):
+        taxa_list, pks = self._make_scope(1, "Command dry run list")
+        algorithms_before = Algorithm.objects.count()
+        out = io.StringIO()
+
+        call_command(
+            "run_class_masking",
+            collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            dry_run=True,
+            stdout=out,
+        )
+
+        self.assertIn(f"Out-of-list weight: {DEFAULT_OUT_OF_LIST_WEIGHT:g}", out.getvalue())
+        self.assertEqual(Algorithm.objects.count(), algorithms_before, "A dry run creates no Algorithm row")
+        self.assertFalse(Classification.objects.filter(applied_to_id=pks[0]).exists())
 
     # ----- scope query shape ----------------------------------------------
 
