@@ -1,0 +1,48 @@
+option_settings:
+  aws:elasticbeanstalk:application:environment:
+    # Core Django settings
+    DJANGO_SETTINGS_MODULE: "config.settings.production"
+    DJANGO_SECRET_KEY: "<DJANGO_SECRET_KEY>"
+    DJANGO_DEBUG: "False"
+    DJANGO_ALLOWED_HOSTS: "<EB_DOMAIN>,<CLOUDFRONT_DOMAIN>"
+    DJANGO_SECURE_SSL_REDIRECT: "True"  # disable HTTPS redirect to stop infinite loop
+    DJANGO_ADMIN_URL: "<DJANGO_ADMIN_URL>"
+    EB_HEALTHCHECK: "1"
+
+    # AWS + S3
+    DJANGO_AWS_ACCESS_KEY_ID: "<DJANGO_AWS_ACCESS_KEY_ID>"
+    DJANGO_AWS_SECRET_ACCESS_KEY: "<DJANGO_AWS_SECRET_ACCESS_KEY>"
+    DJANGO_AWS_STORAGE_BUCKET_NAME: "<S3_BUCKET_NAME>"
+    DJANGO_AWS_S3_REGION_NAME: "<AWS_REGION>"
+
+    # Database
+    POSTGRES_DB: "<POSTGRES_DB>"
+    POSTGRES_USER: "<POSTGRES_USER>"
+    POSTGRES_PASSWORD: "<POSTGRES_PASSWORD>"
+    POSTGRES_HOST: "<POSTGRES_HOST>"
+    POSTGRES_PORT: "5432"
+    DATABASE_URL: "postgres://<POSTGRES_USER>:<POSTGRES_PASSWORD>@<POSTGRES_HOST>:5432/<POSTGRES_DB>"
+
+    # Redis / Celery
+    REDIS_URL: "rediss://<REDIS_ENDPOINT>:6379/0?ssl_cert_reqs=none"
+    CELERY_BROKER_URL: "rediss://<REDIS_ENDPOINT>:6379/0?ssl_cert_reqs=none"
+
+    # ML backend
+    DEFAULT_PROCESSING_SERVICE_ENDPOINT: "http://ml-backend-minimal:2000"
+
+    # Other integrations
+    SENTRY_DSN: "<SENTRY_DSN>"
+    SENDGRID_API_KEY: "<SENDGRID_API_KEY>"
+
+  # Health check settings for Elastic Beanstalk
+  aws:elasticbeanstalk:environment:process:default:
+    HealthCheckPath: "/api/v2/"
+    HealthCheckProtocol: "HTTP"  # use HTTP since HTTPS not terminated internally
+
+  aws:autoscaling:launchconfiguration:
+    RootVolumeSize: 30
+
+container_commands:
+  01_run_migrations:
+    command: "docker exec $(docker ps -q -f name=django) python manage.py migrate --noinput || true"
+    leader_only: true
