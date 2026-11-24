@@ -71,10 +71,14 @@ interface ServerDeterminationSnapshot {
 }
 
 export interface ClassMaskingResultData extends ServerDeterminationSnapshot {
-  /** The share of the source classifier's probability outside the species list. */
+  /** The source classifier's probability outside the species list, before the list was applied. */
   excluded_probability: number
+  /** The share of the stored scores outside the species list; 0 for a hard mask. Not every result has it. */
+  excluded_probability_after?: number | null
   /** Where the class that wins after masking ranked before it; 1 means it was already the top. */
   new_winner_original_rank: number | null
+  /** False when a species outside the list still won. Not every result has it. */
+  winner_in_list?: boolean | null
 }
 
 export interface SizeFilterResultData extends ServerDeterminationSnapshot {
