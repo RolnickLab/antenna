@@ -76,6 +76,28 @@ PipelineChoice = typing.Literal[
     "new-pipeline-slug",
 ]
 ```
+## NATS Pull-Mode (Async API) Contract
+
+Processing services that operate in pull-mode (fetching tasks from Antenna via `POST /api/v2/jobs/{id}/tasks/`) receive `PipelineProcessingTask` objects. Each task now includes a `config` field carrying the pipeline configuration for that job:
+
+```json
+{
+  "id": "42",
+  "image_id": "42",
+  "image_url": "https://...",
+  "reply_subject": "antenna.results.job.7.img.42",
+  "config": {
+    "example_config_param": 3
+  }
+}
+```
+
+`config` mirrors `PipelineRequest.config` from the synchronous HTTP path. It is derived from the pipeline's `default_config` merged with any per-project `ProjectPipelineConfig` override. It may be `null` if no config is set.
+
+Workers should read `config` from each task and apply it to their processing. If `config` is absent or null, fall back to worker-level defaults (e.g. environment variables).
+
+When returning results, populate `PipelineResultsResponse.config` with the config that was actually used. Antenna logs a warning if the echoed config drifts from the pipeline's current configuration in the database (e.g. `ProjectPipelineConfig` was edited mid-job, or the worker is running stale config). Persisted audit trails are a future addition.
+
 ## Demo
 
 ## `minimal` Pipelines and Output Images
