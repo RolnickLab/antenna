@@ -155,7 +155,7 @@ class SourceImageUpload(BaseModel):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-        self.deployment.save()
+        self.deployment.refresh_derived_state()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
@@ -171,4 +171,4 @@ def delete_source_image(sender, instance, **kwargs):
         instance.save()
         source_image.delete()
     # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
-    instance.deployment.save()
+    instance.deployment.refresh_derived_state()
