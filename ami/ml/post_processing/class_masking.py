@@ -132,6 +132,10 @@ def make_classifications_filtered_by_taxa_list(
     the classes in the list keep their original absolute scores; it is only accepted
     with a weight of 0.
 
+    A classification whose scores the weights leave unchanged is left untouched, unless
+    a class outside the list wins it: that one is always re-scored, so every species
+    outside the list that a run keeps has a result that says so.
+
     The ``logits`` column is always read as logits. A row that stores probabilities
     there is not detected.
 
@@ -292,7 +296,11 @@ def make_classifications_filtered_by_taxa_list(
                 # No-change short-circuit: if the weights shifted no probability (the classes
                 # this taxa list down-weights carried ~zero probability here), leave the row
                 # untouched. Compared against the unmasked softmax, not the stored scores.
-                if np.allclose(full_softmax, new_scores_np, atol=1e-9):
+                # A winner outside the list is never skipped. The classes in the list then
+                # hold almost no probability, so the scores can stay the same within the
+                # tolerance, but the row is the most confident case of a species outside
+                # the list being kept, and the result is the only record of that.
+                if in_list[top_index] and np.allclose(full_softmax, new_scores_np, atol=1e-9):
                     task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
                 else:
                     # Never None: a class without a taxon has prior 0. The taxon is outside

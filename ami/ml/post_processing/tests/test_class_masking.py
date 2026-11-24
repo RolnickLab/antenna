@@ -749,6 +749,52 @@ class TestPostProcessingClassMasking(TestCase):
         self.assertAlmostEqual(result.data["excluded_probability_after"], 0.5949, places=4)
         self.assertEqual(result.data["determination_after_id"], self.species_taxa[2].pk)
 
+    def test_an_out_of_list_winner_is_rescored_even_when_its_scores_do_not_change(self):
+        """When the classes in the list hold almost no probability, down-weighting the
+        winner moves no score by more than the no-change tolerance. The row is re-scored
+        anyway, so the most confident species outside the list has a result that says it
+        was kept. A row that a species in the list wins, and that the weight does not
+        change, is left untouched."""
+        taxa_list = TaxaList.objects.create(name="Certain outsider list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        # The classes in the list hold about 1e-17 of the probability.
+        certain_logits = [0.0, 0.0, 40.0]
+        det, occ = self._detection_with_occurrence()
+        source = self._create_classification_with_logits(
+            det, self.species_taxa[2], _softmax(certain_logits), certain_logits
+        )
+        # The class outside the list holds about 1e-28 of the probability.
+        in_list_logits = [5.0, 1.0, -60.0]
+        other_det, other_occ = self._detection_with_occurrence()
+        untouched = self._create_classification_with_logits(
+            other_det, self.species_taxa[0], _softmax(in_list_logits), in_list_logits
+        )
+
+        metrics = make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=[source.pk, untouched.pk]),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=self._masking_algorithm("masked_certain_outsider"),
+            out_of_list_weight=0.01,
+        )
+
+        self.assertEqual(metrics["classifications_masked"], 1)
+        new_clf = Classification.objects.get(applied_to=source)
+        self.assertEqual((new_clf.taxon, new_clf.terminal), (self.species_taxa[2], True))
+        for stored, original in zip(new_clf.scores, _softmax(certain_logits), strict=True):
+            self.assertAlmostEqual(stored, original, places=9)
+        source.refresh_from_db()
+        self.assertFalse(source.terminal)
+        result = AlgorithmResult.objects.get(occurrence=occ, kind="class_masking")
+        self.assertIs(result.data["winner_in_list"], False)
+        self.assertEqual(result.data["new_winner_original_rank"], 1)
+        self.assertAlmostEqual(result.data["excluded_probability_after"], 1.0)
+
+        untouched.refresh_from_db()
+        self.assertTrue(untouched.terminal)
+        self.assertFalse(Classification.objects.filter(applied_to=untouched).exists())
+        self.assertFalse(AlgorithmResult.objects.filter(occurrence=other_occ).exists())
+
     def test_the_default_weight_is_a_soft_mask(self):
         """A task configured without a weight down-weights out-of-list classes by the
         default; it does not remove them."""
