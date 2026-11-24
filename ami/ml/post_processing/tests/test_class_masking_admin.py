@@ -83,13 +83,20 @@ class TestClassMaskingConfig(TestCase):
         self.assertGreater(config.out_of_list_weight, 0)
 
     def test_out_of_list_weight_outside_its_range_is_invalid(self):
-        """The weight is at least 0 and below 1 after rounding to four decimals; a value
-        above 0 that rounds to 0 is refused instead of silently becoming a hard mask."""
-        for weight in (-0.1, 1, 1.5, 0.99996, 0.00001):
+        """The weight is 0, or at least 0.0001 and below 1 after rounding to four decimals.
+        A value between 0 and 0.0001 is refused: it would otherwise round to a hard mask
+        (below 0.00005) or to twice the weight that was asked for (0.00005 and above)."""
+        for weight in (-0.1, 1, 1.5, 0.99996, 0.00001, 0.00005, 0.00007, 0.0000999):
             with self.subTest(weight=weight), self.assertRaises(pydantic.ValidationError):
                 ClassMaskingConfig(
                     source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, out_of_list_weight=weight
                 )
+
+    def test_the_smallest_weight_is_accepted(self):
+        config = ClassMaskingConfig(
+            source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, out_of_list_weight=0.0001
+        )
+        self.assertEqual(config.out_of_list_weight, 0.0001)
 
     def test_out_of_list_weight_is_rounded_to_four_decimals(self):
         """Rounding keeps one masking algorithm per weight, whatever float noise a caller sends."""

@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_OUT_OF_LIST_WEIGHT = 0.01
 # Weights are rounded to this many decimals, so that each weight has one masking Algorithm.
 WEIGHT_DECIMALS = 4
+# The smallest weight above 0 that those decimals can hold.
+SMALLEST_OUT_OF_LIST_WEIGHT = 10**-WEIGHT_DECIMALS
 
 
 class ClassMaskingConfig(pydantic.BaseModel):
@@ -60,9 +62,11 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # with the weight left out is reported instead of passing unchecked.
     @pydantic.validator("out_of_list_weight", always=True)
     def _usable_weight(cls, value: float, values: dict) -> float:
+        # Compared before rounding: half the smallest weight and above would round up to
+        # it, and the run would use up to twice the weight that was asked for.
+        if 0 < value < SMALLEST_OUT_OF_LIST_WEIGHT:
+            raise ValueError(f"Weights below {SMALLEST_OUT_OF_LIST_WEIGHT:g} are not supported; use 0 for a hard mask")
         rounded = round(value, WEIGHT_DECIMALS)
-        if value > 0 and rounded == 0:
-            raise ValueError(f"Weights below {10**-WEIGHT_DECIMALS:g} are not supported; use 0 for a hard mask")
         if rounded >= 1:
             raise ValueError("The weight must be below 1; a weight of 1 changes nothing")
         if rounded > 0 and values.get("reweight") is False:
